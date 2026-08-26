@@ -114,3 +114,53 @@ impl std::fmt::Display for LineRange {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_single_line_range_has_length_one() {
+        let range = LineRange::single(7);
+        assert_eq!(range.len(), 1);
+        assert_eq!(range.to_zero_based(), 6..7);
+    }
+
+    #[test]
+    fn inclusive_ends_survive_the_conversion_to_indices() {
+        let lines = ["a", "b", "c", "d", "e"];
+        // Lines 2 through 4, as a person would say it.
+        let range = LineRange::new(2, 4);
+        assert_eq!(&lines[range.to_zero_based()], &["b", "c", "d"]);
+    }
+
+    #[test]
+    fn a_backwards_range_is_corrected_rather_than_rejected() {
+        assert_eq!(LineRange::new(9, 3), LineRange::new(3, 9));
+    }
+
+    #[test]
+    fn there_is_no_line_zero() {
+        assert_eq!(LineRange::new(0, 0), LineRange::single(1));
+    }
+
+    #[test]
+    fn clamping_keeps_a_stale_range_inside_the_file() {
+        assert_eq!(LineRange::new(90, 120).clamp_to(40), LineRange::single(40));
+        assert_eq!(LineRange::new(10, 120).clamp_to(40), LineRange::new(10, 40));
+    }
+
+    #[test]
+    fn the_wire_form_is_a_two_element_array() {
+        let range = LineRange::new(120, 134);
+        let json = serde_json::to_string(&range).unwrap();
+        assert_eq!(json, "[120,134]");
+        assert_eq!(serde_json::from_str::<LineRange>(&json).unwrap(), range);
+    }
+
+    #[test]
+    fn a_label_reads_the_way_it_is_spoken() {
+        assert_eq!(LineRange::new(120, 134).to_string(), "120-134");
+        assert_eq!(LineRange::single(120).to_string(), "120");
+    }
+}
