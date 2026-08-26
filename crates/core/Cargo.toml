@@ -1,0 +1,17 @@
+[package]
+name = "deck-core"
+description = "The deck model: protocol types, anchoring, relocation, layout and theme derivation. No I/O, no UI."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+serde = { workspace = true }
+similar = "3.2.0"
+
+[dev-dependencies]
+serde_json = { workspace = true }
+
+[lints]
+workspace = true
