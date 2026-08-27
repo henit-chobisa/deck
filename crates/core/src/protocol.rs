@@ -275,3 +275,200 @@ impl From<String> for Kind {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_name_this_version_does_not_know_reads_as_the_default() {
+        // The point of freezing a version: adding a kind, a role or a source
+        // later must not stop a v1 client opening a v1 document that happens
+        // to carry one.
+        let comment: Comment =
+            serde_json::from_str(r#"{ "group": "g1", "kind": "praise", "text": "nice" }"#)
+                .expect("an unknown kind is not a parse failure");
+        assert_eq!(comment.kind, Kind::Question);
+
+        let known: Comment =
+            serde_json::from_str(r#"{ "group": "g1", "kind": "must-fix", "text": "no" }"#)
+                .expect("and a known one still reads");
+        assert_eq!(known.kind, Kind::MustFix);
+    }
+
+    #[test]
+    fn a_source_that_cannot_be_read_is_not_trusted() {
+        // It lands on `Stale`, which is the honest answer: a client that said
+        // something this version cannot read has said nothing to trust the
+        // range on.
+        let comment: Comment =
+            serde_json::from_str(r#"{ "group": "g1", "source": "telepathy", "text": "?" }"#)
+                .expect("an unknown source is not a parse failure");
+        assert_eq!(comment.source, Some(Source::Stale));
+    }
+
+    #[test]
+    fn a_header_parses_and_scopes_itself_to_a_project() {
+        let json = r#"{
+            "v": 1,
+            "id": "d-1788265010-8842",
+            "cwd": "/Users/you/project",
+            "title": "why the batch counter stalls",
+            "total": 2
+        }"#;
+
+        let header: Header = serde_json::from_str(json).unwrap();
+        assert_eq!(header.v, VERSION);
+        assert_eq!(header.title, "why the batch counter stalls");
+        assert_eq!(header.cwd.unwrap().to_str().unwrap(), "/Users/you/project");
+        assert_eq!(header.total, Some(2));
+    }
+
+    #[test]
+    fn an_unscoped_header_omits_cwd_entirely() {
+        let json = r#"{ "v": 1, "id": "d-1", "title": "anywhere" }"#;
+        let header: Header = serde_json::from_str(json).unwrap();
+        assert!(header.cwd.is_none());
+        assert!(header.total.is_none());
+    }
+
+    #[test]
+    fn a_field_this_build_has_never_heard_of_does_not_break_the_deck() {
+        let json = r#"{ "v": 1, "id": "d-1", "title": "t", "mood": "hopeful" }"#;
+        let header: Header = serde_json::from_str(json).unwrap();
+        assert_eq!(header.id, "d-1");
+    }
+
+    #[test]
+    fn a_group_carries_its_refs_and_a_group_without_refs_is_still_a_group() {
+        let json = r#"{
+            "id": "g1",
+            "ord": 1,
+            "say": "the decrement and the check are not atomic",
+            "refs": [
+                { "id": "g1r1", "file": "src/batch.ts", "range": [120, 134],
+                  "note": "this decrement" }
+            ]
+        }"#;
+
+        let group: Group = serde_json::from_str(json).unwrap();
+        assert_eq!(group.ord, Some(1));
+        assert_eq!(group.refs.len(), 1);
+        let Ref::Code(code) = &group.refs[0] else {
+            panic!("an entry with a file is code");
+        };
+        assert_eq!(code.range, LineRange::new(120, 134));
+        assert_eq!(code.note.as_deref(), Some("this decrement"));
+
+        let bare: Group = serde_json::from_str(r#"{ "id": "g2", "say": "" }"#).unwrap();
+        assert!(bare.refs.is_empty());
+    }
+
+    #[test]
+    fn a_group_can_mix_code_and_a_diagram_in_one_row_of_panes() {
+        let json = r#"{
+            "id": "g1",
+            "say": "the wire becomes the model",
+            "refs": [
+                { "id": "g1r1", "file": "src/protocol.rs", "range": [79, 97] },
+                { "id": "g1d1", "note": "how they relate",
+                  "diagram": {
+                      "flow": "right",
+                      "nodes": [{ "id": "a", "label": "RefSpec" },
+                                { "id": "b", "label": "Anchor" }],
+                      "edges": [{ "from": "a", "to": "b", "label": "anchor()" }]
+                  } }
+            ]
+        }"#;
+
+        let group: Group = serde_json::from_str(json).unwrap();
+        assert_eq!(group.refs.len(), 2);
+        assert_eq!(group.refs[0].id(), "g1r1");
+        assert_eq!(group.refs[1].id(), "g1d1");
+
+        // Told apart by what they carry, with no tag field to keep in step.
+        assert!(matches!(group.refs[0], Ref::Code(_)));
+        let Ref::Diagram(drawn) = &group.refs[1] else {
+            panic!("an entry with a diagram is a diagram");
+        };
+        assert_eq!(drawn.diagram.layout().cols, 2);
+    }
+
+    #[test]
+    fn a_ref_without_a_range_names_no_location_and_is_refused() {
+        let json = r#"{ "id": "g1r1", "file": "src/batch.ts", "note": "this" }"#;
+        let parsed = serde_json::from_str::<RefSpec>(json);
+        assert!(parsed.is_err(), "a ref must say where it points");
+    }
+
+    #[test]
+    fn a_review_round_trips_without_losing_a_field() {
+        let review = Review {
+            v: VERSION,
+            deck: "d-1788265010-8842".into(),
+            comments: vec![Comment {
+                group: "g1".into(),
+                ref_id: Some("g1r1".into()),
+                file: Some("src/batch.ts".into()),
+                range: Some(LineRange::new(122, 124)),
+                source: Some(Source::Diff),
+                kind: Kind::MustFix,
+                quote: "if (--pending === 0) finish()".into(),
+                text: "why does this assume sorted input?".into(),
+            }],
+        };
+
+        let json = serde_json::to_string(&review).unwrap();
+        let back: Review = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(back.comments[0].ref_id.as_deref(), Some("g1r1"));
+        assert_eq!(back.comments[0].kind, Kind::MustFix);
+        assert_eq!(back.comments[0].range, Some(LineRange::new(122, 124)));
+        // The wire spells the keyword-clashing field plainly, and the enums are
+        // words rather than numbers, so a review is readable by a person.
+        assert!(json.contains(r#""ref":"g1r1""#));
+        assert!(json.contains(r#""kind":"must-fix""#));
+    }
+
+    #[test]
+    fn a_remark_about_the_group_names_no_line() {
+        // The reader objected to the claim, not to a line of code. It goes back
+        // without a ref, and the wire carries neither field rather than
+        // carrying nulls the far side has to interpret.
+        let review = Review {
+            v: VERSION,
+            deck: "d-1".into(),
+            comments: vec![Comment {
+                group: "g1".into(),
+                ref_id: None,
+                file: None,
+                range: None,
+                source: None,
+                kind: Kind::MustFix,
+                quote: String::new(),
+                text: "this whole approach is wrong".into(),
+            }],
+        };
+
+        let json = serde_json::to_string(&review).unwrap();
+        assert!(!json.contains(r#""ref""#), "{json}");
+        assert!(!json.contains(r#""range""#), "{json}");
+
+        let back: Review = serde_json::from_str(&json).unwrap();
+        assert!(back.comments[0].ref_id.is_none());
+        assert!(back.comments[0].range.is_none());
+        assert_eq!(back.comments[0].group, "g1");
+    }
+
+    #[test]
+    fn an_unclassified_comment_is_a_question() {
+        let json = r#"{
+            "group": "g1", "ref": "g1r1", "range": [10, 10],
+            "quote": "x", "text": "why?"
+        }"#;
+        let comment: Comment = serde_json::from_str(json).unwrap();
+        assert_eq!(comment.kind, Kind::Question);
+        // Not `Source::Diff` — a client that says nothing has told us nothing.
+        assert_eq!(comment.source, None);
+    }
+}
