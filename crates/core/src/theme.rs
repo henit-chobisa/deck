@@ -612,3 +612,226 @@ fn hairline(base: Rgb) -> Rgb {
 fn toward(bg: Rgb, on_light: Rgb, on_dark: Rgb) -> Rgb {
     if bg.is_dark() { on_dark } else { on_light }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The light theme the design was drawn against.
+    fn light() -> Imported {
+        Imported::plain(
+            Rgb::from_hex("#dfdfdf").unwrap(),
+            Rgb::from_hex("#3c3836").unwrap(),
+            Rgb::from_hex("#af3a03").unwrap(),
+        )
+    }
+
+    fn dark() -> Imported {
+        Imported::plain(
+            Rgb::from_hex("#282828").unwrap(),
+            Rgb::from_hex("#ebdbb2").unwrap(),
+            Rgb::from_hex("#fe8019").unwrap(),
+        )
+    }
+
+    #[test]
+    fn an_alpha_on_the_end_is_ignored_rather_than_refused() {
+        // Zed writes every colour with one. Refusing them meant a real Zed
+        // theme came back as no colours at all — which read as "this theme
+        // sets no editor background" and was true of nothing.
+        assert_eq!(Rgb::from_hex("#282c33ff"), Some(Rgb::new(0x28, 0x2c, 0x33)));
+        assert_eq!(Rgb::from_hex("#282c3300"), Some(Rgb::new(0x28, 0x2c, 0x33)));
+        assert_eq!(Rgb::from_hex("#abcd"), Rgb::from_hex("#abc"));
+    }
+
+    #[test]
+    fn hex_parses_in_both_lengths_and_survives_a_round_trip() {
+        assert_eq!(Rgb::from_hex("#dfdfdf"), Some(Rgb::new(223, 223, 223)));
+        assert_eq!(Rgb::from_hex("dfdfdf"), Some(Rgb::new(223, 223, 223)));
+        // `#abc` is `#aabbcc`, not `#a0b0c0`.
+        assert_eq!(Rgb::from_hex("#abc"), Some(Rgb::new(0xaa, 0xbb, 0xcc)));
+        assert_eq!(Rgb::from_hex("#dfdfdf").unwrap().to_hex(), "#dfdfdf");
+
+        assert_eq!(Rgb::from_hex("#gggggg"), None);
+        assert_eq!(Rgb::from_hex("#dfdfd"), None, "five digits is not a colour");
+    }
+
+    #[test]
+    fn a_hairline_can_be_seen_on_whatever_it_is_drawn_on() {
+        // Whichever way there is room. A hairline is not a surface: a surface
+        // recedes, and a hairline has to be told apart — which on a dark page
+        // means going up, not down.
+        for theme in [light(), dark()] {
+            let p = derive(theme);
+            let apart = (p.edge.lightness() - p.bg.lightness()).abs();
+            assert!(apart > 0.03, "an edge that cannot be seen is not an edge");
+        }
+
+        assert!(derive(light()).edge.lightness() < derive(light()).bg.lightness());
+        assert!(derive(dark()).edge.lightness() > derive(dark()).bg.lightness());
+    }
+
+    #[test]
+    fn a_page_with_no_room_below_it_lifts_its_surfaces() {
+        // GitHub Dark's page, which is very nearly black. Receding downward
+        // left every surface within a hundredth of the page — one dark
+        // rectangle with no seams, no band and no panes in it.
+        let p = derive(Imported::plain(
+            Rgb::new(0x0d, 0x11, 0x17),
+            Rgb::new(0xe6, 0xed, 0xf3),
+            Rgb::new(0x2f, 0x81, 0xf7),
+        ));
+
+        assert!(p.wash.lightness() > p.bg.lightness());
+        assert!(
+            p.band.lightness() - p.bg.lightness() > 0.04,
+            "and far enough that the band is a panel rather than a smudge"
+        );
+        assert!(p.edge.lightness() > p.band.lightness());
+    }
+
+    #[test]
+    fn the_desk_stays_under_the_page() {
+        for theme in [light(), dark()] {
+            let p = derive(theme);
+            assert!(p.ground.lightness() <= p.bg.lightness());
+        }
+    }
+
+    #[test]
+    fn receding_is_darker_on_a_light_theme() {
+        let p = derive(light());
+        assert!(p.wash.lightness() < p.bg.lightness());
+        assert!(p.band.lightness() < p.wash.lightness());
+    }
+
+    #[test]
+    fn receding_is_darker_on_a_dark_theme_too() {
+        // While there is room. Deck's own dark page has plenty; only a
+        // near-black one has to lift instead.
+        let p = derive(dark());
+        assert!(p.wash.lightness() < p.bg.lightness());
+        assert!(p.band.lightness() < p.wash.lightness());
+    }
+
+    #[test]
+    fn a_black_ground_is_the_one_case_that_has_to_come_up() {
+        let p = derive(Imported {
+            bg: Rgb::new(0, 0, 0),
+            ..dark()
+        });
+        assert!(p.wash.lightness() > 0.0, "black cannot darken any further");
+        assert!(p.band.lightness() > p.wash.lightness());
+    }
+
+    #[test]
+    fn the_lit_range_is_told_apart_by_warmth_rather_than_brightness() {
+        let p = derive(light());
+
+        // It stays near the page: the range is meant to read as un-dimmed, not
+        // as something a highlighter pen was dragged across.
+        assert!((p.focus.lightness() - p.bg.lightness()).abs() < 0.12);
+
+        // It is not *brighter* than the wash, and it does not need to be. The
+        // design's own values have the lit range a shade darker than the pane
+        // around it — `#d7cbbb` against `#d4d4d4` — and it still reads as lit,
+        // because the pane is neutral and the range is warm. Asserting the
+        // brightness went up encodes a belief the palette never held.
+        let warmth = |c: Rgb| f32::from(c.r) - f32::from(c.b);
+        assert!(
+            warmth(p.focus) > warmth(p.wash) + 12.,
+            "the lit range has to be visibly warmer than the pane"
+        );
+    }
+
+    #[test]
+    fn the_lit_range_leans_toward_the_accent() {
+        let p = derive(light());
+        // The accent here is warm, so the tinted page must be warmer than the
+        // neutral it started from.
+        assert!(p.focus.r > p.focus.b);
+        assert_eq!(p.bg.r, p.bg.b, "the page it came from was neutral");
+    }
+
+    #[test]
+    fn a_grey_is_never_an_accent() {
+        // Learned from a real colour scheme, whose `Special` is pure black. It
+        // was the most prominent thing on offer and it made the lit range a
+        // grey smudge — an accent is a colour, and black is the absence of one.
+        let page = Rgb::new(0xdf, 0xdf, 0xdf);
+        let text = Rgb::new(0x2d, 0x2d, 0x2d);
+        let orange = Rgb::new(0xae, 0x60, 0x00);
+
+        assert_eq!(
+            pick_accent(page, text, &[Rgb::new(0, 0, 0), orange]),
+            orange,
+            "the colour wins over the grey, even offered second"
+        );
+    }
+
+    #[test]
+    fn an_accent_the_page_would_swallow_is_passed_over() {
+        let page = Rgb::new(0xdf, 0xdf, 0xdf);
+        let text = Rgb::new(0x2d, 0x2d, 0x2d);
+        let nearly_the_page = Rgb::new(0xe2, 0xdd, 0xd8);
+        let red = Rgb::new(0x9d, 0x00, 0x06);
+
+        assert_eq!(pick_accent(page, text, &[nearly_the_page, red]), red);
+    }
+
+    #[test]
+    fn a_theme_offering_nothing_usable_falls_back_on_its_own_text() {
+        // Which always reads on the page, because the editor is legible.
+        let page = Rgb::new(0xdf, 0xdf, 0xdf);
+        let text = Rgb::new(0x2d, 0x2d, 0x2d);
+        assert_eq!(pick_accent(page, text, &[]), text);
+    }
+
+    #[test]
+    fn what_goes_on_the_accent_follows_the_accent() {
+        // A dark accent takes the page's own colour, which is what deck's own
+        // palette does. A pale one has to take the text colour instead, or the
+        // button ends up pale on pale — which is the bug this role exists to
+        // stop somebody writing at the point of use.
+        let page = Rgb::new(0xdf, 0xdf, 0xdf);
+        let text = Rgb::new(0x3c, 0x38, 0x36);
+
+        let dark = derive(Imported::plain(page, text, Rgb::new(0xaf, 0x3a, 0x03)));
+        assert_eq!(
+            dark.on_accent, page,
+            "a dark accent is written on in the page"
+        );
+
+        let pale = derive(Imported::plain(page, text, Rgb::new(0xfa, 0xbd, 0x2f)));
+        assert_eq!(pale.on_accent, text, "a pale one is written on in the text");
+    }
+
+    #[test]
+    fn muted_text_sits_between_the_text_and_the_page() {
+        for theme in [light(), dark()] {
+            let p = derive(theme);
+            let (fg, bg, muted) = (p.fg.lightness(), p.bg.lightness(), p.muted.lightness());
+            assert!(
+                muted > fg.min(bg) && muted < fg.max(bg),
+                "muted must be quieter than text without vanishing into the page"
+            );
+        }
+    }
+
+    #[test]
+    fn the_diff_colours_flip_to_stay_legible_on_the_ground() {
+        assert_ne!(derive(light()).add, derive(dark()).add);
+        assert!(derive(dark()).add.lightness() > derive(light()).add.lightness());
+    }
+
+    #[test]
+    fn mixing_is_bounded_at_both_ends() {
+        let a = Rgb::new(0, 0, 0);
+        let b = Rgb::new(255, 255, 255);
+        assert_eq!(a.mix(b, 0.0), a);
+        assert_eq!(a.mix(b, 1.0), b);
+        // Out-of-range amounts are clamped rather than wrapping a channel.
+        assert_eq!(a.mix(b, -1.0), a);
+        assert_eq!(a.mix(b, 9.0), b);
+    }
+}
