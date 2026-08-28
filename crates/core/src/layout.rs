@@ -133,3 +133,140 @@ impl Layout {
         refs.chunks(self.max_panes.max(1) as usize)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A window wide enough that `min_pane_width` never bites.
+    const WIDE: u32 = 4000;
+
+    #[test]
+    fn stacked_gives_one_pane_per_row() {
+        let layout = Layout::default();
+        assert_eq!(layout.grid(1, WIDE), Grid { cols: 1, rows: 1 });
+        assert_eq!(layout.grid(4, WIDE), Grid { cols: 1, rows: 4 });
+    }
+
+    #[test]
+    fn columns_fills_sideways_until_a_guard_stops_it() {
+        let layout = Layout {
+            arrange: Arrange::Columns,
+            max_columns: 3,
+            ..Layout::default()
+        };
+        assert_eq!(layout.grid(2, WIDE), Grid { cols: 2, rows: 1 });
+        // Four panes, capped at three columns, so the fourth wraps.
+        assert_eq!(layout.grid(4, WIDE), Grid { cols: 3, rows: 2 });
+    }
+
+    #[test]
+    fn a_grid_is_biased_toward_rows() {
+        let layout = Layout {
+            arrange: Arrange::Grid,
+            max_columns: 9,
+            ..Layout::default()
+        };
+        assert_eq!(layout.grid(4, WIDE), Grid { cols: 2, rows: 2 });
+        assert_eq!(layout.grid(9, WIDE), Grid { cols: 3, rows: 3 });
+        // Six panes go 2x3, not 3x2: rows are cheaper than narrow columns.
+        assert_eq!(layout.grid(6, WIDE), Grid { cols: 2, rows: 3 });
+    }
+
+    #[test]
+    fn a_narrow_window_drops_columns_rather_than_squeeze_them() {
+        let layout = Layout {
+            arrange: Arrange::Grid,
+            max_columns: 9,
+            min_pane_width: 60,
+            ..Layout::default()
+        };
+        // 200 wide holds three 60-wide panes; 130 holds two; 100 holds one.
+        assert_eq!(layout.grid(9, 200).cols, 3);
+        assert_eq!(layout.grid(9, 130).cols, 2);
+        assert_eq!(layout.grid(9, 100).cols, 1);
+    }
+
+    #[test]
+    fn a_window_too_narrow_for_even_one_pane_still_gets_one() {
+        let layout = Layout {
+            arrange: Arrange::Columns,
+            ..Layout::default()
+        };
+        assert_eq!(layout.grid(4, 10), Grid { cols: 1, rows: 4 });
+    }
+
+    #[test]
+    fn there_are_never_more_columns_than_panes_to_put_in_them() {
+        let layout = Layout {
+            arrange: Arrange::Columns,
+            max_columns: 8,
+            ..Layout::default()
+        };
+        assert_eq!(layout.grid(2, WIDE), Grid { cols: 2, rows: 1 });
+    }
+
+    #[test]
+    fn a_picture_on_the_page_turns_the_default_sideways() {
+        let stacked = Layout::default();
+        assert_eq!(stacked.grid(2, WIDE), Grid { cols: 1, rows: 2 });
+        assert_eq!(
+            stacked.beside_pictures().grid(2, WIDE),
+            Grid { cols: 2, rows: 1 }
+        );
+    }
+
+    #[test]
+    fn an_arrangement_that_was_asked_for_is_left_alone() {
+        // Stacked is a default, so it gives way. A grid is an answer, and a
+        // picture is not a reason to overrule the reader.
+        let grid = Layout {
+            arrange: Arrange::Grid,
+            ..Layout::default()
+        };
+        assert_eq!(grid.beside_pictures().arrange, Arrange::Grid);
+    }
+
+    #[test]
+    fn a_narrow_window_beside_a_picture_still_drops_to_one_column() {
+        // The guards outrank the preference: two cramped panes are worse than
+        // one readable one, whatever is drawn on them.
+        let layout = Layout::default().beside_pictures();
+        assert_eq!(layout.grid(2, 80), Grid { cols: 1, rows: 2 });
+    }
+
+    #[test]
+    fn a_group_with_too_many_refs_becomes_several_pages() {
+        let layout = Layout {
+            max_panes: 4,
+            ..Layout::default()
+        };
+        let refs = [1, 2, 3, 4, 5, 6];
+        let pages: Vec<&[i32]> = layout.pages(&refs).collect();
+
+        assert_eq!(pages.len(), 2);
+        assert_eq!(pages[0], &[1, 2, 3, 4]);
+        assert_eq!(pages[1], &[5, 6]);
+    }
+
+    #[test]
+    fn a_config_that_says_zero_is_corrected_rather_than_dividing_by_it() {
+        let layout = Layout {
+            max_columns: 0,
+            min_pane_width: 0,
+            max_panes: 0,
+            arrange: Arrange::Grid,
+        };
+        assert_eq!(layout.grid(4, WIDE), Grid { cols: 1, rows: 4 });
+        assert_eq!(layout.pages(&[1, 2]).count(), 2);
+    }
+
+    #[test]
+    fn the_defaults_are_what_the_config_file_documents() {
+        let layout: Layout = serde_json::from_str("{}").unwrap();
+        assert_eq!(layout.arrange, Arrange::Stacked);
+        assert_eq!(layout.max_columns, 3);
+        assert_eq!(layout.min_pane_width, 60);
+        assert_eq!(layout.max_panes, 4);
+    }
+}
