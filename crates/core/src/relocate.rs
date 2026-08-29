@@ -202,3 +202,137 @@ impl<'a> Fingerprint<'a> {
 fn clamp_u32(n: usize) -> u32 {
     u32::try_from(n).unwrap_or(u32::MAX)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const FILE: &str = "\
+fn complete(id: &str) {
+    let n = pending.fetch_sub(1);
+    if n == 1 {
+        finish();
+    }
+}
+";
+
+    fn one(snapshot: &str, current: &str, pin: LineRange) -> Relocated {
+        relocate(snapshot, current, &[pin])[0]
+    }
+
+    #[test]
+    fn an_untouched_file_leaves_every_pin_where_it_was() {
+        let got = one(FILE, FILE, LineRange::new(2, 3));
+        assert_eq!(got.range, LineRange::new(2, 3));
+        assert_eq!(got.source, Source::Diff);
+    }
+
+    #[test]
+    fn lines_added_above_the_pin_carry_it_down() {
+        let current = format!("use std::sync::atomic::Ordering;\n\n{FILE}");
+        // `let n = ...` was line 2, and two lines arrived above it.
+        let got = one(FILE, &current, LineRange::single(2));
+        assert_eq!(got.range, LineRange::single(4));
+        assert_eq!(got.source, Source::Diff);
+    }
+
+    #[test]
+    fn lines_removed_above_the_pin_carry_it_up() {
+        let current = FILE.replacen("fn complete(id: &str) {\n", "", 1);
+        let got = one(FILE, &current, LineRange::single(2));
+        assert_eq!(got.range, LineRange::single(1));
+        assert_eq!(got.source, Source::Diff);
+    }
+
+    #[test]
+    fn a_pin_over_several_lines_keeps_the_span_that_survived() {
+        // The middle of the pinned range is rewritten; its ends are not.
+        let current = FILE.replace("    if n == 1 {", "    if n == 1 && !done {");
+        let got = one(FILE, &current, LineRange::new(2, 4));
+        assert_eq!(got.range, LineRange::new(2, 4));
+        assert_eq!(got.source, Source::Diff);
+    }
+
+    #[test]
+    fn moved_code_is_found_again_by_its_text() {
+        // A line diff has no idea what a move is. Cut a line from one place and
+        // paste it in another and it reports a deletion and an unrelated
+        // insertion, so the map loses the line entirely — which is exactly the
+        // case the fingerprint exists for, because the text is still there.
+        let snapshot = "\
+fn setup() {
+    init();
+}
+const RETRY_LIMIT: u32 = 3;
+fn run() {
+    work();
+}
+";
+        let current = "\
+fn setup() {
+    init();
+}
+fn run() {
+    work();
+}
+const RETRY_LIMIT: u32 = 3;
+";
+
+        let got = one(snapshot, current, LineRange::single(4));
+        assert_eq!(got.source, Source::Fingerprint);
+        assert_eq!(got.range, LineRange::single(7));
+    }
+
+    #[test]
+    fn the_neighbours_break_a_tie_between_identical_lines() {
+        let snapshot = "if a {\n    go();\n}\nif b {\n    go();\n}\n";
+        // Both `go()` lines are identical. The pin is on the second one, and
+        // only its neighbours say which is which.
+        let current = snapshot.replace("    go();\n}\nif b", "    go2();\n}\nif b");
+
+        let got = one(snapshot, &current, LineRange::single(5));
+        assert_eq!(got.range, LineRange::single(5));
+    }
+
+    #[test]
+    fn a_line_that_is_gone_is_admitted_rather_than_guessed_at() {
+        let current = "fn complete(id: &str) {\n}\n";
+        let got = one(FILE, current, LineRange::single(2));
+        assert_eq!(got.source, Source::Stale);
+        // The range is still usable — clamped into the file, so a client can
+        // open the pane without checking. It is simply not to be trusted.
+        assert!(got.range.last <= 2);
+    }
+
+    #[test]
+    fn a_blank_line_is_never_fingerprinted() {
+        // Line 3 is blank in both, but its content is rewritten around it. A
+        // blank line matches every other blank line, so it must not be used to
+        // claim a location.
+        let snapshot = "a\nb\n\nc\n";
+        let current = "zzz\nyyy\n\nxxx\n";
+        let got = one(snapshot, current, LineRange::single(2));
+        assert_eq!(got.source, Source::Stale);
+    }
+
+    #[test]
+    fn every_pin_is_followed_in_one_pass() {
+        let current = format!("// header\n{FILE}");
+        let got = relocate(
+            FILE,
+            &current,
+            &[LineRange::single(1), LineRange::new(3, 5)],
+        );
+
+        assert_eq!(got.len(), 2);
+        assert_eq!(got[0].range, LineRange::single(2));
+        assert_eq!(got[1].range, LineRange::new(4, 6));
+    }
+
+    #[test]
+    fn a_pin_past_the_end_of_a_shortened_file_stays_inside_it() {
+        let got = one(FILE, "fn complete(id: &str) {\n", LineRange::new(40, 44));
+        assert_eq!(got.source, Source::Stale);
+        assert_eq!(got.range, LineRange::single(1));
+    }
+}
