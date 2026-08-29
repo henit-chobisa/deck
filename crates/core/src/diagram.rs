@@ -443,3 +443,261 @@ impl Diagram {
         track
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn node(id: &str) -> Node {
+        Node {
+            id: id.into(),
+            label: id.into(),
+            note: None,
+            role: Role::Step,
+            weight: Weight::Normal,
+            lane: None,
+        }
+    }
+
+    fn edge(from: &str, to: &str) -> Edge {
+        Edge {
+            from: from.into(),
+            to: to.into(),
+            label: None,
+            line: Line::Solid,
+        }
+    }
+
+    fn diagram(flow: Flow, nodes: &[&str], edges: &[(&str, &str)]) -> Diagram {
+        Diagram {
+            title: None,
+            flow,
+            nodes: nodes.iter().map(|id| node(id)).collect(),
+            edges: edges.iter().map(|(f, t)| edge(f, t)).collect(),
+            clusters: Vec::new(),
+        }
+    }
+
+    /// Where the node called `id` ended up.
+    fn at(d: &Diagram, layout: &Layout, id: &str) -> (u32, u32) {
+        let ix = d.nodes.iter().position(|n| n.id == id).unwrap();
+        let p = layout.placed.iter().find(|p| p.node_ix == ix).unwrap();
+        (p.col, p.row)
+    }
+
+    #[test]
+    fn a_shape_this_version_does_not_know_is_drawn_as_a_step() {
+        // A later protocol may name a shape this one has never heard of. A
+        // diagram that mostly makes sense beats a group that will not open.
+        let node: Node = serde_json::from_str(
+            r#"{ "id": "a", "label": "a", "role": "hexagon", "weight": "loud" }"#,
+        )
+        .expect("an unknown role is not a parse failure");
+
+        assert_eq!(node.role, Role::Step);
+        assert_eq!(node.weight, Weight::Normal);
+    }
+
+    #[test]
+    fn a_chain_runs_the_way_the_flow_points() {
+        let d = diagram(Flow::Right, &["a", "b", "c"], &[("a", "b"), ("b", "c")]);
+        let l = d.layout();
+
+        assert_eq!(at(&d, &l, "a"), (0, 0));
+        assert_eq!(at(&d, &l, "b"), (1, 0));
+        assert_eq!(at(&d, &l, "c"), (2, 0));
+        assert_eq!((l.cols, l.rows), (3, 1));
+    }
+
+    #[test]
+    fn the_same_chain_turned_down_swaps_the_axes() {
+        let d = diagram(Flow::Down, &["a", "b", "c"], &[("a", "b"), ("b", "c")]);
+        let l = d.layout();
+
+        assert_eq!(at(&d, &l, "c"), (0, 2));
+        assert_eq!((l.cols, l.rows), (1, 3));
+    }
+
+    #[test]
+    fn things_at_the_same_stage_sit_side_by_side_in_the_order_written() {
+        // One source feeding three readers: an HLD fan-out.
+        let d = diagram(
+            Flow::Down,
+            &["core", "ui", "cli", "web"],
+            &[("core", "ui"), ("core", "cli"), ("core", "web")],
+        );
+        let l = d.layout();
+
+        assert_eq!(at(&d, &l, "core"), (0, 0));
+        assert_eq!(at(&d, &l, "ui"), (0, 1));
+        assert_eq!(at(&d, &l, "cli"), (1, 1));
+        assert_eq!(at(&d, &l, "web"), (2, 1));
+    }
+
+    #[test]
+    fn a_node_sits_past_the_furthest_thing_pointing_at_it() {
+        // `c` is reachable in one step and in two. The long way wins, so the
+        // short edge is drawn spanning a rank rather than pointing backwards.
+        let d = diagram(
+            Flow::Right,
+            &["a", "b", "c"],
+            &[("a", "b"), ("b", "c"), ("a", "c")],
+        );
+        let l = d.layout();
+
+        assert_eq!(at(&d, &l, "c").0, 2);
+        assert!(l.back_edges.is_empty());
+    }
+
+    #[test]
+    fn a_cycle_is_ranked_by_setting_one_edge_aside() {
+        // A state machine: idle -> running -> done -> idle.
+        let d = diagram(
+            Flow::Right,
+            &["idle", "running", "done"],
+            &[("idle", "running"), ("running", "done"), ("done", "idle")],
+        );
+        let l = d.layout();
+
+        assert_eq!(l.back_edges, vec![2], "the returning edge is the one bent");
+        assert_eq!(at(&d, &l, "idle").0, 0);
+        assert_eq!(at(&d, &l, "done").0, 2);
+    }
+
+    #[test]
+    fn a_lane_holds_its_track_while_the_flow_runs_past_it() {
+        // A sequence diagram: two participants, time running down. Every step
+        // keeps its column even though the steps alternate.
+        let mut d = diagram(
+            Flow::Down,
+            &["ask", "answer", "again"],
+            &[("ask", "answer"), ("answer", "again")],
+        );
+        d.nodes[0].lane = Some(0);
+        d.nodes[1].lane = Some(1);
+        d.nodes[2].lane = Some(0);
+        let l = d.layout();
+
+        assert_eq!(at(&d, &l, "ask"), (0, 0));
+        assert_eq!(at(&d, &l, "answer"), (1, 1));
+        assert_eq!(at(&d, &l, "again"), (0, 2));
+    }
+
+    #[test]
+    fn an_unlaned_node_fills_in_around_a_laned_one() {
+        let mut d = diagram(Flow::Down, &["pinned", "loose"], &[]);
+        d.nodes[0].lane = Some(0);
+        let l = d.layout();
+
+        assert_eq!(at(&d, &l, "pinned"), (0, 0));
+        assert_eq!(at(&d, &l, "loose"), (1, 0), "must not land on the lane");
+    }
+
+    #[test]
+    fn two_unconnected_halves_sit_beside_each_other() {
+        // Before and after: no edge crosses, so both start at the same rank.
+        let d = diagram(
+            Flow::Down,
+            &["was", "was_more", "now"],
+            &[("was", "was_more")],
+        );
+        let l = d.layout();
+
+        assert_eq!(at(&d, &l, "was"), (0, 0));
+        assert_eq!(at(&d, &l, "now"), (1, 0));
+        assert_eq!(at(&d, &l, "was_more"), (0, 1));
+    }
+
+    #[test]
+    fn an_edge_naming_a_node_that_is_not_there_is_ignored() {
+        let d = diagram(Flow::Right, &["a"], &[("a", "ghost"), ("ghost", "a")]);
+        let l = d.layout();
+
+        assert_eq!(at(&d, &l, "a"), (0, 0));
+        assert_eq!((l.cols, l.rows), (1, 1));
+    }
+
+    #[test]
+    fn a_node_pointing_at_itself_does_not_hang() {
+        let d = diagram(Flow::Right, &["a", "b"], &[("a", "a"), ("a", "b")]);
+        let l = d.layout();
+
+        assert_eq!(l.back_edges, vec![0]);
+        assert_eq!(at(&d, &l, "b").0, 1);
+    }
+
+    #[test]
+    fn a_branch_puts_both_answers_at_the_same_stage() {
+        // A flowchart: the decision and one labelled edge per way out. Both
+        // outcomes are one step past it, so they sit side by side and the
+        // reader compares them rather than reading one as following the other.
+        let json = r#"{
+            "flow": "down",
+            "nodes": [
+                { "id": "q",    "label": "range mapped?", "role": "decision" },
+                { "id": "yes",  "label": "Source::Diff" },
+                { "id": "no",   "label": "Source::Stale", "weight": "muted" },
+                { "id": "file", "label": "snapshot", "role": "store" }
+            ],
+            "edges": [
+                { "from": "file", "to": "q" },
+                { "from": "q", "to": "yes", "label": "yes" },
+                { "from": "q", "to": "no",  "label": "no", "line": "dashed" }
+            ]
+        }"#;
+
+        let d: Diagram = serde_json::from_str(json).unwrap();
+        assert_eq!(d.nodes[0].role, Role::Decision);
+        assert_eq!(d.nodes[3].role, Role::Store);
+
+        let l = d.layout();
+        assert_eq!(at(&d, &l, "yes").1, at(&d, &l, "no").1);
+        assert_ne!(at(&d, &l, "yes").0, at(&d, &l, "no").0);
+    }
+
+    #[test]
+    fn a_role_changes_the_drawing_and_not_the_placement() {
+        // Shape is the view's business. Ranking must not shift because a node
+        // became a circle.
+        let plain = diagram(Flow::Right, &["a", "b"], &[("a", "b")]);
+        let mut shaped = diagram(Flow::Right, &["a", "b"], &[("a", "b")]);
+        shaped.nodes[0].role = Role::Actor;
+        shaped.nodes[1].role = Role::Terminal;
+
+        assert_eq!(plain.layout(), shaped.layout());
+    }
+
+    #[test]
+    fn a_diagram_with_no_nodes_still_has_a_size() {
+        let d = diagram(Flow::Down, &[], &[]);
+        let l = d.layout();
+
+        assert!(l.placed.is_empty());
+        assert_eq!((l.cols, l.rows), (1, 1));
+    }
+
+    #[test]
+    fn the_wire_form_needs_only_nodes() {
+        let json = r#"{
+            "nodes": [
+                { "id": "wire",  "label": "RefSpec", "note": "what lands on disk" },
+                { "id": "model", "label": "Anchor",  "weight": "accent" }
+            ],
+            "edges": [{ "from": "wire", "to": "model", "label": "anchor()" }]
+        }"#;
+
+        let d: Diagram = serde_json::from_str(json).unwrap();
+        assert_eq!(d.flow, Flow::Down);
+        assert_eq!(d.nodes[1].weight, Weight::Accent);
+        assert_eq!(
+            d.nodes[0].role,
+            Role::Step,
+            "a node is a box unless it says"
+        );
+        assert_eq!(d.edges[0].line, Line::Solid);
+        assert!(d.clusters.is_empty());
+
+        let l = d.layout();
+        assert_eq!(at(&d, &l, "model"), (0, 1));
+    }
+}
