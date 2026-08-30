@@ -1,0 +1,49 @@
+[package]
+name = "deck-app"
+description = "The deck command and the window it opens."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[[bin]]
+name = "deck"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = "1.0.104"
+clap = { version = "4", features = ["derive", "wrap_help"] }
+deck-cli = { path = "../cli" }
+deck-core = { path = "../core" }
+deck-theme = { path = "../theme" }
+gpui-kit = { version = "0.6", features = [
+    # Syntax highlighting is not on by default, and a grammar is only compiled
+    # in if it is named. Every language deck can highlight is listed here, and
+    # each one costs binary size — which is why this is a chosen set and not
+    # `tree-sitter-languages`.
+    "tree-sitter",
+    "tree-sitter-rust",
+    "tree-sitter-typescript",
+    "tree-sitter-tsx",
+    "tree-sitter-javascript",
+    "tree-sitter-python",
+    "tree-sitter-go",
+    "tree-sitter-ruby",
+    "tree-sitter-lua",
+    "tree-sitter-markdown",
+    "tree-sitter-markdown-inline",
+    "tree-sitter-yaml",
+    "tree-sitter-bash",
+    "tree-sitter-toml",
+    "tree-sitter-html",
+    "tree-sitter-css",
+    "tree-sitter-c",
+    "tree-sitter-cpp",
+    "tree-sitter-java",
+] }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+toml = "0.9"
+
+[lints]
+workspace = true
