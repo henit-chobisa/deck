@@ -206,3 +206,49 @@ pub fn read_source(base: &Path, file: &Path) -> String {
     std::fs::read_to_string(&full)
         .unwrap_or_else(|err| format!("could not read {}\n\n{err}", full.display()))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use deck_core::protocol::Group;
+
+    fn group(ord: Option<u32>) -> Group {
+        Group {
+            id: format!("g{}", ord.unwrap_or(0)),
+            ord,
+            say: String::new(),
+            refs: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn a_full_run_is_all_readable() {
+        let deck = [group(Some(1)), group(Some(2)), group(Some(3))];
+        assert_eq!(readable(&deck), 3);
+    }
+
+    #[test]
+    fn a_group_that_arrives_early_waits_for_the_gap_in_front_of_it() {
+        // Group 3 is here and group 2 is not. Showing it would put the reader
+        // in the middle of an argument whose previous step has not been made.
+        let deck = [group(Some(1)), group(Some(3))];
+        assert_eq!(readable(&deck), 1);
+    }
+
+    #[test]
+    fn nothing_is_readable_until_the_first_group_lands() {
+        let deck = [group(Some(2)), group(Some(3))];
+        assert_eq!(readable(&deck), 0);
+    }
+
+    #[test]
+    fn a_deck_that_numbers_nothing_is_not_claiming_an_order() {
+        let deck = [group(None), group(None)];
+        assert_eq!(readable(&deck), 2);
+    }
+
+    #[test]
+    fn an_empty_deck_is_readable_and_empty() {
+        assert_eq!(readable(&[]), 0);
+    }
+}
