@@ -801,3 +801,41 @@ fn language_of(file: &std::path::Path) -> &'static str {
         _ => "text",
     }
 }
+
+#[cfg(test)]
+mod tests {
+    // Spelled out rather than `#[test]`: this module glob-imports GPUI, which
+    // exports a `test` attribute of its own and would otherwise shadow the
+    // standard one.
+    use core::prelude::v1::test;
+
+    use super::*;
+
+    #[test]
+    fn without_a_proposed_change_a_line_is_its_own_row() {
+        for line in 1..8 {
+            assert_eq!(row_of(line, 4, 0), (line - 1) as usize);
+        }
+    }
+
+    #[test]
+    fn a_replacement_pushes_down_only_what_is_below_it() {
+        // Lines 3..=5 are going, and two lines come in their place. Everything
+        // above and including the range is where it was; everything after it
+        // is two rows lower.
+        let row = |line| row_of(line, 5, 2);
+
+        assert_eq!(row(1), 0);
+        assert_eq!(row(5), 4, "the last line of the range has not moved");
+        assert_eq!(row(6), 7, "the line after it is past the two new ones");
+        assert_eq!(row(7), 8);
+    }
+
+    #[test]
+    fn line_zero_is_treated_as_line_one() {
+        // Nothing should ask for it — ranges are corrected on the way in — but
+        // a subtraction that underflows here would panic in the middle of a
+        // frame rather than fail a test.
+        assert_eq!(row_of(0, 3, 4), 0);
+    }
+}
