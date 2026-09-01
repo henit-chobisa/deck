@@ -209,3 +209,70 @@ fn paragraph(para: &str) -> Paragraph {
     flush(&mut plain, &mut tokens);
     Paragraph { tokens }
 }
+
+#[cfg(test)]
+mod tests {
+    // Spelled out rather than `#[test]`: this module glob-imports GPUI, which
+    // exports a `test` attribute of its own and would otherwise shadow the
+    // standard one.
+    use core::prelude::v1::test;
+
+    use super::*;
+
+    /// Each paragraph as its whole text, and the marks it carries.
+    fn parsed(say: &str) -> Vec<(String, Vec<Mark>)> {
+        parse(say)
+            .into_iter()
+            .map(|para| {
+                (
+                    para.tokens.iter().map(|t| t.text.to_string()).collect(),
+                    para.tokens.iter().filter_map(|t| t.mark).collect(),
+                )
+            })
+            .collect()
+    }
+
+    #[test]
+    fn markers_are_stripped_and_their_spans_recorded() {
+        let got = parsed("carries a background and **nothing else**, so it survives");
+        assert_eq!(got.len(), 1);
+        assert_eq!(
+            got[0].0,
+            "carries a background and nothing else, so it survives"
+        );
+        assert_eq!(got[0].1, vec![Mark::Strong]);
+    }
+
+    #[test]
+    fn a_blank_line_starts_a_paragraph_and_a_single_newline_does_not() {
+        let got = parsed("one line\nwrapped by the agent\n\na second paragraph");
+        assert_eq!(got.len(), 2);
+        assert_eq!(got[0].0, "one line wrapped by the agent");
+        assert_eq!(got[1].0, "a second paragraph");
+    }
+
+    #[test]
+    fn bold_is_read_before_emphasis() {
+        // `**` has to be tried first: read left to right, the first `*` of a
+        // bold opener otherwise starts an emphasis that swallows the rest.
+        let got = parsed("**bold** and *lit*");
+        assert_eq!(got[0].0, "bold and lit");
+        assert_eq!(got[0].1, vec![Mark::Strong, Mark::Emphasis]);
+    }
+
+    #[test]
+    fn an_opener_with_no_closer_is_left_as_text() {
+        let got = parsed("2 * 3 is not emphasis");
+        assert_eq!(got[0].0, "2 * 3 is not emphasis");
+        assert!(got[0].1.is_empty());
+    }
+
+    #[test]
+    fn code_spans_survive_punctuation_around_them() {
+        let got = parsed("call `render.close()`, then stop");
+        // The comma stays hard against the chip, and the space before `then`
+        // rides on a token rather than becoming a gap between elements.
+        assert_eq!(got[0].0, "call render.close(), then stop");
+        assert_eq!(got[0].1, vec![Mark::Code]);
+    }
+}
