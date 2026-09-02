@@ -1925,3 +1925,105 @@ impl Render for DeckView {
             .child(self.render_strip(cx))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    // Spelled out rather than `#[test]`: this module glob-imports GPUI, which
+    // exports a `test` attribute of its own and would otherwise shadow the
+    // standard one.
+    use core::prelude::v1::test;
+
+    use super::*;
+
+    fn snapshots(
+        of: &[(&str, &str)],
+    ) -> std::collections::HashMap<std::path::PathBuf, std::sync::Arc<str>> {
+        of.iter()
+            .map(|(file, text)| (std::path::PathBuf::from(file), std::sync::Arc::from(*text)))
+            .collect()
+    }
+
+    #[test]
+    fn every_pin_comes_back_to_the_remark_it_came_from() {
+        // Two files, pins interleaved between them. The pairing is what is
+        // being checked: a remark that came back carrying another remark's line
+        // would be the worst thing this program could do quietly.
+        let was_a = "one\ntwo\nthree\n";
+        let now_a = "added\nadded\none\ntwo\nthree\n";
+        let same_b = "alpha\nbeta\n";
+
+        let a = std::path::Path::new("a.rs");
+        let b = std::path::Path::new("b.rs");
+        let pins = [
+            (0, a, LineRange::new(1, 1)),
+            (1, b, LineRange::new(2, 2)),
+            (2, a, LineRange::new(3, 3)),
+        ];
+
+        let found = follow(
+            &pins,
+            &snapshots(&[("a.rs", was_a), ("b.rs", same_b)]),
+            |file| {
+                if file == a {
+                    now_a.to_string()
+                } else {
+                    same_b.to_string()
+                }
+            },
+        );
+
+        assert_eq!(
+            found[&0].range,
+            LineRange::new(3, 3),
+            "`one` moved down two"
+        );
+        assert_eq!(found[&1].range, LineRange::new(2, 2), "`beta` did not move");
+        assert_eq!(found[&2].range, LineRange::new(5, 5), "`three` moved too");
+    }
+
+    #[test]
+    fn a_file_nobody_snapshotted_is_left_alone() {
+        // Not guessed at. The remark keeps the range it was written with and
+        // says nothing about how far to trust it, which is the honest answer to
+        // a question nobody can answer.
+        let pins = [(0, std::path::Path::new("gone.rs"), LineRange::new(4, 4))];
+        let found = follow(&pins, &snapshots(&[]), |_| String::new());
+
+        assert!(found.is_empty());
+    }
+
+    #[test]
+    fn four_turns_are_four_different_pages() {
+        let pages: Vec<(Arrange, bool)> = (0..4).map(quarter).collect();
+        assert_eq!(
+            pages,
+            vec![
+                (Arrange::Columns, false),
+                (Arrange::Stacked, false),
+                (Arrange::Columns, true),
+                (Arrange::Stacked, true),
+            ]
+        );
+    }
+
+    #[test]
+    fn turning_four_times_comes_back_to_where_it_started() {
+        // Which is the whole reason there is one key rather than two: the way
+        // out of an arrangement you did not want is to keep pressing it.
+        for turn in 0..4 {
+            assert_eq!(quarter(turn), quarter(turn + 4));
+        }
+    }
+
+    #[test]
+    fn a_half_turn_keeps_the_axis_and_swaps_the_panes() {
+        // Turning twice is the same page read the other way round, not a
+        // different shape of page.
+        for turn in 0..2 {
+            let (there, forwards) = quarter(turn);
+            let (back, reversed) = quarter(turn + 2);
+            assert_eq!(there, back);
+            assert!(!forwards && reversed);
+        }
+    }
+}
