@@ -1034,3 +1034,157 @@ fn arrowhead(window: &mut Window, from: Point<Pixels>, to: Point<Pixels>, colour
     path.line_to(point(px(base_x - px_ * wing), px(base_y - py * wing)));
     window.paint_path(path, colour);
 }
+
+#[cfg(test)]
+mod tests {
+    // Spelled out rather than `#[test]`: this module glob-imports GPUI, which
+    // exports a `test` attribute of its own and would otherwise shadow the
+    // standard one.
+    use core::prelude::v1::test;
+
+    use deck_core::diagram::Node;
+
+    use super::*;
+
+    fn node(id: &str) -> Node {
+        Node {
+            id: id.into(),
+            label: id.into(),
+            note: None,
+            role: Role::Step,
+            weight: Weight::Normal,
+            lane: None,
+        }
+    }
+
+    fn edge(from: &str, to: &str) -> Edge {
+        Edge {
+            from: from.into(),
+            to: to.into(),
+            label: None,
+            line: Line::Solid,
+        }
+    }
+
+    fn drawn(
+        flow: Flow,
+        ids: &[&str],
+        edges: &[(&str, &str)],
+        clusters: &[(&str, &[&str])],
+    ) -> Plan {
+        let diagram = Diagram {
+            title: None,
+            flow,
+            nodes: ids.iter().copied().map(node).collect(),
+            edges: edges.iter().map(|(f, t)| edge(f, t)).collect(),
+            clusters: clusters
+                .iter()
+                .map(|(label, nodes)| Cluster {
+                    label: (*label).to_string(),
+                    nodes: nodes.iter().map(|id| (*id).to_string()).collect(),
+                })
+                .collect(),
+        };
+        plan(&diagram, &diagram.layout())
+    }
+
+    /// The edges of a box, as `(left, top, right, bottom)`.
+    fn sides(at: Bounds<Pixels>) -> (f32, f32, f32, f32) {
+        (
+            f32::from(at.origin.x),
+            f32::from(at.origin.y),
+            f32::from(at.origin.x + at.size.width),
+            f32::from(at.origin.y + at.size.height),
+        )
+    }
+
+    #[test]
+    fn a_chain_is_drawn_down_one_column() {
+        let plan = drawn(Flow::Down, &["a", "b", "c"], &[("a", "b"), ("b", "c")], &[]);
+
+        let xs: Vec<f32> = plan.spots.iter().map(|s| sides(s.at).0).collect();
+        assert_eq!(xs, vec![PAD, PAD, PAD], "one rank each, so one column");
+
+        let ys: Vec<f32> = plan.spots.iter().map(|s| sides(s.at).1).collect();
+        assert!(ys[0] < ys[1] && ys[1] < ys[2], "later things sit lower");
+    }
+
+    #[test]
+    fn an_arrow_travels_down_the_gutter_and_never_over_a_box() {
+        // Two nodes at the same rank and a third under both, so the arrow into
+        // it has to move sideways. Where it does that is the whole question:
+        // in the gap between the rows it is free, and anywhere else it would
+        // cross something.
+        let plan = drawn(Flow::Down, &["a", "b", "c"], &[("a", "c"), ("b", "c")], &[]);
+
+        let a = sides(plan.spots[0].at);
+        let c = sides(plan.spots[2].at);
+        let route = &plan.routes[0];
+
+        let lane = f32::from(route.points[1].y);
+        assert!(
+            lane > a.3 && lane < c.1,
+            "the sideways run sits between the two rows, not on either of them"
+        );
+        assert!(
+            !route.back,
+            "an edge that runs with the flow is not a back edge"
+        );
+    }
+
+    #[test]
+    fn a_returning_arrow_steps_into_the_next_gutter_over() {
+        // A cycle: one of these two edges cannot be ranked, and the one set
+        // aside has to get back up the drawing without running through the
+        // boxes it is passing.
+        let plan = drawn(Flow::Down, &["a", "b"], &[("a", "b"), ("b", "a")], &[]);
+
+        let back = plan
+            .routes
+            .iter()
+            .find(|route| route.back)
+            .expect("a cycle leaves one edge running against the flow");
+        let from = sides(plan.spots[1].at);
+
+        let lane = f32::from(back.points[1].x);
+        assert!(
+            lane > from.2 && lane < from.2 + GAP_X,
+            "it climbs the gutter beside the column rather than over it"
+        );
+    }
+
+    #[test]
+    fn a_cluster_frames_its_members_with_room_for_its_name() {
+        let plan = drawn(
+            Flow::Down,
+            &["a", "b"],
+            &[("a", "b")],
+            &[("core", &["a", "b"])],
+        );
+
+        let frame = sides(plan.frames[0].at);
+        let a = sides(plan.spots[0].at);
+        let b = sides(plan.spots[1].at);
+
+        assert!(frame.0 < a.0 && frame.2 > a.2, "it holds the first box");
+        assert!(frame.3 > b.3, "and the last one");
+        assert!(
+            a.1 - frame.1 > CLUSTER_PAD,
+            "with more room above the boxes than beside them, for the name"
+        );
+    }
+
+    #[test]
+    fn the_drawing_is_big_enough_for_what_is_in_it() {
+        let plan = drawn(
+            Flow::Right,
+            &["a", "b"],
+            &[("a", "b")],
+            &[("core", &["a", "b"])],
+        );
+
+        let frame = sides(plan.frames[0].at);
+        assert!(f32::from(plan.size.width) > frame.2);
+        assert!(f32::from(plan.size.height) > frame.3);
+    }
+}
