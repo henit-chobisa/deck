@@ -249,3 +249,133 @@ fn write_atomically(path: &Path, bytes: &[u8]) -> anyhow::Result<()> {
     };
     write().with_context(|| format!("cannot write {}", path.display()))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn scratch(name: &str) -> PathBuf {
+        let at = std::env::temp_dir().join(format!("deck-cli-{name}"));
+        let _ = std::fs::remove_dir_all(&at);
+        std::fs::create_dir_all(&at).expect("the scratch directory is writable");
+        at
+    }
+
+    #[test]
+    fn a_new_deck_is_a_directory_with_a_header_in_it() {
+        let at = scratch("new");
+        let root = new(&at, "The counter stalls", None, Some(3)).expect("a deck is written");
+
+        assert!(root.join("deck.json").is_file());
+        let header: Header =
+            serde_json::from_str(&std::fs::read_to_string(root.join("deck.json")).unwrap())
+                .expect("and the header parses");
+        assert_eq!(header.title, "The counter stalls");
+        assert_eq!(header.total, Some(3));
+        assert!(root.ends_with(format!("{}.deck", header.id)));
+    }
+
+    #[test]
+    fn two_decks_made_at_once_are_two_decks() {
+        // The id carries the nanosecond clock, but ids are short and two calls
+        // can land in the same bucket. Sharing a directory would put one
+        // agent's groups in another agent's story, silently.
+        let at = scratch("twice");
+        let a = new(&at, "One", None, None).unwrap();
+        let b = new(&at, "Two", None, None).unwrap();
+
+        assert_ne!(a, b);
+        assert!(a.join("deck.json").is_file() && b.join("deck.json").is_file());
+    }
+
+    #[test]
+    fn groups_number_themselves() {
+        // So an agent can write one command at a time without keeping count,
+        // which is the whole reason the position is worked out here.
+        let at = scratch("ord");
+        let root = new(&at, "One", None, None).unwrap();
+
+        group(&root, "first", Vec::new()).unwrap();
+        group(&root, "second", Vec::new()).unwrap();
+
+        let second: Group =
+            serde_json::from_str(&std::fs::read_to_string(root.join("g2.json")).unwrap()).unwrap();
+        assert_eq!(second.ord, Some(2));
+        assert_eq!(second.id, "g2");
+    }
+
+    #[test]
+    fn a_ref_is_named_for_its_group_as_well_as_its_place() {
+        // Two panes called `r1` in different groups are indistinguishable in a
+        // review, which names the ref a comment was made on. So the id carries
+        // the group, and the agent never spells one.
+        let at = scratch("ids");
+        let root = new(&at, "One", None, None).unwrap();
+
+        let pointing = || {
+            vec![Pointing::Code(
+                crate::refs::parse("a.rs:1-2").expect("a ref that parses"),
+            )]
+        };
+        group(&root, "first", pointing()).unwrap();
+        group(&root, "second", pointing()).unwrap();
+
+        let id_in = |file: &str| -> String {
+            let group: Group =
+                serde_json::from_str(&std::fs::read_to_string(root.join(file)).unwrap()).unwrap();
+            group.refs[0].id().to_string()
+        };
+        assert_eq!(id_in("g1.json"), "g1r1");
+        assert_eq!(id_in("g2.json"), "g2r1");
+    }
+
+    #[test]
+    fn what_was_not_said_is_not_written() {
+        // Absent is absent. A deck full of `"after": null` is noise in a file
+        // an agent pays to produce and a reader may have to read.
+        let at = scratch("terse");
+        let root = new(&at, "One", None, None).unwrap();
+        group(
+            &root,
+            "hello",
+            vec![Pointing::Code(
+                crate::refs::parse("a.rs:1-2").expect("a ref that parses"),
+            )],
+        )
+        .unwrap();
+
+        let written = std::fs::read_to_string(root.join("g1.json")).unwrap();
+        assert!(!written.contains("null"), "wrote a null: {written}");
+        let header = std::fs::read_to_string(root.join("deck.json")).unwrap();
+        assert!(!header.contains("null"), "wrote a null: {header}");
+    }
+
+    #[test]
+    fn a_sealed_deck_will_not_grow() {
+        // The seal is a promise to the reader that nothing more is coming. A
+        // group arriving after it would be one the reader is never told about.
+        let at = scratch("sealed");
+        let root = new(&at, "One", None, None).unwrap();
+        seal(&root).unwrap();
+
+        assert!(group(&root, "late", Vec::new()).is_err());
+    }
+
+    #[test]
+    fn a_directory_that_is_not_a_deck_is_said_so() {
+        let at = scratch("bare");
+        assert!(group(&at, "hello", Vec::new()).is_err());
+        assert!(seal(&at).is_err());
+    }
+
+    #[test]
+    fn the_review_is_looked_for_beside_the_deck_not_inside_it() {
+        let at = scratch("review");
+        let root = new(&at, "One", None, None).unwrap();
+
+        let path = review_path(&root);
+        assert_eq!(path.parent(), root.parent());
+        assert!(path.extension().is_some_and(|end| end == "review"));
+        assert!(review(&root).unwrap().is_none(), "none written yet");
+    }
+}
