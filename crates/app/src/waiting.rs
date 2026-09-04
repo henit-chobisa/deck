@@ -300,3 +300,51 @@ fn board(palette: &Palette) -> Div {
             .children(boxes),
     )
 }
+
+#[cfg(test)]
+mod tests {
+    // Spelled out rather than `#[test]`: this module glob-imports GPUI, which
+    // exports a `test` attribute of its own and would otherwise shadow the
+    // standard one.
+    use core::prelude::v1::test;
+
+    use super::*;
+
+    #[test]
+    fn a_drift_ends_where_it_began() {
+        // Or the box snaps back to the top of its travel every cycle, which
+        // reads as a glitch rather than as breathing.
+        for phase in [0., 0.31, 0.62] {
+            let rise = drift(phase);
+            assert!((rise(0.) - rise(1.)).abs() < 0.001);
+        }
+    }
+
+    #[test]
+    fn a_drift_uses_the_whole_of_its_travel() {
+        let rise = drift(0.);
+        let reached: Vec<f32> = (0..=40).map(|step| rise(step as f32 / 40.)).collect();
+        let low = reached.iter().copied().fold(f32::MAX, f32::min);
+        let high = reached.iter().copied().fold(f32::MIN, f32::max);
+
+        assert!(low < 0.01, "it reaches the top of the box's travel");
+        assert!(high > 0.99, "and the bottom");
+    }
+
+    #[test]
+    fn the_boxes_are_never_all_in_the_same_place() {
+        // The point of the phase offset: three boxes rising and falling
+        // together is one block moving, not three things alive.
+        let at = |turn: f32| -> Vec<f32> {
+            (0..BLOCKS.len())
+                .map(|ix| drift(ix as f32 * 0.31)(turn))
+                .collect()
+        };
+        for step in 0..20 {
+            let heights = at(step as f32 / 20.);
+            let spread = heights.iter().copied().fold(f32::MIN, f32::max)
+                - heights.iter().copied().fold(f32::MAX, f32::min);
+            assert!(spread > 0.2, "at turn {step} the three had drawn level");
+        }
+    }
+}
