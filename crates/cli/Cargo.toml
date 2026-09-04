@@ -1,0 +1,15 @@
+[package]
+name = "deck-cli"
+description = "Writing a deck from the command line: new, group, seal and wait."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+anyhow = "1.0.104"
+deck-core = { path = "../core" }
+serde_json = { workspace = true }
+
+[lints]
+workspace = true
