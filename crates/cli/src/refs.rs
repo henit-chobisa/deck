@@ -63,3 +63,60 @@ pub fn parse(argument: &str) -> anyhow::Result<Named> {
         note: note.filter(|note| !note.is_empty()),
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn named(argument: &str) -> Named {
+        parse(argument).expect("this argument parses")
+    }
+
+    #[test]
+    fn a_file_a_range_and_a_note() {
+        let got = named("src/batch.ts:140-148 decremented *twice*");
+        assert_eq!(got.file, PathBuf::from("src/batch.ts"));
+        assert_eq!(got.range, LineRange::new(140, 148));
+        assert_eq!(got.note.as_deref(), Some("decremented *twice*"));
+    }
+
+    #[test]
+    fn one_number_is_one_line() {
+        assert_eq!(named("a.rs:12").range, LineRange::new(12, 12));
+    }
+
+    #[test]
+    fn a_note_is_optional() {
+        assert_eq!(named("a.rs:1-2").note, None);
+    }
+
+    #[test]
+    fn a_path_may_have_colons_in_it() {
+        // Read from the right, or a Windows path loses its drive letter and a
+        // ref points at a file nobody has.
+        let got = named(r"C:\src\batch.ts:140-148");
+        assert_eq!(got.file, PathBuf::from(r"C:\src\batch.ts"));
+        assert_eq!(got.range, LineRange::new(140, 148));
+    }
+
+    #[test]
+    fn a_note_may_have_colons_in_it_too() {
+        let got = named("a.rs:9 note: this one");
+        assert_eq!(got.file, PathBuf::from("a.rs"));
+        assert_eq!(got.note.as_deref(), Some("note: this one"));
+    }
+
+    #[test]
+    fn a_backwards_range_is_corrected_rather_than_refused() {
+        // The same forgiveness the model has everywhere else: an agent that
+        // wrote the numbers the other way round meant the lines between them.
+        assert_eq!(named("a.rs:20-10").range, LineRange::new(10, 20));
+    }
+
+    #[test]
+    fn what_is_not_a_ref_is_said_plainly() {
+        assert!(parse("src/batch.ts").is_err(), "no range");
+        assert!(parse("src/batch.ts:many").is_err(), "not a number");
+        assert!(parse(":10-20").is_err(), "no file");
+    }
+}
