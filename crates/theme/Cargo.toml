@@ -1,0 +1,16 @@
+[package]
+name = "deck-theme"
+description = "Reading a palette out of the editor you already use."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+anyhow = "1.0.104"
+deck-core = { path = "../core" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+[lints]
+workspace = true
