@@ -158,3 +158,80 @@ fn from_groups(groups: &HashMap<String, Group>) -> anyhow::Result<Imported> {
         },
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn answered(json: &str) -> HashMap<String, Group> {
+        serde_json::from_str(json).expect("this is the shape nvim answers in")
+    }
+
+    /// A real answer, from a real config: the light scheme this project was
+    /// built against.
+    const REAL: &str = r##"{
+      "Normal": { "bg": "#dfdfdf", "fg": "#2d2d2d" },
+      "Comment": { "fg": "#6e7781" },
+      "Keyword": { "fg": "#0b0080" },
+      "String": { "fg": "#800000" },
+      "Function": { "fg": "#000000" },
+      "Type": { "fg": "#ae6000" },
+      "Constant": { "fg": "#800000" },
+      "Visual": { "bg": "#c5c9d6" },
+      "DiffAdd": { "bg": "#bce8bc" },
+      "DiffDelete": { "bg": "#f2c2c2" }
+    }"##;
+
+    #[test]
+    fn a_real_theme_reads() {
+        let got = from_groups(&answered(REAL)).expect("Normal is set, so this imports");
+
+        assert_eq!(got.bg, Rgb::new(0xdf, 0xdf, 0xdf));
+        assert_eq!(got.fg, Rgb::new(0x2d, 0x2d, 0x2d));
+        assert_eq!(got.comment, Rgb::from_hex("#6e7781"));
+        assert_eq!(got.syntax.keyword, Rgb::from_hex("#0b0080"));
+    }
+
+    #[test]
+    fn the_accent_is_the_first_colour_the_scheme_offers() {
+        // This scheme's `Special` is pure black and its `Visual` is a pale
+        // blue-grey; neither is an accent. Its `Type` is a burnt orange, and
+        // that is what the reader's eye is trained on.
+        let got = from_groups(&answered(REAL)).unwrap();
+        assert_eq!(got.accent, Rgb::from_hex("#ae6000").unwrap());
+    }
+
+    #[test]
+    fn a_search_hit_outranks_everything() {
+        // It is the one colour in a scheme whose whole job is *look here*.
+        let with_search = answered(
+            r##"{
+            "Normal": { "bg": "#000000", "fg": "#ffffff" },
+            "Search": { "bg": "#ffcc00" },
+            "Type": { "fg": "#8ec07c" }
+        }"##,
+        );
+        assert_eq!(
+            from_groups(&with_search).unwrap().accent,
+            Rgb::from_hex("#ffcc00").unwrap()
+        );
+    }
+
+    #[test]
+    fn a_diff_group_with_only_a_ground_gives_no_mark() {
+        // nvim colours a whole diff line, and deck makes its own ground from
+        // the page. What it wants is ink, so a group with only a background
+        // contributes nothing rather than a background pretending to be one.
+        let got = from_groups(&answered(REAL)).unwrap();
+        assert_eq!(got.add, None);
+        assert_eq!(got.del, None);
+    }
+
+    #[test]
+    fn a_scheme_without_a_page_is_refused() {
+        // Not guessed at. Every surface deck paints is computed from the page,
+        // and a guess there is a guess everywhere.
+        let nothing = answered(r##"{ "Comment": { "fg": "#888888" } }"##);
+        assert!(from_groups(&nothing).is_err());
+    }
+}
