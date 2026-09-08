@@ -509,3 +509,111 @@ fn scope(theme: &Theme, wanted: &str) -> Option<Rgb> {
     }
     best.map(|(_, colour)| colour)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn comments_come_out_and_strings_are_left_alone() {
+        let settings = r#"{
+            // the theme
+            "workbench.colorTheme": "GitHub Dark Default", // and a trailing note
+            "path": "C:\\dev // not a comment",
+            "url": "https://example.com",
+        }"#;
+        assert_eq!(chosen(settings).as_deref(), Some("GitHub Dark Default"));
+    }
+
+    #[test]
+    fn a_block_comment_comes_out_too() {
+        let settings = r#"{ /* off for now
+            "workbench.colorTheme": "Monokai", */
+            "workbench.colorTheme": "Solarized Light" }"#;
+        assert_eq!(chosen(settings).as_deref(), Some("Solarized Light"));
+    }
+
+    /// The shape a real theme has, cut down to what deck reads.
+    fn theme() -> Theme {
+        serde_json::from_str(
+            r##"{
+              "colors": {
+                "editor.background": "#0d1117",
+                "editor.foreground": "#e6edf3",
+                "editorCursor.foreground": "#2f81f7",
+                "editorGutter.addedBackground": "#3fb950",
+                "editorGutter.deletedBackground": "#f85149"
+              },
+              "tokenColors": [
+                { "scope": ["comment", "string.comment"], "settings": { "foreground": "#8b949e" } },
+                { "scope": "entity", "settings": { "foreground": "#d2a8ff" } },
+                { "scope": "entity.name.function", "settings": { "foreground": "#d2a8ff" } },
+                { "scope": ["keyword", "storage"], "settings": { "foreground": "#ff7b72" } },
+                { "scope": "string", "settings": { "foreground": "#a5d6ff" } }
+              ]
+            }"##,
+        )
+        .expect("this is the shape a theme has")
+    }
+
+    #[test]
+    fn a_real_theme_reads() {
+        let got = from_theme(&theme()).expect("a background and a foreground are set");
+
+        assert_eq!(got.bg, Rgb::from_hex("#0d1117").unwrap());
+        assert_eq!(got.accent, Rgb::from_hex("#2f81f7").unwrap());
+        assert_eq!(got.comment, Rgb::from_hex("#8b949e"));
+        assert_eq!(got.syntax.keyword, Rgb::from_hex("#ff7b72"));
+        assert_eq!(got.add, Rgb::from_hex("#3fb950"));
+    }
+
+    #[test]
+    fn a_theme_that_names_no_foreground_still_reads() {
+        // Quiet Light, which VS Code ships, sets a background and lets the
+        // editor's own default supply the text. A gap to fill, not a theme to
+        // refuse.
+        let quiet: Theme =
+            serde_json::from_str(r##"{ "colors": { "editor.background": "#f5f5f5" } }"##)
+                .expect("this parses");
+
+        let got = from_theme(&quiet).expect("a background is enough");
+        assert!(
+            got.fg.is_dark(),
+            "a light page has to be written on in something dark"
+        );
+    }
+
+    #[test]
+    fn an_editor_with_no_theme_set_is_not_an_error() {
+        // The ordinary case, not a broken one: an editor left on its own
+        // default writes nothing down. A fresh Cursor install has three lines
+        // in its settings and none of them is a colour.
+        assert_eq!(chosen(r#"{ "window.commandCenter": true }"#), None);
+    }
+
+    #[test]
+    fn a_scope_matches_by_its_prefix() {
+        // `string` colours `string.quoted.double` — which is what the theme
+        // means by writing one rule for all of them.
+        assert_eq!(
+            scope(&theme(), "string.quoted.double"),
+            Rgb::from_hex("#a5d6ff")
+        );
+    }
+
+    #[test]
+    fn the_longer_rule_wins() {
+        // `entity` and `entity.name.function` are both here, and a theme that
+        // wrote both meant the second one for functions.
+        assert_eq!(
+            scope(&theme(), "entity.name.function"),
+            Rgb::from_hex("#d2a8ff")
+        );
+        assert_eq!(scope(&theme(), "entity.other"), Rgb::from_hex("#d2a8ff"));
+    }
+
+    #[test]
+    fn a_scope_nobody_claims_is_nothing() {
+        assert_eq!(scope(&theme(), "markup.heading"), None);
+    }
+}
