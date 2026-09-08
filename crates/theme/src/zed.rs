@@ -262,3 +262,67 @@ fn one(dark: bool) -> Imported {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_theme_named_outright() {
+        assert_eq!(
+            chosen(r#"{ "theme": "One Dark" }"#).as_deref(),
+            Some("One Dark")
+        );
+    }
+
+    #[test]
+    fn a_theme_that_follows_the_system() {
+        // Zed's own shape for "light in the day, dark at night". The mode says
+        // which one is in use, and that is the one deck should look like.
+        let settings = r#"{
+            "theme": { "mode": "light", "light": "One Light", "dark": "One Dark" }
+        }"#;
+        assert_eq!(chosen(settings).as_deref(), Some("One Light"));
+    }
+
+    #[test]
+    fn zeds_own_default_is_whichever_way_the_machine_is() {
+        assert!(one(true).bg.is_dark());
+        assert!(!one(false).bg.is_dark());
+        assert!(
+            one(true).syntax.keyword.is_some(),
+            "and it is a whole theme"
+        );
+    }
+
+    #[test]
+    fn a_theme_file_reads() {
+        let family: Family = serde_json::from_str(
+            r##"{
+              "name": "One",
+              "themes": [{
+                "name": "One Dark",
+                "style": {
+                  "editor.background": "#282c34",
+                  "editor.foreground": "#dcdfe4",
+                  "border.focused": "#61afef",
+                  "created": "#98c379",
+                  "syntax": {
+                    "keyword": { "color": "#c678dd" },
+                    "string": { "color": "#98c379" },
+                    "comment": { "color": "#5c6370" }
+                  }
+                }
+              }]
+            }"##,
+        )
+        .expect("this is the shape a Zed theme has");
+
+        let got = from_theme(&family.themes[0]).expect("a background and foreground are set");
+        assert_eq!(got.bg, Rgb::from_hex("#282c34").unwrap());
+        assert_eq!(got.accent, Rgb::from_hex("#61afef").unwrap());
+        assert_eq!(got.syntax.keyword, Rgb::from_hex("#c678dd"));
+        assert_eq!(got.comment, Rgb::from_hex("#5c6370"));
+        assert_eq!(got.add, Rgb::from_hex("#98c379"));
+    }
+}
