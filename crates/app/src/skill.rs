@@ -203,10 +203,17 @@ fn point(at: &Path, hop: Option<PathBuf>) -> anyhow::Result<Told> {
     let _ = std::fs::remove_dir_all(at);
 
     match hop {
-        Some(hop) => {
-            std::os::unix::fs::symlink(hop, at)?;
-            Ok(Told::Linked(at.to_path_buf()))
-        }
+        Some(hop) => match link(&hop, at) {
+            Ok(()) => Ok(Told::Linked(at.to_path_buf())),
+            // Windows needs a privilege for symlinks that an ordinary account
+            // does not have. A copy is the same skill, just one more file to
+            // keep in step — and `deck setup` rewrites all of them anyway.
+            Err(_) => {
+                let file = at.join("SKILL.md");
+                write(&file)?;
+                Ok(Told::Written(file))
+            }
+        },
         None => {
             let file = at.join("SKILL.md");
             write(&file)?;
@@ -230,6 +237,18 @@ fn pointing(from: &Path, to: &Path) -> PathBuf {
         hop.push("..");
     }
     hop.join(to)
+}
+
+/// Make `at` a symbolic link to `hop`, on whichever platform this is.
+fn link(hop: &Path, at: &Path) -> std::io::Result<()> {
+    #[cfg(unix)]
+    {
+        std::os::unix::fs::symlink(hop, at)
+    }
+    #[cfg(windows)]
+    {
+        std::os::windows::fs::symlink_dir(hop, at)
+    }
 }
 
 /// Write the skill to `at`, making whatever directory it needs.

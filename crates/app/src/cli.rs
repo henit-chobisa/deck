@@ -135,11 +135,7 @@ enum What {
 
 /// Where decks go when nobody says otherwise.
 fn decks() -> PathBuf {
-    std::env::var_os("HOME")
-        .map(PathBuf::from)
-        .unwrap_or_default()
-        .join(".deck")
-        .join("decks")
+    deck_core::home::deck().unwrap_or_default().join("decks")
 }
 
 impl Cli {

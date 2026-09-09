@@ -23,6 +23,7 @@
 
 use std::path::{Path, PathBuf};
 
+use deck_core::home;
 use deck_core::theme::{Imported, Rgb, Syntax, pick_accent};
 
 /// One theme, as an extension's manifest declares it.
@@ -174,9 +175,7 @@ pub fn read_from(
     named: Option<&str>,
     dark: bool,
 ) -> anyhow::Result<Option<Imported>> {
-    let home = PathBuf::from(
-        std::env::var_os("HOME").ok_or_else(|| anyhow::anyhow!("no home directory"))?,
-    );
+    let home = home::home().ok_or_else(|| anyhow::anyhow!("no home directory"))?;
 
     // What the editor is set to, or what it would show if it were opened.
     //

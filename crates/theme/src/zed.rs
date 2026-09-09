@@ -13,6 +13,7 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
+use deck_core::home;
 use deck_core::theme::{Imported, Rgb, Syntax, pick_accent};
 
 /// A theme file: a family of themes under one name.
@@ -42,6 +43,17 @@ struct Highlight {
     color: Option<String>,
 }
 
+/// Where Zed keeps its settings.
+///
+/// `~/.config/zed` on every platform including macOS, which is unusual — most
+/// macOS applications use `Application Support` and Zed does not.
+#[must_use]
+pub fn settings_dir(home: &Path) -> PathBuf {
+    home::dot_config()
+        .unwrap_or_else(|| home.join(".config"))
+        .join("zed")
+}
+
 /// Read the reader's Zed colours.
 ///
 /// `None` when there is nothing on disk to read. Zed ships its defaults —
@@ -54,13 +66,11 @@ struct Highlight {
 ///
 /// When the settings will not parse, or name a theme that is not installed.
 pub fn read(named: Option<&str>, dark: bool) -> anyhow::Result<Option<Imported>> {
-    let home = PathBuf::from(
-        std::env::var_os("HOME").ok_or_else(|| anyhow::anyhow!("no home directory"))?,
-    );
+    let home = home::home().ok_or_else(|| anyhow::anyhow!("no home directory"))?;
 
     let wanted = match named {
         Some(name) => Some(name.to_string()),
-        None => std::fs::read_to_string(home.join(".config/zed/settings.json"))
+        None => std::fs::read_to_string(settings_dir(&home).join("settings.json"))
             .ok()
             .and_then(|text| chosen(&text))
             // What it would show if it were opened. Named on the chance the
@@ -109,11 +119,14 @@ fn chosen(settings: &str) -> Option<String> {
 
 /// The theme called `name`, wherever it is installed.
 fn find(name: &str, home: &Path) -> Option<Theme> {
-    let places = [
-        home.join(".config/zed/themes"),
-        home.join("Library/Application Support/Zed/extensions/installed"),
-        PathBuf::from("/Applications/Zed.app/Contents/Resources/themes"),
-    ];
+    let mut places = vec![settings_dir(home).join("themes")];
+    places.extend(home::config().map(|at| at.join("Zed/extensions/installed")));
+    places.extend(home::applications().into_iter().flat_map(|at| {
+        [
+            at.join("Zed.app/Contents/Resources/themes"),
+            at.join("zed/themes"),
+        ]
+    }));
 
     for place in places {
         for file in files_under(&place) {

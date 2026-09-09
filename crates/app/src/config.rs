@@ -19,8 +19,7 @@ use deck_core::config::Config;
 /// Where the config lives.
 #[must_use]
 pub fn path() -> Option<PathBuf> {
-    let home = std::env::var_os("HOME")?;
-    Some(PathBuf::from(home).join(".deck").join("config.toml"))
+    Some(deck_core::home::deck()?.join("config.toml"))
 }
 
 /// Read the config, and say what was wrong with it.

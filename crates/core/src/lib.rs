@@ -25,6 +25,7 @@
 
 pub mod config;
 pub mod diagram;
+pub mod home;
 pub mod layout;
 pub mod line;
 pub mod protocol;

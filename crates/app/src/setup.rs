@@ -20,7 +20,7 @@
 //! colour, used for the thing you are being asked and the thing you just chose.
 
 use std::io::{IsTerminal as _, Write as _};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use deck_core::config::Config;
 use deck_core::theme::Mode;
@@ -149,7 +149,7 @@ fn pick(editors: &[Editor]) -> anyhow::Result<Editor> {
 /// done. The skill is the sentence that makes it reach for a deck, and a
 /// sentence in a README is a sentence the agent never sees.
 fn tell() -> anyhow::Result<()> {
-    let Some(home) = std::env::var_os("HOME").map(PathBuf::from) else {
+    let Some(home) = deck_core::home::home() else {
         return Ok(());
     };
     let agents = crate::skill::found(&home);
@@ -318,9 +318,7 @@ fn rule() {
 
 /// A path with this machine's home directory taken out of it.
 fn short_home(at: &Path) -> String {
-    std::env::var_os("HOME")
-        .map(PathBuf::from)
-        .map_or_else(|| at.display().to_string(), |home| short(at, &home))
+    deck_core::home::home().map_or_else(|| at.display().to_string(), |home| short(at, &home))
 }
 
 /// A path with the home directory taken out of it.

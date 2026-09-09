@@ -113,7 +113,7 @@ impl Editor {
     /// colours could be read from — a config, or the application itself.
     #[must_use]
     pub fn installed(self) -> bool {
-        let Some(home) = std::env::var_os("HOME").map(std::path::PathBuf::from) else {
+        let Some(home) = deck_core::home::home() else {
             return false;
         };
         // Somewhere it keeps its things, or the application itself. Not its
@@ -125,11 +125,16 @@ impl Editor {
         match self {
             Self::None => true,
             Self::Nvim => nvim::init().is_some(),
-            Self::Zed => here(&[
-                home.join(".config/zed"),
-                home.join("Library/Application Support/Zed"),
-                std::path::PathBuf::from("/Applications/Zed.app"),
-            ]),
+            Self::Zed => {
+                let mut places = vec![zed::settings_dir(&home)];
+                places.extend(deck_core::home::config().map(|at| at.join("Zed")));
+                places.extend(
+                    deck_core::home::applications()
+                        .into_iter()
+                        .flat_map(|at| [at.join("Zed.app"), at.join("zed")]),
+                );
+                here(&places)
+            }
             Self::Vscode => vscode::here(vscode::CODE, &home),
             Self::Cursor => vscode::here(vscode::CURSOR, &home),
             Self::Windsurf => vscode::here(vscode::WINDSURF, &home),
@@ -177,7 +182,7 @@ pub fn read(editor: Editor, named: Option<&str>, dark: bool) -> anyhow::Result<O
 /// the ones installed are whatever the reader's config happens to require.
 #[must_use]
 pub fn themes(editor: Editor) -> Vec<String> {
-    let Some(home) = std::env::var_os("HOME").map(std::path::PathBuf::from) else {
+    let Some(home) = deck_core::home::home() else {
         return Vec::new();
     };
     match editor {

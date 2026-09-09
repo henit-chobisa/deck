@@ -44,9 +44,7 @@ io.write(vim.json.encode(out))
 ///
 /// `XDG_CONFIG_HOME` first, because a reader who set it meant it.
 pub(crate) fn init() -> Option<PathBuf> {
-    let config = std::env::var_os("XDG_CONFIG_HOME")
-        .map(PathBuf::from)
-        .or_else(|| std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".config")))?;
+    let config = deck_core::home::dot_config()?;
 
     [config.join("nvim/init.lua"), config.join("nvim/init.vim")]
         .into_iter()
