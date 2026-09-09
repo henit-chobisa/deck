@@ -79,6 +79,17 @@ pub const ABOVE: f32 = 68.;
 /// How tall the bar itself is.
 const BAR_H: f32 = 48.;
 
+/// How far the Open button recedes while there is nothing to open.
+///
+/// Toward the page rather than to a grey of its own, so it stays the same
+/// button in the same palette — a control waiting its turn, not a different
+/// control.
+const WAITING: f32 = 0.62;
+
+/// How long the button takes to come up to colour once there is something to
+/// read. Long enough to be seen as a change, short enough not to be waited on.
+const WAKE: Duration = Duration::from_millis(520);
+
 /// The bar that says a deck is ready.
 pub struct Pill {
     /// Which of the decks waiting the bar is showing, and would open.
@@ -176,6 +187,9 @@ impl Pill {
     /// window ends the command — taking the bar away first left a moment with
     /// no window at all, which quit the program on its way to opening a deck.
     fn open(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if !self.readable(cx) {
+            return;
+        }
         let Some(session) = crate::queue::take(self.at, cx) else {
             return;
         };
@@ -221,6 +235,18 @@ impl Pill {
             self.at = (self.at + 1) % pending;
             cx.notify();
         }
+    }
+
+    /// Whether there is anything to read yet.
+    ///
+    /// The bar goes up when the agent starts rather than when it finishes, so
+    /// that a person can see something is being written for them — which means
+    /// it now spends its first moments over a deck with nothing in it. Opening
+    /// that would be a window of empty page, and the reader would read it as
+    /// the deck being broken rather than as their being early.
+    fn readable(&self, cx: &App) -> bool {
+        crate::queue::about(self.at, cx, |session| !session.deck.groups().is_empty())
+            .unwrap_or(false)
     }
 
     /// Where the reader is up to, in as few words as it takes.
@@ -451,21 +477,52 @@ impl Render for Pill {
 
         // Filled, not outlined. There is one thing to do here, and an outline
         // is what you give the other one.
+        //
+        // Held back until there is a group to read. Waiting is drawn by taking
+        // the colour out rather than by hiding it: a button that appears once
+        // something lands is a bar that changes shape while you are looking at
+        // it, and a person cannot learn where a control is if it moves.
+        let ready = self.readable(cx);
+        let (accent, on_accent) = (palette.accent, palette.on_accent);
+        let resting = accent.mix(palette.bg, WAITING);
+        let quiet = on_accent.mix(resting, WAITING);
+
         let open = div()
             .id("open")
             .flex_none()
             .px(px(14.))
             .py(px(6.))
             .rounded(px(7.))
-            .bg(paint(palette.accent))
             .text_size(px(11.5))
             .font_medium()
-            .text_color(paint(palette.on_accent))
-            .opacity(tail)
-            .cursor_pointer()
-            .hover(|this| this.bg(paint(palette.accent.mix(palette.fg, 0.16))))
-            .on_click(cx.listener(|pill, _, window, cx| pill.open(window, cx)))
-            .child("Open");
+            .opacity(tail);
+
+        let open = if ready {
+            // Coming up to colour rather than arriving at it. The moment the
+            // first group lands is the one moment the reader is watching this
+            // button, and a swap reads as a redraw where a rise reads as the
+            // deck becoming ready. Eased at both ends so it neither jumps nor
+            // stops dead.
+            let hover = accent.mix(palette.fg, 0.16);
+            open.cursor_pointer()
+                .hover(move |this| this.bg(paint(hover)))
+                .on_click(cx.listener(|pill, _, window, cx| pill.open(window, cx)))
+                .child("Open")
+                .with_animation(
+                    "open-wakes",
+                    Animation::new(WAKE).with_easing(ease_in_out),
+                    move |this, out| {
+                        this.bg(paint(resting.mix(accent, out)))
+                            .text_color(paint(quiet.mix(on_accent, out)))
+                    },
+                )
+                .into_any_element()
+        } else {
+            open.bg(paint(resting))
+                .text_color(paint(quiet))
+                .child("Open")
+                .into_any_element()
+        };
 
         let later = div()
             .id("later")
