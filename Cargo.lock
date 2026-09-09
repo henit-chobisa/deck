@@ -1489,7 +1489,7 @@ checksum = "be1e0bca6c3637f992fc1cc7cbc52a78c1ef6db076dbf1059c4323d6a2048376"
 
 [[package]]
 name = "deck-app"
-version = "0.0.2"
+version = "0.0.3"
 dependencies = [
  "anyhow",
  "clap",
@@ -1504,7 +1504,7 @@ dependencies = [
 
 [[package]]
 name = "deck-cli"
-version = "0.0.2"
+version = "0.0.3"
 dependencies = [
  "anyhow",
  "deck-core",
@@ -1513,7 +1513,7 @@ dependencies = [
 
 [[package]]
 name = "deck-core"
-version = "0.0.2"
+version = "0.0.3"
 dependencies = [
  "serde",
  "serde_json",
@@ -1522,7 +1522,7 @@ dependencies = [
 
 [[package]]
 name = "deck-theme"
-version = "0.0.2"
+version = "0.0.3"
 dependencies = [
  "anyhow",
  "deck-core",
