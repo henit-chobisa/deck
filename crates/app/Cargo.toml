@@ -45,5 +45,9 @@ serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 toml = "0.9"
 
+# Only for `setsid`, so a detached window outlives the shell that opened it.
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
 [lints]
 workspace = true

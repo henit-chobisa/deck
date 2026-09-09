@@ -25,10 +25,12 @@ waits for. It is **not** the order the commands are explained in below.
 
 1. `deck new` — the title comes from the question you were asked, so this runs
    before you have read a line of code.
-2. `deck open` — **straight away, with nothing in the deck yet.** A bar appears
-   at the bottom of their screen: your title, and that something is being
-   written. Open stays dark until there is a group to read, so opening this
-   early is safe.
+2. `deck open` — **straight away, with nothing in the deck yet, and as a
+   background command.** It holds the window for as long as the window is up,
+   so run in the foreground it never returns and you never write a group. A bar
+   appears at the bottom of their screen: your title, and that something is
+   being written. Open stays dark until there is a group to read, so opening
+   this early is safe.
 3. **Now** go and read the code.
 4. `deck group`, one command per claim, as each becomes ready. The bar counts
    up and the Open button comes up to colour when the first one lands.
@@ -307,13 +309,17 @@ between a deck people walk and a deck people close.
 ## Showing it, and waiting
 
 ```
-deck open <path>
+deck open <path>          # run this as a background command
 ```
 
-Returns immediately — it does not hold the window, and it does not need the deck
-to have anything in it. A small bar appears at the bottom of the screen with your
-title on it, and the reader opens it when *they* are ready, which is not the same
-moment as you being ready to ask.
+**This one blocks.** It is the window: it runs for as long as the bar or the
+deck is on screen, which is minutes, and in the foreground it will simply never
+come back. Run it in the background the same way you run `deck wait` — those are
+the two commands here that do not return, and they are the two you background.
+
+It does not need the deck to have anything in it. A bar appears at the bottom of
+the screen with your title on it, and the reader opens it when *they* are ready,
+which is not the same moment as you being ready to ask.
 
 Run it **second**, right after `deck new`, before the research. The bar tells
 them something is coming; its Open button stays dark until the first group lands

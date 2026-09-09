@@ -177,6 +177,12 @@ impl Cli {
                     None => (deck_theme::Editor::default(), None),
                 };
 
+                // Hand the window to a process of its own, unless somebody
+                // asked to be held here.
+                if !wait && detach() {
+                    return Ok(None);
+                }
+
                 // The reading itself waits for a window. An editor with no
                 // theme set has one for light and one for dark, and which it
                 // would show depends on the machine — which only the platform
@@ -245,6 +251,66 @@ pub struct Opening {
 
 /// Read what the command line said to point at.
 ///
+/// Set on the copy of deck that actually holds the window.
+///
+/// Its absence is what says "you are the one that was typed", and so the one
+/// that should hand the window on and get out of the way.
+const HOLDING: &str = "DECK_HOLDS_THE_WINDOW";
+
+/// Start a copy of this command that owns the window, and say so.
+///
+/// `deck open` is the window: it runs for as long as the bar or the deck is on
+/// screen, which is minutes. That is the wrong shape for the thing an agent
+/// runs — it opens a deck in the middle of writing one, and a command that does
+/// not come back is one that never writes the next group. So the process that
+/// was typed starts another to hold the window, and returns.
+///
+/// A new session, not just a new process. An agent's shell reaps the whole
+/// process group when its command finishes, and a window in that group goes
+/// with it.
+///
+/// `false` when the handover could not be made, and the caller should hold the
+/// window itself: blocking is a worse command, but it is a working one, and a
+/// deck nobody can open is not.
+fn detach() -> bool {
+    if std::env::var_os(HOLDING).is_some() {
+        return false;
+    }
+    let Ok(exe) = std::env::current_exe() else {
+        return false;
+    };
+
+    let mut holder = std::process::Command::new(exe);
+    holder
+        .args(std::env::args_os().skip(1))
+        .env(HOLDING, "1")
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null());
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt as _;
+        // SAFETY: between fork and exec only async-signal-safe calls are
+        // allowed, and `setsid` is one of them.
+        unsafe {
+            holder.pre_exec(|| {
+                libc::setsid();
+                Ok(())
+            });
+        }
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt as _;
+        /// `DETACHED_PROCESS` — no console, and not this one's.
+        const DETACHED: u32 = 0x0000_0008;
+        holder.creation_flags(DETACHED);
+    }
+
+    holder.spawn().is_ok()
+}
+
 /// Refs first, then diagrams, in the order they were given. Ids are not minted
 /// here: they have to be unique across the deck, and only the crate that knows
 /// which group this is becoming can promise that.

@@ -1497,6 +1497,7 @@ dependencies = [
  "deck-core",
  "deck-theme",
  "gpui-kit",
+ "libc",
  "serde",
  "serde_json",
  "toml 0.9.12+spec-1.1.0",
