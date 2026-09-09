@@ -240,3 +240,210 @@ fn write(at: &Path) -> anyhow::Result<()> {
     std::fs::write(at, SKILL)?;
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    // Spelled out rather than `#[test]`: this crate glob-imports GPUI
+    // elsewhere, which exports a `test` attribute of its own.
+    use core::prelude::v1::test;
+
+    use super::*;
+
+    fn scratch(name: &str) -> PathBuf {
+        let at = std::env::temp_dir().join(format!("deck-skill-{name}"));
+        let _ = std::fs::remove_dir_all(&at);
+        std::fs::create_dir_all(&at).expect("the scratch directory is writable");
+        at
+    }
+
+    #[test]
+    fn the_skill_says_when_to_use_it() {
+        // The description is what a model reads to decide whether this moment
+        // is a deck moment, and it is the only part of the file that is read
+        // before the decision is made.
+        let front = SKILL.split("---").nth(1).expect("the file has frontmatter");
+        assert!(front.contains("name: deck"));
+        assert!(
+            front.contains("description:"),
+            "a skill with no description is a skill nothing reaches for"
+        );
+    }
+
+    #[test]
+    fn the_skill_names_every_command_it_needs() {
+        for verb in [
+            "deck new",
+            "deck group",
+            "deck seal",
+            "deck open",
+            "deck wait",
+        ] {
+            assert!(SKILL.contains(verb), "the skill never mentions `{verb}`");
+        }
+    }
+
+    #[test]
+    fn the_skill_carries_the_judgement_and_not_only_the_commands() {
+        // The commands are the easy half. What separates a deck worth walking
+        // from a list of files is the advice — and a skill that only listed
+        // verbs would produce the second every time.
+        for said in [
+            "cite it, show it",
+            "one thing you are saying",
+            "not just the what",
+            "planned a list",
+            "Tight ranges",
+            "Plain words",
+            "Open at the surprise",
+            "never clever",
+            "read it back",
+        ] {
+            assert!(SKILL.contains(said), "the skill never says `{said}`");
+        }
+    }
+
+    #[test]
+    fn the_skill_says_what_silence_is_not() {
+        // The one place an agent can do real harm: reporting approval that
+        // nobody gave.
+        assert!(SKILL.contains("Never turn that into agreement"));
+        assert!(
+            SKILL.contains("background"),
+            "and how to wait without a timeout"
+        );
+    }
+
+    #[test]
+    fn an_agent_is_found_by_its_own_directory() {
+        // Not by its skills directory: one that has never been given a skill
+        // has no `skills/` yet, and that is exactly the one worth telling.
+        let home = scratch("found");
+        std::fs::create_dir_all(home.join(".claude")).unwrap();
+
+        let agents = found(&home);
+        assert_eq!(agents.len(), 1);
+        assert_eq!(agents[0].name, "Claude Code");
+    }
+
+    #[test]
+    fn an_agent_that_reads_the_shared_store_is_left_alone() {
+        // Amp lists everything in `~/.agents/skills` without a link. A link
+        // would be a second copy in front of the one it already reads.
+        let home = scratch("reads");
+        std::fs::create_dir_all(home.join(".agents/skills")).unwrap();
+        std::fs::create_dir_all(home.join(".amp")).unwrap();
+
+        let told = install_all(&home).unwrap();
+        assert!(matches!(told[1], Told::Reads("Amp")));
+        assert!(
+            !home.join(".config/agents/skills/deck").exists(),
+            "and nothing of its own was made"
+        );
+    }
+
+    #[test]
+    fn without_a_shared_store_it_gets_one_of_its_own() {
+        let home = scratch("amp-alone");
+        std::fs::create_dir_all(home.join(".amp")).unwrap();
+
+        install_all(&home).unwrap();
+        assert!(home.join(".config/agents/skills/deck/SKILL.md").is_file());
+    }
+
+    #[test]
+    fn one_real_copy_and_a_link_from_each_agent() {
+        // The convention those directories already keep. Five copies of a
+        // skill is five chances to be out of date.
+        let home = scratch("shared");
+        std::fs::create_dir_all(home.join(".agents/skills")).unwrap();
+        std::fs::create_dir_all(home.join(".claude/skills")).unwrap();
+        std::fs::create_dir_all(home.join(".codex")).unwrap();
+
+        let told = install_all(&home).expect("a skill is written");
+        assert_eq!(told.len(), 3, "the shared copy, and one link each");
+
+        let real = home.join(".agents/skills/deck/SKILL.md");
+        assert_eq!(std::fs::read_to_string(&real).unwrap(), SKILL);
+
+        for agent in [".claude/skills/deck", ".codex/skills/deck"] {
+            let link = home.join(agent);
+            assert!(link.symlink_metadata().unwrap().is_symlink(), "{agent}");
+            assert_eq!(
+                std::fs::read_to_string(link.join("SKILL.md")).unwrap(),
+                SKILL,
+                "{agent} reads the shared copy"
+            );
+        }
+    }
+
+    #[test]
+    fn a_link_is_written_the_way_the_others_are() {
+        // Relative, so a home directory that moves does not break every link
+        // at once — and so it reads the same as the links already beside it.
+        assert_eq!(
+            pointing(
+                Path::new(".claude/skills"),
+                Path::new(".agents/skills/deck")
+            ),
+            PathBuf::from("../../.agents/skills/deck")
+        );
+        assert_eq!(
+            pointing(
+                Path::new(".cursor/skills-cursor"),
+                Path::new(".agents/skills/deck")
+            ),
+            PathBuf::from("../../.agents/skills/deck")
+        );
+    }
+
+    #[test]
+    fn without_a_shared_store_each_agent_gets_a_real_copy() {
+        // A link into a directory nobody else uses would be a link to nothing.
+        let home = scratch("copies");
+        std::fs::create_dir_all(home.join(".claude")).unwrap();
+
+        install_all(&home).unwrap();
+        let at = home.join(".claude/skills/deck/SKILL.md");
+        assert!(at.is_file());
+        assert!(
+            !home
+                .join(".claude/skills/deck")
+                .symlink_metadata()
+                .unwrap()
+                .is_symlink()
+        );
+        assert_eq!(std::fs::read_to_string(at).unwrap(), SKILL);
+    }
+
+    #[test]
+    fn an_agent_keeps_the_skills_directory_it_already_has() {
+        // Cursor calls it `skills-cursor`. Making a second one beside it would
+        // be a directory nothing reads.
+        let home = scratch("cursor");
+        std::fs::create_dir_all(home.join(".cursor/skills-cursor")).unwrap();
+
+        let cursor = AGENTS
+            .iter()
+            .find(|agent| agent.name == "Cursor")
+            .expect("Cursor is one deck knows");
+        assert_eq!(cursor.skill_dir(&home), home.join(".cursor/skills-cursor"));
+    }
+
+    #[test]
+    fn telling_again_replaces_what_was_there() {
+        // The skill travels with the binary, so the one in the binary is always
+        // the newer of the two. A deck upgraded past a skill describing its old
+        // commands is worse than a deck with no skill.
+        let home = scratch("replace");
+        std::fs::create_dir_all(home.join(".claude/skills")).unwrap();
+
+        install_all(&home).unwrap();
+        std::fs::write(home.join(".claude/skills/deck/SKILL.md"), "older").unwrap();
+
+        install_all(&home).unwrap();
+        assert_eq!(
+            std::fs::read_to_string(home.join(".claude/skills/deck/SKILL.md")).unwrap(),
+            SKILL
+        );
+    }
+}
