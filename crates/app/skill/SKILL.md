@@ -74,28 +74,25 @@ A *question* is not a reason to skip it. "How does X work" is the best thing a
 deck is for. What disqualifies a question is having no code in the answer, not
 its being a question.
 
-## Read the mode before you write
+## The two modes (do not be heavy-handed)
 
-Getting this wrong makes the tool annoying instead of useful.
+Not everything is a lesson. Read which one they are in and match it — getting this
+wrong makes the tool annoying instead of helpful.
 
-- **Ship** — they are working fast: *show me my change*, *review this PR*, a
-  routine diff they want to approve and move on from. Point crisply, give the
-  reason in a line, let the review loop close it.
-- **Teaching** — they are learning: a bug being chased, a new area, *how does
-  this work*, *walk me through*. **Make them predict before you reveal.** Point
-  at the code and, in the `say`, ask what they think happens — what breaks, what
-  they would change — and answer it in a later group. Somebody handed the
-  conclusion up front learns less than somebody who guessed first and found out
-  they were right. End on the open question or the decision, not on *and that's
-  it*.
+- **TEACHING mode** — they are learning: a bug they are chasing, a new area, "how does
+  this work", "walk me through", anything where understanding is the goal. Use the full
+  predict → why → decide shape below. Make them reason. This is the mode the enhancements
+  are for.
 
-  One check on a teaching deck before you write it: **does the story make them
-  reason, or only receive?** If every group reveals top-down with nothing to
-  predict, you have written a lecture. Find the place where you can ask first.
+- **SHIP mode** — they are working fast: "show me my change", "present this PR", a
+  routine multi-file diff they want to approve and move on. Here they want to SEE the
+  change clearly and act, not be Socratically quizzed on their own code. Point crisply,
+  say the why in a line, let the review loop close it. Do NOT force predict-then-verify
+  on a 2-file refactor — that's friction, not help.
 
-A question (*why does X…*) is teaching. An imperative about their own work
-(*show my change*) is ship. When unsure, default to ship and let them pull you
-deeper — do not Socratically quiz somebody on a two-file refactor.
+When unsure which mode, glance at what they asked: a question ("why does X…", "how does…")
+is teaching; an imperative about their own work ("show my change", "present this") is ship.
+When still unsure, ask in one line, or default to ship and let them pull you deeper.
 
 ## Writing one
 
@@ -149,56 +146,66 @@ deck seal <path>
 
 Says there is no more coming.
 
-## What makes a deck good
+## What a group is
 
-**One group is one thing you are saying.** If the prose has an *and* in it, it is
-two groups.
+One **group** = one thing you want to say. Refs inside a group are the evidence for
+that one claim, not a pile of related files.
 
-**The `say` carries the why, not just the what.** *This column goes* is a shrug.
-*This column goes because the enum above is the only thing that names its valid
-values, and we are deleting the enum* is the model. A group that only says what
-is not finished.
+Rules:
 
-**A group with one ref should be a decision, not a default.** One ref is right
-when the point *is* that one thing. Before writing, look for the pairs: an enum
-and the column that stores it, a writer and the reader that consumes it, a
-function and its only caller. Those belong on screen together — that is what the
-grid is for, and the relationship is the thing being taught.
+- **If your prose names a location, that location must be a ref.** Writing "line 116"
+  or "the enum above" and not showing it is the single most common way to waste this
+  tool — they are looking at a screen that does not contain the thing you just cited.
+  This rule is mechanical: cite it, show it.
+- **The `say` carries the WHY.** A group that only states what-changed, with no reason,
+  will make them ask "but why" — so answer it in the group. Fact + reason, every time.
+- **A group with one ref should be a decision, not a default.** One ref is right when
+  the point *is* that one thing. It is wrong when the refs that prove your claim exist
+  and you just listed them in separate groups. Before writing, look for the pairs:
+  an enum and the column that stores it, a writer and the reader that consumes it, a
+  function and its only caller. Those belong on screen together — that is what the
+  grid is for. They learn from seeing the RELATIONSHIP, so put the two related things
+  on screen at once.
+- Keep a group to **4 refs or fewer**. More is allowed — the group just splits into
+  pages they have to walk — but four panes is already a lot to hold in your head,
+  and a fifth ref is usually a second group wearing a disguise.
+- One file per pane. Do not show one file in two panes. When a group has several, they
+  should be several files whose relationship is the point.
+- The grid is rows-biased and collapses to a single column on a narrow screen, so
+  every ref stays readable. You do not lay anything out; just send the refs.
 
-Plan the whole story before `deck new` — that is where `--total` comes from — and
-count then: **if every group has exactly one ref, you have planned a list, not a
-presentation.** Go back and find what belongs beside what.
+**Ranges are 1-based and inclusive, and must be tight either way you name them.** A
+200-line range is not a highlight, it is a shrug.
 
-**Tight ranges, but whole ones.** A two hundred line range is not a highlight,
-it is a shrug. A range that stops in the middle of the function it is pointing at
-is worse — the reader sees an opening brace and no closing one, and spends their
-first seconds working out what they are looking at instead of reading it.
+But a range that stops in the middle of the function it is pointing at is worse — the
+reader sees an opening brace and no closing one, and spends their first seconds working
+out what they are looking at instead of reading it. So: the smallest range that is still
+a **complete thing**. A whole function, a whole block, a whole match arm — opening line
+through closing brace, including the signature, because a body without its signature is
+a body without its name. If the function is ninety lines and only eight matter, that is
+a sign the eight are the thing: point at them and say which function they are in. Never
+split the difference by stopping halfway. Count the closing line rather than guessing it.
 
-So: the smallest range that is still a **complete thing**. A whole function, a
-whole block, a whole match arm — opening line through closing brace, including
-the signature, because a body without its signature is a body without its name.
-If the function is ninety lines and only eight matter, that is a sign the eight
-are the thing: point at them and say which function they are in. Never split the
-difference by stopping halfway.
+**Say whether a claim is proven.** When a group asserts something is correct, safe or
+fixed, say *how it is known* — *tests green, shown below*, *this path is exercised by
+X* — or say honestly that it is not verified yet. Never let a deck imply a green
+checkmark that does not exist. Point at the passing test as a ref when there is one.
 
-Count the closing line rather than guessing it. `140-148` that should have been
-`140-151` is the single most common way a pane comes out looking careless.
+**Small decks.** Three tight decks beat one sprawling one. A change across five files
+is several decks, not one with everything in it.
 
-**Four refs to a group at most.** More is allowed and simply splits into pages to
-walk, but four panes is already a lot to hold in your head, and a fifth ref is
-usually a second group wearing a disguise.
+### Check before you write the first group
 
-**One file per pane.** Do not show one file in two panes. When a group has
-several, they should be several files whose relationship is the point.
+You write groups one at a time, but you plan the whole story before `deck new` — that
+is where `--total` comes from. So do the count now, on the plan: **if every group has
+exactly one ref, you have planned a list, not a presentation.** Go back and find what
+belongs beside what. A deck of single-ref groups makes `next page` and `next group` do
+the same thing and means they never see two pieces of evidence at once, which is the
+entire point.
 
-**Say whether a claim is proven.** When a group asserts something is correct,
-safe or fixed, say *how it is known* — *tests green, shown below*, *this path is
-exercised by X* — or say honestly that it is not verified yet. Never let a deck
-imply a green checkmark that does not exist. Point at the passing test as a ref
-when there is one.
-
-**Small decks.** Three tight decks beat one sprawling one. A change across five
-files is several decks, not one with everything in it.
+And one more plan check, for teaching decks: **does the story make them reason, or just
+receive?** If the deck reveals everything top-down with nothing for them to predict, you
+have written a lecture. Find the spot where you can point at the code and ask them first.
 
 ## When the answer is a picture
 
@@ -272,70 +279,57 @@ has lost the one thing a picture is for. If it will not fit, it is two diagrams.
 **Every node earns its place.** Cut the ones that only pass a value along. A
 diagram is the *shape* of the flow, not a call graph.
 
-## Write it so nobody wants to leave
+## How to explain
 
-The commands are the easy half. The writing is the product, and one worked
-rewrite teaches it faster than a list of rules:
+The reader wants to *understand*, not be handed conclusions. Present the way people
+actually learn:
 
-> The `pending` counter is decremented within the catch block in addition to
-> the success path, resulting in an incorrect decrement when write operations
-> fail.
+1. **Predict before reveal.** The method is predict-then-verify. When you are
+   teaching (a bug, how something works, a design), the FIRST group should often make
+   them reason before you explain — point at the code and, in the `say`, ask what they
+   think happens / why it breaks / what they'd change, *before* the later groups reveal
+   it. A deck that hands them the answer up front teaches them less than one that makes
+   them predict, then confirms. (For a routine "here's my change, approve it" — skip
+   this; see the two modes above.)
 
-> `pending -= 1` runs on the error path too. So every failed write takes the
-> counter down twice, and the batch calls itself finished while eight rows are
-> still in the air. **That is the 63.**
+2. **Always the WHY, never just the what.** People catch half-baked explanations and
+   push until the full mental model is there — so give it to them the first time.
+   Every group's `say` should carry the *reason*, not just the *fact*. "This column
+   goes" is a shrug; "this column goes because the enum above is the only thing that
+   names its valid values, and we're deleting the enum" is the model. If a group only
+   says *what*, it is not done.
 
-Same fact. The second one is shorter, it names the thing the reader came for,
-and it ends where they will want to argue. Four habits get you there.
+3. **Anchor to THEIR system and domain.** They think in their real codebase — the
+   schedulers, workflows and services they actually work on — not toy examples. Use
+   analogies from what is actually on screen and from their domain. "This is the
+   straggler problem, like in a worker pool" lands harder than a generic metaphor.
 
-**Plain words, and one idea per sentence.** *Runs twice*, not *is invoked on
-multiple code paths*. When you catch yourself writing *and*, *which*, or *, so
-that*, put in a full stop and start again. If a sentence needs reading twice, it
-is your sentence that is wrong, not the reader.
+4. **Is the claim PROVEN, or just plausible?** The standing edge: people accept "done"
+   by reading, not by running. A review deck is exactly where that bites — they can walk
+   it, nod, and never notice the claim was never verified. So when a group asserts a
+   change is correct/safe/fixed, the `say` should say HOW it's known — "tests green,
+   shown below" / "this path is exercised by X" — or flag honestly that it is not yet
+   proven. Never let a deck imply a green checkmark that does not exist. Point at the
+   passing test as a ref when one exists.
 
-**Never explain the code — explain what the code is doing.** They can see
-`pending -= 1`; it is on screen beside your words. What they cannot see is the
-consequence. Point at the line and say what it costs.
+5. **End on a question or a decision when teaching.** They want to drive, not spectate.
+   The last group of a teaching deck should hand them the wheel: the open question, the
+   trade-off to weigh, the thing to decide — not "and that's it." For a plain change
+   deck, the natural close is "approve or comment", which the review loop already gives.
 
-**Explain it in terms of what is on their screen.** The comparison that lands is
-the one from their own codebase — the other place this pattern already appears,
-the sibling that does it correctly, the thing they built last month that works
-the same way. A generic metaphor makes them translate; a reference to the queue
-they already know makes them recognise. Reach for the domain they work in before
-you reach for cars, restaurants or plumbing.
+6. **Story, not a file dump.** Adhere to what you're actually saying. Present it like a
+   story, group by group, point by point, each deck a part of the story. Keep language
+   simple; do not over-complicate. Imagine you are walking them through it at a
+   whiteboard, not reading them a changelog.
 
-**Tell it like a story at a whiteboard, not like a changelog.** Group by group,
-point by point, each one carrying the last one forward. You are walking somebody
-through something, not reading them a list of what changed. Keep the words
-simple; the thing being explained is complicated enough.
+7. **Small decks, fast feedback.** Smaller deck, faster loop. Communicating a change
+   across 5 files? Show it in small chunks (one removed function and its impact),
+   not everything with context mixed in. They'd rather walk three tight decks than one
+   sprawling one.
 
-**Name things the way the codebase does.** *The counter*, *the retry*, *the
-queue* — one word per thing, all the way through. A concept renamed halfway is a
-concept the reader loses.
-
-**Be light, never clever.** A dry line is welcome. A pun that has to be worked
-out is a speed bump. Warmth is in the plainness: *this one is my fault* reads
-better than any wordplay.
-
-And three things about the shape of the whole deck.
-
-**Open at the surprise.** The first group makes them want the second. Start
-where the story turns — the line that does the wrong thing, the assumption that
-does not hold — not with three groups about where the file lives.
-
-**Make it inevitable.** By the last group they should feel they could have got
-there themselves. Each group is a step they take with you. If a group needs
-something you have not shown yet, it is in the wrong place.
-
-**Say the awkward part out loud, and end with something to do.** *I am not sure
-this is right.* *This is the ugly bit.* A deck that admits its own weak spot is
-trusted everywhere else, and it is the sentence that makes them comment. Then
-finish on a question or a decision — a deck that ends in *and that is it* is a
-lecture, and lectures do not get comments.
-
-Then **read it back** as if you had not written it. Does each group say the why,
-would a stranger follow it, is there a shorter word. That pass is the difference
-between a deck people walk and a deck people close.
+8. **One file per page when panes relate.** Don't show one file in multiple panes. If a
+   page uses multiple panes, show one file per pane where a change in one impacts the
+   other — e.g. you removed a function, now one callsite per pane per file.
 
 ## The two commands that do not return
 

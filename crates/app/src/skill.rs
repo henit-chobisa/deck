@@ -308,14 +308,14 @@ mod tests {
         // verbs would produce the second every time.
         for said in [
             "cite it, show it",
-            "one thing you are saying",
-            "not just the what",
+            "one thing you want to say",
+            "never just the what",
             "planned a list",
-            "Tight ranges",
-            "Plain words",
-            "Open at the surprise",
-            "never clever",
-            "read it back",
+            "must be tight either way",
+            "do not over-complicate",
+            "Predict before reveal",
+            "whiteboard, not reading them a changelog",
+            "Story, not a file dump",
         ] {
             assert!(SKILL.contains(said), "the skill never says `{said}`");
         }
@@ -399,7 +399,7 @@ mod tests {
         // the reader gets an opening brace and no closing one, and spends
         // their first seconds working out what they are looking at. "Tight
         // ranges" on its own pushed straight into it.
-        assert!(SKILL.contains("Tight ranges, but whole ones"));
+        assert!(SKILL.contains("must be tight either way"));
         assert!(
             SKILL.contains("complete thing"),
             "and what whole means: signature through closing brace"
@@ -421,10 +421,10 @@ mod tests {
         // before revealing, and reaching for the reader's own codebase rather
         // than for a generic metaphor, are what separate a deck that explains
         // from one that displays.
-        assert!(SKILL.contains("Make them predict before you reveal"));
-        assert!(SKILL.contains("Explain it in terms of what is on their screen"));
+        assert!(SKILL.contains("Predict before reveal"));
+        assert!(SKILL.contains("Anchor to THEIR system and domain"));
         assert!(
-            SKILL.contains("story at a whiteboard"),
+            SKILL.contains("at a\n   whiteboard, not reading them a changelog"),
             "and the shape the whole thing should have"
         );
     }
