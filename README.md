@@ -35,9 +35,21 @@ it, in the fewest keystrokes that can carry the answer.
 
 ## Install
 
+**macOS and Linux**
+
 ```sh
 brew install henit-chobisa/deck/deck
 ```
+
+**Windows, and anywhere with a Rust toolchain**
+
+```sh
+cargo install --git https://github.com/henit-chobisa/deck deck-app
+```
+
+Both build from source: deck compiles nineteen tree-sitter grammars into the
+binary, so the first install takes a few minutes and every one after it is a
+download.
 
 Then, once:
 
