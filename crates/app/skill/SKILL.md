@@ -82,10 +82,16 @@ Getting this wrong makes the tool annoying instead of useful.
   routine diff they want to approve and move on from. Point crisply, give the
   reason in a line, let the review loop close it.
 - **Teaching** — they are learning: a bug being chased, a new area, *how does
-  this work*, *walk me through*. Here the deck can make them reason before it
-  explains: point at the code and, in the `say`, ask what they think happens —
-  then reveal in a later group. End on the open question or the decision, not on
-  *and that's it*.
+  this work*, *walk me through*. **Make them predict before you reveal.** Point
+  at the code and, in the `say`, ask what they think happens — what breaks, what
+  they would change — and answer it in a later group. Somebody handed the
+  conclusion up front learns less than somebody who guessed first and found out
+  they were right. End on the open question or the decision, not on *and that's
+  it*.
+
+  One check on a teaching deck before you write it: **does the story make them
+  reason, or only receive?** If every group reveals top-down with nothing to
+  predict, you have written a lecture. Find the place where you can ask first.
 
 A question (*why does X…*) is teaching. An imperative about their own work
 (*show my change*) is ship. When unsure, default to ship and let them pull you
@@ -163,7 +169,20 @@ Plan the whole story before `deck new` — that is where `--total` comes from �
 count then: **if every group has exactly one ref, you have planned a list, not a
 presentation.** Go back and find what belongs beside what.
 
-**Tight ranges.** A two hundred line range is not a highlight, it is a shrug.
+**Tight ranges, but whole ones.** A two hundred line range is not a highlight,
+it is a shrug. A range that stops in the middle of the function it is pointing at
+is worse — the reader sees an opening brace and no closing one, and spends their
+first seconds working out what they are looking at instead of reading it.
+
+So: the smallest range that is still a **complete thing**. A whole function, a
+whole block, a whole match arm — opening line through closing brace, including
+the signature, because a body without its signature is a body without its name.
+If the function is ninety lines and only eight matter, that is a sign the eight
+are the thing: point at them and say which function they are in. Never split the
+difference by stopping halfway.
+
+Count the closing line rather than guessing it. `140-148` that should have been
+`140-151` is the single most common way a pane comes out looking careless.
 
 **Four refs to a group at most.** More is allowed and simply splits into pages to
 walk, but four panes is already a lot to hold in your head, and a fifth ref is
@@ -278,6 +297,18 @@ is your sentence that is wrong, not the reader.
 `pending -= 1`; it is on screen beside your words. What they cannot see is the
 consequence. Point at the line and say what it costs.
 
+**Explain it in terms of what is on their screen.** The comparison that lands is
+the one from their own codebase — the other place this pattern already appears,
+the sibling that does it correctly, the thing they built last month that works
+the same way. A generic metaphor makes them translate; a reference to the queue
+they already know makes them recognise. Reach for the domain they work in before
+you reach for cars, restaurants or plumbing.
+
+**Tell it like a story at a whiteboard, not like a changelog.** Group by group,
+point by point, each one carrying the last one forward. You are walking somebody
+through something, not reading them a list of what changed. Keep the words
+simple; the thing being explained is complicated enough.
+
 **Name things the way the codebase does.** *The counter*, *the retry*, *the
 queue* — one word per thing, all the way through. A concept renamed halfway is a
 concept the reader loses.
@@ -306,7 +337,7 @@ Then **read it back** as if you had not written it. Does each group say the why,
 would a stranger follow it, is there a shorter word. That pass is the difference
 between a deck people walk and a deck people close.
 
-## Showing it, and waiting
+## The two commands that do not return
 
 ```
 deck open <path>          # run this as a background command
@@ -321,10 +352,16 @@ It does not need the deck to have anything in it. A bar appears at the bottom of
 the screen with your title on it, and the reader opens it when *they* are ready,
 which is not the same moment as you being ready to ask.
 
-Run it **second**, right after `deck new`, before the research. The bar tells
-them something is coming; its Open button stays dark until the first group lands
-and then comes up to colour, so an empty deck can never be opened onto a blank
-page.
+Run it **second**, right after `deck new`, before the research — and then **never
+again for that deck**. The bar tells them something is coming; its Open button
+stays dark until the first group lands and then comes up to colour, so an empty
+deck can never be opened onto a blank page.
+
+**Do not open the deck yourself when you finish writing.** Sealing is not a cue
+to put a window in front of somebody. The bar is the whole invitation, and the
+person decides when they are ready to read — that moment is theirs, and it is
+almost never the moment you happen to finish. A deck that opens itself is the
+interruption this tool was built to avoid.
 
 Then wait for the answer — **in the background, and then end your turn**:
 
@@ -366,7 +403,8 @@ nothing left to work out — only commands to run. If the story is too big to ho
 in your head that way, it is several decks and not one; see **Small decks**.
 
 `deck open <path> --now` skips the bar and puts the deck on screen at once. Use
-it only when they have asked to be shown something *now*.
+it **only** when they have said, in words, to show them something now. Finishing
+a deck is not such a moment, and neither is being pleased with it.
 
 ## Reading the answer
 

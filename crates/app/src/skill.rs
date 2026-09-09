@@ -394,6 +394,42 @@ mod tests {
     }
 
     #[test]
+    fn the_skill_says_a_range_has_to_be_a_whole_thing() {
+        // Ranges that stopped in the middle of the function they pointed at:
+        // the reader gets an opening brace and no closing one, and spends
+        // their first seconds working out what they are looking at. "Tight
+        // ranges" on its own pushed straight into it.
+        assert!(SKILL.contains("Tight ranges, but whole ones"));
+        assert!(
+            SKILL.contains("complete thing"),
+            "and what whole means: signature through closing brace"
+        );
+    }
+
+    #[test]
+    fn the_skill_says_not_to_open_the_deck_when_it_is_finished() {
+        // Sealing is not a cue to put a window in somebody's face. The bar is
+        // the invitation, and when to read is the reader's to choose — it is
+        // almost never the moment the agent happens to finish.
+        assert!(SKILL.contains("never\nagain for that deck"));
+        assert!(SKILL.contains("Do not open the deck yourself when you finish writing"));
+    }
+
+    #[test]
+    fn the_skill_says_how_to_explain_and_not_only_what_to_show() {
+        // The commands were carried and the teaching was not. Predicting
+        // before revealing, and reaching for the reader's own codebase rather
+        // than for a generic metaphor, are what separate a deck that explains
+        // from one that displays.
+        assert!(SKILL.contains("Make them predict before you reveal"));
+        assert!(SKILL.contains("Explain it in terms of what is on their screen"));
+        assert!(
+            SKILL.contains("story at a whiteboard"),
+            "and the shape the whole thing should have"
+        );
+    }
+
+    #[test]
     fn an_agent_is_found_by_its_own_directory() {
         // Not by its skills directory: one that has never been given a skill
         // has no `skills/` yet, and that is exactly the one worth telling.
