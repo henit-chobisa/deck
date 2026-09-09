@@ -333,16 +333,32 @@ mod tests {
     }
 
     #[test]
-    fn the_skill_says_when_a_deck_is_not_ready_to_open_yet() {
-        // The failure this prevents: a deck opened after group one while the
-        // agent is still reading code to work out group two. The reader gets
-        // through what is there in half a minute and then watches a pulsing
-        // dot. Streaming was meant to overlap their reading with the writing,
-        // not with the thinking.
-        assert!(SKILL.contains("you opened too early"));
+    fn the_skill_teaches_the_order_and_not_only_the_commands() {
+        // Both ways the timing goes wrong, and they pull in opposite
+        // directions. Batching — research in silence, write four groups, then
+        // open — is the one that makes somebody stop using deck. Stalling —
+        // open, then go back to reading — leaves them watching a pulsing dot.
+        // The file has to name both, or fixing one reintroduces the other.
+        assert!(SKILL.contains("Do these in order"));
+        assert!(
+            SKILL.contains("with nothing in the deck yet"),
+            "the bar goes up before the research, which is the whole fix"
+        );
         assert!(
             SKILL.contains("watching you think"),
-            "and what that looks like from their side"
+            "and the other end of it, from the reader's side"
+        );
+    }
+
+    #[test]
+    fn the_skill_shows_a_picture_and_its_code_in_one_group() {
+        // A group takes both, and for a flow that is the normal shape. Said in
+        // prose it was still read as "a diagram instead of refs", so there is
+        // a worked example — which is what a model actually copies.
+        assert!(SKILL.contains("Put the picture and the code in the same group"));
+        assert!(
+            SKILL.contains("--diagram connect.json"),
+            "and an example that uses both flags at once"
         );
     }
 

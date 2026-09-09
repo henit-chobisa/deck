@@ -18,6 +18,37 @@ once, pinned to the lines it was about.
 
 Four commands and a wait.
 
+## Do these in order
+
+The order is the difference between a deck that feels instant and one nobody
+waits for. It is **not** the order the commands are explained in below.
+
+1. `deck new` — the title comes from the question you were asked, so this runs
+   before you have read a line of code.
+2. `deck open` — **straight away, with nothing in the deck yet.** A bar appears
+   at the bottom of their screen: your title, and that something is being
+   written. Open stays dark until there is a group to read, so opening this
+   early is safe.
+3. **Now** go and read the code.
+4. `deck group`, one command per claim, as each becomes ready. The bar counts
+   up and the Open button comes up to colour when the first one lands.
+5. `deck seal` after the last one.
+6. `deck wait`, in the background, and end your turn.
+
+**The mistake this prevents** is researching in silence and then writing four
+groups before showing anything. From the other side of the screen that is two
+minutes of nothing followed by a finished deck. A tool that makes people wait is
+a tool they stop reaching for — they should see the bar within seconds of
+asking, and every group should land the moment it is written.
+
+**The mistake at the other end** is opening and then going back to read code, so
+the deck sits on *writing group 2* while you think. Between groups the window
+shows a pulsing dot, and that dot is the reader watching you think.
+
+Both come from the same confusion, and one rule settles it: **research, then
+write.** The bar goes up before the research. The groups go in after it, back to
+back, because by then you know what they all say.
+
 ## This is the default, not the exception
 
 Nobody learns from filenames and line numbers in prose. If you are about to
@@ -33,8 +64,13 @@ waste this tool — the reader is looking at a screen that does not contain the
 thing you just cited. The rule is mechanical: cite it, show it.
 
 **Do not** use a deck for a one-line fix, for something the user watched you do,
-or when they asked a question rather than for work. A deck for a typo is a window
-in somebody's face for no reason. If you are unsure, ask in one line.
+or for an answer that is not about code at all — how to install something, what
+a command does, whether to ship on Friday. A deck for a typo is a window in
+somebody's face for no reason. If you are unsure, ask in one line.
+
+A *question* is not a reason to skip it. "How does X work" is the best thing a
+deck is for. What disqualifies a question is having no code in the answer, not
+its being a question.
 
 ## Read the mode before you write
 
@@ -66,8 +102,10 @@ not a label. *The retry backoff is unbounded*, not *backoff changes*. It is read
 cold, on a bar at the bottom of the screen, before anything else about the deck
 is visible.
 
-`--total` is how many groups you intend to write, so the window can say *2 of 3*
-while the rest are on their way. Say it even if you are not certain.
+`--total` is how many groups you mean to write, so the bar can say *2 of 3*
+while the rest are on their way. You are running this before the research, so it
+is a guess — give one anyway. It is a progress hint, not a promise, and writing
+a fourth group to a deck that said three is fine.
 
 ```
 deck group <path> \
@@ -83,9 +121,19 @@ Once per claim.
   between paragraphs. No headings, no lists.
 - `--ref` is `file:first-last`, a space, then a short note. A bare number is one
   line. `*starred*` words in the note are accented.
-- `--diagram <file.json>` draws a picture instead, for structure that is in no
-  single file. See **When the answer is a picture** below — do not skip it, a
-  flow question answered without one is a deck that did half the job.
+- `--diagram <file.json>` adds a picture, for structure that is in no single
+  file. **Not instead of the refs** — one group takes both, and for anything
+  shaped like a flow that is the normal thing to do:
+
+  ```
+  deck group <path> \
+    --say "The click never reaches the controller when the app is missing." \
+    --diagram connect.json \
+    --ref "web/silo/connect.tsx:40-52 the check that returns early"
+  ```
+
+  See **When the answer is a picture** below — do not skip it. A flow question
+  answered with refs alone is a deck that did half the job.
 
 ```
 deck seal <path>
@@ -143,9 +191,10 @@ naming three or more places and the order they run in, draw it. A deck that
 answers a flow question with six code refs and no picture has made the reader
 assemble the diagram in their own head — which is the work they asked you to do.
 
-Then do both. The picture says *where*, the code says *what*. The usual shape is
-one group holding the diagram, then a group per step that matters, each pointing
-at real lines.
+**Put the picture and the code in the same group.** The diagram says *where* in
+the flow you are, the refs say *what* the code does there — apart they are two
+things to hold, together they are one. Give the diagram a group of its own only
+when it maps a whole story that later groups then walk.
 
 ```
 deck group <path> --say "..." --diagram flow.json
@@ -187,9 +236,10 @@ Only `nodes` is required.
   server, one crate against another.
 - Cycles are fine. The returning edge is drawn as one that visibly comes back.
 
-`--diagram` can be given more than once, and mixes with `--ref` — but the code
-refs are always laid out first, whatever order you typed them in. When the
-picture should come first, give it a group of its own.
+`--diagram` can be given more than once and mixes freely with `--ref`. The one
+thing you do not control is the arrangement: refs are laid out before diagrams
+whatever order you typed them. If the picture has to be read first, it needs a
+group of its own.
 
 **There are no colours, sizes or positions, on purpose.** A node says what it is
 and how much it matters; deck owns every pixel. You cannot make it prettier, only
@@ -203,55 +253,56 @@ diagram is the *shape* of the flow, not a call graph.
 
 ## Write it so nobody wants to leave
 
-This is the part that decides whether a deck is worth opening twice. The
-commands are easy; the writing is the product.
+The commands are the easy half. The writing is the product, and one worked
+rewrite teaches it faster than a list of rules:
 
-**Plain words, always.** Say *runs twice* rather than *is invoked on multiple
-code paths*. Say *this number is wrong* rather than *an incorrect value is
-propagated*. If a sentence needs reading twice, it is your sentence that is
-wrong, not the reader.
+> The `pending` counter is decremented within the catch block in addition to
+> the success path, resulting in an incorrect decrement when write operations
+> fail.
 
-**One idea per sentence, one claim per group.** Long sentences hide the joins.
-When you catch yourself writing *and* or *which* or *, so that*, put a full stop
-in and start again.
+> `pending -= 1` runs on the error path too. So every failed write takes the
+> counter down twice, and the batch calls itself finished while eight rows are
+> still in the air. **That is the 63.**
 
-**Never explain the code — explain the thing the code is doing.** The reader can
-see `pending -= 1`; they have it on screen. What they cannot see is that it also
-runs when the write fails, so the counter drifts down by one every error and the
-batch finishes early. Point at the line, and say the consequence.
+Same fact. The second one is shorter, it names the thing the reader came for,
+and it ends where they will want to argue. Four habits get you there.
 
-**Open at the surprise.** The first group is the one that makes them want the
-second. Start where the story turns — the line that does the wrong thing, the
-assumption that does not hold — not with three groups of throat-clearing about
-where the file lives.
+**Plain words, and one idea per sentence.** *Runs twice*, not *is invoked on
+multiple code paths*. When you catch yourself writing *and*, *which*, or *, so
+that*, put in a full stop and start again. If a sentence needs reading twice, it
+is your sentence that is wrong, not the reader.
 
-**Make it inevitable.** By the last group the reader should feel they could have
-reached the same conclusion. Each group is a step they can take with you, not a
-fact handed down. If a group needs something you have not shown yet, it is in
-the wrong place.
+**Never explain the code — explain what the code is doing.** They can see
+`pending -= 1`; it is on screen beside your words. What they cannot see is the
+consequence. Point at the line and say what it costs.
 
-**Name things the way they are.** *The counter*, *the retry*, *the queue*. Not
-*the aforementioned variable*. Use the codebase's own words for its own things,
-and one word per thing throughout — a concept renamed halfway is a concept the
-reader loses.
+**Name things the way the codebase does.** *The counter*, *the retry*, *the
+queue* — one word per thing, all the way through. A concept renamed halfway is a
+concept the reader loses.
 
-**Be light, never clever.** A dry line is welcome; a pun that has to be worked
-out is a speed bump. If a joke makes the point land faster, keep it. If it makes
-the reader stop to admire it, cut it. Warmth is in the plainness, not in the
-wordplay: *this one is my fault* reads better than any pun.
+**Be light, never clever.** A dry line is welcome. A pun that has to be worked
+out is a speed bump. Warmth is in the plainness: *this one is my fault* reads
+better than any wordplay.
 
-**Say the awkward part out loud.** *I am not sure this is right.* *This is the
-ugly bit.* *This was a bad idea and here is the better one.* A deck that admits
-its own weak spot is one the reader trusts everywhere else — and it is the
-sentence that makes them comment, which is the whole point.
+And three things about the shape of the whole deck.
 
-**End with something for them to do.** A question, a decision, a choice between
-two shapes. A deck that ends in *and that is it* is a lecture, and lectures do
-not get comments.
+**Open at the surprise.** The first group makes them want the second. Start
+where the story turns — the line that does the wrong thing, the assumption that
+does not hold — not with three groups about where the file lives.
 
-**Then read it back as if you had not written it.** Every group: does it say the
-why, would a stranger follow it, is there a shorter word. That pass is the
-difference between a deck people walk and a deck people close.
+**Make it inevitable.** By the last group they should feel they could have got
+there themselves. Each group is a step they take with you. If a group needs
+something you have not shown yet, it is in the wrong place.
+
+**Say the awkward part out loud, and end with something to do.** *I am not sure
+this is right.* *This is the ugly bit.* A deck that admits its own weak spot is
+trusted everywhere else, and it is the sentence that makes them comment. Then
+finish on a question or a decision — a deck that ends in *and that is it* is a
+lecture, and lectures do not get comments.
+
+Then **read it back** as if you had not written it. Does each group say the why,
+would a stranger follow it, is there a shorter word. That pass is the difference
+between a deck people walk and a deck people close.
 
 ## Showing it, and waiting
 
@@ -259,8 +310,15 @@ difference between a deck people walk and a deck people close.
 deck open <path>
 ```
 
-Returns immediately. A small bar appears saying a deck is ready; the reader opens
-it when *they* are ready, which is not the same moment as you being ready to ask.
+Returns immediately — it does not hold the window, and it does not need the deck
+to have anything in it. A small bar appears at the bottom of the screen with your
+title on it, and the reader opens it when *they* are ready, which is not the same
+moment as you being ready to ask.
+
+Run it **second**, right after `deck new`, before the research. The bar tells
+them something is coming; its Open button stays dark until the first group lands
+and then comes up to colour, so an empty deck can never be opened onto a blank
+page.
 
 Then wait for the answer — **in the background, and then end your turn**:
 
@@ -283,28 +341,23 @@ foreground command has a timeout, and a reader cannot be hurried.
 | 4 | they closed the deck without answering |
 | 1 | something was wrong; the message on stderr says what |
 
-### Do not open a deck you are still working out
+### The two ways to get the timing wrong
 
-Write groups **one command at a time**, and open once a group or two is in it —
-but only when you already know what the rest of them say. Streaming is for the
-seconds it takes to run the commands. It is not for the minutes it takes to read
-the code.
+**Batching.** Writing every group and then opening. This is the one that makes
+people stop using deck: they ask a question, nothing happens for two minutes,
+and then a finished deck appears. Open before you have written anything — see
+**Do these in order** at the top. The bar is built for an empty deck and holds
+its own button back until there is something to read.
 
-While the deck waits for the next group the window shows a pulsing dot and the
-words *writing group 2*. That is the reader watching you think. A group takes
-about half a minute to read, so if the next one is further away than that they
-are sitting in front of a spinner — which is the one way this tool costs
-somebody time instead of saving it.
+**Stalling.** Opening and then going back to read code. Between groups the
+window shows a pulsing dot and the words *writing group 2*, and that is the
+reader watching you think. A group takes about half a minute to read, so if the
+next one is further off than that, they are sitting in front of a spinner.
 
-So do the reading first. Decide every group and every ref, and only then start
-writing. **If you open a file to work out what group three says after the deck
-is already on screen, you opened too early.**
-
-Batching every group before opening is the other mistake, and the smaller one. A
-deck is a directory that fills up while it is read, and the shape to aim for is:
-plan fully, write group one, open, then the rest with nothing in between. If the
-story is too big to hold in your head like that, it is several decks and not one
-— see **Small decks** above.
+The same rule fixes both. **Research, then write.** Once the first group is up,
+the rest should land within seconds of each other, because by then there is
+nothing left to work out — only commands to run. If the story is too big to hold
+in your head that way, it is several decks and not one; see **Small decks**.
 
 `deck open <path> --now` skips the bar and puts the deck on screen at once. Use
 it only when they have asked to be shown something *now*.
