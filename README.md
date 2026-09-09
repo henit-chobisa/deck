@@ -47,9 +47,18 @@ brew install henit-chobisa/deck/deck
 cargo install --git https://github.com/henit-chobisa/deck deck-app
 ```
 
+Windows also needs the MSVC toolchain — Visual Studio Build Tools with the
+"Desktop development with C++" workload — because that is what supplies the
+linker.
+
 Both build from source: deck compiles nineteen tree-sitter grammars into the
-binary, so the first install takes a few minutes and every one after it is a
-download.
+binary, so the first install takes a few minutes. Building locally is also why
+neither platform asks about an unsigned binary — nothing was downloaded, so
+there is nothing for Gatekeeper or SmartScreen to hold.
+
+Windows is **not yet tested**. It builds and the paths are written for it, but
+nobody has run a deck there. `cargo run -p deck-theme --example paths` prints
+what deck resolved, which is the useful thing to send back if it misbehaves.
 
 Then, once:
 
