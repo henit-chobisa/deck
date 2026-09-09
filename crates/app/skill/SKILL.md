@@ -1,13 +1,15 @@
 ---
 name: deck
 description: >-
-  Point at code instead of describing it. Use whenever you are about to explain,
-  review, or walk through code that lives in files — a change, a bug, an
-  architecture, "how X works", "where Y happens". Reach for it on your own
-  initiative: the moment your prose is about to say "see this", "look at",
-  "notice", "in file X", "the function above", "line 40" — stop and show it
-  instead. Explicit asks ("show me", "walk me through", "review this") trigger it
-  too. Prose is the exception, for a single one-line point. When in doubt, deck it.
+  Present code instead of writing about it. The trigger is mechanical, not a
+  judgement call: if the reply you are about to send would contain TWO OR MORE
+  file:line references, it is a deck and not a message. That covers every
+  root-cause writeup, findings report, bug explanation, architecture
+  walkthrough, and "here is what is happening" after an investigation — the
+  moment you finish looking into something is the moment to build a deck, not
+  to type up what you found. Also on any explicit ask: show me, walk me
+  through, review this, explain this, why does X. Prose is only for a
+  single-sentence answer that cites nothing. When in doubt, deck it.
 ---
 
 # deck
@@ -17,6 +19,35 @@ them, comments where they disagree, and submits. Every comment comes back at
 once, pinned to the lines it was about.
 
 Four commands and a wait.
+
+## Stop. Count the citations first
+
+Before you send a reply about code, count the `file:line` references in it.
+**Two or more and it is a deck.** Not a message with a deck offered after it —
+a deck instead of the message.
+
+This is a counting rule and not a judgement call, because judgement is exactly
+what fails here. The moment it fails is always the same one: you have just
+finished investigating something, you know the answer, and writing it out feels
+like the job you were asked to do. It is not. A root-cause writeup in the
+terminal is the worst possible shape for that work — five paths and line
+numbers the reader has to go and open by hand, one at a time, holding your
+argument in their head while they do it. That is the exact thing this tool was
+built to abolish, and *after an investigation* is when it happens.
+
+So the rule fires hardest where you feel it least:
+
+- a root cause you have just proved
+- a findings report, a "here is what is happening", a "two things I have not
+  verified"
+- a bug explained, a flow traced, an architecture described
+- anything with a timeline of evidence in it
+
+None of those are messages. Build the deck.
+
+**And do not send the prose version as well.** A summary that carries the whole
+argument makes the deck redundant, so nobody opens it. Say one line — *a deck is
+on the bar* — and let the deck do the work.
 
 ## Do these in order
 

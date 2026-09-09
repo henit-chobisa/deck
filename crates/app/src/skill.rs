@@ -430,6 +430,30 @@ mod tests {
     }
 
     #[test]
+    fn the_trigger_is_something_a_model_can_count() {
+        // What this is for: an agent finished investigating a stalled job and
+        // typed the root cause into the terminal, seven file:line citations
+        // deep, with a timeline and a list of what it had not verified. Every
+        // trigger in the description was a judgement call — "about to
+        // explain", "about to say line 40" — and judgement loses to momentum
+        // at the one moment it is needed, which is right after the work.
+        //
+        // So the rule is arithmetic. Two citations is a deck. A model can
+        // check that against a draft without deciding anything.
+        let front = SKILL.split("---").nth(1).expect("the file has frontmatter");
+        assert!(front.contains("TWO OR MORE"));
+        assert!(
+            front.contains("after an investigation"),
+            "and the moment it fails, named"
+        );
+        assert!(SKILL.contains("Stop. Count the citations first"));
+        assert!(
+            SKILL.contains("do not send the prose version as well"),
+            "a summary that carries the argument makes the deck redundant"
+        );
+    }
+
+    #[test]
     fn an_agent_is_found_by_its_own_directory() {
         // Not by its skills directory: one that has never been given a skill
         // has no `skills/` yet, and that is exactly the one worth telling.
