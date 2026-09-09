@@ -333,6 +333,51 @@ mod tests {
     }
 
     #[test]
+    fn the_skill_says_when_a_deck_is_not_ready_to_open_yet() {
+        // The failure this prevents: a deck opened after group one while the
+        // agent is still reading code to work out group two. The reader gets
+        // through what is there in half a minute and then watches a pulsing
+        // dot. Streaming was meant to overlap their reading with the writing,
+        // not with the thinking.
+        assert!(SKILL.contains("you opened too early"));
+        assert!(
+            SKILL.contains("watching you think"),
+            "and what that looks like from their side"
+        );
+    }
+
+    #[test]
+    fn the_skill_says_a_flow_is_a_picture() {
+        // The gap this closes: the skill named `--diagram` once, in a list of
+        // flags, and sent the reader to PROTOCOL.md for its shape — a document
+        // whose second paragraph says agents do not read it. So a deck
+        // answering "what happens when I click this" came back as six code
+        // refs and no picture.
+        assert!(SKILL.contains("A question about a flow is a diagram"));
+        assert!(
+            SKILL.contains("\"nodes\""),
+            "and the shape is here, not in a document it was told not to read"
+        );
+    }
+
+    #[test]
+    fn the_diagram_in_the_skill_is_one_deck_can_draw() {
+        // An example that does not parse teaches a shape the tool refuses. It
+        // is the only part of this file that can be checked rather than read,
+        // so it is checked.
+        let json = SKILL
+            .split("```json")
+            .find(|block| block.contains("\"nodes\""))
+            .and_then(|block| block.split("```").next())
+            .expect("the skill shows a diagram");
+
+        let drawn: deck_core::diagram::Diagram =
+            serde_json::from_str(json).expect("and it is one deck can read");
+        assert_eq!(drawn.nodes.len(), 5);
+        assert_eq!(drawn.edges.len(), 4);
+    }
+
+    #[test]
     fn an_agent_is_found_by_its_own_directory() {
         // Not by its skills directory: one that has never been given a skill
         // has no `skills/` yet, and that is exactly the one worth telling.

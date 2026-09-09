@@ -84,7 +84,8 @@ Once per claim.
 - `--ref` is `file:first-last`, a space, then a short note. A bare number is one
   line. `*starred*` words in the note are accented.
 - `--diagram <file.json>` draws a picture instead, for structure that is in no
-  single file. `PROTOCOL.md` has its shape.
+  single file. See **When the answer is a picture** below — do not skip it, a
+  flow question answered without one is a deck that did half the job.
 
 ```
 deck seal <path>
@@ -129,6 +130,76 @@ when there is one.
 
 **Small decks.** Three tight decks beat one sprawling one. A change across five
 files is several decks, not one with everything in it.
+
+## When the answer is a picture
+
+Some things are in no file at all. How a click reaches a controller, what calls
+what, the order four services touch one request, the states a job moves through
+— that is structure *between* files, and a code ref cannot point at it.
+
+**A question about a flow is a diagram.** *How does X work under the hood*, *what
+happens when I press this*, *walk me through the request*. If answering means
+naming three or more places and the order they run in, draw it. A deck that
+answers a flow question with six code refs and no picture has made the reader
+assemble the diagram in their own head — which is the work they asked you to do.
+
+Then do both. The picture says *where*, the code says *what*. The usual shape is
+one group holding the diagram, then a group per step that matters, each pointing
+at real lines.
+
+```
+deck group <path> --say "..." --diagram flow.json
+```
+
+```json
+{
+  "title": "connect to controller",
+  "flow": "down",
+  "nodes": [
+    { "id": "b", "label": "Connect", "role": "actor" },
+    { "id": "h", "label": "onConnect", "note": "web/silo/connect.tsx" },
+    { "id": "q", "label": "installed?", "role": "decision", "weight": "accent" },
+    { "id": "c", "label": "JiraController", "note": "apps/api" },
+    { "id": "s", "label": "workspace_credentials", "role": "store" }
+  ],
+  "edges": [
+    { "from": "b", "to": "h" },
+    { "from": "h", "to": "q", "label": "POST /connect" },
+    { "from": "q", "to": "c", "label": "yes" },
+    { "from": "c", "to": "s", "label": "upsert", "line": "dashed" }
+  ],
+  "clusters": [{ "label": "browser", "nodes": ["b", "h"] }]
+}
+```
+
+Only `nodes` is required.
+
+- `flow` — `down` or `right`. Default `down`.
+- `role` — `step` (default), `decision`, `store`, `terminal`, `actor`. What the
+  thing *is*. It decides the shape.
+- `weight` — `normal` (default), `accent`, `muted`. How much it matters. It
+  decides the colour, and one accented node is usually enough.
+- `note` — one line under the label. A file path or a qualifier, not a sentence.
+- `lane` — an integer pinning a node to a column, so a sequence keeps its tracks.
+- `line` on an edge — `solid` (default), or `dashed` for a conditional one.
+- Edge `label` is a word or two: `POST /connect`, `on submit`. Longer gets cut.
+- `clusters` are containment, for a boundary worth seeing: browser against
+  server, one crate against another.
+- Cycles are fine. The returning edge is drawn as one that visibly comes back.
+
+`--diagram` can be given more than once, and mixes with `--ref` — but the code
+refs are always laid out first, whatever order you typed them in. When the
+picture should come first, give it a group of its own.
+
+**There are no colours, sizes or positions, on purpose.** A node says what it is
+and how much it matters; deck owns every pixel. You cannot make it prettier, only
+clearer, so spend the effort on what goes in it.
+
+**Six to ten nodes.** Twenty is a wall, and a reader hunting for the entry point
+has lost the one thing a picture is for. If it will not fit, it is two diagrams.
+
+**Every node earns its place.** Cut the ones that only pass a value along. A
+diagram is the *shape* of the flow, not a call graph.
 
 ## Write it so nobody wants to leave
 
@@ -212,10 +283,28 @@ foreground command has a timeout, and a reader cannot be hurried.
 | 4 | they closed the deck without answering |
 | 1 | something was wrong; the message on stderr says what |
 
-Write groups **one command at a time**, and open the deck as soon as it has a
-group or two in it. A deck is a directory that fills up while it is read: their
-reading time and your writing time overlap, which is the whole reason for the
-shape. Batching every group before opening throws that away.
+### Do not open a deck you are still working out
+
+Write groups **one command at a time**, and open once a group or two is in it —
+but only when you already know what the rest of them say. Streaming is for the
+seconds it takes to run the commands. It is not for the minutes it takes to read
+the code.
+
+While the deck waits for the next group the window shows a pulsing dot and the
+words *writing group 2*. That is the reader watching you think. A group takes
+about half a minute to read, so if the next one is further away than that they
+are sitting in front of a spinner — which is the one way this tool costs
+somebody time instead of saving it.
+
+So do the reading first. Decide every group and every ref, and only then start
+writing. **If you open a file to work out what group three says after the deck
+is already on screen, you opened too early.**
+
+Batching every group before opening is the other mistake, and the smaller one. A
+deck is a directory that fills up while it is read, and the shape to aim for is:
+plan fully, write group one, open, then the rest with nothing in between. If the
+story is too big to hold in your head like that, it is several decks and not one
+— see **Small decks** above.
 
 `deck open <path> --now` skips the bar and puts the deck on screen at once. Use
 it only when they have asked to be shown something *now*.
