@@ -51,9 +51,12 @@ impl Placement {
 }
 
 /// Where the remembered shape lives.
+///
+/// Asked rather than spelled out. `HOME` is not set on Windows unless somebody
+/// has been living in a Unix shell, and reading it directly meant a deck there
+/// forgot its size and its turn every time it closed.
 fn path() -> Option<PathBuf> {
-    let home = std::env::var_os("HOME")?;
-    Some(PathBuf::from(home).join(".deck").join("window.json"))
+    Some(deck_core::home::deck()?.join("window.json"))
 }
 
 /// The shape the window had when it was last closed.

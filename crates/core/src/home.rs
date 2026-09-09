@@ -56,6 +56,10 @@ pub fn config() -> Option<PathBuf> {
 /// *even on macOS* — Zed keeps its settings there, and the shared agents
 /// directory lives there too. A program written on Linux and ported badly is
 /// the usual reason, but it is where the files are.
+///
+/// On Windows there is no XDG-shaped directory to give, so this answers with
+/// the roaming one and [`local_config`] answers with the other. Anything that
+/// does not know which an editor chose should ask for both.
 #[must_use]
 pub fn dot_config() -> Option<PathBuf> {
     if cfg!(target_os = "windows") {
@@ -65,6 +69,25 @@ pub fn dot_config() -> Option<PathBuf> {
         .map(PathBuf::from)
         .filter(|path| !path.as_os_str().is_empty())
         .or_else(|| home().map(|home| home.join(".config")))
+}
+
+/// The config directory that stays on this machine.
+///
+/// Windows keeps two and they are not interchangeable: `%APPDATA%` follows a
+/// person between the machines they sign in to, `%LOCALAPPDATA%` does not.
+/// Editors disagree about which they want — nvim keeps its init in the local
+/// one — and guessing wrong means reading somebody's settings from a directory
+/// they have never written to. Everywhere else there is only one, and this and
+/// [`dot_config`] give the same answer.
+#[must_use]
+pub fn local_config() -> Option<PathBuf> {
+    if cfg!(target_os = "windows") {
+        return std::env::var_os("LOCALAPPDATA")
+            .map(PathBuf::from)
+            .filter(|path| !path.as_os_str().is_empty())
+            .or_else(|| home().map(|home| home.join("AppData/Local")));
+    }
+    dot_config()
 }
 
 /// Where installed applications live, for the themes they ship with.
@@ -77,10 +100,18 @@ pub fn applications() -> Vec<PathBuf> {
 
     if cfg!(target_os = "windows") {
         for var in ["LOCALAPPDATA", "PROGRAMFILES", "PROGRAMFILES(X86)"] {
-            if let Some(at) = std::env::var_os(var) {
-                places.push(PathBuf::from(at).join("Programs"));
-                places.push(PathBuf::from(std::env::var_os(var).unwrap_or_default()));
+            // An installer puts an editor either straight under the root or in
+            // the `Programs` directory beneath it, so both are looked at. The
+            // variable is read once: reading it twice let an empty one through
+            // as a relative path, and every place here has to be somewhere.
+            let Some(at) = std::env::var_os(var).map(PathBuf::from) else {
+                continue;
+            };
+            if at.as_os_str().is_empty() {
+                continue;
             }
+            places.push(at.join("Programs"));
+            places.push(at);
         }
     } else if cfg!(target_os = "macos") {
         places.push(PathBuf::from("/Applications"));
@@ -115,7 +146,7 @@ mod tests {
         // happened to be run from. Checked on the shape rather than by setting
         // the variable, because a test that changes the environment changes it
         // for every other test running beside it.
-        for at in [home(), config(), dot_config(), deck()]
+        for at in [home(), config(), dot_config(), local_config(), deck()]
             .into_iter()
             .flatten()
         {
@@ -128,7 +159,10 @@ mod tests {
         for at in applications() {
             assert!(at.is_absolute(), "{} is not somewhere", at.display());
         }
-        for at in [config(), dot_config(), deck()].into_iter().flatten() {
+        for at in [config(), dot_config(), local_config(), deck()]
+            .into_iter()
+            .flatten()
+        {
             assert!(at.is_absolute(), "{} is not somewhere", at.display());
         }
     }

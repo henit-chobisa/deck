@@ -249,13 +249,26 @@ pub fn embed_fonts(cx: &App) {
 /// code and the face it is set in is most of what the reader sees. Anything
 /// missing is skipped, so a machine without any of them still gets whatever the
 /// theme already had.
+///
+/// The tail of the list is one face each platform is guaranteed to have. The
+/// four at the top are the ones somebody chose to install; the rest are the
+/// ones that are simply there. Without them a Windows machine matched nothing
+/// at all and read its code in the narration face — which travels with the
+/// binary, so the deck looked deliberate and was not.
 const MONO: &[&str] = &[
     "JetBrainsMono Nerd Font Mono",
     "JetBrains Mono",
     "Iosevka Fixed",
     "Berkeley Mono",
+    // macOS
     "SF Mono",
     "Menlo",
+    // Windows
+    "Cascadia Mono",
+    "Consolas",
+    // and the rest
+    "DejaVu Sans Mono",
+    "Liberation Mono",
 ];
 
 /// The first of `names` the machine actually has.

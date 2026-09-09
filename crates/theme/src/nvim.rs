@@ -43,11 +43,21 @@ io.write(vim.json.encode(out))
 /// The reader's own init, if they have one.
 ///
 /// `XDG_CONFIG_HOME` first, because a reader who set it meant it.
+///
+/// Then both of the directories Windows keeps. nvim puts its init under
+/// `%LOCALAPPDATA%`, which is not where a config directory is usually asked
+/// for — so asking correctly and taking the first answer still read the wrong
+/// place. Both are looked at, and whichever holds a file wins. On every other
+/// platform the two are the same directory and the second look costs nothing.
 pub(crate) fn init() -> Option<PathBuf> {
-    let config = deck_core::home::dot_config()?;
+    let mut roots: Vec<PathBuf> = Vec::new();
+    roots.extend(deck_core::home::dot_config());
+    roots.extend(deck_core::home::local_config());
+    roots.dedup();
 
-    [config.join("nvim/init.lua"), config.join("nvim/init.vim")]
+    roots
         .into_iter()
+        .flat_map(|at| [at.join("nvim/init.lua"), at.join("nvim/init.vim")])
         .find(|path| path.is_file())
 }
 

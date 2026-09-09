@@ -108,8 +108,17 @@ pub struct Flavour {
     pub settings: &'static str,
     /// The directory under `$HOME` where its extensions live.
     pub extensions: &'static str,
-    /// And the application bundle, for the themes it ships with.
-    pub bundled: &'static str,
+    /// What its own installed directory is called on macOS, on Windows, and on
+    /// everything else.
+    ///
+    /// Three names because no two platforms agree: a bundle, a display name,
+    /// and a lowercase one. They are names rather than paths so that [`bundled`]
+    /// can ask the platform where applications go instead of this deciding.
+    pub mac: &'static str,
+    /// As `mac`, for Windows.
+    pub windows: &'static str,
+    /// As `mac`, for Linux and the rest.
+    pub unix: &'static str,
 }
 
 /// Plain VS Code.
@@ -117,22 +126,50 @@ pub const CODE: Flavour = Flavour {
     name: "VS Code",
     settings: "Code",
     extensions: ".vscode/extensions",
-    bundled: "/Applications/Visual Studio Code.app/Contents/Resources/app/extensions",
+    mac: "Visual Studio Code.app",
+    windows: "Microsoft VS Code",
+    unix: "code",
 };
 /// Cursor.
 pub const CURSOR: Flavour = Flavour {
     name: "Cursor",
     settings: "Cursor",
     extensions: ".cursor/extensions",
-    bundled: "/Applications/Cursor.app/Contents/Resources/app/extensions",
+    mac: "Cursor.app",
+    windows: "cursor",
+    unix: "cursor",
 };
 /// Windsurf.
 pub const WINDSURF: Flavour = Flavour {
     name: "Windsurf",
     settings: "Windsurf",
     extensions: ".windsurf/extensions",
-    bundled: "/Applications/Windsurf.app/Contents/Resources/app/extensions",
+    mac: "Windsurf.app",
+    windows: "Windsurf",
+    unix: "windsurf",
 };
+
+/// Where this flavour keeps the themes it ships with.
+///
+/// Every place the platform installs applications, times the three names the
+/// directory goes by. This used to be one absolute `/Applications/…` string,
+/// which meant a reader anywhere else found none of the themes their editor
+/// came with — and those are the common case, not the rare one, because an
+/// editor left on its own default writes no theme name down at all.
+#[must_use]
+pub fn bundled(flavour: Flavour) -> Vec<PathBuf> {
+    home::applications()
+        .into_iter()
+        .flat_map(|at| {
+            [
+                at.join(flavour.mac)
+                    .join("Contents/Resources/app/extensions"),
+                at.join(flavour.windows).join("resources/app/extensions"),
+                at.join(flavour.unix).join("resources/app/extensions"),
+            ]
+        })
+        .collect()
+}
 
 /// Whether this flavour is on the machine at all.
 ///
@@ -143,22 +180,36 @@ pub const WINDSURF: Flavour = Flavour {
 pub fn here(flavour: Flavour, home: &Path) -> bool {
     settings_of(flavour, home).is_some()
         || home.join(flavour.extensions).exists()
-        || Path::new(flavour.bundled).exists()
+        || bundled(flavour).iter().any(|at| at.exists())
 }
 
 /// Where this flavour keeps its settings, if it does.
 #[must_use]
 pub fn settings_of(flavour: Flavour, home: &Path) -> Option<PathBuf> {
-    // Where macOS keeps it, then where everyone else does.
-    [
-        home.join(format!(
-            "Library/Application Support/{}/User/settings.json",
-            flavour.settings
-        )),
-        home.join(format!(".config/{}/User/settings.json", flavour.settings)),
-    ]
-    .into_iter()
-    .find(|path| path.is_file())
+    settings_places(flavour, home)
+        .into_iter()
+        .find(|path| path.is_file())
+}
+
+/// Every place this flavour's settings could be, best first.
+fn settings_places(flavour: Flavour, home: &Path) -> Vec<PathBuf> {
+    let under = |at: PathBuf| at.join(flavour.settings).join("User/settings.json");
+
+    // What the platform says, first — it is the only answer that survives a
+    // redirected `%APPDATA%`, which a roaming Windows profile has.
+    let mut places: Vec<PathBuf> = home::config().map(under).into_iter().collect();
+
+    // Then the three shapes spelled out under the home given. This is what
+    // makes the function testable, and it is the answer on a machine whose
+    // variables are not set. `AppData/Roaming` was the one missing before, so
+    // Windows fell through to `.config` and found nothing.
+    places.extend(
+        ["Library/Application Support", "AppData/Roaming", ".config"]
+            .into_iter()
+            .map(|at| under(home.join(at))),
+    );
+
+    places
 }
 
 /// Read one flavour's colours, or a named theme of it.
@@ -335,10 +386,8 @@ fn default_theme(flavour: Flavour, home: &Path, dark: bool) -> Option<PathBuf> {
 
 /// Every extension manifest this flavour can see, with the directory it is in.
 fn manifests(flavour: Flavour, home: &Path) -> Vec<(PathBuf, Manifest)> {
-    let places = [
-        home.join(flavour.extensions),
-        PathBuf::from(flavour.bundled),
-    ];
+    let mut places = vec![home.join(flavour.extensions)];
+    places.extend(bundled(flavour));
     let mut out = Vec::new();
 
     for place in places {
@@ -512,6 +561,48 @@ fn scope(theme: &Theme, wanted: &str) -> Option<Rgb> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn windows_keeps_its_settings_somewhere_that_is_looked_at() {
+        // The bug this pins: the list held the macOS shape and then `.config`,
+        // so a Windows reader fell through both and deck decided their editor
+        // had no settings at all. Checked on the list rather than on disk —
+        // `settings_of` asks the real platform first, which is right and is
+        // also not something a test can depend on.
+        let looked_at: Vec<String> = settings_places(CODE, Path::new("/somebody"))
+            .iter()
+            .map(|at| at.display().to_string())
+            .collect();
+
+        for shape in [
+            "/somebody/AppData/Roaming/Code/User/settings.json",
+            "/somebody/Library/Application Support/Code/User/settings.json",
+            "/somebody/.config/Code/User/settings.json",
+        ] {
+            assert!(
+                looked_at.iter().any(|at| at == shape),
+                "nothing looks at {shape}"
+            );
+        }
+    }
+
+    #[test]
+    fn an_editor_is_looked_for_wherever_the_platform_installs_things() {
+        // This was one `/Applications/…` string, so the themes an editor ships
+        // with — the only ones a reader on defaults has — were unfindable off
+        // macOS. Every application root, times the three names the directory
+        // goes by.
+        let places = bundled(CODE);
+        assert_eq!(places.len(), deck_core::home::applications().len() * 3);
+
+        let named: Vec<String> = places.iter().map(|at| at.display().to_string()).collect();
+        for name in ["Visual Studio Code.app", "Microsoft VS Code", "code"] {
+            assert!(
+                named.iter().any(|at| at.contains(name)),
+                "no place is called {name}"
+            );
+        }
+    }
 
     #[test]
     fn comments_come_out_and_strings_are_left_alone() {
