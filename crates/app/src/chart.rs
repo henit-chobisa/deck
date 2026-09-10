@@ -331,7 +331,11 @@ pub enum Lit {
     Resting,
     /// On the path, and this far reached: zero as the front arrives, one once
     /// it has passed. Everything between is the current going through.
-    On(f32),
+    ///
+    /// The colour is what the flow or the step asked for, and `None` means
+    /// the deck's own accent — which is the right answer for a picture with
+    /// one path through it.
+    On(f32, Option<deck_core::theme::Rgb>),
     /// Not on the path, while a path is being shown.
     Aside,
 }
@@ -413,7 +417,7 @@ impl Chart {
             // with it.
             .relative()
             .child(self.render_drawing(slot.ix, palette, slot.view))
-            .children(self.render_flows(slot.ix, palette, slot.view))
+            .children(self.render_flows(slot.ix, palette, slot.view, cx))
     }
 
     /// The buttons that play this diagram's flows.
@@ -424,12 +428,16 @@ impl Chart {
         pane_ix: usize,
         palette: &Palette,
         view: &WeakEntity<DeckView>,
+        cx: &App,
     ) -> Option<impl IntoElement> {
         let flows = self.flows();
         if flows.is_empty() {
             return None;
         }
         let playing = self.playing;
+        let pace = view
+            .upgrade()
+            .map_or(crate::view::Pace::Normal, |deck| deck.read(cx).pace());
 
         Some(
             div()
@@ -445,8 +453,33 @@ impl Chart {
                 .h_flex()
                 .items_center()
                 .gap(px(6.))
+                // The speed, before the paths. It applies to all of them, and
+                // one button that cycles three words is smaller than three
+                // buttons of which two are always wrong.
+                .child({
+                    let view = view.clone();
+                    div()
+                        .id(("pace", pane_ix))
+                        .px(px(8.))
+                        .py(px(3.))
+                        .rounded(px(11.))
+                        .border_1()
+                        .border_color(paint(palette.edge))
+                        .bg(paint(palette.bg))
+                        .text_size(px(10.5))
+                        .text_color(paint(palette.muted))
+                        .cursor_pointer()
+                        .hover(|this| this.border_color(paint(palette.accent)))
+                        .child(pace.label())
+                        .on_click(move |_, _window, cx| {
+                            let _ = view.update(cx, |deck, cx| deck.change_pace(pane_ix, cx));
+                        })
+                })
                 .children(flows.into_iter().enumerate().map(|(ix, name)| {
                     let on = playing.is_some_and(|playing| playing.flow == ix);
+                    // The pill wears the colour its path is lit in, so the
+                    // button and what it does are the same thing twice.
+                    let tint = self.flow_color(ix).unwrap_or(palette.accent);
                     let view = view.clone();
                     div()
                         .id(("flow", pane_ix * 64 + ix))
@@ -458,16 +491,16 @@ impl Chart {
                         .py(px(3.))
                         .rounded(px(11.))
                         .border_1()
-                        .border_color(paint(if on { palette.accent } else { palette.edge }))
+                        .border_color(paint(if on { tint } else { palette.edge }))
                         .bg(paint(if on {
-                            palette.accent.mix(palette.bg, 0.86)
+                            tint.mix(palette.bg, 0.86)
                         } else {
                             palette.bg
                         }))
                         .text_size(px(10.5))
-                        .text_color(paint(if on { palette.accent } else { palette.muted }))
+                        .text_color(paint(if on { tint } else { palette.muted }))
                         .cursor_pointer()
-                        .hover(|this| this.border_color(paint(palette.accent)))
+                        .hover(move |this| this.border_color(paint(tint)))
                         .child(name)
                         // A triangle or a square, drawn rather than fetched,
                         // in a box of a fixed size. The two glyphs are not the
@@ -524,43 +557,55 @@ impl Chart {
             })
             .child(
                 // Carried by the reader's drag, before anything else about it
-                // is decided. Relative rather than absolute, so the box still
-                // takes part in the layout that centres it.
-                div().relative().left(self.nudge.x).top(self.nudge.y).child(
-                    // Centred when it fits, top-left when it does not.
-                    //
-                    // Both from one rule, and it has to be one rule because
-                    // nothing here knows how big the pane is. This box is at least
-                    // the size of the pane and at least the size of the drawing:
-                    // when the drawing is the smaller of the two it sits in the
-                    // middle of the pane, and when it is the larger the box is
-                    // exactly the drawing and the centring has nothing left to do
-                    // — which is what stops a wide picture being centred into a
-                    // viewport it cannot be scrolled back out of.
-                    div()
-                        // Neither growing nor shrinking, so its width is its
-                        // content's and the minimums are the only thing that can
-                        // stretch it. Left to shrink it took the pane's width and
-                        // centred a wider drawing inside that, which cut the left
-                        // of the picture off with no way to scroll back to it.
-                        .flex_none()
-                        .min_w(relative(1.))
-                        .min_h(relative(1.))
-                        .flex()
-                        .items_center()
-                        .justify_center()
-                        .child(
-                            div()
-                                .relative()
-                                .flex_none()
-                                .w(self.plan.size.width)
-                                .h(self.plan.size.height)
-                                .child(self.paint(palette))
-                                .children(self.cluster_names(palette))
-                                .children(self.edge_labels(palette))
-                                .children(self.node_labels(pane_ix, palette, view)),
-                        ),
-                ),
+                // is decided.
+                //
+                // A flex row of its own, and at least as wide as the pane: a
+                // block div here is only as wide as its content, which took
+                // the centring away from the box inside it and left every
+                // drawing hard against the left of its pane.
+                div()
+                    .relative()
+                    .left(self.nudge.x)
+                    .top(self.nudge.y)
+                    .flex()
+                    .flex_none()
+                    .min_w(relative(1.))
+                    .min_h(relative(1.))
+                    .child(
+                        // Centred when it fits, top-left when it does not.
+                        //
+                        // Both from one rule, and it has to be one rule because
+                        // nothing here knows how big the pane is. This box is at least
+                        // the size of the pane and at least the size of the drawing:
+                        // when the drawing is the smaller of the two it sits in the
+                        // middle of the pane, and when it is the larger the box is
+                        // exactly the drawing and the centring has nothing left to do
+                        // — which is what stops a wide picture being centred into a
+                        // viewport it cannot be scrolled back out of.
+                        div()
+                            // Neither growing nor shrinking, so its width is its
+                            // content's and the minimums are the only thing that can
+                            // stretch it. Left to shrink it took the pane's width and
+                            // centred a wider drawing inside that, which cut the left
+                            // of the picture off with no way to scroll back to it.
+                            .flex_none()
+                            .min_w(relative(1.))
+                            .min_h(relative(1.))
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .child(
+                                div()
+                                    .relative()
+                                    .flex_none()
+                                    .w(self.plan.size.width)
+                                    .h(self.plan.size.height)
+                                    .child(self.paint(palette))
+                                    .children(self.cluster_names(palette))
+                                    .children(self.edge_labels(palette))
+                                    .children(self.node_labels(pane_ix, palette, view)),
+                            ),
+                    ),
             );
 
         div()
@@ -672,7 +717,9 @@ impl Chart {
                             // arrows carry it as much as the boxes do — and
                             // they carry it first, since an arrow is the part
                             // of the path that is only ever motion.
-                            Lit::On(much) => quiet.mix(palette.bg, ASIDE).mix(palette.accent, much),
+                            Lit::On(much, tint) => quiet
+                                .mix(palette.bg, ASIDE)
+                                .mix(tint.unwrap_or(palette.accent), much),
                             Lit::Aside => quiet.mix(palette.bg, ASIDE),
                             Lit::Resting => {
                                 if route.back {
@@ -924,13 +971,17 @@ impl Chart {
         // A node the path visits twice belongs to the earlier visit, which is
         // what a reader watching it travel would expect: it lights when it is
         // first reached and stays lit.
-        let Some(at) = walk.iter().position(|step| *step == id) else {
+        let Some(at) = walk.iter().position(|step| step.node() == id) else {
             return Lit::Aside;
         };
         // The front is measured in steps, so how far this node has been
         // reached is simply how far past it the front has got — clamped, so a
         // box behind the front is fully lit and one ahead of it is not yet.
-        Lit::On((playing.front - at as f32).clamp(0., 1.))
+        Lit::On(
+            (playing.front - at as f32).clamp(0., 1.),
+            // The step's own colour beats the flow's, which beats the deck's.
+            walk[at].color().or(flow.color),
+        )
     }
 
     /// How far the flow has travelled along the edge from `from` to `to`.
@@ -946,8 +997,13 @@ impl Chart {
         // An edge is the space between two steps, so it fills as the front
         // crosses it and is full once the front has arrived at the far end.
         for at in 1..walk.len() {
-            if walk[at - 1] == from && walk[at] == to {
-                return Lit::On((playing.front - (at as f32 - 1.)).clamp(0., 1.));
+            if walk[at - 1].node() == from && walk[at].node() == to {
+                return Lit::On(
+                    (playing.front - (at as f32 - 1.)).clamp(0., 1.),
+                    // An arrow belongs to the step it arrives at, so it takes
+                    // that step's colour.
+                    walk[at].color().or(flow.color),
+                );
             }
         }
         Lit::Aside
@@ -961,6 +1017,12 @@ impl Chart {
             .iter()
             .map(|flow| SharedString::from(flow.name.clone()))
             .collect()
+    }
+
+    /// The colour the flow at `ix` is lit in, if it asked for one.
+    #[must_use]
+    pub fn flow_color(&self, ix: usize) -> Option<deck_core::theme::Rgb> {
+        self.diagram.flows.get(ix).and_then(|flow| flow.color)
     }
 
     /// How many steps the flow at `ix` has.
@@ -1001,12 +1063,13 @@ fn skin(weight: Weight, picked: bool, lit: Lit, palette: &Palette) -> Skin {
         // Mixed rather than switched. A box on the path is drawn between where
         // it was and where the current will leave it, so the light arrives
         // through it instead of landing on it.
-        Lit::On(much) => {
+        Lit::On(much, tint) => {
+            let lit = tint.unwrap_or(palette.accent);
             let from = fill.mix(palette.bg, ASIDE);
             let was = edge.mix(palette.bg, ASIDE);
             (
-                from.mix(fill.mix(palette.accent, 0.16), much),
-                was.mix(palette.accent, much),
+                from.mix(fill.mix(lit, 0.16), much),
+                was.mix(lit, much),
                 width + (1.5_f32 - width).max(0.) * much,
             )
         }

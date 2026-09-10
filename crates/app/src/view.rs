@@ -384,6 +384,11 @@ pub struct DeckView {
     /// Held so that starting a second flow drops the first: two paths lighting
     /// at once would be two answers to a question that has one.
     stepping: Task<()>,
+    /// How fast a flow travels.
+    ///
+    /// A reader meeting a picture for the first time and one checking a path
+    /// they already know want different speeds, and neither is wrong.
+    pace: Pace,
     /// How the page's height is shared between its panes.
     ///
     /// One share each, so two panes start even. A drag moves height from one
@@ -412,6 +417,46 @@ pub struct DeckView {
     /// whether this is a drag is read from the move event itself, which cannot
     /// be stale.
     hovered: Option<(usize, u32)>,
+}
+
+/// How fast a flow travels.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Pace {
+    /// For a picture being met for the first time.
+    Slow,
+    /// The default.
+    Normal,
+    /// For a path already known, being checked.
+    Fast,
+}
+
+impl Pace {
+    /// Seconds per step.
+    fn per_step(self) -> f32 {
+        match self {
+            Self::Slow => 1.15,
+            Self::Normal => 0.62,
+            Self::Fast => 0.34,
+        }
+    }
+
+    /// What the button says.
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Slow => "slow",
+            Self::Normal => "normal",
+            Self::Fast => "fast",
+        }
+    }
+
+    /// The next one round, so one button cycles all three.
+    fn next(self) -> Self {
+        match self {
+            Self::Slow => Self::Normal,
+            Self::Normal => Self::Fast,
+            Self::Fast => Self::Slow,
+        }
+    }
 }
 
 /// Slow at both ends, quick through the middle.
@@ -472,6 +517,7 @@ impl DeckView {
             turn_now: turn.unwrap_or(0),
             panning: None,
             stepping: Task::ready(()),
+            pace: Pace::Normal,
             sizing: None,
             band_height,
             folded,
@@ -1312,10 +1358,9 @@ impl DeckView {
         // 2.4 the third box is 40 percent lit and the arrow into it is 40
         // percent across. Stepping whole numbers on a timer was the same
         // information delivered as a flick-book, and it read like one.
-        const PER_STEP: f32 = 0.62;
         const FRAME: std::time::Duration = std::time::Duration::from_millis(16);
 
-        let over = PER_STEP * (steps.saturating_sub(1)).max(1) as f32;
+        let over = self.pace.per_step() * steps as f32;
         self.stepping = cx.spawn(async move |deck, cx| {
             let began = std::time::Instant::now();
             loop {
@@ -1324,7 +1369,11 @@ impl DeckView {
                 // Eased at both ends: a current that started at full speed
                 // would read as a jump, and one that stopped dead would read
                 // as a frame dropped at the end.
-                let front = ease(along) * (steps - 1) as f32;
+                // Up to `steps`, not `steps - 1`. A node at index i is fully
+                // lit once the front reaches i + 1, so a front that stopped
+                // one short left the last node of every path dark — the one
+                // the whole path was walked to arrive at.
+                let front = ease(along) * steps as f32;
 
                 let carried = deck.update(cx, |deck, cx| {
                     let Some(chart) = deck.panes.get_mut(pane_ix).and_then(Sheet::chart_mut) else {
@@ -1343,6 +1392,32 @@ impl DeckView {
                 }
             }
         });
+    }
+
+    /// How fast flows travel, for the button that shows it.
+    #[must_use]
+    pub fn pace(&self) -> Pace {
+        self.pace
+    }
+
+    /// Change the speed, and restart whatever is playing at the new one.
+    pub fn change_pace(&mut self, pane_ix: usize, cx: &mut Context<Self>) {
+        self.pace = self.pace.next();
+        // Restarted rather than adjusted part-way. The speed is being chosen
+        // by somebody watching, and the way to see what you chose is to see it
+        // from the beginning.
+        let playing = self
+            .panes
+            .get(pane_ix)
+            .and_then(Sheet::chart)
+            .and_then(|chart| chart.playing);
+        if let Some(playing) = playing {
+            if let Some(chart) = self.panes.get_mut(pane_ix).and_then(Sheet::chart_mut) {
+                chart.playing = None;
+            }
+            self.play_flow(pane_ix, playing.flow, cx);
+        }
+        cx.notify();
     }
 
     /// Fold a remark down to its header, or open it again.

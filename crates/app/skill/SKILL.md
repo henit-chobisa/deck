@@ -315,8 +315,13 @@ Only `nodes` is required.
 - `flows` are paths through the picture the reader can play, and they are how one
   diagram answers more than one question. Each is `{ "name", "steps" }` where the
   steps are node ids in the order they happen. A button per flow sits in the
-  drawing's top-right; pressing it lights the steps in turn while everything else
-  recedes.
+  drawing's top-right; pressing it sends a current along the path while
+  everything else recedes.
+
+  Give a flow a `color` when there are two, so they can be told apart without
+  pressing both. A step can be written `{ "node": "x", "color": "#c33" }` to
+  light one stop differently from the rest — the place it goes wrong, in a path
+  that is otherwise calm.
 
 ```json
 "flows": [

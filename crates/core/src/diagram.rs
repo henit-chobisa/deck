@@ -36,6 +36,7 @@
 //! depend on text metrics, which belong to whatever is drawing. The view takes
 //! these cells and does the geometry.
 
+use crate::theme::Rgb;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 
@@ -243,7 +244,54 @@ pub struct Flow {
     /// What this path is called. Shown on the button that plays it.
     pub name: String,
     /// The nodes it touches, in order. Ids that name no node are skipped.
-    pub steps: Vec<String>,
+    pub steps: Vec<Step>,
+    /// The colour this path is lit in.
+    ///
+    /// Two flows over one picture are two answers, and telling them apart by
+    /// which button is pressed means holding the last one in your head. Given
+    /// a colour each, they can be compared. Left out, a flow uses the deck's
+    /// accent, which is the right answer for a diagram with only one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub color: Option<Rgb>,
+}
+
+/// One stop on a path.
+///
+/// Written as a plain id, or as an object when that one node wants a colour of
+/// its own — the step where it goes wrong, in a flow that is otherwise calm.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum Step {
+    /// Just the node.
+    Node(String),
+    /// The node, and how to light it.
+    Lit {
+        /// Which node.
+        node: String,
+        /// The colour for this step alone, over the flow's own.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        color: Option<Rgb>,
+    },
+}
+
+impl Step {
+    /// Which node this step is.
+    #[must_use]
+    pub fn node(&self) -> &str {
+        match self {
+            Self::Node(id) => id,
+            Self::Lit { node, .. } => node,
+        }
+    }
+
+    /// The colour asked for, if this step asked for one.
+    #[must_use]
+    pub fn color(&self) -> Option<Rgb> {
+        match self {
+            Self::Node(_) => None,
+            Self::Lit { color, .. } => *color,
+        }
+    }
 }
 
 /// A picture of how some things relate.
@@ -278,11 +326,10 @@ impl Flow {
     /// an edge naming a missing node is: a flow written against a diagram that
     /// has since lost a box should play the part it still can.
     #[must_use]
-    pub fn walk<'a>(&'a self, diagram: &'a Diagram) -> Vec<&'a str> {
+    pub fn walk<'a>(&'a self, diagram: &'a Diagram) -> Vec<&'a Step> {
         self.steps
             .iter()
-            .map(String::as_str)
-            .filter(|step| diagram.nodes.iter().any(|node| node.id == *step))
+            .filter(|step| diagram.nodes.iter().any(|node| node.id == step.node()))
             .collect()
     }
 }
@@ -528,6 +575,35 @@ mod tests {
     }
 
     #[test]
+    fn the_last_node_of_a_path_lights() {
+        // The front runs to `steps`, not `steps - 1`. A node at index i is
+        // full once the front reaches i + 1, so a front that stopped one short
+        // left the last node of every path dark — the one the whole path was
+        // walked to arrive at.
+        let steps = 4;
+        let front = steps as f32;
+        let last = (front - (steps - 1) as f32).clamp(0., 1.);
+        assert_eq!(last, 1., "the node the path was walked to reach");
+    }
+
+    #[test]
+    fn a_step_can_be_a_bare_id_or_a_colour_of_its_own() {
+        // The plain form has to keep working, because it is what almost every
+        // flow is, and the object form is for the one step that goes wrong in
+        // a path that is otherwise calm.
+        let flow: Flow = serde_json::from_str(
+            r##"{ "name": "p", "steps": ["a", { "node": "b", "color": "#c33" }] }"##,
+        )
+        .expect("both forms parse");
+
+        assert_eq!(flow.steps[0].node(), "a");
+        assert_eq!(flow.steps[0].color(), None);
+        assert_eq!(flow.steps[1].node(), "b");
+        assert_eq!(flow.steps[1].color(), Rgb::from_hex("#c33"));
+        assert_eq!(flow.color, None, "and a flow need not have one either");
+    }
+
+    #[test]
     fn a_flow_walks_only_the_nodes_that_exist() {
         // A flow written against a diagram that has since lost a box should
         // play the part it still can, the same way an edge naming a missing
@@ -535,10 +611,16 @@ mod tests {
         let mut d = diagram(Direction::Down, &["a", "b"], &[("a", "b")]);
         d.flows = vec![Flow {
             name: "the path".to_string(),
-            steps: vec!["a".into(), "gone".into(), "b".into()],
+            steps: vec![
+                Step::Node("a".into()),
+                Step::Node("gone".into()),
+                Step::Node("b".into()),
+            ],
+            color: None,
         }];
 
-        assert_eq!(d.flows[0].walk(&d), vec!["a", "b"]);
+        let walked: Vec<&str> = d.flows[0].walk(&d).iter().map(|s| s.node()).collect();
+        assert_eq!(walked, vec!["a", "b"]);
     }
 
     #[test]

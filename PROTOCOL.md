@@ -287,6 +287,12 @@ with none is the ordinary case.
 | ------- | ------ | -------- |
 | `name`  | string | yes      |
 | `steps` | array  | yes      |
+| `color` | string | no       |
+
+A step is a node id, or an object `{ "node", "color" }` when that one step wants
+a colour of its own. `color` on the flow lights the whole path; on a step it
+lights that step alone and beats the flow's. Both are hex, as elsewhere. Without
+either, a flow uses the client's own accent.
 
 `steps` are node ids, in the order they happen. A client shows one button per
 flow and lights the steps in turn when it is played: the nodes on the path keep
