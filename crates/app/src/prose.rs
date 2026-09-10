@@ -28,6 +28,13 @@ pub struct Token {
     /// between them, so a chip followed by a comma is followed by a comma.
     text: SharedString,
     mark: Option<Mark>,
+    /// Where this word sits in the whole narration, counting from zero.
+    ///
+    /// A selection is a range of these. Words rather than characters: the
+    /// narration is laid out as one element per word so that a paragraph can
+    /// wrap between any two of them, and a range of elements is what that
+    /// layout can answer questions about.
+    at: usize,
     /// Which sentence of the whole narration this word belongs to.
     ///
     /// Carried on the word rather than wrapping each sentence in a container of
@@ -50,6 +57,57 @@ pub struct Paragraph {
 /// still carries the half the reader was pointing at — which is the thing that
 /// matters, and is already far better than quoting the first line whatever they
 /// meant.
+/// How the narration answers the pointer.
+pub struct Picking {
+    /// The words currently selected, as an inclusive range.
+    pub range: Option<(usize, usize)>,
+    /// The pointer went down on this word.
+    pub down: std::rc::Rc<dyn Fn(usize, &mut Window, &mut App)>,
+    /// The pointer entered or left this word.
+    pub over: std::rc::Rc<dyn Fn(usize, bool, &mut Window, &mut App)>,
+}
+
+/// Every word of `say`, in order, each keeping the space that followed it.
+///
+/// A selection quotes `words[from..=to]` joined, which is why the spacing has
+/// to ride along on the word rather than be put back afterwards.
+#[must_use]
+pub fn words(say: &str) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    let paragraphs = parse(say);
+    let last = paragraphs.len().saturating_sub(1);
+
+    for (ix, para) in paragraphs.into_iter().enumerate() {
+        out.extend(para.tokens.into_iter().map(|token| token.text.to_string()));
+        // The last word of a paragraph carries no trailing space — nothing
+        // follows it on its own line. A selection that runs into the next
+        // paragraph would join the two words together without one.
+        if ix < last
+            && let Some(end) = out.last_mut()
+        {
+            end.push(' ');
+        }
+    }
+    out
+}
+
+/// The words of the sentence that `at` belongs to.
+///
+/// What a plain click selects. Clicking is not dragging, and selecting a single
+/// word because somebody clicked once would be a selection nobody asked for.
+#[must_use]
+pub fn sentence_around(say: &str, at: usize) -> Option<(usize, usize)> {
+    let tokens: Vec<(usize, usize)> = parse(say)
+        .into_iter()
+        .flat_map(|para| para.tokens)
+        .map(|token| (token.at, token.said))
+        .collect();
+    let said = tokens.iter().find(|(ix, _)| *ix == at)?.1;
+    let mut of_it = tokens.iter().filter(|(_, s)| *s == said).map(|(ix, _)| *ix);
+    let first = of_it.next()?;
+    Some((first, of_it.last().unwrap_or(first)))
+}
+
 fn ends_a_sentence(word: &str) -> bool {
     word.trim_end().ends_with(['.', '!', '?'])
 }
@@ -60,35 +118,16 @@ fn ends_a_sentence(word: &str) -> bool {
 /// this understands — and the only one narration uses.
 #[must_use]
 pub fn parse(say: &str) -> Vec<Paragraph> {
-    let mut said = 0;
+    let (mut said, mut at) = (0, 0);
     say.split("\n\n")
         .map(str::trim)
         .filter(|para| !para.is_empty())
         .map(|para| {
-            let parsed = paragraph(para, &mut said);
+            let parsed = paragraph(para, &mut said, &mut at);
             // A paragraph break always ends a sentence, whatever it ends with.
             said += 1;
             parsed
         })
-        .collect()
-}
-
-/// Every sentence of `say`, in order — the text a comment on one of them quotes.
-#[must_use]
-pub fn sentences(say: &str) -> Vec<String> {
-    let mut out: Vec<String> = Vec::new();
-    for para in parse(say) {
-        for token in para.tokens {
-            let at = token.said;
-            while out.len() <= at {
-                out.push(String::new());
-            }
-            out[at].push_str(&token.text);
-        }
-    }
-    out.into_iter()
-        .map(|said| said.trim().to_string())
-        .filter(|said| !said.is_empty())
         .collect()
 }
 
@@ -106,24 +145,17 @@ pub fn render(
     paragraphs: Vec<Paragraph>,
     palette: &Palette,
     mono: SharedString,
-    picked: Option<usize>,
-    pick: std::rc::Rc<dyn Fn(usize, &mut Window, &mut App)>,
+    picking: &Picking,
 ) -> impl IntoElement {
     div().v_flex().gap(px(9.)).children(
         paragraphs
             .into_iter()
-            .map(|para| para.render(palette, mono.clone(), picked, pick.clone())),
+            .map(|para| para.render(palette, mono.clone(), picking)),
     )
 }
 
 impl Paragraph {
-    fn render(
-        self,
-        palette: &Palette,
-        mono: SharedString,
-        picked: Option<usize>,
-        pick: std::rc::Rc<dyn Fn(usize, &mut Window, &mut App)>,
-    ) -> impl IntoElement {
+    fn render(self, palette: &Palette, mono: SharedString, picking: &Picking) -> impl IntoElement {
         div()
             .flex()
             .flex_wrap()
@@ -132,37 +164,41 @@ impl Paragraph {
             .line_height(px(21.))
             .text_color(paint(palette.fg))
             .children(
-                self.tokens.into_iter().enumerate().map(|(ix, token)| {
-                    token.render(palette, mono.clone(), picked, ix, pick.clone())
-                }),
+                self.tokens
+                    .into_iter()
+                    .map(|token| token.render(palette, mono.clone(), picking)),
             )
     }
 }
 
 impl Token {
-    fn render(
-        self,
-        palette: &Palette,
-        mono: SharedString,
-        picked: Option<usize>,
-        ix: usize,
-        pick: std::rc::Rc<dyn Fn(usize, &mut Window, &mut App)>,
-    ) -> AnyElement {
-        // Every word answers to the pointer, and every word of one sentence
-        // lights together. Picking by sentence rather than by character: the
-        // comment carries the sentence it answers, and a half-selected phrase
-        // would be a worse quote than a whole one.
-        let said = self.said;
-        let lit = picked == Some(said);
+    fn render(self, palette: &Palette, mono: SharedString, picking: &Picking) -> AnyElement {
+        // Every word answers to the pointer: down starts a selection, and the
+        // window extends it to whichever word is under the pointer while the
+        // button is held — the same shape the code rows use, one element per
+        // word instead of one per line.
+        //
+        // Words rather than characters, and that is the layout speaking. The
+        // narration is a row of separate elements so a paragraph can wrap
+        // between any two of them, and a range of elements is the finest thing
+        // that layout can be asked about.
+        let at = self.at;
+        let lit = picking
+            .range
+            .is_some_and(|(from, to)| at >= from.min(to) && at <= from.max(to));
+        let (down, over) = (picking.down.clone(), picking.over.clone());
         let wrap = move |inner: AnyElement| {
             div()
-                .id(("say", ix))
+                .id(("say", at))
                 .cursor_pointer()
                 .when(lit, |this| {
-                    this.bg(paint(palette.accent.mix(palette.band, 0.78)))
+                    this.bg(paint(palette.accent.mix(palette.band, 0.74)))
                         .rounded(px(2.))
                 })
-                .on_click(move |_, window, cx| pick(said, window, cx))
+                .on_mouse_down(MouseButton::Left, move |_, window, cx| {
+                    down(at, window, cx);
+                })
+                .on_hover(move |entered, window, cx| over(at, *entered, window, cx))
                 .child(inner)
                 .into_any_element()
         };
@@ -227,7 +263,7 @@ enum Mark {
 }
 
 /// One paragraph, split into the runs it can wrap between.
-fn paragraph(para: &str, said: &mut usize) -> Paragraph {
+fn paragraph(para: &str, said: &mut usize, at: &mut usize) -> Paragraph {
     // A newline inside a paragraph is the agent's line wrapping, not a break.
     let source = para.replace('\n', " ");
     let mut tokens: Vec<Token> = Vec::new();
@@ -239,7 +275,7 @@ fn paragraph(para: &str, said: &mut usize) -> Paragraph {
     ///
     /// The sentence counter advances *after* the word that closed one, so the
     /// full stop stays with the sentence it ends rather than opening the next.
-    fn flush(plain: &mut String, tokens: &mut Vec<Token>, said: &mut usize) {
+    fn flush(plain: &mut String, tokens: &mut Vec<Token>, said: &mut usize, at: &mut usize) {
         let mut word = String::new();
         for ch in plain.chars() {
             word.push(ch);
@@ -249,8 +285,10 @@ fn paragraph(para: &str, said: &mut usize) -> Paragraph {
                 tokens.push(Token {
                     text: SharedString::from(word),
                     mark: None,
+                    at: *at,
                     said: *said,
                 });
+                *at += 1;
                 if ended {
                     *said += 1;
                 }
@@ -261,8 +299,10 @@ fn paragraph(para: &str, said: &mut usize) -> Paragraph {
             tokens.push(Token {
                 text: SharedString::from(word),
                 mark: None,
+                at: *at,
                 said: *said,
             });
+            *at += 1;
             if ended {
                 *said += 1;
             }
@@ -279,7 +319,7 @@ fn paragraph(para: &str, said: &mut usize) -> Paragraph {
                 continue; // an opener with no closer is just text
             };
 
-            flush(&mut plain, &mut tokens, said);
+            flush(&mut plain, &mut tokens, said, at);
             rest = &after_open[len + marker.len()..];
 
             // Any space after the mark rides along on the token, so the tokens
@@ -292,8 +332,10 @@ fn paragraph(para: &str, said: &mut usize) -> Paragraph {
             tokens.push(Token {
                 text: SharedString::from(text),
                 mark: Some(*mark),
+                at: *at,
                 said: *said,
             });
+            *at += 1;
             if ended {
                 *said += 1;
             }
@@ -305,7 +347,7 @@ fn paragraph(para: &str, said: &mut usize) -> Paragraph {
         rest = &rest[ch.len_utf8()..];
     }
 
-    flush(&mut plain, &mut tokens, said);
+    flush(&mut plain, &mut tokens, said, at);
     Paragraph { tokens }
 }
 
@@ -332,22 +374,6 @@ mod tests {
     }
 
     #[test]
-    fn a_sentence_can_be_named_on_its_own() {
-        // What this is for: commenting on the narration used to quote the
-        // first line of the say whatever the reader meant, so an objection to
-        // the third sentence came back answering the first.
-        let said = sentences("The counter drops twice. That is the 63.\n\nAnd a second one.");
-        assert_eq!(
-            said,
-            vec![
-                "The counter drops twice.",
-                "That is the 63.",
-                "And a second one."
-            ]
-        );
-    }
-
-    #[test]
     fn every_word_of_one_sentence_carries_the_same_number() {
         // The number is on the word rather than on a container around the
         // sentence, because a container would only wrap at its own edges and
@@ -362,6 +388,40 @@ mod tests {
         let paras = parse("no full stop here\n\nbut this is a new one");
         assert_eq!(paras[0].tokens[0].said, 0);
         assert_eq!(paras[1].tokens[0].said, 1);
+    }
+
+    #[test]
+    fn a_selection_quotes_exactly_the_words_it_covers() {
+        // The point of dragging: the comment carries what was dragged over,
+        // not the first line of the say and not a whole sentence rounded up.
+        let say = "The counter drops twice. That is the 63.";
+        let said = words(say);
+        assert_eq!(said[1..=3].concat().trim(), "counter drops twice.");
+        assert_eq!(
+            said.len(),
+            8,
+            "eight words, and the counting is what a range indexes"
+        );
+    }
+
+    #[test]
+    fn a_click_takes_the_sentence_the_word_is_in() {
+        // A click is not a drag, and selecting one word because somebody
+        // clicked once would be a selection they did not ask for.
+        let say = "One runs twice. Two does not.";
+        assert_eq!(sentence_around(say, 0), Some((0, 2)));
+        assert_eq!(sentence_around(say, 4), Some((3, 5)));
+        assert_eq!(sentence_around(say, 99), None);
+    }
+
+    #[test]
+    fn a_selection_can_run_across_a_paragraph_break() {
+        // The number is global to the narration rather than to a paragraph,
+        // so a drag that starts in one and ends in the next is a range like
+        // any other.
+        let say = "First one here.\n\nSecond one there.";
+        let said = words(say);
+        assert_eq!(said[2..=3].concat().trim(), "here. Second");
     }
 
     #[test]

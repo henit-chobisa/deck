@@ -299,7 +299,17 @@ pub struct DeckView {
     /// A comment on the claim used to quote the first line of the say whatever
     /// the reader had in mind, so an objection to the third sentence came back
     /// answering the first. The sentence they clicked is the one they meant.
-    picked_said: Option<usize>,
+    picked_said: Option<(usize, usize)>,
+    /// The word a narration drag started on.
+    said_from: Option<usize>,
+    /// The word the pointer is over, so a drag has somewhere to reach.
+    said_over: Option<usize>,
+    /// Whether the pointer moved between going down and coming up.
+    ///
+    /// A click is not a drag. Selecting the single word somebody clicked would
+    /// be a selection they did not ask for, so a click with no movement takes
+    /// the whole sentence instead.
+    said_dragged: bool,
     /// Where a drag began: the pane, and the line the pointer went down on.
     ///
     /// The selection is always measured from here, never grown from wherever
@@ -432,6 +442,9 @@ impl DeckView {
             remarks,
             composing: None,
             picked_said: None,
+            said_from: None,
+            said_over: None,
+            said_dragged: false,
             drag_from: None,
             hovered: None,
             shares,
@@ -649,6 +662,7 @@ impl DeckView {
     /// Select from the drag's anchor to `line`.
     pub fn pick(&mut self, pane_ix: usize, line: u32, cx: &mut Context<Self>) {
         self.picked_said = None;
+        self.said_from = None;
         let anchor = match self.drag_from {
             Some((pane, from)) if pane == pane_ix => from,
             _ => line,
@@ -708,13 +722,52 @@ impl DeckView {
         }
     }
 
-    /// Pick one sentence of the narration, so `c` comments on that sentence.
-    fn pick_claim(&mut self, said: usize, cx: &mut Context<Self>) {
-        self.picked_said = Some(said);
+    /// The pointer went down on a word of the narration.
+    fn start_say_pick(&mut self, at: usize, cx: &mut Context<Self>) {
+        self.said_from = Some(at);
+        self.said_dragged = false;
+        self.picked_said = Some((at, at));
         for pane in &mut self.panes {
             pane.unpick();
         }
         cx.notify();
+    }
+
+    /// Remember which word the pointer is over. Selects nothing by itself.
+    fn hover_say(&mut self, at: usize, entered: bool) {
+        if entered {
+            self.said_over = Some(at);
+        } else if self.said_over == Some(at) {
+            self.said_over = None;
+        }
+    }
+
+    /// Extend the narration selection to the hovered word, while held.
+    fn drag_say_to_hovered(&mut self, cx: &mut Context<Self>) {
+        if let (Some(from), Some(over)) = (self.said_from, self.said_over)
+            && self.picked_said != Some((from, over))
+        {
+            self.said_dragged |= over != from;
+            self.picked_said = Some((from, over));
+            cx.notify();
+        }
+    }
+
+    /// The pointer came up. A click that never moved takes the sentence.
+    fn end_say_pick(&mut self, cx: &mut Context<Self>) {
+        if self.said_from.is_none() {
+            return;
+        }
+        if !self.said_dragged
+            && let Some(group) = self.group()
+            && let Some(found) = self
+                .picked_said
+                .and_then(|(at, _)| crate::prose::sentence_around(&group.say, at))
+        {
+            self.picked_said = Some(found);
+            cx.notify();
+        }
+        self.said_from = None;
     }
 
     /// Open the composer on whatever is picked.
@@ -852,10 +905,18 @@ impl DeckView {
                 range: None,
                 // The sentence being answered, so the remark reads on its own
                 // — the one that was clicked, not whichever came first.
-                quote: self
-                    .picked_said
-                    .and_then(|said| crate::prose::sentences(&claim).get(said).cloned())
-                    .unwrap_or_else(|| claim.lines().next().unwrap_or_default().to_string()),
+                quote: self.picked_said.map_or_else(
+                    || claim.lines().next().unwrap_or_default().to_string(),
+                    |(from, to)| {
+                        let said = crate::prose::words(&claim);
+                        let (a, b) = (from.min(to), from.max(to).min(said.len().saturating_sub(1)));
+                        said.get(a..=b)
+                            .unwrap_or_default()
+                            .concat()
+                            .trim()
+                            .to_string()
+                    },
+                ),
                 text: said,
             },
         };
@@ -1073,12 +1134,22 @@ impl DeckView {
                                 crate::prose::parse(&say),
                                 &self.palette,
                                 cx.theme().mono_font_family.clone(),
-                                self.picked_said,
-                                {
-                                    let deck = cx.entity().downgrade();
-                                    std::rc::Rc::new(move |said, _window, cx| {
-                                        deck.update(cx, |deck, cx| deck.pick_claim(said, cx)).ok();
-                                    })
+                                &crate::prose::Picking {
+                                    range: self.picked_said,
+                                    down: {
+                                        let deck = cx.entity().downgrade();
+                                        std::rc::Rc::new(move |at, _window, cx| {
+                                            deck.update(cx, |deck, cx| deck.start_say_pick(at, cx))
+                                                .ok();
+                                        })
+                                    },
+                                    over: {
+                                        let deck = cx.entity().downgrade();
+                                        std::rc::Rc::new(move |at, entered, _window, cx| {
+                                            deck.update(cx, |deck, _| deck.hover_say(at, entered))
+                                                .ok();
+                                        })
+                                    },
                                 },
                             )),
                     ),
@@ -1906,13 +1977,15 @@ impl Render for DeckView {
                     deck.pan_to(event.position, cx);
                 } else {
                     deck.drag_to_hovered(cx);
+                    deck.drag_say_to_hovered(cx);
                 }
             }))
             .on_mouse_up(
                 MouseButton::Left,
-                cx.listener(|deck, _, _window, _cx| {
+                cx.listener(|deck, _, _window, cx| {
                     deck.sizing = None;
                     deck.panning = None;
+                    deck.end_say_pick(cx);
                 }),
             )
             .bg(paint(self.palette.bg))
