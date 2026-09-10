@@ -38,9 +38,9 @@ use crate::sheet::Slot;
 use crate::view::DeckView;
 
 /// How wide a box is.
-const NODE_W: f32 = 144.;
+const NODE_W: f32 = 168.;
 /// How tall a box is.
-const NODE_H: f32 = 50.;
+const NODE_H: f32 = 58.;
 /// The gutter between columns. Every arrow that has to travel sideways travels
 /// down the middle of one of these, which is what keeps a route off the boxes.
 ///
@@ -295,6 +295,14 @@ pub struct Chart {
     /// instead — and to nothing at all when none is picked, which makes it a
     /// remark about the whole picture.
     pub selected: Option<usize>,
+    /// How far the reader has carried the picture from where it was laid out.
+    ///
+    /// Not the scroll offset. The scroll container re-clamps its own offset to
+    /// the overflow on every frame, so a picture that fitted could not be
+    /// moved and one that did not could only go two of the four ways whatever
+    /// was written into the handle. This is applied to the drawing itself, and
+    /// nothing takes it back.
+    pub nudge: Point<Pixels>,
     /// The flow being played, and how far along it is.
     ///
     /// `None` while nothing is playing, which is every diagram's resting
@@ -303,25 +311,27 @@ pub struct Chart {
 }
 
 /// A flow part-way through.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Playing {
     /// Which of the diagram's flows.
     pub flow: usize,
-    /// How many of its steps have been reached. The last of them is the one
-    /// the reader is being shown; the ones before it stay lit behind it, so
-    /// the path is visible as a path rather than as a single moving box.
-    pub upto: usize,
+    /// How far along the path the front has travelled, in steps.
+    ///
+    /// A real number rather than a count, because the thing being shown is a
+    /// current and not a slideshow. At 2.4 the third box is 40 percent lit and
+    /// the arrow into it is 40 percent of the way across; nothing on the path
+    /// ever changes state between one frame and the next.
+    pub front: f32,
 }
 
 /// What a flow is doing to one node or one edge.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Lit {
     /// Nothing is playing. The picture reads as it always does.
     Resting,
-    /// On the path, and already passed.
-    Behind,
-    /// The step being shown.
-    Here,
+    /// On the path, and this far reached: zero as the front arrives, one once
+    /// it has passed. Everything between is the current going through.
+    On(f32),
     /// Not on the path, while a path is being shown.
     Aside,
 }
@@ -346,6 +356,7 @@ impl Chart {
             plan,
             scroll: ScrollHandle::new(),
             selected: None,
+            nudge: point(px(0.), px(0.)),
             playing: None,
         }
     }
@@ -372,12 +383,6 @@ impl Chart {
     #[must_use]
     pub fn drawn_width(&self) -> f32 {
         f32::from(self.plan.size.width)
-    }
-
-    /// The drawing's own scroll position, for dragging it about.
-    #[must_use]
-    pub fn scroll(&self) -> ScrollHandle {
-        self.scroll.clone()
     }
 
     /// The pane, label and all.
@@ -464,13 +469,20 @@ impl Chart {
                         .cursor_pointer()
                         .hover(|this| this.border_color(paint(palette.accent)))
                         .child(name)
-                        // A triangle, drawn rather than fetched. It is four
-                        // characters of text and needs no icon set behind it.
-                        .child(div().text_size(px(8.)).child(if on {
-                            "\u{25a0}"
-                        } else {
-                            "\u{25b6}"
-                        }))
+                        // A triangle or a square, drawn rather than fetched,
+                        // in a box of a fixed size. The two glyphs are not the
+                        // same width, and swapping one for the other resized
+                        // the pill under the pointer that had just pressed it
+                        // — the one moment a control must not move.
+                        .child(
+                            div()
+                                .flex_none()
+                                .w(px(10.))
+                                .flex()
+                                .justify_center()
+                                .text_size(px(8.))
+                                .child(if on { "\u{25a0}" } else { "\u{25b6}" }),
+                        )
                         .on_click(move |_, _window, cx| {
                             let _ = view.update(cx, |deck, cx| deck.play_flow(pane_ix, ix, cx));
                         })
@@ -511,39 +523,44 @@ impl Chart {
                 }
             })
             .child(
-                // Centred when it fits, top-left when it does not.
-                //
-                // Both from one rule, and it has to be one rule because
-                // nothing here knows how big the pane is. This box is at least
-                // the size of the pane and at least the size of the drawing:
-                // when the drawing is the smaller of the two it sits in the
-                // middle of the pane, and when it is the larger the box is
-                // exactly the drawing and the centring has nothing left to do
-                // — which is what stops a wide picture being centred into a
-                // viewport it cannot be scrolled back out of.
-                div()
-                    // Neither growing nor shrinking, so its width is its
-                    // content's and the minimums are the only thing that can
-                    // stretch it. Left to shrink it took the pane's width and
-                    // centred a wider drawing inside that, which cut the left
-                    // of the picture off with no way to scroll back to it.
-                    .flex_none()
-                    .min_w(relative(1.))
-                    .min_h(relative(1.))
-                    .flex()
-                    .items_center()
-                    .justify_center()
-                    .child(
-                        div()
-                            .relative()
-                            .flex_none()
-                            .w(self.plan.size.width)
-                            .h(self.plan.size.height)
-                            .child(self.paint(palette))
-                            .children(self.cluster_names(palette))
-                            .children(self.edge_labels(palette))
-                            .children(self.node_labels(pane_ix, palette, view)),
-                    ),
+                // Carried by the reader's drag, before anything else about it
+                // is decided. Relative rather than absolute, so the box still
+                // takes part in the layout that centres it.
+                div().relative().left(self.nudge.x).top(self.nudge.y).child(
+                    // Centred when it fits, top-left when it does not.
+                    //
+                    // Both from one rule, and it has to be one rule because
+                    // nothing here knows how big the pane is. This box is at least
+                    // the size of the pane and at least the size of the drawing:
+                    // when the drawing is the smaller of the two it sits in the
+                    // middle of the pane, and when it is the larger the box is
+                    // exactly the drawing and the centring has nothing left to do
+                    // — which is what stops a wide picture being centred into a
+                    // viewport it cannot be scrolled back out of.
+                    div()
+                        // Neither growing nor shrinking, so its width is its
+                        // content's and the minimums are the only thing that can
+                        // stretch it. Left to shrink it took the pane's width and
+                        // centred a wider drawing inside that, which cut the left
+                        // of the picture off with no way to scroll back to it.
+                        .flex_none()
+                        .min_w(relative(1.))
+                        .min_h(relative(1.))
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .child(
+                            div()
+                                .relative()
+                                .flex_none()
+                                .w(self.plan.size.width)
+                                .h(self.plan.size.height)
+                                .child(self.paint(palette))
+                                .children(self.cluster_names(palette))
+                                .children(self.edge_labels(palette))
+                                .children(self.node_labels(pane_ix, palette, view)),
+                        ),
+                ),
             );
 
         div()
@@ -648,18 +665,21 @@ impl Chart {
                     // the one thing in a state machine a reader has to notice
                     // — and because otherwise it reads as an arrow pointing
                     // the wrong way by mistake.
-                    paint(match self.travelled(&edge.from, &edge.to) {
-                        // An arrow the flow has just crossed, and the ones it
-                        // crossed before. Travelling is the thing being shown,
-                        // so the arrows carry it as much as the boxes do.
-                        Lit::Here => palette.accent,
-                        Lit::Behind => palette.accent.mix(palette.fg, 0.35),
-                        Lit::Aside => palette.fg.mix(palette.wash, 0.45).mix(palette.bg, ASIDE),
-                        Lit::Resting => {
-                            if route.back {
-                                palette.accent
-                            } else {
-                                palette.fg.mix(palette.wash, 0.45)
+                    paint({
+                        let quiet = palette.fg.mix(palette.wash, 0.45);
+                        match self.travelled(&edge.from, &edge.to) {
+                            // Travelling is the thing being shown, so the
+                            // arrows carry it as much as the boxes do — and
+                            // they carry it first, since an arrow is the part
+                            // of the path that is only ever motion.
+                            Lit::On(much) => quiet.mix(palette.bg, ASIDE).mix(palette.accent, much),
+                            Lit::Aside => quiet.mix(palette.bg, ASIDE),
+                            Lit::Resting => {
+                                if route.back {
+                                    palette.accent
+                                } else {
+                                    quiet
+                                }
                             }
                         }
                     }),
@@ -735,7 +755,7 @@ impl Chart {
                         // Below the lid, and above the foot.
                         .when(node.role == Role::Store, |this| this.pt(px(12.)).pb(px(6.)))
                         .text_align(TextAlign::Center)
-                        .text_size(px(12.))
+                        .text_size(px(12.5))
                         // Leading spelled out rather than left to the face.
                         //
                         // A box is a fixed height and what goes in it has to be
@@ -763,7 +783,7 @@ impl Chart {
                                 .w_full()
                                 .truncate()
                                 .text_center()
-                                .text_size(px(10.))
+                                .text_size(px(10.5))
                                 .line_height(px(13.))
                                 .text_color(paint(palette.muted))
                                 .child(note.clone())
@@ -901,17 +921,19 @@ impl Chart {
             return Lit::Resting;
         };
         let walk = flow.walk(&self.diagram);
-        match walk.iter().position(|step| *step == id) {
-            // A node the path visits twice belongs to the earlier visit, which
-            // is what a reader watching it travel would expect: it lights when
-            // it is first reached and stays lit.
-            Some(at) if at + 1 == playing.upto => Lit::Here,
-            Some(at) if at + 1 < playing.upto => Lit::Behind,
-            _ => Lit::Aside,
-        }
+        // A node the path visits twice belongs to the earlier visit, which is
+        // what a reader watching it travel would expect: it lights when it is
+        // first reached and stays lit.
+        let Some(at) = walk.iter().position(|step| *step == id) else {
+            return Lit::Aside;
+        };
+        // The front is measured in steps, so how far this node has been
+        // reached is simply how far past it the front has got — clamped, so a
+        // box behind the front is fully lit and one ahead of it is not yet.
+        Lit::On((playing.front - at as f32).clamp(0., 1.))
     }
 
-    /// Whether the edge from `from` to `to` has been travelled.
+    /// How far the flow has travelled along the edge from `from` to `to`.
     #[must_use]
     pub fn travelled(&self, from: &str, to: &str) -> Lit {
         let Some(playing) = self.playing else {
@@ -921,15 +943,11 @@ impl Chart {
             return Lit::Resting;
         };
         let walk = flow.walk(&self.diagram);
-        // An edge belongs to the step it arrives at, so it lights together
-        // with the box it leads to rather than a beat early.
-        for at in 1..walk.len().min(playing.upto) {
+        // An edge is the space between two steps, so it fills as the front
+        // crosses it and is full once the front has arrived at the far end.
+        for at in 1..walk.len() {
             if walk[at - 1] == from && walk[at] == to {
-                return if at + 1 == playing.upto {
-                    Lit::Here
-                } else {
-                    Lit::Behind
-                };
+                return Lit::On((playing.front - (at as f32 - 1.)).clamp(0., 1.));
             }
         }
         Lit::Aside
@@ -975,13 +993,23 @@ fn skin(weight: Weight, picked: bool, lit: Lit, palette: &Palette) -> Skin {
     // not have to learn it again while a flow is playing.
     let (fill, edge, width) = match lit {
         Lit::Resting => (fill, edge, width),
-        Lit::Here => (fill.mix(palette.accent, 0.2), palette.accent, 2.),
-        Lit::Behind => (fill, palette.accent.mix(palette.edge, 0.45), 1.5),
         Lit::Aside => (
             fill.mix(palette.bg, ASIDE),
             edge.mix(palette.bg, ASIDE),
             width,
         ),
+        // Mixed rather than switched. A box on the path is drawn between where
+        // it was and where the current will leave it, so the light arrives
+        // through it instead of landing on it.
+        Lit::On(much) => {
+            let from = fill.mix(palette.bg, ASIDE);
+            let was = edge.mix(palette.bg, ASIDE);
+            (
+                from.mix(fill.mix(palette.accent, 0.16), much),
+                was.mix(palette.accent, much),
+                width + (1.5_f32 - width).max(0.) * much,
+            )
+        }
     };
 
     Skin {

@@ -414,6 +414,19 @@ pub struct DeckView {
     hovered: Option<(usize, u32)>,
 }
 
+/// Slow at both ends, quick through the middle.
+///
+/// A current that started at full speed reads as a jump, and one that stopped
+/// dead reads as a dropped frame.
+fn ease(along: f32) -> f32 {
+    if along < 0.5 {
+        2. * along * along
+    } else {
+        let back = -2. * along + 2.;
+        1. - back * back / 2.
+    }
+}
+
 impl DeckView {
     /// Open a deck, where it was left — which for a deck nobody has opened
     /// yet is the beginning of it.
@@ -1238,42 +1251,34 @@ impl DeckView {
     /// Take hold of a diagram, so moving the pointer moves the drawing.
     pub fn start_pan(&mut self, pane_ix: usize, at: Point<Pixels>) {
         if let Some(chart) = self.panes.get(pane_ix).and_then(Sheet::chart) {
-            self.panning = Some((pane_ix, at, chart.scroll().offset()));
+            self.panning = Some((pane_ix, at, chart.nudge));
         }
     }
 
     /// Carry the drawing to where the pointer has got to.
     ///
-    /// Clamped to what there is: a picture that fits its pane has nowhere to
-    /// go on that axis, and one that does not stops at its own edge rather
-    /// than sliding out of the window.
+    /// Moved on the drawing rather than through the scroll container, which
+    /// re-clamps its own offset to the overflow every frame: a picture that
+    /// fitted its pane could not be moved at all, and one that did not could
+    /// only be pulled two of the four ways. A hand that has taken hold of
+    /// something expects it to come, so this simply carries it and holds it
+    /// within reach of where it was.
     fn pan_to(&mut self, at: Point<Pixels>, cx: &mut Context<Self>) {
         let Some((pane_ix, from, was)) = self.panning else {
             return;
         };
-        let Some(chart) = self.panes.get(pane_ix).and_then(Sheet::chart) else {
+        let Some(chart) = self.panes.get_mut(pane_ix).and_then(Sheet::chart_mut) else {
             return;
         };
 
-        let scroll = chart.scroll();
-        let slack = scroll.max_offset();
-
-        /// How far past its own edges a drawing can be pulled.
+        /// How far a drawing can be carried from where it was laid out.
         ///
-        /// Without it the travel is exactly the overflow, so a picture that
-        /// fits cannot be moved at all and a picture that does not can only be
-        /// pulled two of the four ways. Neither is what a hand expects of
-        /// something it has taken hold of. The slack is the same in every
-        /// direction, so the drawing always gives.
-        const GIVE: f32 = 260.;
+        /// Generous, and the same in every direction. Its only job is to stop
+        /// a picture being flung somewhere it cannot be found again.
+        const REACH: f32 = 2000.;
 
-        let held =
-            |wanted: Pixels, slack: Pixels| wanted.clamp(-(slack.max(px(0.)) + px(GIVE)), px(GIVE));
-
-        scroll.set_offset(point(
-            held(was.x + (at.x - from.x), slack.x),
-            held(was.y + (at.y - from.y), slack.y),
-        ));
+        let held = |value: Pixels| value.clamp(px(-REACH), px(REACH));
+        chart.nudge = point(held(was.x + (at.x - from.x)), held(was.y + (at.y - from.y)));
         cx.notify();
     }
 
@@ -1297,17 +1302,30 @@ impl DeckView {
         if steps == 0 {
             return;
         }
-        chart.playing = Some(crate::chart::Playing { flow, upto: 1 });
+        chart.playing = Some(crate::chart::Playing { flow, front: 0. });
         cx.notify();
 
-        // One step at a time, on a timer rather than an easing. What is being
-        // animated is *which* things are lit, not how far a value has moved,
-        // and a reader has to be given long enough to look at each one before
-        // the next arrives.
-        const BEAT: std::time::Duration = std::time::Duration::from_millis(760);
+        // A current, not a slideshow.
+        //
+        // The front moves continuously and every frame is drawn from where it
+        // has got to, so a box lights *through* rather than lighting up: at
+        // 2.4 the third box is 40 percent lit and the arrow into it is 40
+        // percent across. Stepping whole numbers on a timer was the same
+        // information delivered as a flick-book, and it read like one.
+        const PER_STEP: f32 = 0.62;
+        const FRAME: std::time::Duration = std::time::Duration::from_millis(16);
+
+        let over = PER_STEP * (steps.saturating_sub(1)).max(1) as f32;
         self.stepping = cx.spawn(async move |deck, cx| {
-            for upto in 2..=steps {
-                cx.background_executor().timer(BEAT).await;
+            let began = std::time::Instant::now();
+            loop {
+                cx.background_executor().timer(FRAME).await;
+                let along = (began.elapsed().as_secs_f32() / over).min(1.);
+                // Eased at both ends: a current that started at full speed
+                // would read as a jump, and one that stopped dead would read
+                // as a frame dropped at the end.
+                let front = ease(along) * (steps - 1) as f32;
+
                 let carried = deck.update(cx, |deck, cx| {
                     let Some(chart) = deck.panes.get_mut(pane_ix).and_then(Sheet::chart_mut) else {
                         return false;
@@ -1316,11 +1334,11 @@ impl DeckView {
                     if !chart.playing.is_some_and(|playing| playing.flow == flow) {
                         return false;
                     }
-                    chart.playing = Some(crate::chart::Playing { flow, upto });
+                    chart.playing = Some(crate::chart::Playing { flow, front });
                     cx.notify();
                     true
                 });
-                if !matches!(carried, Ok(true)) {
+                if !matches!(carried, Ok(true)) || along >= 1. {
                     return;
                 }
             }
