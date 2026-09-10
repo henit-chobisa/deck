@@ -449,14 +449,8 @@ impl Pace {
         }
     }
 
-    /// The next one round, so one button cycles all three.
-    fn next(self) -> Self {
-        match self {
-            Self::Slow => Self::Normal,
-            Self::Normal => Self::Fast,
-            Self::Fast => Self::Slow,
-        }
-    }
+    /// All three, in the order they are shown: slowest to quickest.
+    pub const ALL: [Self; 3] = [Self::Slow, Self::Normal, Self::Fast];
 }
 
 /// Slow at both ends, quick through the middle.
@@ -1395,8 +1389,8 @@ impl DeckView {
     }
 
     /// Change the speed, and restart whatever is playing at the new one.
-    pub fn change_pace(&mut self, pane_ix: usize, cx: &mut Context<Self>) {
-        self.pace = self.pace.next();
+    pub fn set_pace(&mut self, pane_ix: usize, pace: Pace, cx: &mut Context<Self>) {
+        self.pace = pace;
         // Restarted rather than adjusted part-way. The speed is being chosen
         // by somebody watching, and the way to see what you chose is to see it
         // from the beginning.

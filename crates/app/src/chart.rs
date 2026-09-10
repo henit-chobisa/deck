@@ -38,9 +38,9 @@ use crate::sheet::Slot;
 use crate::view::DeckView;
 
 /// How wide a box is.
-const NODE_W: f32 = 168.;
+const NODE_W: f32 = 156.;
 /// How tall a box is.
-const NODE_H: f32 = 58.;
+const NODE_H: f32 = 54.;
 /// The gutter between columns. Every arrow that has to travel sideways travels
 /// down the middle of one of these, which is what keeps a route off the boxes.
 ///
@@ -417,7 +417,8 @@ impl Chart {
             // with it.
             .relative()
             .child(self.render_drawing(slot.ix, palette, slot.view))
-            .children(self.render_flows(slot.ix, palette, slot.view, slot.pace))
+            .children(self.render_flows(slot.ix, palette, slot.view))
+            .children(self.render_pace(slot.ix, palette, slot.view, slot.pace))
     }
 
     /// The buttons that play this diagram's flows.
@@ -428,7 +429,6 @@ impl Chart {
         pane_ix: usize,
         palette: &Palette,
         view: &WeakEntity<DeckView>,
-        pace: crate::view::Pace,
     ) -> Option<impl IntoElement> {
         let flows = self.flows();
         if flows.is_empty() {
@@ -449,28 +449,6 @@ impl Chart {
                 .h_flex()
                 .items_center()
                 .gap(px(6.))
-                // The speed, before the paths. It applies to all of them, and
-                // one button that cycles three words is smaller than three
-                // buttons of which two are always wrong.
-                .child({
-                    let view = view.clone();
-                    div()
-                        .id(("pace", pane_ix))
-                        .px(px(8.))
-                        .py(px(3.))
-                        .rounded(px(11.))
-                        .border_1()
-                        .border_color(paint(palette.edge))
-                        .bg(paint(palette.bg))
-                        .text_size(px(10.5))
-                        .text_color(paint(palette.muted))
-                        .cursor_pointer()
-                        .hover(|this| this.border_color(paint(palette.accent)))
-                        .child(pace.label())
-                        .on_click(move |_, _window, cx| {
-                            let _ = view.update(cx, |deck, cx| deck.change_pace(pane_ix, cx));
-                        })
-                })
                 .children(flows.into_iter().enumerate().map(|(ix, name)| {
                     let on = playing.is_some_and(|playing| playing.flow == ix);
                     // The pill wears the colour its path is lit in, so the
@@ -798,7 +776,7 @@ impl Chart {
                         // Below the lid, and above the foot.
                         .when(node.role == Role::Store, |this| this.pt(px(12.)).pb(px(6.)))
                         .text_align(TextAlign::Center)
-                        .text_size(px(12.5))
+                        .text_size(px(12.))
                         // Leading spelled out rather than left to the face.
                         //
                         // A box is a fixed height and what goes in it has to be
@@ -1015,6 +993,61 @@ impl Chart {
             .collect()
     }
 
+    /// How fast a flow travels: three words, the chosen one filled.
+    ///
+    /// Below the paths rather than beside them. It is a setting and they are
+    /// actions, and a row that mixed the two put a word you press once beside
+    /// words you press often. Bottom-right keeps it on the same edge, where a
+    /// hand already knows to look, and out of the top of the picture where a
+    /// flow usually begins.
+    fn render_pace(
+        &self,
+        pane_ix: usize,
+        palette: &Palette,
+        view: &WeakEntity<DeckView>,
+        pace: crate::view::Pace,
+    ) -> Option<impl IntoElement> {
+        if self.diagram.flows.is_empty() {
+            return None;
+        }
+
+        Some(
+            div()
+                .absolute()
+                .bottom(px(10.))
+                .right(px(10.))
+                .h_flex()
+                .items_center()
+                .p(px(2.))
+                .rounded(px(11.))
+                .border_1()
+                .border_color(paint(palette.edge))
+                .bg(paint(palette.bg))
+                .children(crate::view::Pace::ALL.iter().map(|&which| {
+                    let on = which == pace;
+                    let view = view.clone();
+                    div()
+                        .id(("pace", pane_ix * 8 + which as usize))
+                        .px(px(8.))
+                        .py(px(2.))
+                        .rounded(px(9.))
+                        .text_size(px(10.))
+                        .bg(paint(if on {
+                            palette.accent.mix(palette.bg, 0.82)
+                        } else {
+                            palette.bg
+                        }))
+                        .text_color(paint(if on { palette.accent } else { palette.muted }))
+                        .cursor_pointer()
+                        .hover(|this| this.text_color(paint(palette.fg)))
+                        .child(which.label())
+                        .on_click(move |_, _window, cx| {
+                            let _ = view.update(cx, |deck, cx| deck.set_pace(pane_ix, which, cx));
+                        })
+                })),
+        )
+    }
+
     /// The colour the flow at `ix` is lit in, if it asked for one.
     #[must_use]
     pub fn flow_color(&self, ix: usize) -> Option<deck_core::theme::Rgb> {
@@ -1082,8 +1115,9 @@ fn skin(weight: Weight, picked: bool, lit: Lit, palette: &Palette) -> Skin {
 ///
 /// Far enough to fall behind, near enough to still be read. A flow that hid
 /// the rest of the diagram would answer the question by deleting the context
-/// that makes it a question.
-const ASIDE: f32 = 0.68;
+/// that makes it a question — and at 0.68 the boxes off the path had gone so
+/// far into the page that their edges were guesswork.
+const ASIDE: f32 = 0.46;
 
 /// How far a label has to stay inside a shape of this role.
 fn inset(role: Role) -> f32 {
@@ -1091,7 +1125,7 @@ fn inset(role: Role) -> f32 {
         Role::Step | Role::Store => 10.,
         Role::Terminal => 18.,
         Role::Actor => 22.,
-        Role::Decision => 30.,
+        Role::Decision => 16.,
     }
 }
 
@@ -1105,7 +1139,7 @@ fn inset(role: Role) -> f32 {
 /// have their lane.
 fn swell(role: Role) -> (f32, f32) {
     match role {
-        Role::Decision => (13., 7.),
+        Role::Decision => (8., 4.),
         _ => (0., 0.),
     }
 }
@@ -1153,8 +1187,8 @@ fn shape(window: &mut Window, at: Bounds<Pixels>, role: Role, skin: Skin) {
         // shape painted underneath: the outline in the edge colour, then the
         // same outline inset by the border's own width in the fill.
         Role::Decision => {
-            window.paint_path(diamond(at, 0.), skin.edge);
-            window.paint_path(diamond(at, skin.width), skin.fill);
+            window.paint_path(hexagon(at, 0.), skin.edge);
+            window.paint_path(hexagon(at, skin.width), skin.fill);
         }
         Role::Actor => {
             window.paint_path(ellipse(at, 0.), skin.edge);
@@ -1163,19 +1197,36 @@ fn shape(window: &mut Window, at: Bounds<Pixels>, role: Role, skin: Skin) {
     }
 }
 
-/// A diamond filling `at`, pulled in by `inset` on every side.
-fn diamond(at: Bounds<Pixels>, inset: f32) -> Path<Pixels> {
+/// A hexagon filling `at`, pulled in by `inset` on every side.
+///
+/// A diamond was the obvious shape for a decision and the wrong one. Its widest
+/// point is a single line through the middle and everything above and below
+/// that is corner, so a question of more than three words either spilled over
+/// the edges or had to be shrunk until it could not be read — and a question is
+/// what a decision node holds.
+///
+/// A hexagon keeps what the diamond was saying: points to the left and right,
+/// where the two answers leave. But its middle is a flat band the full height
+/// of the box, so the words have somewhere to be.
+fn hexagon(at: Bounds<Pixels>, inset: f32) -> Path<Pixels> {
     let (l, t) = (
         f32::from(at.origin.x) + inset,
         f32::from(at.origin.y) + inset,
     );
     let r = f32::from(at.origin.x + at.size.width) - inset;
     let b = f32::from(at.origin.y + at.size.height) - inset;
-    let (cx, cy) = ((l + r) / 2., (t + b) / 2.);
+    let cy = (t + b) / 2.;
 
-    let mut path = Path::new(point(px(cx), px(t)));
+    // How far in the points come. Half the height gives sides at 45 degrees,
+    // capped at a third of the width so a wide box does not become a bar with
+    // two barely visible nicks in the ends.
+    let cut = ((b - t) / 2.).min((r - l) / 3.);
+
+    let mut path = Path::new(point(px(l + cut), px(t)));
+    path.line_to(point(px(r - cut), px(t)));
     path.line_to(point(px(r), px(cy)));
-    path.line_to(point(px(cx), px(b)));
+    path.line_to(point(px(r - cut), px(b)));
+    path.line_to(point(px(l + cut), px(b)));
     path.line_to(point(px(l), px(cy)));
     path
 }
