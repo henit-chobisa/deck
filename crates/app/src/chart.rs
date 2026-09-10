@@ -401,18 +401,14 @@ impl Chart {
                 palette,
                 cx,
             ))
-            .child(
-                // The drawing, with the flows floating over its top-right.
-                // Over rather than above: a strip of buttons in the pane's
-                // chrome would push the picture down on every diagram, and
-                // most diagrams have no flows at all.
-                div()
-                    .relative()
-                    .flex_1()
-                    .min_h_0()
-                    .child(self.render_drawing(slot.ix, palette, slot.view))
-                    .children(self.render_flows(slot.ix, palette, slot.view)),
-            )
+            // The flows float over the pane's own top-right rather than in a
+            // box of their own. A wrapper here was a block div — the default
+            // this file has been caught by before — and the drawing inside it
+            // had no height to fill, so the picture went and the buttons went
+            // with it.
+            .relative()
+            .child(self.render_drawing(slot.ix, palette, slot.view))
+            .children(self.render_flows(slot.ix, palette, slot.view))
     }
 
     /// The buttons that play this diagram's flows.
@@ -433,11 +429,17 @@ impl Chart {
         Some(
             div()
                 .absolute()
-                .top(px(8.))
-                .right(px(8.))
-                .v_flex()
-                .items_end()
-                .gap(px(4.))
+                // Below the pane's own label, which is 27px of it: this is
+                // anchored to the whole pane, not to the drawing inside it.
+                .top(px(35.))
+                .right(px(10.))
+                // A row, not a column. Stacked, each flow claimed a line of
+                // the drawing down the side of it; side by side they take one
+                // band across the top and read as what they are — a choice
+                // between paths, not a list of them.
+                .h_flex()
+                .items_center()
+                .gap(px(6.))
                 .children(flows.into_iter().enumerate().map(|(ix, name)| {
                     let on = playing.is_some_and(|playing| playing.flow == ix);
                     let view = view.clone();
