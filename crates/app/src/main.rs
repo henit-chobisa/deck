@@ -8,8 +8,11 @@
 //! What arrives first is a bar, not the deck. An agent finishes when it
 //! finishes, and being interrupted by a review is not the same as being ready
 //! to give one — so the reader is told a deck is ready and opens it when they
-//! want it. `--now` skips the bar, for an agent that has been asked to put the
-//! review in front of someone this minute.
+//! want it.
+//!
+//! There is no flag that skips the bar. There was, and an agent used it to put
+//! a deck on screen over one the reader had already opened. Whoever writes a
+//! deck does not get to decide when it is read.
 
 mod chart;
 mod cli;
@@ -22,6 +25,7 @@ mod prose;
 mod queue;
 mod setup;
 mod sheet;
+mod showing;
 mod skill;
 mod state;
 mod view;
@@ -108,7 +112,7 @@ fn main() -> ExitCode {
 ///
 /// Blocks: this is the whole of the process's life while a deck is on screen.
 fn show(decks: Vec<Deck>, opening: &cli::Opening) {
-    let (now, dark, layout) = (opening.now, opening.dark, opening.layout);
+    let (dark, layout) = (opening.dark, opening.layout);
     let (editor, paper, colors) = (opening.editor, opening.paper, opening.colors);
     let named = opening.named.clone();
     // With the asset source, or every icon is an empty box: the component
@@ -184,20 +188,31 @@ fn show(decks: Vec<Deck>, opening: &cli::Opening) {
                 cx,
             );
 
-            let mut waiting: Vec<Session> = decks
+            // Anything another window is already showing is dropped here.
+            // Running `deck open` twice on one deck used to give the reader a
+            // second window over the one they were reading.
+            let waiting: Vec<Session> = decks
                 .into_iter()
-                .map(|deck| Session::fresh(deck).arranged(layout))
+                .filter(|deck| !crate::showing::taken(&deck.header.id))
+                .map(|deck| {
+                    crate::showing::take(&deck.header.id);
+                    Session::fresh(deck).arranged(layout)
+                })
                 .collect();
 
-            if now && waiting.len() == 1 {
-                // Asked for outright, so it takes the screen and the keyboard.
-                // Only for one: `--now` means *put this in front of me*, and
-                // there is no answer to which of five that would be.
-                cx.activate(true);
-                open_deck(waiting.remove(0), cx);
-            } else {
-                open_pill_over(waiting, cx);
+            if waiting.is_empty() {
+                // Every one of them is already on screen somewhere. Nothing to
+                // add, and a window with nothing in it is worse than none.
+                cx.quit();
+                return;
             }
+
+            // The bar, always. There is no way for whoever opened this to put
+            // the deck itself on screen, and that is deliberate: an agent that
+            // could would use it, and a deck arriving across somebody's work
+            // uninvited is the thing this bar was built to replace. Reading is
+            // the reader's to start.
+            open_pill_over(waiting, cx);
         });
 }
 

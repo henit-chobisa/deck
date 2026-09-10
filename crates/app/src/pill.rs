@@ -388,20 +388,29 @@ impl Render for Pill {
                     .bg(paint(palette.accent))
                     .with_animations(
                         "pill-mark",
-                        if writing {
-                            vec![
-                                Animation::new(Duration::from_millis(760))
-                                    .with_easing(arrive(0.22)),
+                        // Always two, and only the second one differs.
+                        //
+                        // The library keeps the index of the running animation
+                        // in element state and indexes this list with it on the
+                        // next frame. A list that got shorter between frames
+                        // was an index past the end — and it shortened at the
+                        // worst possible moment, the one where `writing` turns
+                        // off because the agent has just finished the deck. A
+                        // fixed-length array is the fix and the guarantee: this
+                        // cannot be built the wrong length again.
+                        Vec::from([
+                            Animation::new(Duration::from_millis(760)).with_easing(arrive(0.22)),
+                            if writing {
                                 Animation::new(Duration::from_millis(2400))
                                     .repeat()
-                                    .with_easing(pulsating_between(0.42, 1.0)),
-                            ]
-                        } else {
-                            vec![
-                                Animation::new(Duration::from_millis(760))
-                                    .with_easing(arrive(0.22)),
-                            ]
-                        },
+                                    .with_easing(pulsating_between(0.42, 1.0))
+                            } else {
+                                // A held frame. Finished the moment it starts,
+                                // so the mark simply stays out at full width
+                                // and nothing asks for another frame.
+                                Animation::new(Duration::from_millis(1)).with_easing(|_| 1.0)
+                            },
+                        ]),
                         |this, _, out| this.w(px(8. * out)),
                     ),
             );

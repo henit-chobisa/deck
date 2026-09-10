@@ -38,11 +38,6 @@ enum What {
         /// is for.
         #[arg(required = true)]
         deck: Vec<PathBuf>,
-        /// Skip the bar and open the deck outright.
-        ///
-        /// For when someone has asked to be shown the review now.
-        #[arg(long)]
-        now: bool,
         /// Wait for the window to close, then print the review as JSON.
         ///
         /// Exits non-zero if the reader closed the deck without submitting.
@@ -147,7 +142,6 @@ impl Cli {
         match self.what {
             What::Open {
                 deck,
-                now,
                 wait,
                 paper,
                 theme,
@@ -189,7 +183,6 @@ impl Cli {
                 // can say, and only once it is up.
                 Ok(Some(Opening {
                     deck,
-                    now,
                     wait,
                     editor,
                     named,
@@ -232,7 +225,6 @@ pub struct Opening {
     /// The directories to show, in the order they were named.
     pub deck: Vec<PathBuf>,
     /// Whether to skip the bar.
-    pub now: bool,
     /// Whether to print the review once the window has gone.
     pub wait: bool,
     /// Which editor to borrow colours from, if any.
