@@ -1394,12 +1394,6 @@ impl DeckView {
         });
     }
 
-    /// How fast flows travel, for the button that shows it.
-    #[must_use]
-    pub fn pace(&self) -> Pace {
-        self.pace
-    }
-
     /// Change the speed, and restart whatever is playing at the new one.
     pub fn change_pace(&mut self, pane_ix: usize, cx: &mut Context<Self>) {
         self.pace = self.pace.next();
@@ -2035,6 +2029,7 @@ impl Render for DeckView {
                 })
                 .collect();
             let slot = Slot {
+                pace: self.pace,
                 ix,
                 share: self.widths.get(place).copied().unwrap_or(1.),
                 palette: &self.palette,

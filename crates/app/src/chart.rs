@@ -417,7 +417,7 @@ impl Chart {
             // with it.
             .relative()
             .child(self.render_drawing(slot.ix, palette, slot.view))
-            .children(self.render_flows(slot.ix, palette, slot.view, cx))
+            .children(self.render_flows(slot.ix, palette, slot.view, slot.pace))
     }
 
     /// The buttons that play this diagram's flows.
@@ -428,17 +428,13 @@ impl Chart {
         pane_ix: usize,
         palette: &Palette,
         view: &WeakEntity<DeckView>,
-        cx: &App,
+        pace: crate::view::Pace,
     ) -> Option<impl IntoElement> {
         let flows = self.flows();
         if flows.is_empty() {
             return None;
         }
         let playing = self.playing;
-        let pace = view
-            .upgrade()
-            .map_or(crate::view::Pace::Normal, |deck| deck.read(cx).pace());
-
         Some(
             div()
                 .absolute()

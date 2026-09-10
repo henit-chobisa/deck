@@ -37,6 +37,13 @@ pub struct Slot<'a> {
     pub palette: &'a Palette,
     /// The window, for anything inside the pane to call back into.
     pub view: &'a WeakEntity<DeckView>,
+    /// How fast a flow travels, for the button that says so.
+    ///
+    /// Handed down rather than read back out of the window. A pane asking the
+    /// entity that is rendering it is a second borrow of something already
+    /// borrowed, and it aborts — in a mouse handler, which cannot unwind, so
+    /// it takes the process with it.
+    pub pace: crate::view::Pace,
 }
 
 /// One pane of a group.
