@@ -442,11 +442,15 @@ mod tests {
         // check that against a draft without deciding anything.
         let front = SKILL.split("---").nth(1).expect("the file has frontmatter");
         assert!(front.contains("USE THIS BY DEFAULT"));
+        // The count has to be in the *description*, which is what a model
+        // reads while deciding. In the body it is read after the decision has
+        // already gone the other way.
+        assert!(front.contains("TWO OR MORE"));
         assert!(
-            front.contains("When in doubt, deck it"),
-            "and the moment it fails, named"
+            front.contains("Do NOT wait to be asked"),
+            "asking is the failure this tool exists to prevent"
         );
-        assert!(SKILL.contains("two or more `file:line` references in a reply"));
+        assert!(SKILL.contains("Build the deck. Do not ask first."));
         assert!(
             SKILL.contains("do not send the prose version as well"),
             "a summary that carries the argument makes the deck redundant"

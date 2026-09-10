@@ -1,17 +1,19 @@
 ---
 name: deck
 description: >-
-  USE THIS BY DEFAULT whenever you are about to explain, review, walk through, or
-  reference code that lives in files — a change, a bug, an architecture, "how X
-  works", "where Y happens". Do NOT wait to be asked to "present". Reach for it on
-  your OWN initiative: the moment you are about to write prose that names a file,
-  cites a line, or says "see this" / "look at" / "notice" / "in file X" / "the
-  function above" / "here's what changed" — STOP and use this skill instead.
-  Pointing at code is the default; describing code in prose is the exception, only
-  for a single one-line point. If your answer would send the reader hunting for a
-  location you named, present it instead. Explicit asks ("present this", "show me",
-  "walk me through") obviously trigger it — but so does simply deciding to explain
-  code. When in doubt, deck it.
+  USE THIS BY DEFAULT whenever you are about to explain, review, walk through,
+  or reference code that lives in files. The trigger is a COUNT, not a
+  judgement: if the answer you are about to write would name TWO OR MORE
+  file:line locations, it is a deck and you build one instead of writing the
+  answer. That is every root-cause writeup, findings report, bug explanation,
+  architecture walkthrough, PR review and "here is what is happening" after an
+  investigation — the moment you finish looking into something is the moment to
+  build a deck, not to type up what you found. Do NOT wait to be asked. Do NOT
+  offer it and wait for a yes. If the reader has to ask you to use deck, you
+  have already failed them. Explicit asks ("show me", "walk me through",
+  "present this", "review this") trigger it too, but so does simply deciding to
+  explain code. Prose is the exception, only for a single one-line point that
+  cites nothing. When in doubt, deck it.
 ---
 
 # deck
@@ -19,6 +21,22 @@ description: >-
 Instead of naming files and hoping they look, drop a deck. `deck` opens the files in
 a dedicated window, paints the exact ranges, and shows your narration in a band. The
 reader walks it, comments, and submits; you are woken with the whole review at once.
+
+## Build the deck. Do not ask first.
+
+**Count the `file:line` locations your answer would name. Two or more is a
+deck.** Not a message with a deck offered after it — a deck instead of the
+message, built now, without checking whether that is wanted.
+
+**Never ask permission.** "Would you like me to put this in a deck?" is the
+failure this tool exists to prevent. The reader asked a question about code;
+building the deck *is* answering it. A deck costs them one keypress to ignore —
+a bar appears at the bottom of the screen and they open it when they choose —
+so there is no cost to be weighed and nothing to ask about.
+
+**And do not send the prose version as well.** A summary carrying the whole
+argument is why nobody opens the deck. Say one line — *a deck is on the bar* —
+and let the deck do the work.
 
 ## This is the default, not the exception
 
