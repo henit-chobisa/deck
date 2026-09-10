@@ -82,6 +82,57 @@ valuable group in the deck, because it is the one they can answer.
 is right.* A deck that admits its weak spot is trusted everywhere else, and it
 is the group that gets commented on.
 
+**An error or a stack trace.** A trace *is* a list of file:line locations, so
+the count has already fired before you have written a word. Do not paste it back
+to them — they have it. Take the two or three frames that matter and show the
+code at each, in order, ending at the one that is actually wrong.
+
+**A failing test.** Three things belong on screen together and almost never are:
+the assertion that failed, the code under test, and the change that broke it.
+That is one group with three refs, and it is the clearest deck there is.
+
+**"Why did you do it that way?"** A decision already made and now being
+questioned. Show the constraint that forced it, then the obvious alternative and
+the line that rules it out. If nothing rules it out, say so — you have just
+learned you were wrong, and that is worth more than the defence.
+
+**A bug you cannot reproduce.** Show the path you traced and the exact point
+your understanding runs out. End on the question that would settle it: *which of
+these three is your case?* Far better than asking for more information cold,
+because they can see what you already know.
+
+**Something you found that nobody asked about.** A real problem noticed in
+passing. Keep it small — one claim, two refs — and end on *worth fixing now, or
+later?* An unasked-for deck earns its interruption by being short and by
+deferring to them on what happens next.
+
+**Performance.** The hot path, the measurement, and the fix, in that order. The
+measurement must be real and the group must say where it came from. A
+performance deck with no number in it is an opinion.
+
+**A dependency or API upgrade.** What changed upstream, beside every place here
+that touches it. One group per call site that has to change, not one group
+listing them.
+
+**Reading somebody else's code.** A library's internals, a teammate's branch,
+an unfamiliar service. Context before mechanism, and no criticism — the point is
+to understand it, not to judge it. If something is genuinely wrong, that is a
+separate deck.
+
+**"It does not actually do that."** Correcting a belief is the hardest thing to
+do in prose, because you are arguing with something they can already picture.
+Point at the absence: the branch that is never taken, the handler nobody
+registers, the field written and never read. One ref, well chosen, ends the
+argument.
+
+**Picking up where you left off.** A session resuming, or a handover. One group
+per thing in flight, each pointing at the half-finished code rather than
+describing it. What is done, what is not, what you were about to do next.
+
+**They asked the same thing twice.** If you explained it in prose and the
+question came back, the prose failed. Do not explain it again more slowly —
+build the deck. The second asking is the signal.
+
 ## This is the default, not the exception
 
 People do not learn from filenames and line numbers in prose. If you are about to
@@ -492,6 +543,9 @@ review means they saw every page or explicitly chose not to.
 ## When not to use this
 
 - A single-file, single-line point you can just say in one sentence.
+- When they have asked for prose outright — *just tell me*, *in one line*. Honour
+  it. Answer the way they asked, and offer the deck in a sentence if the answer
+  still deserves one.
 - As a substitute for actually making the change. A deck is for the argument, not the diff.
 - To Socratically quiz them on a routine change they just want to approve (ship mode). Read
   the mode; do not force teaching where they want speed.

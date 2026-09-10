@@ -459,6 +459,13 @@ mod tests {
             "A root cause",
             "A plan, before you write it",
             "Findings after an investigation",
+            // The ones an agent is least likely to recognise as explaining
+            // code at all, which is exactly why they are written down.
+            "An error or a stack trace",
+            "A failing test",
+            "Why did you do it that way?",
+            "It does not actually do that.",
+            "They asked the same thing twice",
         ] {
             assert!(SKILL.contains(one), "the skill never names `{one}`");
         }
