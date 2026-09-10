@@ -379,6 +379,11 @@ pub struct DeckView {
     /// drag began rather than accumulated, for the same reason a line
     /// selection is: a position that is only ever added to cannot go back.
     panning: Option<(usize, Point<Pixels>, Point<Pixels>)>,
+    /// The flow being stepped through, while one is.
+    ///
+    /// Held so that starting a second flow drops the first: two paths lighting
+    /// at once would be two answers to a question that has one.
+    stepping: Task<()>,
     /// How the page's height is shared between its panes.
     ///
     /// One share each, so two panes start even. A drag moves height from one
@@ -453,6 +458,7 @@ impl DeckView {
             turn,
             turn_now: turn.unwrap_or(0),
             panning: None,
+            stepping: Task::ready(()),
             sizing: None,
             band_height,
             folded,
@@ -1251,13 +1257,74 @@ impl DeckView {
 
         let scroll = chart.scroll();
         let slack = scroll.max_offset();
-        let held = |wanted: Pixels, slack: Pixels| wanted.clamp(-slack.max(px(0.)), px(0.));
+
+        /// How far past its own edges a drawing can be pulled.
+        ///
+        /// Without it the travel is exactly the overflow, so a picture that
+        /// fits cannot be moved at all and a picture that does not can only be
+        /// pulled two of the four ways. Neither is what a hand expects of
+        /// something it has taken hold of. The slack is the same in every
+        /// direction, so the drawing always gives.
+        const GIVE: f32 = 260.;
+
+        let held =
+            |wanted: Pixels, slack: Pixels| wanted.clamp(-(slack.max(px(0.)) + px(GIVE)), px(GIVE));
 
         scroll.set_offset(point(
             held(was.x + (at.x - from.x), slack.x),
             held(was.y + (at.y - from.y), slack.y),
         ));
         cx.notify();
+    }
+
+    /// Play a flow through the diagram in `pane_ix`, or stop the one playing.
+    ///
+    /// Clicking the flow that is already running stops it, because the button
+    /// is the only thing on screen that could — and a picture stuck part-way
+    /// through a path it will not finish is worse than one at rest.
+    pub fn play_flow(&mut self, pane_ix: usize, flow: usize, cx: &mut Context<Self>) {
+        let Some(chart) = self.panes.get_mut(pane_ix).and_then(Sheet::chart_mut) else {
+            return;
+        };
+        if chart.playing.is_some_and(|playing| playing.flow == flow) {
+            chart.playing = None;
+            self.stepping = Task::ready(());
+            cx.notify();
+            return;
+        }
+
+        let steps = chart.steps(flow);
+        if steps == 0 {
+            return;
+        }
+        chart.playing = Some(crate::chart::Playing { flow, upto: 1 });
+        cx.notify();
+
+        // One step at a time, on a timer rather than an easing. What is being
+        // animated is *which* things are lit, not how far a value has moved,
+        // and a reader has to be given long enough to look at each one before
+        // the next arrives.
+        const BEAT: std::time::Duration = std::time::Duration::from_millis(760);
+        self.stepping = cx.spawn(async move |deck, cx| {
+            for upto in 2..=steps {
+                cx.background_executor().timer(BEAT).await;
+                let carried = deck.update(cx, |deck, cx| {
+                    let Some(chart) = deck.panes.get_mut(pane_ix).and_then(Sheet::chart_mut) else {
+                        return false;
+                    };
+                    // Somebody stopped it, or started another one.
+                    if !chart.playing.is_some_and(|playing| playing.flow == flow) {
+                        return false;
+                    }
+                    chart.playing = Some(crate::chart::Playing { flow, upto });
+                    cx.notify();
+                    true
+                });
+                if !matches!(carried, Ok(true)) {
+                    return;
+                }
+            }
+        });
     }
 
     /// Fold a remark down to its header, or open it again.

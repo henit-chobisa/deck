@@ -25,7 +25,7 @@
 //! what a remark about a diagram is pinned to; that needs a real element with a
 //! real hit area, which a painted shape is not.
 
-use deck_core::diagram::{Cluster, Diagram, Edge, Flow, Layout, Line, Role, Weight};
+use deck_core::diagram::{Cluster, Diagram, Direction, Edge, Layout, Line, Role, Weight};
 use deck_core::protocol::DiagramRef;
 use deck_core::theme::Palette;
 use gpui_kit::component::scroll::Scrollbar;
@@ -223,7 +223,12 @@ fn around(
 /// against the flow, so it cannot use the gutter *between* the ranks it spans;
 /// it steps sideways into the neighbouring one and travels there instead, which
 /// is what makes a return arrow read as returning rather than as a mistake.
-fn route(from: Bounds<Pixels>, to: Bounds<Pixels>, flow: Flow, back: bool) -> Vec<Point<Pixels>> {
+fn route(
+    from: Bounds<Pixels>,
+    to: Bounds<Pixels>,
+    flow: Direction,
+    back: bool,
+) -> Vec<Point<Pixels>> {
     let side = |at: Bounds<Pixels>| {
         (
             f32::from(at.origin.x),
@@ -249,21 +254,21 @@ fn route(from: Bounds<Pixels>, to: Bounds<Pixels>, flow: Flow, back: bool) -> Ve
         // like it joined a node it had nothing to do with. The gutter beside
         // the target is a gutter however far the edge has come, and for
         // neighbouring ranks it is the same line as before.
-        (Flow::Down, false) => {
+        (Direction::Down, false) => {
             let lane = tt - GAP_Y / 2.;
             [(fx, fb), (fx, lane), (tx, lane), (tx, tt)]
         }
-        (Flow::Right, false) => {
+        (Direction::Right, false) => {
             let lane = tl - GAP_X / 2.;
             [(fr, fy), (lane, fy), (lane, ty), (tl, ty)]
         }
         // Against it: sideways into the next gutter over, back along that, and
         // in through the same side it left by.
-        (Flow::Down, true) => {
+        (Direction::Down, true) => {
             let lane = fr + GAP_X / 2.;
             [(fr, fy), (lane, fy), (lane, ty), (tr, ty)]
         }
-        (Flow::Right, true) => {
+        (Direction::Right, true) => {
             let lane = fb + GAP_Y / 2.;
             [(fx, fb), (fx, lane), (tx, lane), (tx, tb)]
         }
@@ -290,6 +295,35 @@ pub struct Chart {
     /// instead — and to nothing at all when none is picked, which makes it a
     /// remark about the whole picture.
     pub selected: Option<usize>,
+    /// The flow being played, and how far along it is.
+    ///
+    /// `None` while nothing is playing, which is every diagram's resting
+    /// state — a picture with a path through it is still a picture first.
+    pub playing: Option<Playing>,
+}
+
+/// A flow part-way through.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Playing {
+    /// Which of the diagram's flows.
+    pub flow: usize,
+    /// How many of its steps have been reached. The last of them is the one
+    /// the reader is being shown; the ones before it stay lit behind it, so
+    /// the path is visible as a path rather than as a single moving box.
+    pub upto: usize,
+}
+
+/// What a flow is doing to one node or one edge.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Lit {
+    /// Nothing is playing. The picture reads as it always does.
+    Resting,
+    /// On the path, and already passed.
+    Behind,
+    /// The step being shown.
+    Here,
+    /// Not on the path, while a path is being shown.
+    Aside,
 }
 
 impl Chart {
@@ -312,6 +346,7 @@ impl Chart {
             plan,
             scroll: ScrollHandle::new(),
             selected: None,
+            playing: None,
         }
     }
 
@@ -366,7 +401,79 @@ impl Chart {
                 palette,
                 cx,
             ))
-            .child(self.render_drawing(slot.ix, palette, slot.view))
+            .child(
+                // The drawing, with the flows floating over its top-right.
+                // Over rather than above: a strip of buttons in the pane's
+                // chrome would push the picture down on every diagram, and
+                // most diagrams have no flows at all.
+                div()
+                    .relative()
+                    .flex_1()
+                    .min_h_0()
+                    .child(self.render_drawing(slot.ix, palette, slot.view))
+                    .children(self.render_flows(slot.ix, palette, slot.view)),
+            )
+    }
+
+    /// The buttons that play this diagram's flows.
+    ///
+    /// Nothing at all when there are none, which is most diagrams.
+    fn render_flows(
+        &self,
+        pane_ix: usize,
+        palette: &Palette,
+        view: &WeakEntity<DeckView>,
+    ) -> Option<impl IntoElement> {
+        let flows = self.flows();
+        if flows.is_empty() {
+            return None;
+        }
+        let playing = self.playing;
+
+        Some(
+            div()
+                .absolute()
+                .top(px(8.))
+                .right(px(8.))
+                .v_flex()
+                .items_end()
+                .gap(px(4.))
+                .children(flows.into_iter().enumerate().map(|(ix, name)| {
+                    let on = playing.is_some_and(|playing| playing.flow == ix);
+                    let view = view.clone();
+                    div()
+                        .id(("flow", pane_ix * 64 + ix))
+                        .h_flex()
+                        .items_center()
+                        .gap(px(6.))
+                        .pl(px(9.))
+                        .pr(px(7.))
+                        .py(px(3.))
+                        .rounded(px(11.))
+                        .border_1()
+                        .border_color(paint(if on { palette.accent } else { palette.edge }))
+                        .bg(paint(if on {
+                            palette.accent.mix(palette.bg, 0.86)
+                        } else {
+                            palette.bg
+                        }))
+                        .text_size(px(10.5))
+                        .text_color(paint(if on { palette.accent } else { palette.muted }))
+                        .cursor_pointer()
+                        .hover(|this| this.border_color(paint(palette.accent)))
+                        .child(name)
+                        // A triangle, drawn rather than fetched. It is four
+                        // characters of text and needs no icon set behind it.
+                        .child(div().text_size(px(8.)).child(if on {
+                            "\u{25a0}"
+                        } else {
+                            "\u{25b6}"
+                        }))
+                        .on_click(move |_, _window, cx| {
+                            let _ = view.update(cx, |deck, cx| deck.play_flow(pane_ix, ix, cx));
+                        })
+                })),
+        )
     }
 
     fn render_drawing(
@@ -539,10 +646,20 @@ impl Chart {
                     // the one thing in a state machine a reader has to notice
                     // — and because otherwise it reads as an arrow pointing
                     // the wrong way by mistake.
-                    paint(if route.back {
-                        palette.accent
-                    } else {
-                        palette.fg.mix(palette.wash, 0.45)
+                    paint(match self.travelled(&edge.from, &edge.to) {
+                        // An arrow the flow has just crossed, and the ones it
+                        // crossed before. Travelling is the thing being shown,
+                        // so the arrows carry it as much as the boxes do.
+                        Lit::Here => palette.accent,
+                        Lit::Behind => palette.accent.mix(palette.fg, 0.35),
+                        Lit::Aside => palette.fg.mix(palette.wash, 0.45).mix(palette.bg, ASIDE),
+                        Lit::Resting => {
+                            if route.back {
+                                palette.accent
+                            } else {
+                                palette.fg.mix(palette.wash, 0.45)
+                            }
+                        }
                     }),
                 )
             })
@@ -555,7 +672,8 @@ impl Chart {
             .filter_map(|spot| {
                 let node = self.diagram.nodes.get(spot.node_ix)?;
                 let picked = self.selected == Some(spot.node_ix);
-                Some((spot.at, node.role, skin(node.weight, picked, palette)))
+                let lit = self.lit(&node.id);
+                Some((spot.at, node.role, skin(node.weight, picked, lit, palette)))
             })
             .collect();
 
@@ -770,25 +888,113 @@ impl Chart {
     }
 }
 
+impl Chart {
+    /// What the playing flow, if any, is doing to the node called `id`.
+    #[must_use]
+    pub fn lit(&self, id: &str) -> Lit {
+        let Some(playing) = self.playing else {
+            return Lit::Resting;
+        };
+        let Some(flow) = self.diagram.flows.get(playing.flow) else {
+            return Lit::Resting;
+        };
+        let walk = flow.walk(&self.diagram);
+        match walk.iter().position(|step| *step == id) {
+            // A node the path visits twice belongs to the earlier visit, which
+            // is what a reader watching it travel would expect: it lights when
+            // it is first reached and stays lit.
+            Some(at) if at + 1 == playing.upto => Lit::Here,
+            Some(at) if at + 1 < playing.upto => Lit::Behind,
+            _ => Lit::Aside,
+        }
+    }
+
+    /// Whether the edge from `from` to `to` has been travelled.
+    #[must_use]
+    pub fn travelled(&self, from: &str, to: &str) -> Lit {
+        let Some(playing) = self.playing else {
+            return Lit::Resting;
+        };
+        let Some(flow) = self.diagram.flows.get(playing.flow) else {
+            return Lit::Resting;
+        };
+        let walk = flow.walk(&self.diagram);
+        // An edge belongs to the step it arrives at, so it lights together
+        // with the box it leads to rather than a beat early.
+        for at in 1..walk.len().min(playing.upto) {
+            if walk[at - 1] == from && walk[at] == to {
+                return if at + 1 == playing.upto {
+                    Lit::Here
+                } else {
+                    Lit::Behind
+                };
+            }
+        }
+        Lit::Aside
+    }
+
+    /// The flows this diagram offers, by name.
+    #[must_use]
+    pub fn flows(&self) -> Vec<SharedString> {
+        self.diagram
+            .flows
+            .iter()
+            .map(|flow| SharedString::from(flow.name.clone()))
+            .collect()
+    }
+
+    /// How many steps the flow at `ix` has.
+    #[must_use]
+    pub fn steps(&self, ix: usize) -> usize {
+        self.diagram
+            .flows
+            .get(ix)
+            .map_or(0, |flow| flow.walk(&self.diagram).len())
+    }
+}
+
 /// How a node of this weight is filled and outlined.
 ///
 /// Weight is emphasis, not meaning, so it only ever reaches for colours the
 /// palette already has — the same ones the code panes use for the same job. A
 /// picked node borrows the code pane's picked ground outright, because it is
 /// the same act.
-fn skin(weight: Weight, picked: bool, palette: &Palette) -> Skin {
+fn skin(weight: Weight, picked: bool, lit: Lit, palette: &Palette) -> Skin {
     let (fill, edge, width) = match (picked, weight) {
         (true, _) => (palette.focus.mix(palette.accent, 0.14), palette.accent, 1.5),
         (false, Weight::Accent) => (palette.focus, palette.accent, 1.5),
         (false, Weight::Normal) => (palette.bg, palette.edge, 1.),
         (false, Weight::Muted) => (palette.wash, palette.edge.mix(palette.wash, 0.5), 1.),
     };
+
+    // A flow does not recolour the picture, it changes what stands out of it.
+    // The nodes on the path keep their own skin and everything else recedes
+    // toward the page — so a reader who has learned what a shape means does
+    // not have to learn it again while a flow is playing.
+    let (fill, edge, width) = match lit {
+        Lit::Resting => (fill, edge, width),
+        Lit::Here => (fill.mix(palette.accent, 0.2), palette.accent, 2.),
+        Lit::Behind => (fill, palette.accent.mix(palette.edge, 0.45), 1.5),
+        Lit::Aside => (
+            fill.mix(palette.bg, ASIDE),
+            edge.mix(palette.bg, ASIDE),
+            width,
+        ),
+    };
+
     Skin {
         fill: paint(fill),
         edge: paint(edge),
         width,
     }
 }
+
+/// How far a node that is not on the playing flow recedes toward the page.
+///
+/// Far enough to fall behind, near enough to still be read. A flow that hid
+/// the rest of the diagram would answer the question by deleting the context
+/// that makes it a question.
+const ASIDE: f32 = 0.68;
 
 /// How far a label has to stay inside a shape of this role.
 fn inset(role: Role) -> f32 {
@@ -1067,7 +1273,7 @@ mod tests {
     }
 
     fn drawn(
-        flow: Flow,
+        flow: Direction,
         ids: &[&str],
         edges: &[(&str, &str)],
         clusters: &[(&str, &[&str])],
@@ -1084,6 +1290,7 @@ mod tests {
                     nodes: nodes.iter().map(|id| (*id).to_string()).collect(),
                 })
                 .collect(),
+            flows: Vec::new(),
         };
         plan(&diagram, &diagram.layout())
     }
@@ -1100,7 +1307,12 @@ mod tests {
 
     #[test]
     fn a_chain_is_drawn_down_one_column() {
-        let plan = drawn(Flow::Down, &["a", "b", "c"], &[("a", "b"), ("b", "c")], &[]);
+        let plan = drawn(
+            Direction::Down,
+            &["a", "b", "c"],
+            &[("a", "b"), ("b", "c")],
+            &[],
+        );
 
         let xs: Vec<f32> = plan.spots.iter().map(|s| sides(s.at).0).collect();
         assert_eq!(xs, vec![PAD, PAD, PAD], "one rank each, so one column");
@@ -1115,7 +1327,12 @@ mod tests {
         // it has to move sideways. Where it does that is the whole question:
         // in the gap between the rows it is free, and anywhere else it would
         // cross something.
-        let plan = drawn(Flow::Down, &["a", "b", "c"], &[("a", "c"), ("b", "c")], &[]);
+        let plan = drawn(
+            Direction::Down,
+            &["a", "b", "c"],
+            &[("a", "c"), ("b", "c")],
+            &[],
+        );
 
         let a = sides(plan.spots[0].at);
         let c = sides(plan.spots[2].at);
@@ -1137,7 +1354,7 @@ mod tests {
         // A cycle: one of these two edges cannot be ranked, and the one set
         // aside has to get back up the drawing without running through the
         // boxes it is passing.
-        let plan = drawn(Flow::Down, &["a", "b"], &[("a", "b"), ("b", "a")], &[]);
+        let plan = drawn(Direction::Down, &["a", "b"], &[("a", "b"), ("b", "a")], &[]);
 
         let back = plan
             .routes
@@ -1156,7 +1373,7 @@ mod tests {
     #[test]
     fn a_cluster_frames_its_members_with_room_for_its_name() {
         let plan = drawn(
-            Flow::Down,
+            Direction::Down,
             &["a", "b"],
             &[("a", "b")],
             &[("core", &["a", "b"])],
@@ -1177,7 +1394,7 @@ mod tests {
     #[test]
     fn the_drawing_is_big_enough_for_what_is_in_it() {
         let plan = drawn(
-            Flow::Right,
+            Direction::Right,
             &["a", "b"],
             &[("a", "b")],
             &[("core", &["a", "b"])],

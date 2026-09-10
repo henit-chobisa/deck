@@ -236,6 +236,7 @@ same idea come out looking the same.
 | `nodes`    | array  | yes      | — |
 | `edges`    | array  | no       | empty |
 | `clusters` | array  | no       | empty |
+| `flows`    | array  | no       | empty |
 
 `flow` is `down` or `right`: which way later things sit from earlier ones.
 
@@ -276,6 +277,32 @@ is a word or two — `writes`, `on submit`, `anchor()`. A client keeps it to the
 space between the nodes, so anything longer wraps or is cut.
 
 An edge naming a node that does not exist is ignored, not fatal.
+
+**Flow**
+
+A path through the picture that the reader can play. Optional, and a diagram
+with none is the ordinary case.
+
+| field   | type   | required |
+| ------- | ------ | -------- |
+| `name`  | string | yes      |
+| `steps` | array  | yes      |
+
+`steps` are node ids, in the order they happen. A client shows one button per
+flow and lights the steps in turn when it is played: the nodes on the path keep
+their own appearance while everything else recedes, so a flow changes what
+stands out rather than recolouring the picture.
+
+The edge between two consecutive steps belongs to the second of them and lights
+with it. Steps naming a node that does not exist are skipped, as an edge naming
+a missing node is.
+
+```json
+"flows": [
+  { "name": "cancel check", "steps": ["run", "worker", "cache"] },
+  { "name": "re-run", "steps": ["run", "queued"] }
+]
+```
 
 **Cluster**
 

@@ -75,6 +75,15 @@ impl Sheet {
         }
     }
 
+    /// The diagram pane, to change something about it.
+    #[must_use]
+    pub fn chart_mut(&mut self) -> Option<&mut Chart> {
+        match self {
+            Self::Drawn(chart) => Some(chart),
+            Self::Code(_) => None,
+        }
+    }
+
     /// Whether the reader has picked something inside this pane.
     ///
     /// Lines in a code pane, a node in a diagram. Either way it is the answer

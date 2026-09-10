@@ -312,6 +312,23 @@ Only `nodes` is required.
 - Edge `label` is a word or two: `POST /connect`, `on submit`. Longer gets cut.
 - `clusters` are containment, for a boundary worth seeing: browser against server.
 - Cycles are fine. The returning edge is drawn as one that visibly comes back.
+- `flows` are paths through the picture the reader can play, and they are how one
+  diagram answers more than one question. Each is `{ "name", "steps" }` where the
+  steps are node ids in the order they happen. A button per flow sits in the
+  drawing's top-right; pressing it lights the steps in turn while everything else
+  recedes.
+
+```json
+"flows": [
+  { "name": "cancel check", "steps": ["run", "worker", "cache"] },
+  { "name": "re-run", "steps": ["run", "queued"] }
+]
+```
+
+  Reach for them when a picture holds two paths that a reader would otherwise
+  have to trace with a finger — the happy path and the one that stalls, the
+  first run and the second. Two flows over one diagram beat two diagrams,
+  because the thing being compared is what they share.
 
 There are no colours, sizes or positions, on purpose. A node says what it is and how much
 it matters; deck owns every pixel. **Six to ten nodes** — twenty is a wall. Every node

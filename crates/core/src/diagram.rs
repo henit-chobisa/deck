@@ -42,7 +42,7 @@ use std::collections::{HashMap, HashSet};
 /// Which way the story runs.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase", from = "String")]
-pub enum Flow {
+pub enum Direction {
     /// Later things sit below earlier ones. The default: it suits layers,
     /// sequences and anything read top to bottom.
     #[default]
@@ -57,7 +57,7 @@ pub enum Flow {
 /// failing the whole group. A later version may name a shape, a weight or a
 /// line this one has never heard of, and a diagram that mostly makes sense is
 /// worth more than a group that will not open.
-impl From<String> for Flow {
+impl From<String> for Direction {
     fn from(name: String) -> Self {
         match name.as_str() {
             "down" => Self::Down,
@@ -227,6 +227,25 @@ pub struct Cluster {
     pub nodes: Vec<String>,
 }
 
+/// A path through the picture, walked one node at a time.
+///
+/// A diagram of any size answers several questions at once, and a reader
+/// looking for one of them has to find it among the rest. A flow is the agent
+/// saying *this* is the part I mean: the nodes it touches, in the order they
+/// happen, so the picture can be walked rather than only read.
+///
+/// The edge between two consecutive steps lights with the second of them. That
+/// is what makes it read as travel rather than as boxes taking turns to blink,
+/// and it is why the steps are nodes and not edges — an agent describing a path
+/// names the places, and the arrows between them follow.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Flow {
+    /// What this path is called. Shown on the button that plays it.
+    pub name: String,
+    /// The nodes it touches, in order. Ids that name no node are skipped.
+    pub steps: Vec<String>,
+}
+
 /// A picture of how some things relate.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Diagram {
@@ -235,7 +254,7 @@ pub struct Diagram {
     pub title: Option<String>,
     /// Which way the story runs.
     #[serde(default)]
-    pub flow: Flow,
+    pub flow: Direction,
     /// The boxes, in the order they should be packed across the flow.
     pub nodes: Vec<Node>,
     /// The arrows.
@@ -244,6 +263,28 @@ pub struct Diagram {
     /// Boxes drawn around groups of nodes.
     #[serde(default)]
     pub clusters: Vec<Cluster>,
+    /// Paths through the picture that a reader can play.
+    ///
+    /// Optional, and a diagram with none is the ordinary case — a picture that
+    /// says one thing does not need a path through it.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub flows: Vec<Flow>,
+}
+
+impl Flow {
+    /// The steps that name a node that exists, in order.
+    ///
+    /// An id that matches nothing is dropped rather than refused, the same way
+    /// an edge naming a missing node is: a flow written against a diagram that
+    /// has since lost a box should play the part it still can.
+    #[must_use]
+    pub fn walk<'a>(&'a self, diagram: &'a Diagram) -> Vec<&'a str> {
+        self.steps
+            .iter()
+            .map(String::as_str)
+            .filter(|step| diagram.nodes.iter().any(|node| node.id == *step))
+            .collect()
+    }
 }
 
 /// Where one node ended up.
@@ -294,8 +335,8 @@ impl Diagram {
             .map(|ix| {
                 let (rank, track) = (rank[ix], track[ix]);
                 let (col, row) = match self.flow {
-                    Flow::Down => (track, rank),
-                    Flow::Right => (rank, track),
+                    Direction::Down => (track, rank),
+                    Direction::Right => (rank, track),
                 };
                 Placed {
                     node_ix: ix,
@@ -468,13 +509,14 @@ mod tests {
         }
     }
 
-    fn diagram(flow: Flow, nodes: &[&str], edges: &[(&str, &str)]) -> Diagram {
+    fn diagram(flow: Direction, nodes: &[&str], edges: &[(&str, &str)]) -> Diagram {
         Diagram {
             title: None,
             flow,
             nodes: nodes.iter().map(|id| node(id)).collect(),
             edges: edges.iter().map(|(f, t)| edge(f, t)).collect(),
             clusters: Vec::new(),
+            flows: Vec::new(),
         }
     }
 
@@ -483,6 +525,33 @@ mod tests {
         let ix = d.nodes.iter().position(|n| n.id == id).unwrap();
         let p = layout.placed.iter().find(|p| p.node_ix == ix).unwrap();
         (p.col, p.row)
+    }
+
+    #[test]
+    fn a_flow_walks_only_the_nodes_that_exist() {
+        // A flow written against a diagram that has since lost a box should
+        // play the part it still can, the same way an edge naming a missing
+        // node is dropped rather than refused.
+        let mut d = diagram(Direction::Down, &["a", "b"], &[("a", "b")]);
+        d.flows = vec![Flow {
+            name: "the path".to_string(),
+            steps: vec!["a".into(), "gone".into(), "b".into()],
+        }];
+
+        assert_eq!(d.flows[0].walk(&d), vec!["a", "b"]);
+    }
+
+    #[test]
+    fn a_diagram_with_no_flows_reads_and_writes_without_them() {
+        // Every diagram written before flows existed has to keep working, and
+        // one with none must not grow an empty array on the way out.
+        let plain: Diagram =
+            serde_json::from_str(r#"{ "nodes": [ { "id": "a", "label": "A" } ] }"#)
+                .expect("a diagram with no flows is a diagram");
+        assert!(plain.flows.is_empty());
+
+        let back = serde_json::to_string(&plain).expect("it serialises");
+        assert!(!back.contains("flows"), "and says nothing about them");
     }
 
     #[test]
@@ -500,7 +569,11 @@ mod tests {
 
     #[test]
     fn a_chain_runs_the_way_the_flow_points() {
-        let d = diagram(Flow::Right, &["a", "b", "c"], &[("a", "b"), ("b", "c")]);
+        let d = diagram(
+            Direction::Right,
+            &["a", "b", "c"],
+            &[("a", "b"), ("b", "c")],
+        );
         let l = d.layout();
 
         assert_eq!(at(&d, &l, "a"), (0, 0));
@@ -511,7 +584,7 @@ mod tests {
 
     #[test]
     fn the_same_chain_turned_down_swaps_the_axes() {
-        let d = diagram(Flow::Down, &["a", "b", "c"], &[("a", "b"), ("b", "c")]);
+        let d = diagram(Direction::Down, &["a", "b", "c"], &[("a", "b"), ("b", "c")]);
         let l = d.layout();
 
         assert_eq!(at(&d, &l, "c"), (0, 2));
@@ -522,7 +595,7 @@ mod tests {
     fn things_at_the_same_stage_sit_side_by_side_in_the_order_written() {
         // One source feeding three readers: an HLD fan-out.
         let d = diagram(
-            Flow::Down,
+            Direction::Down,
             &["core", "ui", "cli", "web"],
             &[("core", "ui"), ("core", "cli"), ("core", "web")],
         );
@@ -539,7 +612,7 @@ mod tests {
         // `c` is reachable in one step and in two. The long way wins, so the
         // short edge is drawn spanning a rank rather than pointing backwards.
         let d = diagram(
-            Flow::Right,
+            Direction::Right,
             &["a", "b", "c"],
             &[("a", "b"), ("b", "c"), ("a", "c")],
         );
@@ -553,7 +626,7 @@ mod tests {
     fn a_cycle_is_ranked_by_setting_one_edge_aside() {
         // A state machine: idle -> running -> done -> idle.
         let d = diagram(
-            Flow::Right,
+            Direction::Right,
             &["idle", "running", "done"],
             &[("idle", "running"), ("running", "done"), ("done", "idle")],
         );
@@ -569,7 +642,7 @@ mod tests {
         // A sequence diagram: two participants, time running down. Every step
         // keeps its column even though the steps alternate.
         let mut d = diagram(
-            Flow::Down,
+            Direction::Down,
             &["ask", "answer", "again"],
             &[("ask", "answer"), ("answer", "again")],
         );
@@ -585,7 +658,7 @@ mod tests {
 
     #[test]
     fn an_unlaned_node_fills_in_around_a_laned_one() {
-        let mut d = diagram(Flow::Down, &["pinned", "loose"], &[]);
+        let mut d = diagram(Direction::Down, &["pinned", "loose"], &[]);
         d.nodes[0].lane = Some(0);
         let l = d.layout();
 
@@ -597,7 +670,7 @@ mod tests {
     fn two_unconnected_halves_sit_beside_each_other() {
         // Before and after: no edge crosses, so both start at the same rank.
         let d = diagram(
-            Flow::Down,
+            Direction::Down,
             &["was", "was_more", "now"],
             &[("was", "was_more")],
         );
@@ -610,7 +683,7 @@ mod tests {
 
     #[test]
     fn an_edge_naming_a_node_that_is_not_there_is_ignored() {
-        let d = diagram(Flow::Right, &["a"], &[("a", "ghost"), ("ghost", "a")]);
+        let d = diagram(Direction::Right, &["a"], &[("a", "ghost"), ("ghost", "a")]);
         let l = d.layout();
 
         assert_eq!(at(&d, &l, "a"), (0, 0));
@@ -619,7 +692,7 @@ mod tests {
 
     #[test]
     fn a_node_pointing_at_itself_does_not_hang() {
-        let d = diagram(Flow::Right, &["a", "b"], &[("a", "a"), ("a", "b")]);
+        let d = diagram(Direction::Right, &["a", "b"], &[("a", "a"), ("a", "b")]);
         let l = d.layout();
 
         assert_eq!(l.back_edges, vec![0]);
@@ -659,8 +732,8 @@ mod tests {
     fn a_role_changes_the_drawing_and_not_the_placement() {
         // Shape is the view's business. Ranking must not shift because a node
         // became a circle.
-        let plain = diagram(Flow::Right, &["a", "b"], &[("a", "b")]);
-        let mut shaped = diagram(Flow::Right, &["a", "b"], &[("a", "b")]);
+        let plain = diagram(Direction::Right, &["a", "b"], &[("a", "b")]);
+        let mut shaped = diagram(Direction::Right, &["a", "b"], &[("a", "b")]);
         shaped.nodes[0].role = Role::Actor;
         shaped.nodes[1].role = Role::Terminal;
 
@@ -669,7 +742,7 @@ mod tests {
 
     #[test]
     fn a_diagram_with_no_nodes_still_has_a_size() {
-        let d = diagram(Flow::Down, &[], &[]);
+        let d = diagram(Direction::Down, &[], &[]);
         let l = d.layout();
 
         assert!(l.placed.is_empty());
@@ -687,7 +760,7 @@ mod tests {
         }"#;
 
         let d: Diagram = serde_json::from_str(json).unwrap();
-        assert_eq!(d.flow, Flow::Down);
+        assert_eq!(d.flow, Direction::Down);
         assert_eq!(d.nodes[1].weight, Weight::Accent);
         assert_eq!(
             d.nodes[0].role,
