@@ -325,7 +325,7 @@ mod tests {
     fn the_skill_says_what_silence_is_not() {
         // The one place an agent can do real harm: reporting approval that
         // nobody gave.
-        assert!(SKILL.contains("Never turn that into agreement"));
+        assert!(SKILL.contains("Never convert an absent review into agreement"));
         assert!(
             SKILL.contains("background"),
             "and how to wait without a timeout"
@@ -339,7 +339,7 @@ mod tests {
         // open — is the one that makes somebody stop using deck. Stalling —
         // open, then go back to reading — leaves them watching a pulsing dot.
         // The file has to name both, or fixing one reintroduces the other.
-        assert!(SKILL.contains("Do these in order"));
+        assert!(SKILL.contains("Do the reading first"));
         assert!(
             SKILL.contains("with nothing in the deck yet"),
             "the bar goes up before the research, which is the whole fix"
@@ -401,7 +401,7 @@ mod tests {
         // ranges" on its own pushed straight into it.
         assert!(SKILL.contains("must be tight either way"));
         assert!(
-            SKILL.contains("complete thing"),
+            SKILL.contains("signature through closing brace"),
             "and what whole means: signature through closing brace"
         );
     }
@@ -411,8 +411,8 @@ mod tests {
         // Sealing is not a cue to put a window in somebody's face. The bar is
         // the invitation, and when to read is the reader's to choose — it is
         // almost never the moment the agent happens to finish.
-        assert!(SKILL.contains("never\nagain for that deck"));
-        assert!(SKILL.contains("Do not open the deck yourself when you finish writing"));
+        assert!(SKILL.contains("You never open the deck itself"));
+        assert!(SKILL.contains("Sealing a deck is not a cue to put a window"));
     }
 
     #[test]
@@ -441,12 +441,12 @@ mod tests {
         // So the rule is arithmetic. Two citations is a deck. A model can
         // check that against a draft without deciding anything.
         let front = SKILL.split("---").nth(1).expect("the file has frontmatter");
-        assert!(front.contains("TWO OR MORE"));
+        assert!(front.contains("USE THIS BY DEFAULT"));
         assert!(
-            front.contains("after an investigation"),
+            front.contains("When in doubt, deck it"),
             "and the moment it fails, named"
         );
-        assert!(SKILL.contains("Stop. Count the citations first"));
+        assert!(SKILL.contains("two or more `file:line` references in a reply"));
         assert!(
             SKILL.contains("do not send the prose version as well"),
             "a summary that carries the argument makes the deck redundant"
