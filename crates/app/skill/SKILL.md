@@ -42,7 +42,17 @@ a summary carrying the whole argument is why nobody opens the deck.
 The reader wants to *understand*, not be handed conclusions. Present the way people
 actually learn:
 
-1. **Predict before reveal.** The method is predict-then-verify. When you are
+1. **Root context first, before you tell them what you are going to do.** Before you
+   say what a function does and that you are removing it, tell the story about it:
+   what is the entry point, what happened when the user clicked something, the
+   *user's* perspective of it. Like — "say you created a query and this is your use
+   case for it, you want to enrich these five fields, but email is the dependency."
+   Or "when you load the page and see the issue." Or "when you create the work item
+   for the first time." Start outside the code. A group that opens on a line number
+   makes them translate back to purpose on their own, every time, silently — and that
+   translation is the work you were supposed to do.
+
+2. **Predict before reveal.** The method is predict-then-verify. When you are
    teaching (a bug, how something works, a design), the FIRST group should often make
    them reason before you explain — point at the code and, in the `say`, ask what they
    think happens / why it breaks / what they'd change, *before* the later groups reveal
@@ -50,19 +60,19 @@ actually learn:
    them predict, then confirms. (For a routine "here's my change, approve it" — skip
    this; see the two modes below.)
 
-2. **Always the WHY, never just the what.** People catch half-baked explanations and
+3. **Always the WHY, never just the what.** People catch half-baked explanations and
    push until the full mental model is there — so give it to them the first time.
    Every group's `say` should carry the *reason*, not just the *fact*. "This column
    goes" is a shrug; "this column goes because the enum above is the only thing that
    names its valid values, and we're deleting the enum" is the model. If a group only
    says *what*, it is not done.
 
-3. **Anchor to THEIR system and domain.** They think in their real codebase —
+4. **Anchor to THEIR system and domain.** They think in their real codebase —
    schedulers, workflows, job-scheduling, durable execution — not toy examples. Use
    analogies from what is actually on screen and from their domain. "This is the
    straggler problem, like in a worker pool" lands harder than a generic metaphor.
 
-4. **Is the claim PROVEN, or just plausible?** The one standing edge: people accept
+5. **Is the claim PROVEN, or just plausible?** The one standing edge: people accept
    "done" by reading, not by running. A review deck is exactly where that bites — they
    can walk it, nod, and never notice the claim was never verified. So when a group
    asserts a change is correct/safe/fixed, the `say` should say HOW it's known — "tests
@@ -70,22 +80,22 @@ actually learn:
    yet proven. Never let a deck imply a green checkmark that does not exist. Point at
    the passing test as a ref when one exists.
 
-5. **End on a question or a decision when teaching.** They want to drive, not spectate.
+6. **End on a question or a decision when teaching.** They want to drive, not spectate.
    The last group of a teaching deck should hand them the wheel: the open question, the
    trade-off to weigh, the thing to decide — not "and that's it." For a plain change
    deck, the natural close is "approve or comment", which the review loop already gives.
 
-6. **Story, not a file dump.** Adhere to what you're actually saying. Present it like a
+7. **Story, not a file dump.** Adhere to what you're actually saying. Present it like a
    story, group by group, point by point, each deck a part of the story. Keep language
    simple; do not over-complicate. Imagine you are walking them through it at a
    whiteboard, not reading them a changelog.
 
-7. **Small decks, fast feedback.** Smaller deck, faster loop. Communicating a change
+8. **Small decks, fast feedback.** Smaller deck, faster loop. Communicating a change
    across 5 files? Show it in small chunks (one removed function and its impact),
    not everything with context mixed in. They'd rather walk three tight decks than one
    sprawling one.
 
-8. **One file per page when panes relate.** Don't show one file in multiple panes. If a
+9. **One file per page when panes relate.** Don't show one file in multiple panes. If a
    page uses multiple panes, show one file per pane where a change in one impacts the
    other — e.g. you removed a function, now one callsite per pane per file.
 
@@ -202,6 +212,11 @@ Rules:
 
 - One **group** = one thing you want to say. Refs inside a group are the evidence for
   that one claim, not a pile of related files.
+- **The `say` should name what is on screen and why those things are there together.**
+  "Both panes are ONE claim: the enum names the modes, the column stores one" tells
+  them what they are looking at before they look. A `say` that never mentions its own
+  panes leaves them to work out why two files are side by side, which is the thing you
+  put them there to show.
 - Ranges are 1-based and inclusive, and must be tight either way you name them. A
   200-line range is not a highlight, it is a shrug.
 - **But a range must be a whole thing.** One that stops in the middle of the function it

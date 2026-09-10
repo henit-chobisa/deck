@@ -294,7 +294,12 @@ pub struct DeckView {
     /// does: dropping it is what stops the old textarea being listened to.
     composing: Option<(About, Entity<TextareaState>, Subscription)>,
     /// Whether the narration is the thing a comment would land on.
-    claim_picked: bool,
+    /// Which sentence of the narration is picked, if any.
+    ///
+    /// A comment on the claim used to quote the first line of the say whatever
+    /// the reader had in mind, so an objection to the third sentence came back
+    /// answering the first. The sentence they clicked is the one they meant.
+    picked_said: Option<usize>,
     /// Where a drag began: the pane, and the line the pointer went down on.
     ///
     /// The selection is always measured from here, never grown from wherever
@@ -426,7 +431,7 @@ impl DeckView {
             focus: cx.focus_handle(),
             remarks,
             composing: None,
-            claim_picked: false,
+            picked_said: None,
             drag_from: None,
             hovered: None,
             shares,
@@ -643,7 +648,7 @@ impl DeckView {
 
     /// Select from the drag's anchor to `line`.
     pub fn pick(&mut self, pane_ix: usize, line: u32, cx: &mut Context<Self>) {
-        self.claim_picked = false;
+        self.picked_said = None;
         let anchor = match self.drag_from {
             Some((pane, from)) if pane == pane_ix => from,
             _ => line,
@@ -674,7 +679,7 @@ impl DeckView {
             .and_then(Sheet::chart)
             .is_some_and(|chart| chart.selected == Some(node_ix));
 
-        self.claim_picked = false;
+        self.picked_said = None;
         // A click on a node is not the start of a line drag, and leaving the
         // anchor behind would make the next move over some code extend a
         // selection the reader never began.
@@ -703,9 +708,9 @@ impl DeckView {
         }
     }
 
-    /// Pick the narration, so `c` comments on what the group claims.
-    fn pick_claim(&mut self, cx: &mut Context<Self>) {
-        self.claim_picked = true;
+    /// Pick one sentence of the narration, so `c` comments on that sentence.
+    fn pick_claim(&mut self, said: usize, cx: &mut Context<Self>) {
+        self.picked_said = Some(said);
         for pane in &mut self.panes {
             pane.unpick();
         }
@@ -738,7 +743,7 @@ impl DeckView {
         if self.composing.is_some() {
             return;
         }
-        let about = if self.claim_picked || self.panes.is_empty() {
+        let about = if self.picked_said.is_some() || self.panes.is_empty() {
             About::Claim
         } else {
             let pane = self.panes.iter().position(Sheet::is_picked).unwrap_or(0);
@@ -845,8 +850,12 @@ impl DeckView {
                 ref_id: None,
                 file: None,
                 range: None,
-                // The sentence being answered, so the remark reads on its own.
-                quote: claim.lines().next().unwrap_or_default().to_string(),
+                // The sentence being answered, so the remark reads on its own
+                // — the one that was clicked, not whichever came first.
+                quote: self
+                    .picked_said
+                    .and_then(|said| crate::prose::sentences(&claim).get(said).cloned())
+                    .unwrap_or_else(|| claim.lines().next().unwrap_or_default().to_string()),
                 text: said,
             },
         };
@@ -1060,16 +1069,17 @@ impl DeckView {
                             .max_w(px(560.))
                             .text_size(px(13.2))
                             .text_color(paint(self.palette.fg))
-                            .when(self.claim_picked, |this| {
-                                this.border_l_2()
-                                    .border_color(paint(self.palette.accent))
-                                    .pl_2()
-                            })
-                            .on_click(cx.listener(|deck, _, _window, cx| deck.pick_claim(cx)))
                             .child(crate::prose::render(
                                 crate::prose::parse(&say),
                                 &self.palette,
                                 cx.theme().mono_font_family.clone(),
+                                self.picked_said,
+                                {
+                                    let deck = cx.entity().downgrade();
+                                    std::rc::Rc::new(move |said, _window, cx| {
+                                        deck.update(cx, |deck, cx| deck.pick_claim(said, cx)).ok();
+                                    })
+                                },
                             )),
                     ),
             )
@@ -1468,10 +1478,10 @@ impl DeckView {
                 .v_flex()
                 .flex_none()
                 .key_context("DeckComposer")
-                .pl(px(14.))
-                .pr(px(14.))
-                .pt(px(11.))
-                .pb(px(12.))
+                .pl(px(16.))
+                .pr(px(16.))
+                .pt(px(13.))
+                .pb(px(14.))
                 .border_t_1()
                 .border_color(paint(self.palette.edge))
                 // The handlers live here, not only on the root. An action
@@ -1481,7 +1491,7 @@ impl DeckView {
                 // textarea swallowed the key before anything heard it.
                 .on_action(cx.listener(Self::on_submit))
                 .on_action(cx.listener(Self::on_discard))
-                .gap(px(8.))
+                .gap(px(9.))
                 .bg(paint(self.palette.band))
                 .child(
                     div()
@@ -1489,18 +1499,28 @@ impl DeckView {
                         .justify_between()
                         .gap(px(12.))
                         .font_family(cx.theme().mono_font_family.clone())
-                        .text_size(px(10.5))
+                        .text_size(px(11.5))
                         .text_color(paint(self.palette.muted))
                         .child(where_at)
                         .children(ref_id),
                 )
-                .child(Textarea::new(state).h(px(58.)))
+                // Sized against the narration it answers, not against the
+                // labels around it. What the reader types here is prose, and
+                // it was set smaller than every other piece of prose in the
+                // window — which read as a footnote to the deck rather than as
+                // the half of it that is theirs.
+                .child(
+                    div()
+                        .text_size(px(13.2))
+                        .line_height(px(20.))
+                        .child(Textarea::new(state).h(px(72.))),
+                )
                 // Under the box, where a hint belongs: beside the location it
                 // competes with the one thing the reader needs to read.
                 .child(
                     div()
                         .font_family(cx.theme().mono_font_family.clone())
-                        .text_size(px(10.5))
+                        .text_size(px(11.))
                         .text_color(paint(self.palette.muted))
                         .h_flex()
                         .gap(px(14.))

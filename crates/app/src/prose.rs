@@ -16,6 +16,7 @@
 
 use deck_core::theme::Palette;
 use gpui_kit::component::StyledExt as _;
+use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 
 use crate::palette::paint;
@@ -27,11 +28,30 @@ pub struct Token {
     /// between them, so a chip followed by a comma is followed by a comma.
     text: SharedString,
     mark: Option<Mark>,
+    /// Which sentence of the whole narration this word belongs to.
+    ///
+    /// Carried on the word rather than wrapping each sentence in a container of
+    /// its own, because a container would only wrap at its own edges and the
+    /// paragraph has to keep wrapping between any two words. The number is what
+    /// lets a click on one word light every word of its sentence.
+    said: usize,
 }
 
 /// One paragraph, as the tokens it wraps at.
 pub struct Paragraph {
     tokens: Vec<Token>,
+}
+
+/// Where one sentence ends and the next begins.
+///
+/// A full stop, question mark or exclamation followed by a space. Deliberately
+/// naive: `e.g.` and `1.5` split a sentence in two here. The cost of that is
+/// that a click lights half a sentence instead of all of it, and the comment
+/// still carries the half the reader was pointing at — which is the thing that
+/// matters, and is already far better than quoting the first line whatever they
+/// meant.
+fn ends_a_sentence(word: &str) -> bool {
+    word.trim_end().ends_with(['.', '!', '?'])
 }
 
 /// Split `say` into paragraphs.
@@ -40,10 +60,35 @@ pub struct Paragraph {
 /// this understands — and the only one narration uses.
 #[must_use]
 pub fn parse(say: &str) -> Vec<Paragraph> {
+    let mut said = 0;
     say.split("\n\n")
         .map(str::trim)
         .filter(|para| !para.is_empty())
-        .map(paragraph)
+        .map(|para| {
+            let parsed = paragraph(para, &mut said);
+            // A paragraph break always ends a sentence, whatever it ends with.
+            said += 1;
+            parsed
+        })
+        .collect()
+}
+
+/// Every sentence of `say`, in order — the text a comment on one of them quotes.
+#[must_use]
+pub fn sentences(say: &str) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for para in parse(say) {
+        for token in para.tokens {
+            let at = token.said;
+            while out.len() <= at {
+                out.push(String::new());
+            }
+            out[at].push_str(&token.text);
+        }
+    }
+    out.into_iter()
+        .map(|said| said.trim().to_string())
+        .filter(|said| !said.is_empty())
         .collect()
 }
 
@@ -61,16 +106,24 @@ pub fn render(
     paragraphs: Vec<Paragraph>,
     palette: &Palette,
     mono: SharedString,
+    picked: Option<usize>,
+    pick: std::rc::Rc<dyn Fn(usize, &mut Window, &mut App)>,
 ) -> impl IntoElement {
     div().v_flex().gap(px(9.)).children(
         paragraphs
             .into_iter()
-            .map(|para| para.render(palette, mono.clone())),
+            .map(|para| para.render(palette, mono.clone(), picked, pick.clone())),
     )
 }
 
 impl Paragraph {
-    fn render(self, palette: &Palette, mono: SharedString) -> impl IntoElement {
+    fn render(
+        self,
+        palette: &Palette,
+        mono: SharedString,
+        picked: Option<usize>,
+        pick: std::rc::Rc<dyn Fn(usize, &mut Window, &mut App)>,
+    ) -> impl IntoElement {
         div()
             .flex()
             .flex_wrap()
@@ -79,16 +132,42 @@ impl Paragraph {
             .line_height(px(21.))
             .text_color(paint(palette.fg))
             .children(
-                self.tokens
-                    .into_iter()
-                    .map(|token| token.render(palette, mono.clone())),
+                self.tokens.into_iter().enumerate().map(|(ix, token)| {
+                    token.render(palette, mono.clone(), picked, ix, pick.clone())
+                }),
             )
     }
 }
 
 impl Token {
-    fn render(self, palette: &Palette, mono: SharedString) -> AnyElement {
-        match self.mark {
+    fn render(
+        self,
+        palette: &Palette,
+        mono: SharedString,
+        picked: Option<usize>,
+        ix: usize,
+        pick: std::rc::Rc<dyn Fn(usize, &mut Window, &mut App)>,
+    ) -> AnyElement {
+        // Every word answers to the pointer, and every word of one sentence
+        // lights together. Picking by sentence rather than by character: the
+        // comment carries the sentence it answers, and a half-selected phrase
+        // would be a worse quote than a whole one.
+        let said = self.said;
+        let lit = picked == Some(said);
+        let wrap = move |inner: AnyElement| {
+            div()
+                .id(("say", ix))
+                .cursor_pointer()
+                .when(lit, |this| {
+                    this.bg(paint(palette.accent.mix(palette.band, 0.78)))
+                        .rounded(px(2.))
+                })
+                .on_click(move |_, window, cx| pick(said, window, cx))
+                .child(inner)
+                .into_any_element()
+        };
+
+        wrap(match self.mark {
             Some(Mark::Code) => {
                 // The chip: mono, on the pane's own ground, sized to its text.
                 let (text, trailing) = split_trailing_space(&self.text);
@@ -116,7 +195,7 @@ impl Token {
                 .child(self.text)
                 .into_any_element(),
             None => div().child(self.text).into_any_element(),
-        }
+        })
     }
 }
 
@@ -148,7 +227,7 @@ enum Mark {
 }
 
 /// One paragraph, split into the runs it can wrap between.
-fn paragraph(para: &str) -> Paragraph {
+fn paragraph(para: &str, said: &mut usize) -> Paragraph {
     // A newline inside a paragraph is the agent's line wrapping, not a break.
     let source = para.replace('\n', " ");
     let mut tokens: Vec<Token> = Vec::new();
@@ -157,22 +236,36 @@ fn paragraph(para: &str) -> Paragraph {
 
     /// Plain text becomes one token per word, each keeping the whitespace that
     /// followed it — which is what lets the row wrap between words.
-    fn flush(plain: &mut String, tokens: &mut Vec<Token>) {
+    ///
+    /// The sentence counter advances *after* the word that closed one, so the
+    /// full stop stays with the sentence it ends rather than opening the next.
+    fn flush(plain: &mut String, tokens: &mut Vec<Token>, said: &mut usize) {
         let mut word = String::new();
         for ch in plain.chars() {
             word.push(ch);
             if ch == ' ' {
+                let word = std::mem::take(&mut word);
+                let ended = ends_a_sentence(&word);
                 tokens.push(Token {
-                    text: SharedString::from(std::mem::take(&mut word)),
+                    text: SharedString::from(word),
                     mark: None,
+                    said: *said,
                 });
+                if ended {
+                    *said += 1;
+                }
             }
         }
         if !word.is_empty() {
+            let ended = ends_a_sentence(&word);
             tokens.push(Token {
                 text: SharedString::from(word),
                 mark: None,
+                said: *said,
             });
+            if ended {
+                *said += 1;
+            }
         }
         plain.clear();
     }
@@ -186,7 +279,7 @@ fn paragraph(para: &str) -> Paragraph {
                 continue; // an opener with no closer is just text
             };
 
-            flush(&mut plain, &mut tokens);
+            flush(&mut plain, &mut tokens, said);
             rest = &after_open[len + marker.len()..];
 
             // Any space after the mark rides along on the token, so the tokens
@@ -194,10 +287,16 @@ fn paragraph(para: &str) -> Paragraph {
             let spacing: String = rest.chars().take_while(|c| *c == ' ').collect();
             rest = &rest[spacing.len()..];
 
+            let text = format!("{}{spacing}", &after_open[..len]);
+            let ended = ends_a_sentence(&text);
             tokens.push(Token {
-                text: SharedString::from(format!("{}{spacing}", &after_open[..len])),
+                text: SharedString::from(text),
                 mark: Some(*mark),
+                said: *said,
             });
+            if ended {
+                *said += 1;
+            }
             continue 'outer;
         }
 
@@ -206,7 +305,7 @@ fn paragraph(para: &str) -> Paragraph {
         rest = &rest[ch.len_utf8()..];
     }
 
-    flush(&mut plain, &mut tokens);
+    flush(&mut plain, &mut tokens, said);
     Paragraph { tokens }
 }
 
@@ -230,6 +329,39 @@ mod tests {
                 )
             })
             .collect()
+    }
+
+    #[test]
+    fn a_sentence_can_be_named_on_its_own() {
+        // What this is for: commenting on the narration used to quote the
+        // first line of the say whatever the reader meant, so an objection to
+        // the third sentence came back answering the first.
+        let said = sentences("The counter drops twice. That is the 63.\n\nAnd a second one.");
+        assert_eq!(
+            said,
+            vec![
+                "The counter drops twice.",
+                "That is the 63.",
+                "And a second one."
+            ]
+        );
+    }
+
+    #[test]
+    fn every_word_of_one_sentence_carries_the_same_number() {
+        // The number is on the word rather than on a container around the
+        // sentence, because a container would only wrap at its own edges and
+        // the paragraph has to keep wrapping between any two words.
+        let paras = parse("One runs twice. Two does not.");
+        let said: Vec<usize> = paras[0].tokens.iter().map(|t| t.said).collect();
+        assert_eq!(said, vec![0, 0, 0, 1, 1, 1]);
+    }
+
+    #[test]
+    fn a_paragraph_break_ends_a_sentence_that_has_no_full_stop() {
+        let paras = parse("no full stop here\n\nbut this is a new one");
+        assert_eq!(paras[0].tokens[0].said, 0);
+        assert_eq!(paras[1].tokens[0].said, 1);
     }
 
     #[test]
