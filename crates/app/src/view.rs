@@ -1322,6 +1322,33 @@ impl DeckView {
         cx.notify();
     }
 
+    /// Take a diagram in or out.
+    ///
+    /// `by` is the wheel's travel in pixels, turned into a ratio: a wheel
+    /// notch is a proportion of what is there, not a fixed number of pixels,
+    /// or every step would be enormous when zoomed out and imperceptible when
+    /// zoomed in.
+    pub fn zoom_chart(&mut self, pane_ix: usize, by: f32, cx: &mut Context<Self>) {
+        /// How much of a turn one pixel of wheel is worth.
+        const PER_PIXEL: f32 = 0.004;
+
+        if let Some(chart) = self.panes.get_mut(pane_ix).and_then(Sheet::chart_mut) {
+            chart.zoom_by(1. + by * PER_PIXEL);
+            cx.notify();
+        }
+    }
+
+    /// Put a diagram back to the size it was drawn, and where.
+    pub fn reset_zoom(&mut self, pane_ix: usize, cx: &mut Context<Self>) {
+        if let Some(chart) = self.panes.get_mut(pane_ix).and_then(Sheet::chart_mut) {
+            chart.zoom = 1.;
+            // The position goes back with it. A picture put back to its own
+            // size but left half off the pane has not been put back.
+            chart.nudge = point(px(0.), px(0.));
+            cx.notify();
+        }
+    }
+
     /// Play a flow through the diagram in `pane_ix`, or stop the one playing.
     ///
     /// Clicking the flow that is already running stops it, because the button

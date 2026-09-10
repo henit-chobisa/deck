@@ -295,6 +295,13 @@ pub struct Chart {
     /// instead — and to nothing at all when none is picked, which makes it a
     /// remark about the whole picture.
     pub selected: Option<usize>,
+    /// How much bigger or smaller than laid out the picture is drawn.
+    ///
+    /// The layout is not redone. A diagram's shape is its meaning — what is
+    /// above what, what is beside what — and a zoom that reflowed it would be
+    /// a different picture at every size. So the plan is worked out once and
+    /// every measurement it holds is multiplied on the way to the screen.
+    pub zoom: f32,
     /// How far the reader has carried the picture from where it was laid out.
     ///
     /// Not the scroll offset. The scroll container re-clamps its own offset to
@@ -360,6 +367,7 @@ impl Chart {
             plan,
             scroll: ScrollHandle::new(),
             selected: None,
+            zoom: 1.,
             nudge: point(px(0.), px(0.)),
             playing: None,
         }
@@ -529,6 +537,22 @@ impl Chart {
                     let _ = view.update(cx, |deck, _| deck.start_pan(pane_ix, event.position));
                 }
             })
+            // Held modifier and wheel takes the picture in and out, which is
+            // also what a trackpad pinch arrives as. Plain wheel is left
+            // alone: it scrolls, which is what a wheel does everywhere else in
+            // the window, and a diagram that zoomed on an unmodified wheel
+            // would change size every time somebody scrolled past it.
+            .on_scroll_wheel({
+                let view = view.clone();
+                move |event: &ScrollWheelEvent, _window, cx| {
+                    let held = event.modifiers.control || event.modifiers.platform;
+                    if !held {
+                        return;
+                    }
+                    let by = f32::from(event.delta.pixel_delta(px(20.)).y);
+                    let _ = view.update(cx, |deck, cx| deck.zoom_chart(pane_ix, by, cx));
+                }
+            })
             .child(
                 // Carried by the reader's drag, before anything else about it
                 // is decided.
@@ -572,8 +596,8 @@ impl Chart {
                                 div()
                                     .relative()
                                     .flex_none()
-                                    .w(self.plan.size.width)
-                                    .h(self.plan.size.height)
+                                    .w(self.z(self.plan.size.width))
+                                    .h(self.z(self.plan.size.height))
                                     .child(self.paint(palette))
                                     .children(self.cluster_names(palette))
                                     .children(self.edge_labels(palette))
@@ -678,7 +702,7 @@ impl Chart {
             .map(|route| {
                 let edge = &self.diagram.edges[route.edge_ix];
                 (
-                    route.points.clone(),
+                    route.points.iter().map(|at| self.zp(*at)).collect(),
                     edge.line == Line::Dashed,
                     // A returning arrow is drawn in the accent, because it is
                     // the one thing in a state machine a reader has to notice
@@ -716,12 +740,21 @@ impl Chart {
                 let node = self.diagram.nodes.get(spot.node_ix)?;
                 let picked = self.selected == Some(spot.node_ix);
                 let lit = self.lit(&node.id);
-                Some((spot.at, node.role, skin(node.weight, picked, lit, palette)))
+                Some((
+                    self.zb(spot.at),
+                    node.role,
+                    skin(node.weight, picked, lit, palette),
+                ))
             })
             .collect();
 
         Ink {
-            frames: self.plan.frames.iter().map(|frame| frame.at).collect(),
+            frames: self
+                .plan
+                .frames
+                .iter()
+                .map(|frame| self.zb(frame.at))
+                .collect(),
             // A cluster is a ground, not an object: it sits under the boxes and
             // is told apart from the pane by a shade, not by a border with any
             // weight to it.
@@ -755,7 +788,7 @@ impl Chart {
                 };
                 let view = view.clone();
 
-                let at = body(spot.at, node.role);
+                let at = self.zb(body(spot.at, node.role));
 
                 Some(
                     div()
@@ -776,7 +809,7 @@ impl Chart {
                         // Below the lid, and above the foot.
                         .when(node.role == Role::Store, |this| this.pt(px(12.)).pb(px(6.)))
                         .text_align(TextAlign::Center)
-                        .text_size(px(12.))
+                        .text_size(self.z(px(12.)))
                         // Leading spelled out rather than left to the face.
                         //
                         // A box is a fixed height and what goes in it has to be
@@ -785,7 +818,7 @@ impl Chart {
                         // through by the bottom border — worst on a store,
                         // which gives up its head to the lid. A 15 and a 13
                         // leave room inside 50 even when the label wraps.
-                        .line_height(px(15.))
+                        .line_height(self.z(px(15.)))
                         .text_color(paint(words))
                         .when(node.weight == Weight::Accent, |this| this.font_semibold())
                         .child(node.label.clone())
@@ -804,8 +837,8 @@ impl Chart {
                                 .w_full()
                                 .truncate()
                                 .text_center()
-                                .text_size(px(10.5))
-                                .line_height(px(13.))
+                                .text_size(self.z(px(10.5)))
+                                .line_height(self.z(px(13.)))
                                 .text_color(paint(palette.muted))
                                 .child(note.clone())
                         }))
@@ -833,8 +866,8 @@ impl Chart {
                 // The elbow: the middle of the run along the gutter, which is
                 // the one stretch of an arrow with nothing else near it.
                 let (a, b) = (route.points.get(1)?, route.points.get(2)?);
-                let x = (f32::from(a.x) + f32::from(b.x)) / 2.;
-                let y = (f32::from(a.y) + f32::from(b.y)) / 2.;
+                let x = f32::from(self.z(px((f32::from(a.x) + f32::from(b.x)) / 2.)));
+                let y = f32::from(self.z(px((f32::from(a.y) + f32::from(b.y)) / 2.)));
 
                 // Which way the arrow runs, taken from its two ends rather
                 // than from the run through the gutter.
@@ -856,12 +889,12 @@ impl Chart {
                     // pixels. A label is meant to be a word or two — `writes`,
                     // `on submit` — and one that is not wraps rather than
                     // lying across the two nodes the arrow joins.
-                    .max_w(px(GAP_X + 16.))
+                    .max_w(self.z(px(GAP_X + 16.)))
                     .text_center()
                     // On the pane's own ground, so the line passes behind the
                     // words rather than through them.
                     .bg(paint(palette.wash))
-                    .text_size(px(10.))
+                    .text_size(self.z(px(10.)))
                     .text_color(paint(palette.muted))
                     .child(label.clone());
 
@@ -919,9 +952,9 @@ impl Chart {
                 Some(
                     div()
                         .absolute()
-                        .left(frame.at.origin.x + px(13.))
-                        .top(frame.at.origin.y + px(5.))
-                        .text_size(px(10.))
+                        .left(self.z(frame.at.origin.x) + px(13.))
+                        .top(self.z(frame.at.origin.y) + px(5.))
+                        .text_size(self.z(px(10.)))
                         .text_color(paint(palette.muted))
                         .child(cluster.label.clone())
                         .into_any_element(),
@@ -1018,34 +1051,114 @@ impl Chart {
                 .right(px(10.))
                 .h_flex()
                 .items_center()
-                .p(px(2.))
+                .gap(px(6.))
+                .children(self.render_zoom(pane_ix, palette, view))
+                .child(
+                    div()
+                        .h_flex()
+                        .items_center()
+                        .rounded(px(11.))
+                        .border_1()
+                        .border_color(paint(palette.edge))
+                        .bg(paint(palette.bg))
+                        .p(px(2.))
+                        .rounded(px(11.))
+                        .border_1()
+                        .border_color(paint(palette.edge))
+                        .bg(paint(palette.bg))
+                        .children(crate::view::Pace::ALL.iter().map(|&which| {
+                            let on = which == pace;
+                            let view = view.clone();
+                            div()
+                                .id(("pace", pane_ix * 8 + which as usize))
+                                .px(px(8.))
+                                .py(px(2.))
+                                .rounded(px(9.))
+                                .text_size(px(10.))
+                                .bg(paint(if on {
+                                    palette.accent.mix(palette.bg, 0.82)
+                                } else {
+                                    palette.bg
+                                }))
+                                .text_color(paint(if on { palette.accent } else { palette.muted }))
+                                .cursor_pointer()
+                                .hover(|this| this.text_color(paint(palette.fg)))
+                                .child(which.label())
+                                .on_click(move |_, _window, cx| {
+                                    let _ = view
+                                        .update(cx, |deck, cx| deck.set_pace(pane_ix, which, cx));
+                                })
+                        })),
+                ),
+        )
+    }
+
+    /// What size the picture is at, and a way back to the size it was drawn.
+    ///
+    /// Nothing at all until it has been changed. A control that says 100% on a
+    /// picture nobody has touched is a control explaining a thing that has not
+    /// happened.
+    fn render_zoom(
+        &self,
+        pane_ix: usize,
+        palette: &Palette,
+        view: &WeakEntity<DeckView>,
+    ) -> Option<impl IntoElement> {
+        if (self.zoom - 1.).abs() < 0.01 {
+            return None;
+        }
+        let view = view.clone();
+
+        Some(
+            div()
+                .id(("zoom", pane_ix))
+                .px(px(8.))
+                .py(px(4.))
                 .rounded(px(11.))
                 .border_1()
                 .border_color(paint(palette.edge))
                 .bg(paint(palette.bg))
-                .children(crate::view::Pace::ALL.iter().map(|&which| {
-                    let on = which == pace;
-                    let view = view.clone();
-                    div()
-                        .id(("pace", pane_ix * 8 + which as usize))
-                        .px(px(8.))
-                        .py(px(2.))
-                        .rounded(px(9.))
-                        .text_size(px(10.))
-                        .bg(paint(if on {
-                            palette.accent.mix(palette.bg, 0.82)
-                        } else {
-                            palette.bg
-                        }))
-                        .text_color(paint(if on { palette.accent } else { palette.muted }))
-                        .cursor_pointer()
-                        .hover(|this| this.text_color(paint(palette.fg)))
-                        .child(which.label())
-                        .on_click(move |_, _window, cx| {
-                            let _ = view.update(cx, |deck, cx| deck.set_pace(pane_ix, which, cx));
-                        })
-                })),
+                .text_size(px(10.))
+                .text_color(paint(palette.muted))
+                .cursor_pointer()
+                .hover(|this| this.text_color(paint(palette.accent)))
+                .child(format!("{:.0}%", self.zoom * 100.))
+                .on_click(move |_, _window, cx| {
+                    let _ = view.update(cx, |deck, cx| deck.reset_zoom(pane_ix, cx));
+                }),
         )
+    }
+
+    /// A measurement, at the size the picture is being drawn.
+    fn z(&self, value: Pixels) -> Pixels {
+        value * self.zoom
+    }
+
+    /// A point, at the size the picture is being drawn.
+    fn zp(&self, at: Point<Pixels>) -> Point<Pixels> {
+        point(self.z(at.x), self.z(at.y))
+    }
+
+    /// A box, at the size the picture is being drawn.
+    fn zb(&self, at: Bounds<Pixels>) -> Bounds<Pixels> {
+        Bounds {
+            origin: self.zp(at.origin),
+            size: size(self.z(at.size.width), self.z(at.size.height)),
+        }
+    }
+
+    /// Take the picture in or out, about its own middle.
+    ///
+    /// About the middle rather than about the pointer. Following the pointer
+    /// is the nicer behaviour and it needs the pane's own rectangle, which is
+    /// not something an element knows about itself here — and a drawing that
+    /// starts centred and can be dragged anywhere loses little by growing from
+    /// where it is.
+    pub fn zoom_by(&mut self, factor: f32) {
+        /// Small enough to see a whole picture, large enough to read a note on
+        /// a machine that is not the one it was drawn on.
+        const RANGE: (f32, f32) = (0.4, 3.0);
+        self.zoom = (self.zoom * factor).clamp(RANGE.0, RANGE.1);
     }
 
     /// The colour the flow at `ix` is lit in, if it asked for one.
@@ -1412,6 +1525,23 @@ mod tests {
         }
     }
 
+    /// A chart over a bare diagram, for the things a chart does to a picture
+    /// rather than the things the layout does to it.
+    fn charted(ids: &[&str], edges: &[(&str, &str)]) -> Chart {
+        Chart::new(&deck_core::DiagramRef {
+            id: "d1".to_string(),
+            note: None,
+            diagram: Diagram {
+                title: None,
+                flow: Direction::Down,
+                nodes: ids.iter().copied().map(node).collect(),
+                edges: edges.iter().map(|(f, t)| edge(f, t)).collect(),
+                clusters: Vec::new(),
+                flows: Vec::new(),
+            },
+        })
+    }
+
     fn drawn(
         flow: Direction,
         ids: &[&str],
@@ -1443,6 +1573,37 @@ mod tests {
             f32::from(at.origin.x + at.size.width),
             f32::from(at.origin.y + at.size.height),
         )
+    }
+
+    #[test]
+    fn zooming_stays_within_reach() {
+        // Small enough to see a whole picture, large enough to read a note on
+        // a machine that is not the one it was drawn on — and never past
+        // either, however long somebody spins the wheel.
+        let mut chart = charted(&["a"], &[]);
+        assert_eq!(chart.zoom, 1.);
+
+        for _ in 0..200 {
+            chart.zoom_by(1.1);
+        }
+        assert!(chart.zoom <= 3.0, "it stops growing");
+
+        for _ in 0..400 {
+            chart.zoom_by(0.9);
+        }
+        assert!(chart.zoom >= 0.4, "and stops shrinking");
+    }
+
+    #[test]
+    fn a_measurement_is_multiplied_on_the_way_to_the_screen() {
+        // The layout is not redone. A diagram's shape is its meaning, and a
+        // zoom that reflowed it would be a different picture at every size.
+        let mut chart = charted(&["a", "b"], &[("a", "b")]);
+        let was = chart.plan.size.width;
+
+        chart.zoom_by(2.);
+        assert_eq!(chart.z(was), was * 2.);
+        assert_eq!(chart.plan.size.width, was, "the plan itself is untouched");
     }
 
     #[test]

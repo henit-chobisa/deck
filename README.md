@@ -107,7 +107,7 @@ deck open <path>
 | `q` | close without answering |
 
 Click and drag to select lines. Drag a seam to resize a pane. Drag a diagram to
-move it. `⌘↩` saves a comment, `esc` discards it.
+move it, and hold `⌘` or `ctrl` with the wheel — or pinch — to take it in and out. `⌘↩` saves a comment, `esc` discards it.
 
 ---
 
