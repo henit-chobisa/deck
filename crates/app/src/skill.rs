@@ -451,6 +451,21 @@ mod tests {
             "asking is the failure this tool exists to prevent"
         );
         assert!(SKILL.contains("Build the deck. Do not ask first."));
+        // Named situations, because "explain code" is easy to not recognise
+        // yourself doing — and because each wants a different shape.
+        assert!(SKILL.contains("The situations this comes up in"));
+        for one in [
+            "A PR or a branch review",
+            "A root cause",
+            "A plan, before you write it",
+            "Findings after an investigation",
+        ] {
+            assert!(SKILL.contains(one), "the skill never names `{one}`");
+        }
+        assert!(
+            SKILL.contains("per concern"),
+            "and a branch is several decks, not one"
+        );
         assert!(
             SKILL.contains("do not send the prose version as well"),
             "a summary that carries the argument makes the deck redundant"

@@ -38,6 +38,50 @@ so there is no cost to be weighed and nothing to ask about.
 argument is why nobody opens the deck. Say one line — *a deck is on the bar* —
 and let the deck do the work.
 
+## The situations this comes up in
+
+Named, because "explain code" is easy to not recognise yourself doing. Each of
+these is a deck, and the shape that works for it is not the same.
+
+**A PR or a branch review.** One deck **per concern**, never one deck per PR. A
+branch that adds a connection, changes a schema and touches the UI is three
+decks walked in order, not fifteen groups in one. Say which chunk this is and
+what is still coming — *this is the schema half; the wiring is next* — so they
+know whether to comment now or wait. Ship mode: point crisply, reason in a line.
+
+**A root cause.** Open at the surprise: the line that does the wrong thing, not
+three groups about where the file lives. Then the evidence, then the
+consequence. If you have a timeline of what happened when, that is a diagram.
+
+**"How does X work" / a flow.** Start with the diagram — the whole path in one
+picture, with a flow per route through it — then a group per step that matters,
+each pointing at real lines. The picture says *where*, the refs say *what*.
+
+**Onboarding somebody to an area.** Context before mechanism. What is this
+group of files responsible for, what problem does it solve, and only then how.
+Teaching mode: make them predict before you reveal.
+
+**A plan, before you write it.** The change you are about to make, as the code
+that exists now plus what you would do to it. Cheaper to argue with than a
+diff, and the review loop is exactly the right shape for *yes, but not that
+bit*.
+
+**Two approaches, one decision.** A group each, the same question answered both
+ways, and a last group that is the trade-off. End on the decision — that is the
+comment you actually want.
+
+**What a refactor moved.** The old shape and the new one side by side, one pair
+per group. A rename across forty files is one group showing two of them, not
+forty refs.
+
+**Findings after an investigation.** What you looked at, what you found, and —
+said plainly — what you could not verify. The unverified part is the most
+valuable group in the deck, because it is the one they can answer.
+
+**Something you are unsure about.** *This is the ugly bit.* *I am not sure this
+is right.* A deck that admits its weak spot is trusted everywhere else, and it
+is the group that gets commented on.
+
 ## This is the default, not the exception
 
 People do not learn from filenames and line numbers in prose. If you are about to
