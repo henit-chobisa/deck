@@ -319,7 +319,34 @@ you never need to tell them to press anything.
   means *look at this word*), `` `code` ``, and a blank line between paragraphs.
 - `--ref` is `file:first-last`, a space, then a short note. A bare number is one line.
   `*starred*` words in the note are accented. Give it once per pane.
+- `--after` turns the ref in front of it into a **proposed change**: the range
+  is drawn as going, and this is spliced in underneath it, so the pane reads as
+  a diff rather than a highlight. The file on disk is never touched.
 - `--diagram <file.json>` adds a picture. See §4.
+
+**Use `--after` whenever you are proposing rather than pointing.** A highlight
+says *look at this*. A change says *this should become that*, and if that is
+what you mean, saying it in the `say` while the pane shows an untouched
+highlight makes the reader hold the diff in their head — which is the work this
+tool exists to take off them.
+
+```bash
+deck group <path> \
+  --say "The counter is decremented on the **error path** too." \
+  --ref "src/batch.ts:140-148 decremented *twice* when the write fails" \
+  --after "    } catch (err) {
+      logger.error(err);
+      continue;
+    }"
+```
+
+It goes straight after the `--ref` it changes, because that is what it attaches
+to. A group can mix them: one pane a change, another pane the caller that has
+to keep working.
+
+This is also the right shape for **a plan**. The code that exists now, plus
+what you would do to it, is cheaper to argue with than a diff — and the review
+comes back before the edit is made rather than after.
 
 Rules:
 

@@ -24,6 +24,9 @@ pub struct Named {
     pub range: LineRange,
     /// The note, if one was given.
     pub note: Option<String>,
+    /// What the range should become, when the ref is a proposed change rather
+    /// than something to look at. Set by the caller, not by the syntax.
+    pub after: Option<String>,
 }
 
 /// Read one `--ref` argument.
@@ -61,12 +64,25 @@ pub fn parse(argument: &str) -> anyhow::Result<Named> {
         file: PathBuf::from(file),
         range: LineRange::new(number(first, "first")?, number(last, "last")?),
         note: note.filter(|note| !note.is_empty()),
+        // The syntax carries no replacement — `--after` is a flag of its own,
+        // because a replacement is several lines and a ref is one.
+        after: None,
     })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_ref_carries_no_replacement_of_its_own() {
+        // `--after` is a flag rather than part of the syntax, because a
+        // replacement is several lines and a ref is one. Parsing must not
+        // invent one from a note that happens to look like code.
+        let named = parse("src/batch.ts:140-148 pending -= 1;").expect("parses");
+        assert_eq!(named.after, None);
+        assert_eq!(named.note.as_deref(), Some("pending -= 1;"));
+    }
 
     fn named(argument: &str) -> Named {
         parse(argument).expect("this argument parses")

@@ -480,6 +480,21 @@ mod tests {
     }
 
     #[test]
+    fn the_skill_says_how_to_propose_a_change() {
+        // `after` was in the protocol and drawn by the renderer from the
+        // beginning, and there was no way to write one: the CLI hardcoded
+        // None. So every proposed change came out as a plain highlight with
+        // the diff described in the prose, and the reader held it in their
+        // head. The flag exists now, and a flag no skill mentions is a flag
+        // nothing uses.
+        assert!(SKILL.contains("--after"));
+        assert!(
+            SKILL.contains("proposing rather than pointing"),
+            "and when to reach for it"
+        );
+    }
+
+    #[test]
     fn an_agent_is_found_by_its_own_directory() {
         // Not by its skills directory: one that has never been given a skill
         // has no `skills/` yet, and that is exactly the one worth telling.

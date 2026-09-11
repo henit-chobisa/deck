@@ -98,6 +98,13 @@ enum What {
         /// Give it once per pane. A single number is one line.
         #[arg(long = "ref", value_name = "FILE:FIRST-LAST [NOTE]")]
         refs: Vec<String>,
+        /// What the range should become: the lines marked as going, and this
+        /// spliced in under them, drawn as a change rather than a highlight.
+        ///
+        /// Applies to the `--ref` it follows, so it goes straight after the one
+        /// it changes. The file on disk is never touched.
+        #[arg(long, value_name = "REPLACEMENT")]
+        after: Vec<String>,
         /// A picture, as a JSON file. See PROTOCOL.md for its shape.
         #[arg(long, value_name = "FILE.json")]
         diagram: Vec<PathBuf>,
@@ -207,8 +214,9 @@ impl Cli {
                 deck,
                 say,
                 refs,
+                after,
                 diagram,
-            } => report(gather(&refs, &diagram).and_then(|refs| {
+            } => report(gather(&refs, &after, &diagram).and_then(|refs| {
                 deck_cli::group(&deck, &say, refs).map(|path| {
                     println!("{}", path.display());
                 })
@@ -306,11 +314,18 @@ fn detach() -> bool {
 /// Refs first, then diagrams, in the order they were given. Ids are not minted
 /// here: they have to be unique across the deck, and only the crate that knows
 /// which group this is becoming can promise that.
-fn gather(refs: &[String], diagrams: &[PathBuf]) -> anyhow::Result<Vec<Pointing>> {
+fn gather(
+    refs: &[String],
+    after: &[String],
+    diagrams: &[PathBuf],
+) -> anyhow::Result<Vec<Pointing>> {
     let mut out = Vec::with_capacity(refs.len() + diagrams.len());
+    let changes = paired(refs.len(), after)?;
 
-    for argument in refs {
-        out.push(Pointing::Code(deck_cli::refs::parse(argument)?));
+    for (ix, argument) in refs.iter().enumerate() {
+        let mut named = deck_cli::refs::parse(argument)?;
+        named.after.clone_from(&changes[ix]);
+        out.push(Pointing::Code(named));
     }
 
     for path in diagrams {
@@ -322,6 +337,58 @@ fn gather(refs: &[String], diagrams: &[PathBuf]) -> anyhow::Result<Vec<Pointing>
     }
 
     Ok(out)
+}
+
+/// Which `--ref` each `--after` belongs to.
+///
+/// Clap hands back the two lists separately, and the pairing an agent writing
+/// the command would assume — that an `--after` changes the `--ref` in front of
+/// it — is in neither of them. So the ordering is read back off the command
+/// line, which is the one place it survives.
+///
+/// # Errors
+///
+/// When an `--after` has no `--ref` before it to belong to.
+fn paired(refs: usize, after: &[String]) -> anyhow::Result<Vec<Option<String>>> {
+    let mut changes = vec![None; refs];
+    if after.is_empty() {
+        return Ok(changes);
+    }
+
+    let mut seen = 0usize;
+    let mut taken = 0usize;
+    let mut args = std::env::args().skip(1);
+    while let Some(arg) = args.next() {
+        // `--ref x` and `--ref=x` are the same argument written two ways, and
+        // only the first form eats the value that follows it.
+        let inline = arg.contains('=');
+        let flag = arg.split('=').next().unwrap_or(&arg).to_string();
+        match flag.as_str() {
+            "--ref" => {
+                seen += 1;
+                if !inline {
+                    args.next();
+                }
+            }
+            "--after" => {
+                anyhow::ensure!(
+                    seen > 0,
+                    "`--after` has no `--ref` in front of it: it changes the lines of the ref \
+                     it follows, so it goes straight after one"
+                );
+                if let Some(said) = after.get(taken) {
+                    changes[seen - 1] = Some(said.clone());
+                }
+                taken += 1;
+                if !inline {
+                    args.next();
+                }
+            }
+            _ => {}
+        }
+    }
+
+    Ok(changes)
 }
 
 /// Wait for a review to land beside the deck, and print it.

@@ -136,7 +136,7 @@ pub fn group(root: &Path, say: &str, pointing: Vec<Pointing>) -> anyhow::Result<
                     file: named.file,
                     range: named.range,
                     note: named.note,
-                    after: None,
+                    after: named.after,
                 }),
                 Pointing::Drawn(diagram) => Ref::Diagram(DiagramRef {
                     id: format!("g{ord}d{nth}"),
