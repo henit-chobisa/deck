@@ -175,6 +175,11 @@ rather than rejecting the deck.
 **Ranges are tight.** A two hundred line range is not a highlight, it is a
 shrug. Nothing enforces this; it is what makes a deck worth reading.
 
+**Two code refs in one group should not be the same file close together.** A
+client writing a deck is expected to refuse it: two panes a few lines apart show
+one block twice, the second opening below the first and repeating most of it.
+Far-apart ranges in one file are a different thing and are allowed.
+
 **`after` is a change that has not been made.** The range reads as what would
 go, and `after` as what would replace it. The file on disk is never touched by
 deck. A client that does not render `after` shows the range and ignores it.

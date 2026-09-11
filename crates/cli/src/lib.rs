@@ -103,6 +103,92 @@ pub enum Pointing {
     Drawn(Diagram),
 }
 
+/// Refuse narration with a code block typed into it.
+///
+/// The band renders inline marks and nothing else — bold, emphasis, a code
+/// chip — because a group's `say` is prose with a few words picked out, not a
+/// document. A fenced block put through it comes out as one long wrapped
+/// paragraph with the fence markers still in it, which is unreadable.
+///
+/// It is also the wrong shape twice over. Code that exists belongs in a ref,
+/// where it is highlighted and can be commented on. Code that does not exist
+/// yet belongs in `after`, where it is drawn as a change against the lines it
+/// replaces. A block in the narration is the tool being used to describe code
+/// instead of to point at it, which is the one thing it is for.
+///
+/// # Errors
+///
+/// When `say` contains a fenced code block.
+fn show_code_do_not_type_it(say: &str) -> anyhow::Result<()> {
+    anyhow::ensure!(
+        !say.contains("```"),
+        "the narration has a code block in it, and the band cannot draw one — \
+         it renders `**bold**`, `*emphasis*` and `` `code` `` and nothing \
+         else, so a fence comes out as one long wrapped paragraph with the \
+         backticks still in it.\n\nCode that already exists goes in a `--ref`, \
+         where it is highlighted and can be commented on. Code that does not \
+         exist yet goes in `--after` on the ref it replaces, where it is drawn \
+         as a change. Either way the reader sees it as code."
+    );
+    Ok(())
+}
+
+/// How far apart two ranges in one file have to be to deserve separate panes.
+///
+/// Under this they are one block, and two panes showing it are two panes of
+/// nearly the same code — the second one opening a few lines below the first
+/// and repeating most of it. Over it they are genuinely two places, which is
+/// worth a pane each: a declaration and its use four hundred lines down is the
+/// case that earns it.
+const APART: u32 = 30;
+
+/// Refuse a group that shows one block of one file twice.
+///
+/// The skill says one file per pane and an agent does it anyway, which is the
+/// same lesson twice: a rule that can be ignored is not a rule. This one
+/// cannot be, and the message says what to write instead — a refused group
+/// costs a command, and a deck that shows the same twelve lines in two panes
+/// costs the reader the whole point of a grid.
+///
+/// # Errors
+///
+/// When two code refs name one file with ranges closer together than [`APART`].
+fn one_pane_per_block(pointing: &[Pointing]) -> anyhow::Result<()> {
+    let code: Vec<&refs::Named> = pointing
+        .iter()
+        .filter_map(|one| match one {
+            Pointing::Code(named) => Some(named),
+            Pointing::Drawn(_) => None,
+        })
+        .collect();
+
+    for (ix, a) in code.iter().enumerate() {
+        for b in &code[ix + 1..] {
+            if a.file != b.file {
+                continue;
+            }
+            let (first, last) = (
+                a.range.first.min(b.range.first),
+                a.range.last.max(b.range.last),
+            );
+            anyhow::ensure!(
+                last.saturating_sub(first) > APART,
+                "two panes of `{}` show the same block: {} and {}. One pane of \
+                 {}-{} says it once — the reader sees the whole thing instead \
+                 of the top of it and then most of it again.\n\nIf they really \
+                 are two places, they are more than {APART} lines apart and \
+                 this will not complain.",
+                a.file.display(),
+                a.range,
+                b.range,
+                first,
+                last,
+            );
+        }
+    }
+    Ok(())
+}
+
 /// Add a group to the deck at `root`.
 ///
 /// `ord` is worked out from what is already there, so groups can be written one
@@ -123,6 +209,9 @@ pub fn group(root: &Path, say: &str, pointing: Vec<Pointing>) -> anyhow::Result<
         "{} is sealed: a deck that has said it is finished cannot grow",
         root.display()
     );
+
+    show_code_do_not_type_it(say)?;
+    one_pane_per_block(&pointing)?;
 
     let ord = next_ord(root);
     let refs = pointing
@@ -252,7 +341,107 @@ fn write_atomically(path: &Path, bytes: &[u8]) -> anyhow::Result<()> {
 
 #[cfg(test)]
 mod tests {
+    // Placed first because it is the rule most likely to be loosened by
+    // somebody who has just been refused by it.
+
     use super::*;
+
+    /// A code ref, from the syntax an agent would write.
+    fn pointing(refs: &[&str]) -> Vec<Pointing> {
+        refs.iter()
+            .map(|r| Pointing::Code(crate::refs::parse(r).expect("a ref that parses")))
+            .collect()
+    }
+
+    #[test]
+    fn code_typed_into_the_narration_is_refused() {
+        // The band renders inline marks and nothing else, so a fence came out
+        // as one long wrapped paragraph with the backticks still in it. It is
+        // also the wrong shape: code that exists belongs in a ref, and code
+        // that does not exist yet belongs in `after`.
+        let at = scratch("fenced");
+        let root = new(&at, "One", None, None).unwrap();
+
+        let err = group(
+            &root,
+            "Seed it first.\n\n```ts\nconst m = new Map();\n```",
+            pointing(&["pull.ts:220-221 these two lines"]),
+        )
+        .expect_err("a fence in the narration is refused");
+
+        assert!(
+            err.to_string().contains("--after"),
+            "and says where it goes"
+        );
+    }
+
+    #[test]
+    fn a_code_chip_in_the_narration_is_fine() {
+        // One backtick is a chip and the band draws those. Only a fence is the
+        // problem, and the check must not take the thing it is built around.
+        let at = scratch("chip");
+        let root = new(&at, "One", None, None).unwrap();
+
+        group(
+            &root,
+            "The counter at `pending -= 1` runs **twice**.",
+            pointing(&["pull.ts:220-221 here"]),
+        )
+        .expect("inline code is what the band is for");
+    }
+
+    #[test]
+    fn one_block_of_one_file_does_not_get_two_panes() {
+        // The case this was written for: 220-226 and 228-240 of the same file,
+        // two lines apart. The second pane opened below the first and repeated
+        // most of it, which is two panes spent saying one thing.
+        let at = scratch("same-block");
+        let root = new(&at, "One", None, None).unwrap();
+
+        let err = group(
+            &root,
+            "say",
+            pointing(&["pull.ts:220-226 scope arrives", "pull.ts:228-240 we ask"]),
+        )
+        .expect_err("two panes of one block is refused");
+
+        let said = err.to_string();
+        assert!(
+            said.contains("220-240"),
+            "and it says what to write instead"
+        );
+    }
+
+    #[test]
+    fn two_places_in_one_file_are_allowed() {
+        // A declaration and its only use four hundred lines down is the case
+        // that earns a pane each, and it is the reason this is a distance
+        // rather than a ban on naming a file twice.
+        let at = scratch("far-apart");
+        let root = new(&at, "One", None, None).unwrap();
+
+        group(
+            &root,
+            "say",
+            pointing(&["pull.ts:40-44 declared", "pull.ts:300-304 used"]),
+        )
+        .expect("far apart is two places, not one block");
+    }
+
+    #[test]
+    fn adjacent_ranges_in_different_files_are_the_whole_point() {
+        // An enum and the column that stores it. Nothing about this rule may
+        // discourage the thing the grid exists for.
+        let at = scratch("two-files");
+        let root = new(&at, "One", None, None).unwrap();
+
+        group(
+            &root,
+            "say",
+            pointing(&["query.py:14-22 the enum", "models.py:16-18 the column"]),
+        )
+        .expect("two files is what a group is for");
+    }
 
     fn scratch(name: &str) -> PathBuf {
         let at = std::env::temp_dir().join(format!("deck-cli-{name}"));

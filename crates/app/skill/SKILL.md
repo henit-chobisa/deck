@@ -210,7 +210,10 @@ actually learn:
 
 9. **One file per page when panes relate.** Don't show one file in multiple panes. If a
    page uses multiple panes, show one file per pane where a change in one impacts the
-   other — e.g. you removed a function, now one callsite per pane per file.
+   other — e.g. you removed a function, now one callsite per pane per file. If two
+   ranges of one file are close together they are **one range** — widen it and use one
+   pane. Deck refuses ranges in one file less than 30 lines apart, because the second
+   pane opens below the first and repeats most of it.
 
 ## The two modes (do not be heavy-handed)
 
@@ -317,6 +320,11 @@ you never need to tell them to press anything.
 
 - `--say` is Markdown, inline only: `**bold**`, `*emphasis*` (painted in the accent, so it
   means *look at this word*), `` `code` ``, and a blank line between paragraphs.
+  **Never a fenced code block.** The band cannot draw one — it comes out as a
+  wrapped paragraph with the backticks still in it, and deck refuses the group.
+  Code that exists goes in a `--ref`; code that does not exist yet goes in
+  `--after`. Either way the reader sees it as code, highlighted, and can
+  comment on it.
 - `--ref` is `file:first-last`, a space, then a short note. A bare number is one line.
   `*starred*` words in the note are accented. Give it once per pane.
 - `--after` turns the ref in front of it into a **proposed change**: the range
