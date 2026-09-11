@@ -62,8 +62,8 @@ can carry the answer.
 ## How it works
 
 Four commands and a wait. No daemon, no editor plugin, no protocol to speak —
-which is why it works the same with Claude Code, Codex, Cursor, Amp, or whatever
-comes next.
+which is why it works the same with **Claude Code, Codex, Cursor and Amp**, or
+whatever comes next.
 
 ```sh
 deck new --title "The batch counter stalls at 63" --total 2
