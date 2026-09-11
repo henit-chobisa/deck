@@ -1,0 +1,55 @@
+# Does it compile, and where.
+#
+# Separate from the tests because the question is different: the tests ask
+# whether deck is correct, and this asks whether it still exists on platforms
+# nobody here is sitting in front of.
+name: Build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: -D warnings
+
+jobs:
+  macos:
+    name: macOS
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo build --workspace --release
+
+  portable:
+    name: Linux (no window)
+    # `deck-app` is left out on purpose rather than given the system libraries
+    # it would need: what is checked here is that the model, the protocol and
+    # the theme readers are not quietly macOS-only, and pulling in a windowing
+    # stack to learn that would be a slower way to learn less.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo build -p deck-core -p deck-cli -p deck-theme
+
+  windows:
+    name: Windows
+    # The whole workspace, window included.
+    #
+    # This was two jobs, and the second was allowed to fail: GPUI carries
+    # Windows support and deck had never been built against it, so the question
+    # was asked on every push without holding anything up. It went green first
+    # try. Compiling is not running — nobody has opened a deck on Windows — but
+    # the thing that would break silently is a build, and this is it.
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo build --workspace

@@ -1,0 +1,39 @@
+# The test suite.
+#
+# Twice, on two platforms, because a surprising amount of what deck gets wrong
+# is a path — where an editor keeps its settings, where a person's home is —
+# and those are the tests that only fail somewhere else.
+name: Test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: -D warnings
+
+jobs:
+  macos:
+    name: macOS
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo test --workspace
+
+  windows:
+    name: Windows
+    # The crates with no window in them. Deck has never run on Windows, and the
+    # path code is written from documentation rather than from having been
+    # there — so these are the tests most worth running on a machine that is
+    # not the author's.
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo test -p deck-core -p deck-cli -p deck-theme

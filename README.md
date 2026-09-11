@@ -2,7 +2,8 @@
 
 <h1>deck</h1>
 
-[![CI](https://github.com/henit-chobisa/deck/actions/workflows/ci.yml/badge.svg)](https://github.com/henit-chobisa/deck/actions/workflows/ci.yml)
+[![Build](https://github.com/henit-chobisa/deck/actions/workflows/build.yml/badge.svg)](https://github.com/henit-chobisa/deck/actions/workflows/build.yml)
+[![Test](https://github.com/henit-chobisa/deck/actions/workflows/test.yml/badge.svg)](https://github.com/henit-chobisa/deck/actions/workflows/test.yml)
 [![Release](https://img.shields.io/github/v/release/henit-chobisa/deck?include_prereleases&color=d65d0e)](https://github.com/henit-chobisa/deck/releases)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
 
@@ -200,24 +201,23 @@ d-1788265010-8842.deck/
 d-1788265010-8842.review    your answer, written beside it
 ```
 
-[`PROTOCOL.md`](PROTOCOL.md) is the full specification, frozen at version 1.
+[`PROTOCOL.md`](PROTOCOL.md) is the full specification, frozen at version 1, and
+[`docs/how-it-works.md`](docs/how-it-works.md) is the shape of the rest.
 
-## Building
+## Contributing
 
 ```sh
-cargo build --release
 cargo test --workspace
 ```
 
-| crate | what it is |
-| ----- | ---------- |
-| `deck-core` | the model: protocol types, relocation, layout, theme derivation. No I/O, no UI. |
-| `deck-cli` | writing a deck to disk |
-| `deck-theme` | reading a palette out of an editor |
-| `deck-app` | the window, and the `deck` command |
+- [CONTRIBUTING.md](CONTRIBUTING.md) — conventions, and what needs doing
+- [docs/how-it-works.md](docs/how-it-works.md) — the architecture
+- [PROTOCOL.md](PROTOCOL.md) — the wire format, frozen at v1
+- [AGENTS.md](AGENTS.md) — the same, for an agent changing this repo
 
-The rule that keeps them apart: **share the model, not the view.** `deck-core`
-has no view trait and knows nothing about a renderer.
+The most useful thing anybody could do right now is open a deck on Windows. It
+builds and it is tested there on every push, but nobody has ever seen the window
+run.
 
 ## License
 
