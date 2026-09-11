@@ -32,13 +32,13 @@ A presentation surface for agents, written in Rust.
 <p align="center"><i>An agent points at the lines it means. You walk them, comment, and submit.</i></p>
 -->
 
-[Why](#why) • [How it works](#how-it-works) • [Install](#install) • [In the window](#in-the-window) • [Diagrams](#diagrams) • [Theming](#theming)
-
 <div align="center">
 
-## Why
+[Why](#why) • [How it works](#how-it-works) • [Install](#install) • [In the window](#in-the-window) • [Diagrams](#diagrams) • [Theming](#theming)
 
 </div>
+
+## Why
 
 Your agent finishes a change and writes you a paragraph. It names four files and
 six line numbers. Now you open each one, find the line, hold the argument in your
@@ -68,11 +68,7 @@ viewer and not a chat window: it is the surface where an agent makes an argument
 about code, draws the flow it is describing, and a person answers it in the
 fewest keystrokes that can carry the answer.
 
-<div align="center">
-
 ## How it works
-
-</div>
 
 Four commands and a wait. No daemon, no editor plugin, no protocol to speak —
 which is why it works the same with **Claude Code, Codex, Cursor and Amp**, or
@@ -97,11 +93,7 @@ deck wait <path>          # blocks until you submit, prints the review as JSON
 Most of the time you will not run any of this. `deck setup` installs a skill into
 your agents and they reach for it on their own.
 
-<div align="center">
-
 ## Install
-
-</div>
 
 **macOS and Linux**
 
@@ -129,11 +121,7 @@ Gatekeeper or SmartScreen to hold.
 On Windows this needs the MSVC toolchain — Visual Studio Build Tools with the
 "Desktop development with C++" workload — for the linker.
 
-<div align="center">
-
 ## In the window
-
-</div>
 
 ### Walk the argument, not the diff
 
@@ -178,11 +166,7 @@ remembered for next time.
 | `s` | submit the review |
 | `q` | close without answering |
 
-<div align="center">
-
 ## Diagrams
-
-</div>
 
 Some things are in no file at all — how a click reaches a controller, the order
 four services touch one request. A group can carry a picture beside its code, and
@@ -218,11 +202,7 @@ There are no colours, sizes or positions in the format, on purpose. A node says
 what it *is* and how much it matters, and deck owns every pixel — so two decks
 drawing the same idea come out looking the same.
 
-<div align="center">
-
 ## Theming
-
-</div>
 
 Deck borrows your editor's colours rather than shipping a look you have to
 tolerate beside your work.
@@ -248,11 +228,7 @@ your editor:
 deck open <path> --theme "vscode:Solarized Dark"
 ```
 
-<div align="center">
-
 ## A deck is a directory
-
-</div>
 
 That shape does something: the agent writes the header, then a group at a time,
 then `done`. You can start reading group one while group four is still being
@@ -270,11 +246,7 @@ d-1788265010-8842.review    your answer, written beside it
 [`PROTOCOL.md`](PROTOCOL.md) is the full specification, frozen at version 1, and
 [`docs/how-it-works.md`](docs/how-it-works.md) is the shape of the rest.
 
-<div align="center">
-
 ## Contributing
-
-</div>
 
 ```sh
 cargo test --workspace
@@ -288,10 +260,6 @@ cargo test --workspace
 Deck is used by the people writing it, and nearly every fix so far has come from
 somebody hitting something while reading a deck of their own.
 
-<div align="center">
-
 ## License
-
-</div>
 
 Apache-2.0. See [LICENSE](LICENSE).
