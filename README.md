@@ -111,6 +111,12 @@ evidence for that one claim — an enum and the column that stores it, a writer 
 the reader that consumes it — so the relationship is on screen rather than in
 your head.
 
+<!--
+  A screenshot here: a group open, both panes lit, the narration above them.
+  Caption it with what the two panes have to do with each other — that is the
+  thing a still picture cannot say on its own.
+-->
+
 ### Comment where you disagree
 
 Drag across lines and press `c`. Drag across the narration itself to answer a
@@ -125,8 +131,6 @@ A deck arrives as a bar at the bottom of the screen, not a window across the
 middle of your work. Open it when you are ready; press `h` and it goes back to
 the bar with your comments still in it. The agent cannot open the deck itself,
 and there is no flag that lets it.
-
-<img src="assets/bar.gif" alt="A bar sliding open at the bottom of the screen: deck, a title, one group, and an Open button" width="620">
 
 ### Arrange it the way you read
 
@@ -167,6 +171,12 @@ A **flow** is a named path through the picture. Press it and a current travels
 the route while the rest of the diagram recedes — several to a picture, so the
 happy path and the one that stalls can share the same seven boxes. Drag the
 drawing anywhere; hold `⌘` or `ctrl` and scroll, or pinch, to zoom.
+
+<!--
+  A GIF here: a flow playing, with the rest of the diagram receding. This one
+  has to move — the travelling is the whole point and a still frame of it is
+  just a diagram with some boxes a different colour.
+-->
 
 There are no colours, sizes or positions in the format, on purpose. A node says
 what it *is* and how much it matters, and deck owns every pixel — so two decks
