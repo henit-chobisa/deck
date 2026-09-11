@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128" role="img" aria-label="deck">
+  <!--
+    The mark deck already wears, in the bar and in the terminal: a page with
+    one line lit on it. Drawn from pill.rs rather than invented, so the logo
+    and the thing it stands for are the same shape.
+  -->
+  <rect x="1.5" y="1.5" width="125" height="125" rx="35.6" fill="#2f2f2f" stroke="#4a4542" stroke-width="3"/>
+  <rect x="35.5" y="39.1" width="56.9" height="14.2" rx="7.1" fill="#7c6f64"/>
+  <rect x="35.5" y="74.6" width="56.9" height="14.2" rx="7.1" fill="#fe8019"/>
+</svg>

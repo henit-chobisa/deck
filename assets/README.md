@@ -1,14 +1,21 @@
 # assets
 
-Images for the README.
+`mark-dark.svg`, `mark-light.svg` — the deck mark: a page with one line lit on
+it. Drawn from the way `pill.rs` paints it in the bar, so the logo and the thing
+it stands for are the same shape rather than two designs that have to be kept in
+step. Gruvbox, because that is deck's own palette.
 
-`deck.png` — the hero. A deck open on two panes of code with the narration band
-above them, taken at a size somebody can read: around 1600 wide, on whichever
-theme looks best. It is the first thing a reader sees and it does more work than
-any paragraph on that page.
+`bar.gif` — the bar arriving. What a reader sees first, and the one part that
+cannot be photographed.
 
-`flow.gif` — better still, when there is one: a flow playing through a diagram,
-because the movement is the part that cannot be described.
+## Still wanted
+
+`deck.png` — a deck **open**: two panes of code with the narration band above
+them, around 1600 wide. The bar shows how a review arrives; this shows what it
+is. It belongs under the first paragraph of "In the window".
+
+`flow.gif` — a flow playing through a diagram, because the travelling is the
+part prose cannot carry.
 
 Keep them small. A README that takes a second to load is a README with a
 screenshot nobody optimised.

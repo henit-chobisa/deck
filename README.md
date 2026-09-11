@@ -1,5 +1,11 @@
 <div align="center">
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="assets/mark-dark.svg">
+  <source media="(prefers-color-scheme: light)" srcset="assets/mark-light.svg">
+  <img alt="deck" height="72" src="assets/mark-light.svg">
+</picture>
+
 <h1>deck</h1>
 
 [![Build](https://github.com/henit-chobisa/deck/actions/workflows/build.yml/badge.svg)](https://github.com/henit-chobisa/deck/actions/workflows/build.yml)
@@ -8,23 +14,21 @@
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
 
 A review surface for agent work, written in Rust.
-<img width="600" height="100" alt="ezgif-460e598feb768f6c" src="https://github.com/user-attachments/assets/4fb0fdec-b07f-4557-b74f-9f78bfaa69f0" />
 
+<br>
+
+<img src="assets/bar.gif" alt="A bar sliding open at the bottom of the screen: deck, a title, one group, and an Open button" width="620">
+
+<i>This is how a review arrives. Not a window across your work — a bar, and you open it when you are ready.</i>
 
 </div>
 
 <!--
-  The hero image goes here, and it is the most important thing on this page: a
-  reader decides what deck is from the picture before they read a word of it.
-  Every comparable project shows one within twenty lines.
-
-  Drop a screenshot at assets/deck.png — a deck open on two panes of code with
-  the narration band above them — and uncomment the two lines below. A flow
-  playing through a diagram would be better still, as a GIF.
-
-![A deck open on two panes of code and a diagram](assets/deck.png)
-
-<p align="center"><i>An agent points at the lines it means. You walk them, comment, and submit.</i></p>
+  Still missing, and it is the more important of the two: a screenshot of a deck
+  actually open, two panes of code with the narration band above them. Drop it
+  at assets/deck.png and put it under the first paragraph of "In the window".
+  A reader learns what deck is from that picture faster than from any paragraph
+  on this page.
 -->
 
 [Why](#why) • [How it works](#how-it-works) • [Install](#install) • [In the window](#in-the-window) • [Diagrams](#diagrams) • [Theming](#theming)
