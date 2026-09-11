@@ -569,19 +569,24 @@ mod tests {
         // had no settings at all. Checked on the list rather than on disk —
         // `settings_of` asks the real platform first, which is right and is
         // also not something a test can depend on.
-        let looked_at: Vec<String> = settings_places(CODE, Path::new("/somebody"))
-            .iter()
-            .map(|at| at.display().to_string())
-            .collect();
+        //
+        // Compared as paths rather than as the strings they print to. Windows
+        // renders a separator this test does not write, so the string form of
+        // the same path differs by platform — and a test of where deck looks
+        // has no business also testing how a path is spelled.
+        let home = Path::new("/somebody");
+        let looked_at = settings_places(CODE, home);
 
         for shape in [
-            "/somebody/AppData/Roaming/Code/User/settings.json",
-            "/somebody/Library/Application Support/Code/User/settings.json",
-            "/somebody/.config/Code/User/settings.json",
+            "AppData/Roaming/Code/User/settings.json",
+            "Library/Application Support/Code/User/settings.json",
+            ".config/Code/User/settings.json",
         ] {
+            let wanted = home.join(shape);
             assert!(
-                looked_at.iter().any(|at| at == shape),
-                "nothing looks at {shape}"
+                looked_at.contains(&wanted),
+                "nothing looks at {}",
+                wanted.display()
             );
         }
     }
@@ -595,10 +600,13 @@ mod tests {
         let places = bundled(CODE);
         assert_eq!(places.len(), deck_core::home::applications().len() * 3);
 
-        let named: Vec<String> = places.iter().map(|at| at.display().to_string()).collect();
+        // On the components rather than on the rendered string, for the same
+        // reason: the separator between them is the platform's business.
         for name in ["Visual Studio Code.app", "Microsoft VS Code", "code"] {
             assert!(
-                named.iter().any(|at| at.contains(name)),
+                places
+                    .iter()
+                    .any(|at| at.components().any(|part| part.as_os_str() == name)),
                 "no place is called {name}"
             );
         }

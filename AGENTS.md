@@ -89,9 +89,20 @@ welcome — `git log` is read more often than anyone expects.
 
 Do not add a co-author trailer.
 
+## Skills for this repository
+
+`.agents/skills/` holds the workflows here that are easy to get wrong. Read the
+relevant one before starting:
+
+| skill | for |
+| --- | --- |
+| `change-the-window` | anything in `crates/app`. Four mistakes, three of which abort the process. |
+| `change-the-protocol` | adding a field. Five places, and v1 is frozen. |
+| `change-the-skill` | editing `SKILL.md`. Rewriting it has destroyed it twice. |
+| `cut-a-release` | shipping a version. Six things in four places. |
+
 ## Use deck on deck
 
-This repository carries deck's own skill at `.agents/skills/deck/`. If you are
-explaining a change here and your answer would name two or more `file:line`
-locations, build a deck instead of writing the answer. That is what it is for,
-and this is the codebase where a bad one gets noticed fastest.
+If you are explaining a change here and your answer would name two or more
+`file:line` locations, build a deck instead of writing the answer. That is what
+deck is for, and this is the codebase where a bad one gets noticed fastest.

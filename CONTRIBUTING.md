@@ -139,6 +139,13 @@ specific sentences are present. That looks odd until you have watched a rewrite
 quietly drop the rule that made the thing work — each of those assertions is a
 rule that was lost once.
 
+## Skills, if you work with an agent
+
+`.agents/skills/` holds four workflows from this repository that are easy to get
+wrong — changing the window, changing the protocol, changing the skill, and
+cutting a release. Each is a plain Markdown file with the reasoning attached, so
+they are worth reading yourself even if nothing else does.
+
 ## What to work on
 
 - **Windows.** It builds and it has never been run. Opening a deck there and
