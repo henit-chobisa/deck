@@ -37,15 +37,27 @@ Your agent finishes a change and writes you a paragraph. It names four files and
 six line numbers. Now you open each one, find the line, hold the argument in your
 head while you go and look at the next one, and try to remember what the third one
 was for. By the time you have the whole picture you have done the work of
-assembling it yourself — which is the work you asked for.
+assembling it yourself — which is the work you asked for. Then you type *looks good*, 
+and neither of you is quite sure what you approved.
 
-Then you type *looks good*, and neither of you is quite sure what you approved.
+Now another one, say you ask the agent to explain you something, or a plan maybe
+it tells you the limitations, it tells you about where the architecture is broken, BUT
+the problem is that it "tells" you, it never shows you. Then you're just too tired to 
+read all that, and say "do what's good and move on". 
 
-Review is the bottleneck now. People run four, six, eight agents at once, and
+My favorite, code reviews. A PR / MR comes to you, you ask the agent to review the code,
+it gives you 5 paragraphs, in a language that you understand 50%, and you're not too tired
+to go and sniff into the code. The PR is 20k lines of code to sniff into by the way, no 
+architecture was explained, no root context was given, there can only be two outcomes of this
+either you become a meet proxy, "okay", getting an alert at 3 in the morning or you're gonna
+discard the review and dig into it, with a coffee in hand, a PR with 20k lines of code, rewriting
+everything that you have known.
+
+Explanation as "text" is the bottleneck now. People run four, six, eight agents at once, and
 their own reading speed is the ceiling — the agents finish and then wait on a
 human reading diffs. Deck is built for that moment. It is not a diff viewer and
-not a chat window: it is the surface where an agent makes an argument about code
-and a person answers it, in the fewest keystrokes that can carry the answer.
+not a chat window: it is the surface where an agent makes an argument about code, a person answers it with comments, it draw flow daigrams and animations to build your understanding, in the fewest keystrokes that 
+can carry the answer.
 
 ## How it works
 
