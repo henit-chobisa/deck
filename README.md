@@ -34,7 +34,7 @@ A presentation surface for agents, written in Rust.
 
 <div align="center">
 
-[Why](#why) • [How it works](#how-it-works) • [Install](#install) • [In the window](#in-the-window) • [Diagrams](#diagrams) • [Theming](#theming)
+[Why](#why) • [How it works](#how-it-works) • [Demo](#demo) • [Install](#install) • [In the window](#in-the-window) • [Diagrams](#diagrams) • [Theming](#theming)
 
 </div>
 
@@ -92,6 +92,21 @@ deck wait <path>          # blocks until you submit, prints the review as JSON
 
 Most of the time you will not run any of this. `deck setup` installs a skill into
 your agents and they reach for it on their own.
+
+## Demo
+
+<!--
+  Drop the video in here.
+
+  GitHub will not play a video committed to the repo. The way that works is to
+  open this file in the web editor, drag the file into the text area, and let
+  GitHub upload it — it inserts a user-attachments URL that renders as a player.
+  MP4 or MOV, under 10 MB.
+
+  Then delete this comment and write a sentence under it saying what is on
+  screen. A silent video with no caption makes the reader work out what they
+  are watching, which is the thing this whole page is against.
+-->
 
 ## Install
 

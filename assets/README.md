@@ -13,6 +13,13 @@ To remake it: `DECK_SHOW_ME=1` on a **debug** build opens a deck without the
 bar, which is the only way to photograph the window. It does not exist in a
 release binary, which is the point — see `main.rs`.
 
+## The demo video
+
+It does not live here. GitHub will not play a video committed to the repo — the
+only form that renders as a player is an upload. Open the README in the web
+editor, drag the file in, and GitHub inserts a `user-attachments` URL for it.
+MP4 or MOV, under 10 MB.
+
 ## Screenshots
 
 The hero slot is the commented-out block near the top of the README. What
