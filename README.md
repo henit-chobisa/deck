@@ -186,7 +186,7 @@ happy path and the one that stalls can share the same seven boxes. Drag the
 drawing anywhere; hold `⌘` or `ctrl` and scroll, or pinch, to zoom.
 
 <!--
-  A GIF here: a flow playing, with the rest of the diagram receding. This one
+  A GIF still wanted here: a flow playing, with the rest of the diagram receding. This one
   has to move — the travelling is the whole point and a still frame of it is
   just a diagram with some boxes a different colour.
 -->
@@ -199,6 +199,12 @@ drawing the same idea come out looking the same.
 
 Deck borrows your editor's colours rather than shipping a look you have to
 tolerate beside your work.
+
+<img src="assets/themes.gif" alt="One deck rendered in twenty editor themes, one after another">
+
+<i>One deck, twenty themes, nothing changed but the config line. The page, the
+text, the accent and the syntax come from the editor; the shapes and the spacing
+are always deck's.</i>
 
 ```toml
 # ~/.deck/config.toml

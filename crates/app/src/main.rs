@@ -212,6 +212,23 @@ fn show(decks: Vec<Deck>, opening: &cli::Opening) {
             // could would use it, and a deck arriving across somebody's work
             // uninvited is the thing this bar was built to replace. Reading is
             // the reader's to start.
+            //
+            // The one exception is for taking pictures of the window, and it
+            // exists only in a debug build: the screenshots and the recordings
+            // in the README have to come from somewhere, and the alternative is
+            // a person opening the same deck in five themes by hand. An
+            // installed deck does not contain this branch at all, so the
+            // guarantee above is a guarantee and not a convention.
+            let mut waiting = waiting;
+            if cfg!(debug_assertions)
+                && std::env::var_os("DECK_SHOW_ME").is_some()
+                && waiting.len() == 1
+            {
+                cx.activate(true);
+                open_deck(waiting.remove(0), cx);
+                return;
+            }
+
             open_pill_over(waiting, cx);
         });
 }

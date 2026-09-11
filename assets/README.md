@@ -5,6 +5,14 @@ it. Drawn from the way `pill.rs` paints it in the bar, so the logo and the thing
 it stands for are the same shape rather than two designs that have to be kept in
 step. Gruvbox, because that is deck's own palette.
 
+`themes.gif` — one deck in twenty editor themes, a frame each, the theme named
+in the footer. Captured by opening the deck with `--theme` and cutting the
+window out by its own bounds.
+
+To remake it: `DECK_SHOW_ME=1` on a **debug** build opens a deck without the
+bar, which is the only way to photograph the window. It does not exist in a
+release binary, which is the point — see `main.rs`.
+
 ## Screenshots
 
 The hero slot is the commented-out block near the top of the README. What
