@@ -1,0 +1,51 @@
+name: Something is wrong
+description: Deck did something it should not have, or did not do something it should.
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what happened instead.
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: The output of `deck --version`.
+      placeholder: deck 0.0.8
+    validations:
+      required: true
+
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      options:
+        - macOS
+        - Linux
+        - Windows
+    validations:
+      required: true
+
+  - type: input
+    id: editor
+    attributes:
+      label: Which editor's theme
+      description: >-
+        From `~/.deck/config.toml`, or "none". Deck reads colours out of nvim,
+        Zed, VS Code, Cursor and Windsurf, and a surprising number of problems
+        turn out to be a path on one platform.
+      placeholder: vscode
+
+  - type: textarea
+    id: crash
+    attributes:
+      label: Did the window close on its own?
+      description: >-
+        If deck vanished rather than showing an error, macOS wrote a report.
+        The newest one is the one to attach:
+        `ls -t ~/Library/Logs/DiagnosticReports/deck-*.ips | head -1`
+      render: text

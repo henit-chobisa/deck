@@ -1,0 +1,21 @@
+name: An idea
+description: Something deck should do, or should do differently.
+labels: [idea]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What is the problem
+      description: >-
+        The situation, not the feature. Deck has opinions and the interesting
+        conversation is usually about what went wrong rather than about what to
+        build — several of its better decisions came from somebody describing a
+        moment rather than proposing a solution.
+    validations:
+      required: true
+
+  - type: textarea
+    id: idea
+    attributes:
+      label: What you had in mind
+      description: If you have something specific. It is fine to leave this empty.

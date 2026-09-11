@@ -1,0 +1,37 @@
+name: I ran it on Windows
+description: The most useful report there is. Nobody has opened a deck on Windows.
+labels: [windows]
+body:
+  - type: markdown
+    attributes:
+      value: >-
+        Deck builds on Windows and its path handling is tested there on every
+        push, but no one has ever seen the window run. Everything about the
+        editor directories was written from documentation rather than from
+        having been there — so whatever happened to you is news, including "it
+        worked".
+
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: Even "it opened and looked right" is worth writing down.
+    validations:
+      required: true
+
+  - type: textarea
+    id: paths
+    attributes:
+      label: What deck resolved
+      description: >-
+        Run `cargo run -p deck-theme --example paths` from a clone and paste the
+        output. It prints every path deck looked at and which ones exist, which
+        is the single most useful thing for diagnosing a theme that would not
+        import.
+      render: text
+
+  - type: input
+    id: editor
+    attributes:
+      label: Which editor you use
+      placeholder: VS Code, nvim, Zed…

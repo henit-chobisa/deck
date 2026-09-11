@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: How deck works
+    url: https://github.com/henit-chobisa/deck/blob/main/docs/how-it-works.md
+    about: The architecture, before you report something that is on purpose.
+  - name: The protocol
+    url: https://github.com/henit-chobisa/deck/blob/main/PROTOCOL.md
+    about: The wire format, frozen at v1.
