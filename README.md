@@ -1,37 +1,70 @@
-# deck
+<div align="center">
 
-**Your agent points at code. You walk it, comment, submit.**
+<h1>deck</h1>
 
-Deck is a review surface for agent work. Instead of a summary in chat that names
-files you then have to go and find, your agent opens a window that shows the
-actual lines, with its reasoning beside them. You walk the pages, comment where
-you disagree, and press submit. Every comment goes back at once, pinned to the
-lines it was about.
+[![CI](https://github.com/henit-chobisa/deck/actions/workflows/ci.yml/badge.svg)](https://github.com/henit-chobisa/deck/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/henit-chobisa/deck?include_prereleases&color=d65d0e)](https://github.com/henit-chobisa/deck/releases)
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
 
-```
-agent  →  deck new / deck group / deck seal      writes a deck
-agent  →  deck open                              a bar says one is ready
-you    →  walk it, comment, submit
-agent  →  deck wait exits with the whole review
-```
+A review surface for agent work, written in Rust.
 
-Nothing runs in the background. There is no daemon, no editor plugin, and no
-protocol to speak — four commands and a wait, which is why it works the same
-with Claude Code, Codex, Cursor, Amp, or whatever comes next.
+</div>
 
----
+<!--
+  The hero image goes here, and it is the most important thing on this page: a
+  reader decides what deck is from the picture before they read a word of it.
+  Every comparable project shows one within twenty lines.
+
+  Drop a screenshot at assets/deck.png — a deck open on two panes of code with
+  the narration band above them — and uncomment the two lines below. A flow
+  playing through a diagram would be better still, as a GIF.
+
+![A deck open on two panes of code and a diagram](assets/deck.png)
+
+<p align="center"><i>An agent points at the lines it means. You walk them, comment, and submit.</i></p>
+-->
+
+[Why](#why) • [How it works](#how-it-works) • [Install](#install) • [In the window](#in-the-window) • [Diagrams](#diagrams) • [Theming](#theming)
 
 ## Why
 
-Review is the bottleneck. People run four to eight agents at once now, and their
-own reading speed is the ceiling — the agents finish and then wait on a human
-reading diffs.
+Your agent finishes a change and writes you a paragraph. It names four files and
+six line numbers. Now you open each one, find the line, hold the argument in your
+head while you go and look at the next one, and try to remember what the third one
+was for. By the time you have the whole picture you have done the work of
+assembling it yourself — which is the work you asked for.
 
-Deck is built for that moment. It is not a diff viewer and not a chat window: it
-is the surface where an agent makes an argument about code and a person answers
-it, in the fewest keystrokes that can carry the answer.
+Then you type *looks good*, and neither of you is quite sure what you approved.
 
----
+Review is the bottleneck now. People run four, six, eight agents at once, and
+their own reading speed is the ceiling — the agents finish and then wait on a
+human reading diffs. Deck is built for that moment. It is not a diff viewer and
+not a chat window: it is the surface where an agent makes an argument about code
+and a person answers it, in the fewest keystrokes that can carry the answer.
+
+## How it works
+
+Four commands and a wait. No daemon, no editor plugin, no protocol to speak —
+which is why it works the same with Claude Code, Codex, Cursor, Amp, or whatever
+comes next.
+
+```sh
+deck new --title "The batch counter stalls at 63" --total 2
+# prints the deck's path
+
+deck open <path>          # a bar appears; you open it when you are ready
+
+deck group <path> \
+  --say "The counter is decremented on the **error path** too." \
+  --ref "src/batch.ts:140-148 decremented *twice* when the write fails" \
+  --ref "src/queue.ts:88 the only caller"
+
+deck seal <path>
+deck wait <path>          # blocks until you submit, prints the review as JSON
+```
+
+Most of the time you will not run any of this. `deck setup` installs a skill into
+your agents and they reach for it on their own.
 
 ## Install
 
@@ -47,92 +80,90 @@ brew install henit-chobisa/deck/deck
 cargo install --git https://github.com/henit-chobisa/deck deck-app
 ```
 
-Windows also needs the MSVC toolchain — Visual Studio Build Tools with the
-"Desktop development with C++" workload — because that is what supplies the
-linker.
-
-Both build from source: deck compiles nineteen tree-sitter grammars into the
-binary, so the first install takes a few minutes. Building locally is also why
-neither platform asks about an unsigned binary — nothing was downloaded, so
-there is nothing for Gatekeeper or SmartScreen to hold.
-
-Windows is **not yet tested**. It builds and the paths are written for it, but
-nobody has run a deck there. `cargo run -p deck-theme --example paths` prints
-what deck resolved, which is the useful thing to send back if it misbehaves.
-
-Then, once:
+Then once, to choose how deck looks and to tell your agents it exists:
 
 ```sh
 deck setup
 ```
 
-which asks two things — whether to borrow your editor's colours, and which of
-your agents should be told deck exists — and writes the answers to
-`~/.deck/config.toml`.
+Both install from source — deck compiles nineteen tree-sitter grammars into the
+binary, so the first build takes a few minutes. It is also why neither platform
+asks about an unsigned binary: nothing was downloaded, so there is nothing for
+Gatekeeper or SmartScreen to hold.
 
----
+> [!NOTE]
+> Windows builds and is checked on every push, but no one has run the window
+> there yet. Windows also needs the MSVC toolchain — Visual Studio Build Tools
+> with the "Desktop development with C++" workload — for the linker.
 
-## Using it
+## In the window
 
-Most of the time you will not run deck at all. `deck setup` installs a skill
-into your agents, and they reach for it on their own when they have something
-worth showing you.
+### Walk the argument, not the diff
 
-When you want to drive it yourself:
+A deck is a sequence of groups, and each group is one thing the agent is saying
+with the code that shows it. `n` and `p` move between them. The panes are the
+evidence for that one claim — an enum and the column that stores it, a writer and
+the reader that consumes it — so the relationship is on screen rather than in
+your head.
 
-```sh
-deck new --title "The batch counter stalls at 63" --total 2
-# prints the deck's path
+### Comment where you disagree
 
-deck group <path> \
-  --say "The counter is decremented on the **error path** too." \
-  --ref "src/batch.ts:140-148 decremented *twice* when the write fails" \
-  --ref "src/queue.ts:88 the only caller"
+Drag across lines and press `c`. Drag across the narration itself to answer a
+sentence rather than a line, which is where *this whole approach is wrong* goes.
+`⌘↩` saves, `esc` discards. Every comment goes back at once, pinned to the lines
+it was about, with the text it was written against — so it survives the file
+moving underneath it.
 
-deck seal <path>
-deck open <path>
-```
+### Put it away without losing it
 
-`deck wait <path>` blocks until you submit and prints the review as JSON.
+A deck arrives as a bar at the bottom of the screen, not a window across the
+middle of your work. Open it when you are ready; press `h` and it goes back to
+the bar with your comments still in it. The agent cannot open the deck itself,
+and there is no flag that lets it.
 
-### In the window
+### Arrange it the way you read
+
+Drag a seam to resize a pane, `r` to turn the panes a quarter, and the shape is
+remembered for next time.
 
 | key | does |
 | --- | --- |
 | `n` `p` | next / previous group |
-| `c` | comment on the selected lines, or on the group |
+| `c` | comment on the selection, or on the group |
 | `r` | turn the panes |
-| `h` | put the deck away — it comes back on the bar |
+| `h` | put the deck away |
 | `s` | submit the review |
 | `q` | close without answering |
 
-Click and drag to select lines. Drag a seam to resize a pane. Drag a diagram to
-move it, and hold `⌘` or `ctrl` with the wheel — or pinch — to take it in and out. `⌘↩` saves a comment, `esc` discards it.
+## Diagrams
 
----
+Some things are in no file at all — how a click reaches a controller, the order
+four services touch one request. A group can carry a picture beside its code, and
+the picture can be walked.
 
-## What a deck is
-
-A directory, and that shape does something: the agent writes the header, then a
-group at a time, then `done`. You can start reading group one while group four is
-still being written.
-
+```json
+{
+  "title": "what a Run click does",
+  "nodes": [
+    { "id": "run", "label": "Run", "role": "actor" },
+    { "id": "q", "label": "another job in progress?", "role": "decision" },
+    { "id": "queued", "label": "status QUEUED, no task" }
+  ],
+  "edges": [{ "from": "run", "to": "q" }, { "from": "q", "to": "queued", "label": "yes" }],
+  "flows": [
+    { "name": "where it stalls", "color": "#d29922", "steps": ["run", "q", "queued"] }
+  ]
+}
 ```
-d-1788265010-8842.deck/
-  deck.json      the header — title, project, how many groups are coming
-  g1.json        one claim, and the code that shows it
-  g2.json
-  done           written last
-d-1788265010-8842.review    your answer, written beside it
-```
 
-A **group** is one thing the agent wants to say. Its **refs** are the evidence —
-a file and a tight line range, or a diagram for structure that lives in no single
-file. The window puts each ref in its own pane and lights the range.
+A **flow** is a named path through the picture. Press it and a current travels
+the route while the rest of the diagram recedes — several to a picture, so the
+happy path and the one that stalls can share the same seven boxes. Drag the
+drawing anywhere; hold `⌘` or `ctrl` and scroll, or pinch, to zoom.
 
-`PROTOCOL.md` is the full specification, frozen at version 1.
-
----
+There are no colours, sizes or positions in the format, on purpose. A node says
+what it *is* and how much it matters, and deck owns every pixel — so two decks
+drawing the same idea come out looking the same.
 
 ## Theming
 
@@ -146,24 +177,30 @@ editor = "vscode"   # nvim | zed | vscode | cursor | windsurf
 ```
 
 It takes the page, the text, an accent, and whatever syntax colours the theme
-has. **Never its chrome** — a theme designs its own status bar and tab strip,
-and those are answers to questions deck is not asking. Everything else is
-derived from those few colours, so a deck always looks like a deck.
-
-To try one on without changing your editor:
+has. Never its chrome — a theme designs its own status bar and tab strip, and
+those are answers to questions deck is not asking. To try one on without changing
+your editor:
 
 ```sh
 deck open <path> --theme "vscode:Solarized Dark"
 ```
 
-Anything can be overridden by hand:
+## A deck is a directory
 
-```toml
-[theme.colors]
-accent = "#af3a03"
+That shape does something: the agent writes the header, then a group at a time,
+then `done`. You can start reading group one while group four is still being
+written.
+
+```
+d-1788265010-8842.deck/
+  deck.json      the header — title, project, how many groups are coming
+  g1.json        one claim, and the code that shows it
+  g2.json
+  done           written last
+d-1788265010-8842.review    your answer, written beside it
 ```
 
----
+[`PROTOCOL.md`](PROTOCOL.md) is the full specification, frozen at version 1.
 
 ## Building
 
@@ -181,8 +218,6 @@ cargo test --workspace
 
 The rule that keeps them apart: **share the model, not the view.** `deck-core`
 has no view trait and knows nothing about a renderer.
-
----
 
 ## License
 
