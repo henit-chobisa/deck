@@ -95,6 +95,12 @@ your agents and they reach for it on their own.
 
 ## Demo
 
+
+
+https://github.com/user-attachments/assets/ea4f8fe3-50b2-4412-917c-882b536a538a
+
+
+
 <!--
   Drop the video in here.
 
