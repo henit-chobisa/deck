@@ -1,0 +1,101 @@
+# What has to be true before a change lands.
+#
+# Three jobs, and the third is the one that earns its keep: deck has never been
+# run on Windows, so the only thing standing between a Windows user and a
+# compile error is a machine that compiles for Windows on every push.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+  # A warning that is ignored is not a warning. The workspace already denies
+  # the lints it cares about; this makes the rest of them fatal here and
+  # nowhere else, so a local build stays quick to iterate on.
+  RUSTFLAGS: -D warnings
+
+jobs:
+  # Everything, on the platform deck is developed and used on.
+  check:
+    name: test on macOS
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+
+      - name: formatting
+        run: cargo fmt --all -- --check
+
+      - name: lints
+        run: cargo clippy --workspace --all-targets
+
+      - name: tests
+        run: cargo test --workspace
+
+  # The crates with no window in them, on the platform most CI runs on.
+  #
+  # `deck-app` is left out on purpose rather than given the system libraries it
+  # would need: what is being checked here is that the model, the protocol and
+  # the theme readers are not quietly macOS-only, and pulling in a windowing
+  # stack to learn that would be a slower way to learn less.
+  portable:
+    name: build on Linux
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+
+      - name: build
+        run: cargo build -p deck-core -p deck-cli -p deck-theme
+
+      - name: tests
+        run: cargo test -p deck-core -p deck-cli -p deck-theme
+
+  # The platform nobody has run this on.
+  #
+  # Deck reads a person's editor settings out of three different places
+  # depending on the machine, and every one of those paths is written from
+  # documentation rather than from having been there. A compile is not proof
+  # that they are right, but it is proof they still compile — which is the part
+  # that breaks silently when somebody edits `home.rs` on a Mac.
+  windows:
+    name: build on Windows
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+
+      - name: build
+        run: cargo build -p deck-core -p deck-cli -p deck-theme
+
+      - name: tests
+        run: cargo test -p deck-core -p deck-cli
+
+  # And the window, on Windows, which nobody has ever seen run.
+  #
+  # Allowed to fail on purpose. GPUI carries Windows support and deck has never
+  # been built against it, so this job is a question rather than a
+  # requirement — it reports the answer on every push without holding up a
+  # change to a platform the project does not yet claim to support. The day it
+  # goes green twice in a row it should become part of `windows` above and this
+  # comment should go.
+  windows-window:
+    name: build the window on Windows (unproven)
+    runs-on: windows-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+
+      - name: build
+        run: cargo build -p deck-app

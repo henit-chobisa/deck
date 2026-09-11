@@ -57,14 +57,20 @@ pub struct Paragraph {
 /// still carries the half the reader was pointing at — which is the thing that
 /// matters, and is already far better than quoting the first line whatever they
 /// meant.
+/// Told that the pointer went down on a word.
+pub type Down = std::rc::Rc<dyn Fn(usize, &mut Window, &mut App)>;
+
+/// Told that the pointer entered or left a word.
+pub type Over = std::rc::Rc<dyn Fn(usize, bool, &mut Window, &mut App)>;
+
 /// How the narration answers the pointer.
 pub struct Picking {
     /// The words currently selected, as an inclusive range.
     pub range: Option<(usize, usize)>,
     /// The pointer went down on this word.
-    pub down: std::rc::Rc<dyn Fn(usize, &mut Window, &mut App)>,
+    pub down: Down,
     /// The pointer entered or left this word.
-    pub over: std::rc::Rc<dyn Fn(usize, bool, &mut Window, &mut App)>,
+    pub over: Over,
 }
 
 /// Every word of `say`, in order, each keeping the space that followed it.
@@ -105,7 +111,7 @@ pub fn sentence_around(say: &str, at: usize) -> Option<(usize, usize)> {
     let said = tokens.iter().find(|(ix, _)| *ix == at)?.1;
     let mut of_it = tokens.iter().filter(|(_, s)| *s == said).map(|(ix, _)| *ix);
     let first = of_it.next()?;
-    Some((first, of_it.last().unwrap_or(first)))
+    Some((first, of_it.next_back().unwrap_or(first)))
 }
 
 fn ends_a_sentence(word: &str) -> bool {

@@ -1,0 +1,35 @@
+# The protocol is frozen at version 1.
+#
+# Not a style rule: a deck is written by one program and read by another, and
+# the two are often not the same version. Every field in PROTOCOL.md is a
+# promise to somebody else's client, so a change to it should be a deliberate
+# act with a reason attached rather than something that rides along in a commit
+# about something else.
+name: Protocol
+
+on:
+  pull_request:
+    paths:
+      - PROTOCOL.md
+
+jobs:
+  frozen:
+    name: v1 is frozen
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: say what changed
+        run: |
+          echo "PROTOCOL.md changed in this pull request."
+          echo
+          git diff "origin/${{ github.base_ref }}"...HEAD -- PROTOCOL.md
+          echo
+          echo "Version 1 is frozen. Additions are allowed — a new optional"
+          echo "field, a new enum value — because a v1 client ignores what it"
+          echo "does not know. Changing or removing anything already there is"
+          echo "not: it breaks every client that trusted the old shape."
+          echo
+          echo "If this is an addition, say so in the pull request and carry on."
