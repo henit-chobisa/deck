@@ -96,10 +96,8 @@ binary, so the first build takes a few minutes. It is also why neither platform
 asks about an unsigned binary: nothing was downloaded, so there is nothing for
 Gatekeeper or SmartScreen to hold.
 
-> [!NOTE]
-> Windows builds and is checked on every push, but no one has run the window
-> there yet. Windows also needs the MSVC toolchain — Visual Studio Build Tools
-> with the "Desktop development with C++" workload — for the linker.
+On Windows this needs the MSVC toolchain — Visual Studio Build Tools with the
+"Desktop development with C++" workload — for the linker.
 
 ## In the window
 
@@ -231,9 +229,8 @@ cargo test --workspace
 - [PROTOCOL.md](PROTOCOL.md) — the wire format, frozen at v1
 - [AGENTS.md](AGENTS.md) — the same, for an agent changing this repo
 
-The most useful thing anybody could do right now is open a deck on Windows. It
-builds and it is tested there on every push, but nobody has ever seen the window
-run.
+Deck is used by the people writing it, and nearly every fix so far has come from
+somebody hitting something while reading a deck of their own.
 
 ## License
 

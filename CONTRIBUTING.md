@@ -12,9 +12,8 @@ cargo test --workspace
 cargo run -p deck-app -- --help
 ```
 
-macOS is the only platform the window has run on. Linux and Windows are built on
-every push and the model is tested there, but nobody has opened a deck on either
-— see [the workflows](.github/workflows/) for exactly what is checked where.
+The window is developed on macOS. Linux and Windows are built and tested on
+every push — see [the workflows](.github/workflows/) for what runs where.
 
 To try a change, write a deck and open it:
 
@@ -148,12 +147,12 @@ they are worth reading yourself even if nothing else does.
 
 ## What to work on
 
-- **Windows.** It builds and it has never been run. Opening a deck there and
-  saying what happened would be the single most useful contribution right now.
-  `cargo run -p deck-theme --example paths` prints every path deck resolved,
-  which is the useful thing to report.
-- **Bugs you hit while using it.** Deck is used by the people writing it and
+- **Bugs you hit while using it.** Deck is used by the people writing it, and
   that is where nearly every fix so far has come from.
+- **A deck opened on Linux or Windows.** The window is developed on macOS, so a
+  note saying what it looked like elsewhere is worth a lot. If a theme fails to
+  import, `cargo run -p deck-theme --example paths` prints every directory deck
+  checked.
 - Before building anything large, open an issue. Deck has opinions and it is
   kinder to disagree before the work than after it.
 

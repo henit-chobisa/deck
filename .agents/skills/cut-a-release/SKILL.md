@@ -97,9 +97,10 @@ gh release create v0.0.9 \
   --prerelease
 ```
 
-Notes are for somebody deciding whether to upgrade. Lead with what they get, say
-what was broken, and keep anything that is still not true — **Windows has never
-been run** belongs in every release until somebody runs it.
+Notes are for somebody deciding whether to upgrade. Lead with what they get,
+then what was broken. Say a limitation once, where it is relevant, and not
+again — a release note that repeats the same caveat every time reads as a
+project apologising for itself rather than one shipping.
 
 ## 6. Say what the reader has to do
 

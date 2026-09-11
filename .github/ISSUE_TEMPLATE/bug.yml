@@ -36,9 +36,18 @@ body:
       label: Which editor's theme
       description: >-
         From `~/.deck/config.toml`, or "none". Deck reads colours out of nvim,
-        Zed, VS Code, Cursor and Windsurf, and a surprising number of problems
-        turn out to be a path on one platform.
+        Zed, VS Code, Cursor and Windsurf.
       placeholder: vscode
+
+  - type: textarea
+    id: paths
+    attributes:
+      label: Where deck looked
+      description: >-
+        Only if the problem is a theme that would not import. From a clone,
+        `cargo run -p deck-theme --example paths` prints every directory deck
+        checked and which of them exist.
+      render: text
 
   - type: textarea
     id: crash
