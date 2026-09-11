@@ -15,20 +15,18 @@
 
 A review surface for agent work, written in Rust.
 
-<br>
-
-<img src="assets/bar.gif" alt="A bar sliding open at the bottom of the screen: deck, a title, one group, and an Open button" width="620">
-
-<i>This is how a review arrives. Not a window across your work — a bar, and you open it when you are ready.</i>
-
 </div>
 
 <!--
-  Still missing, and it is the more important of the two: a screenshot of a deck
-  actually open, two panes of code with the narration band above them. Drop it
-  at assets/deck.png and put it under the first paragraph of "In the window".
-  A reader learns what deck is from that picture faster than from any paragraph
-  on this page.
+  The hero goes here, and it is the most important thing on this page: a reader
+  learns what deck is from the picture faster than from any paragraph on it.
+
+  What belongs here is a deck OPEN — two panes of code with the narration band
+  above them, around 1600 wide. Drop it at assets/deck.png and uncomment:
+
+<img src="assets/deck.png" alt="A deck open on two panes of code with the narration above them">
+
+<p align="center"><i>An agent points at the lines it means. You walk them, comment, and submit.</i></p>
 -->
 
 [Why](#why) • [How it works](#how-it-works) • [Install](#install) • [In the window](#in-the-window) • [Diagrams](#diagrams) • [Theming](#theming)
@@ -127,6 +125,8 @@ A deck arrives as a bar at the bottom of the screen, not a window across the
 middle of your work. Open it when you are ready; press `h` and it goes back to
 the bar with your comments still in it. The agent cannot open the deck itself,
 and there is no flag that lets it.
+
+<img src="assets/bar.gif" alt="A bar sliding open at the bottom of the screen: deck, a title, one group, and an Open button" width="620">
 
 ### Arrange it the way you read
 

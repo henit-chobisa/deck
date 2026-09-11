@@ -5,8 +5,10 @@ it. Drawn from the way `pill.rs` paints it in the bar, so the logo and the thing
 it stands for are the same shape rather than two designs that have to be kept in
 step. Gruvbox, because that is deck's own palette.
 
-`bar.gif` — the bar arriving. What a reader sees first, and the one part that
-cannot be photographed.
+`bar.gif` — the bar arriving. Sits in "In the window", beside the paragraph
+that explains it: on its own at the top of the page it was a grey rectangle
+sliding open, which means nothing to somebody who does not yet know what deck
+is. Next to the sentence about not taking over your screen, it is the proof.
 
 ## Still wanted
 
