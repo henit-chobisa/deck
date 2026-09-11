@@ -8,6 +8,8 @@
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
 
 A review surface for agent work, written in Rust.
+<img width="600" height="100" alt="ezgif-460e598feb768f6c" src="https://github.com/user-attachments/assets/4fb0fdec-b07f-4557-b74f-9f78bfaa69f0" />
+
 
 </div>
 
