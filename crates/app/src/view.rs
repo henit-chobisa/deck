@@ -1213,10 +1213,13 @@ impl DeckView {
                     .min_h_0()
                     .overflow_hidden()
                     .gap(px(9.))
-                    .pl(px(18.))
-                    .pr(px(18.))
-                    .pt(px(15.))
                     .pb(px(14.))
+                    // The horizontal and top padding belong to the children
+                    // rather than to this column, so that the titlebar can
+                    // include the gap above the title. Put here, that gap is a
+                    // strip of band between the window's edge and the only
+                    // thing that answers a double-click — which is exactly
+                    // where somebody aiming at a titlebar clicks.
                     .child(
                         // The title stays. It is what the deck is *for*, and
                         // scrolling it away to read the middle of a long
@@ -1235,6 +1238,9 @@ impl DeckView {
                             .flex_none()
                             .items_baseline()
                             .gap(px(14.))
+                            .pt(px(15.))
+                            .pl(px(18.))
+                            .pr(px(18.))
                             .on_click(|event, window, _| {
                                 if event.click_count() >= 2 {
                                     window.zoom_window();
@@ -1255,6 +1261,8 @@ impl DeckView {
                         // better to put it.
                         div()
                             .id("deck-claim")
+                            .pl(px(18.))
+                            .pr(px(18.))
                             // Scrolls, because a `say` is as long as the agent
                             // needed it to be and the band is as tall as the
                             // window can spare. When the two disagreed the
