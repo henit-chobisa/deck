@@ -403,6 +403,17 @@ pub struct DeckView {
     /// How tall the narration band is, in pixels. `None` until it is dragged,
     /// so an untouched band is whatever its prose needs.
     band_height: Option<f32>,
+    /// Where the reader has scrolled the narration to.
+    ///
+    /// A `say` is as long as the agent needed it to be and the band is as tall
+    /// as the window can spare, so the two disagree often. What used to happen
+    /// when they did was that the prose stopped mid-sentence at the bottom
+    /// edge, with the rest of it unreachable.
+    ///
+    /// View state rather than something the session carries: it is where this
+    /// reader has got to in this window, and a deck put away and brought back
+    /// should start at the top of its prose.
+    band_scroll: ScrollHandle,
     /// Remarks folded down to their header, by index.
     ///
     /// A card sits over the code, so a long one hides the lines under it. The
@@ -516,6 +527,7 @@ impl DeckView {
             pace: Pace::Normal,
             sizing: None,
             band_height,
+            band_scroll: ScrollHandle::new(),
             folded,
             drifting: None,
             gliding: Task::ready(()),
@@ -1135,6 +1147,11 @@ impl DeckView {
     /// comment being written — repaints without coming through here, because a
     /// rebuild throws away where the reader had scrolled to.
     fn build_panes(&mut self, cx: &mut App) {
+        // A new group starts at the top of its own narration. Carrying the
+        // last one's scroll over means arriving halfway down a paragraph that
+        // has not been read.
+        self.band_scroll.set_offset(point(px(0.), px(0.)));
+
         let base = self.deck.base();
         let Some(group) = self.deck.groups().get(self.group_ix) else {
             self.panes = Vec::new();
@@ -1193,6 +1210,7 @@ impl DeckView {
                     .v_flex()
                     .flex_1()
                     .min_w_0()
+                    .min_h_0()
                     .overflow_hidden()
                     .gap(px(9.))
                     .pl(px(18.))
@@ -1200,13 +1218,35 @@ impl DeckView {
                     .pt(px(15.))
                     .pb(px(14.))
                     .child(
-                        div().h_flex().items_baseline().gap(px(14.)).child(
-                            div()
-                                .text_size(px(15.5))
-                                .font_weight(FontWeight::SEMIBOLD)
-                                .text_color(paint(self.palette.fg))
-                                .child(self.deck.title()),
-                        ),
+                        // The title stays. It is what the deck is *for*, and
+                        // scrolling it away to read the middle of a long
+                        // narration loses the one line that says what the
+                        // narration is about.
+                        // It is also the deck's titlebar, so it behaves like
+                        // one: double-click zooms the window. The real
+                        // titlebar is there but made invisible and its traffic
+                        // lights are pushed off-screen, so a double-click
+                        // where a titlebar would be landed on the band and did
+                        // nothing — while every other window on the machine
+                        // zooms.
+                        div()
+                            .id("deck-titlebar")
+                            .h_flex()
+                            .flex_none()
+                            .items_baseline()
+                            .gap(px(14.))
+                            .on_click(|event, window, _| {
+                                if event.click_count() >= 2 {
+                                    window.zoom_window();
+                                }
+                            })
+                            .child(
+                                div()
+                                    .text_size(px(15.5))
+                                    .font_weight(FontWeight::SEMIBOLD)
+                                    .text_color(paint(self.palette.fg))
+                                    .child(self.deck.title()),
+                            ),
                     )
                     .child(
                         // The prose is pickable too. An objection to what the
@@ -1215,6 +1255,17 @@ impl DeckView {
                         // better to put it.
                         div()
                             .id("deck-claim")
+                            // Scrolls, because a `say` is as long as the agent
+                            // needed it to be and the band is as tall as the
+                            // window can spare. When the two disagreed the
+                            // prose stopped mid-sentence at the bottom edge,
+                            // and the rest of it could not be reached at all —
+                            // dragging the seam is a way to make the band
+                            // bigger, not a way to read past the end of it.
+                            .flex_1()
+                            .min_h_0()
+                            .overflow_y_scroll()
+                            .track_scroll(&self.band_scroll)
                             .max_w(px(560.))
                             .text_size(px(13.2))
                             .text_color(paint(self.palette.fg))
