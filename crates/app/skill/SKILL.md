@@ -523,6 +523,11 @@ Rules:
   whole match arm, signature through closing brace. If the function is ninety lines and
   eight matter, point at the eight and say which function they are in. Count the closing
   line rather than guessing it.
+- **Cite what you have read.** `deck group` opens every file you point at and
+  refuses the group if the file is not there or the range runs past the end of
+  it. That is not a formality — a ref you guessed at and a ref you read look
+  identical in prose, and they do not look identical in line numbers. If deck
+  turns a ref down, go and read the file rather than adjusting the number.
 - **If your prose names a location, that location must be a ref.** Writing "line 116"
   or "the enum above" and not showing it is the single most common way to waste this
   tool — they are looking at a screen that does not contain the thing you just cited.

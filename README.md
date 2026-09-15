@@ -202,6 +202,23 @@ remembered for next time.
 | `s` | submit the review |
 | `q` | close without answering |
 
+## How do you know the agent did not make it up
+
+You do not have to take its word for the half that can be checked. `deck group`
+opens every file a ref points at, and refuses the group if the file is not there
+or the range runs past the end of it — so a deck cannot be written against code
+that does not exist, and the agent is told while it is still running and can go
+and look.
+
+That leaves the other half: whether the *claim* about those lines is true. Deck's
+answer is that you are looking at the lines while you read the claim, which is
+the whole shape of the thing. A summary in chat asks you to believe it. A deck
+puts the evidence next to the argument and gives you a key to disagree on.
+
+And when the file moves underneath you, comments come back with how far to trust
+them — `diff`, `fingerprint`, or `stale` — rather than a line number that may
+have drifted.
+
 ## Diagrams
 
 Some things are in no file at all — how a click reaches a controller, the order

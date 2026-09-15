@@ -133,6 +133,71 @@ fn show_code_do_not_type_it(say: &str) -> anyhow::Result<()> {
     Ok(())
 }
 
+/// Refuse a ref that points at code which is not there.
+///
+/// This is the one check that answers "how do I know the agent did not make it
+/// up". Not all of it — nothing here can tell whether the *claim* about a line
+/// is true — but a citation is two halves, and the half that says *these lines,
+/// in this file* can be checked against the disk in a millisecond.
+///
+/// An agent that has read a file and an agent that has guessed at one produce
+/// the same confident prose. They do not produce the same line numbers. So the
+/// guess is caught here, while the agent is still running and can go and look,
+/// rather than by the reader opening a pane that says the file is missing —
+/// which is the moment a deck stops being worth trusting.
+///
+/// Checked against the deck's own `cwd`, because that is what every relative
+/// ref in it resolves against.
+///
+/// # Errors
+///
+/// When a ref names a file that is not there, or lines the file does not have.
+fn point_at_code_that_exists(root: &Path, pointing: &[Pointing]) -> anyhow::Result<()> {
+    let Ok(text) = std::fs::read_to_string(root.join("deck.json")) else {
+        return Ok(());
+    };
+    let Ok(header) = serde_json::from_str::<Header>(&text) else {
+        return Ok(());
+    };
+    // An unscoped deck resolves its refs against wherever it is read, so there
+    // is no one place to check them against.
+    let Some(base) = header.cwd else {
+        return Ok(());
+    };
+
+    for one in pointing {
+        let Pointing::Code(named) = one else {
+            continue;
+        };
+        let at = if named.file.is_absolute() {
+            named.file.clone()
+        } else {
+            base.join(&named.file)
+        };
+
+        let Ok(source) = std::fs::read_to_string(&at) else {
+            anyhow::bail!(
+                "no file at `{}`.\n\nA ref points at code the reader will open, so it \
+                 has to be code that is there. Check the path — it is resolved against \
+                 `{}`, the project this deck was opened for.",
+                named.file.display(),
+                base.display(),
+            );
+        };
+
+        let lines = source.lines().count();
+        let last = named.range.last;
+        anyhow::ensure!(
+            last as usize <= lines,
+            "`{}` has {lines} lines, and the ref asks for {}.\n\nRead the file and \
+             cite what is in it. A range past the end is the shape a guess takes.",
+            named.file.display(),
+            named.range,
+        );
+    }
+    Ok(())
+}
+
 /// How far apart two ranges in one file have to be to deserve separate panes.
 ///
 /// Under this they are one block, and two panes showing it are two panes of
@@ -212,6 +277,7 @@ pub fn group(root: &Path, say: &str, pointing: Vec<Pointing>) -> anyhow::Result<
 
     show_code_do_not_type_it(say)?;
     one_pane_per_block(&pointing)?;
+    point_at_code_that_exists(root, &pointing)?;
 
     let ord = next_ord(root);
     let refs = pointing
@@ -351,6 +417,54 @@ mod tests {
         refs.iter()
             .map(|r| Pointing::Code(crate::refs::parse(r).expect("a ref that parses")))
             .collect()
+    }
+
+    #[test]
+    fn a_ref_must_point_at_a_file_that_is_there() {
+        // The question somebody always asks: how do I know the agent did not
+        // make this up. Not all of it can be checked — nothing here knows
+        // whether the *claim* about a line is true — but a citation has two
+        // halves, and "these lines, in this file" is checkable against the
+        // disk. An agent that read the file and one that guessed produce the
+        // same confident prose; they do not produce the same line numbers.
+        let at = scratch("missing-file");
+        let project = at.join("project");
+        std::fs::create_dir_all(&project).unwrap();
+        let root = new(&at, "One", Some(project.clone()), None).unwrap();
+
+        let err = group(&root, "say", pointing(&["nope.rs:1-4 not there"]))
+            .expect_err("a ref to a file that does not exist is refused");
+        assert!(err.to_string().contains("no file at"));
+    }
+
+    #[test]
+    fn a_ref_must_stay_inside_the_file() {
+        // A range past the end is the shape a guess takes.
+        let at = scratch("past-the-end");
+        let project = at.join("project");
+        std::fs::create_dir_all(&project).unwrap();
+        std::fs::write(project.join("small.rs"), "one\ntwo\nthree\n").unwrap();
+        let root = new(&at, "One", Some(project), None).unwrap();
+
+        group(&root, "say", pointing(&["small.rs:1-3 all of it"]))
+            .expect("a range the file has is fine");
+
+        let err = group(&root, "say", pointing(&["small.rs:40-60 invented"]))
+            .expect_err("a range the file does not have is refused");
+        let said = err.to_string();
+        assert!(said.contains("3 lines"), "and it says how long the file is");
+    }
+
+    #[test]
+    fn an_unscoped_deck_is_left_alone() {
+        // Without a cwd a deck renders wherever it is opened, so there is no
+        // one checkout its refs can be checked against. Refusing on a guess at
+        // the wrong tree would be worse than not checking.
+        let at = scratch("unscoped");
+        let root = new(&at, "One", None, None).unwrap();
+
+        group(&root, "say", pointing(&["anywhere.rs:1-4 unknowable"]))
+            .expect("an unscoped deck cannot be checked, so it is not");
     }
 
     #[test]
