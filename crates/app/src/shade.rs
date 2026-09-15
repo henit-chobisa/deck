@@ -22,6 +22,39 @@ use std::time::Duration;
 use deck_core::config::Zen;
 use gpui_kit::*;
 
+/// How far past every edge of the screen the shade is drawn.
+///
+/// Enough to put a corner radius and a shadow outside the visible area.
+const SPILL: f32 = 60.;
+
+/// The screen, and then some.
+///
+/// On a Mac with a notch the top of the screen stays black whatever this does:
+/// AppKit keeps windows below the safe area, and the one thing that lifts that
+/// is an Info.plist key, which a binary installed by Homebrew does not have.
+/// The strip reads as the top of the screen going dark, which is close enough
+/// to what it is.
+///
+/// macOS draws a window with rounded corners and a hairline edge, and a
+/// titleless window is still a titled one underneath — so a sheet cut to the
+/// screen came with a curve at each corner and a seam down its sides, which
+/// reads as an enormous window rather than as the lights being off. Neither
+/// can be turned off: client decorations do not change it, and the one style
+/// that would is only reachable through a fullscreen mode that swaps the blur
+/// out with it.
+///
+/// What is left is to put the edges where they cannot be seen. The corners are
+/// still round; they are round sixty pixels off the side of the screen.
+fn over(screen: Bounds<Pixels>) -> Bounds<Pixels> {
+    Bounds {
+        origin: point(screen.origin.x - px(SPILL), screen.origin.y - px(SPILL)),
+        size: size(
+            screen.size.width + px(SPILL * 2.),
+            screen.size.height + px(SPILL * 2.),
+        ),
+    }
+}
+
 /// Show or hide the menu bar and the Dock.
 ///
 /// The one thing a shade cannot do by being a window. AppKit will not position
@@ -47,8 +80,11 @@ fn system_chrome(shown: bool) {
     app.setPresentationOptions(if shown {
         NSApplicationPresentationOptions::Default
     } else {
-        NSApplicationPresentationOptions::AutoHideMenuBar
-            | NSApplicationPresentationOptions::AutoHideDock
+        // Hidden, not auto-hidden. Auto-hide leaves the bar's strip of screen
+        // reserved so it can come back on hover, and a window still cannot be
+        // placed into it — which left a hairline seam across the top of the
+        // shade. Hiding outright gives the whole screen back.
+        NSApplicationPresentationOptions::HideMenuBar | NSApplicationPresentationOptions::HideDock
     });
 }
 
@@ -247,7 +283,7 @@ fn lights_off(zen: &Zen, cx: &mut App) {
             // lands exactly, every time. The cost is the menu bar staying lit,
             // which is system chrome rather than something competing for the
             // reader's attention.
-            window_bounds: Some(WindowBounds::Windowed(display.bounds())),
+            window_bounds: Some(WindowBounds::Windowed(over(display.bounds()))),
             display_id: Some(display.id()),
             // No titlebar and no client decorations.
             //
@@ -259,6 +295,16 @@ fn lights_off(zen: &Zen, cx: &mut App) {
             // supposed to be the absence of a window rather than a very large
             // one. The pill learned this first; see `open_pill_over`.
             titlebar: None,
+            // Client decorations, so the window is square.
+            //
+            // A titleless window is still a *titled* one underneath, and macOS
+            // draws those with rounded corners and a shadow — a sheet the size
+            // of the screen came with a curved corner at each end and a
+            // hairline down its edges, which reads as an enormous window
+            // rather than as the lights being off. Asking to draw the
+            // decorations means the platform draws none, and this one draws
+            // none either.
+            window_decorations: Some(WindowDecorations::Client),
             kind: WindowKind::Normal,
             // The deck keeps the keyboard. A shade that took focus would
             // swallow the very key that turns it off.
