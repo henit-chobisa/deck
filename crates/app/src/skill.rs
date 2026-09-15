@@ -495,6 +495,70 @@ mod tests {
     }
 
     #[test]
+    fn the_skill_says_who_is_talking() {
+        // The complaint that started this: decks read as a narrator rather
+        // than a person, so nobody wanted to open a second one. A persona has
+        // to be a situation the model can act on rather than an adjective —
+        // "you are a great teacher" is inert, "they will interrupt the moment
+        // you tell them something they know" is not.
+        assert!(SKILL.contains("Who is talking"));
+        assert!(
+            SKILL.contains("One flourish per deck"),
+            "and a budget, or it performs enthusiasm in every group"
+        );
+        assert!(
+            SKILL.contains("Voice never buys correctness"),
+            "and it must never outrank the proof rule"
+        );
+    }
+
+    #[test]
+    fn the_skill_gives_a_shape_for_the_first_group() {
+        // A header is the claim; the first group is what makes somebody want
+        // the second. Naming the shapes that work matters less than naming the
+        // three that do not, because those are what a model reaches for.
+        assert!(SKILL.contains("The first group is the hook"));
+        assert!(SKILL.contains("show the destination and retreat"));
+        assert!(
+            SKILL.contains("Put the hard part in the middle, never last"),
+            "a deck that saves its idea for the end spent the walk on nothing"
+        );
+    }
+
+    #[test]
+    fn the_skill_can_tell_a_dry_sentence_from_a_live_one() {
+        // The mechanical test is the point. "Be specific" is unfollowable;
+        // "would this still be true after swapping three nouns" is something a
+        // model can run on its own draft.
+        assert!(SKILL.contains("swapping three nouns"));
+        assert!(SKILL.contains("What dry looks like"));
+    }
+
+    #[test]
+    fn the_skill_makes_the_groups_join_up() {
+        // Grounding, and the connector test. A deck whose groups join with
+        // "and then" is a list; one that joins with "but" is an argument.
+        assert!(SKILL.contains("grounded"));
+        assert!(SKILL.contains("AND THEN"));
+        assert!(
+            SKILL.contains("at least one BUT"),
+            "if nothing surprised you, you have not found the story"
+        );
+    }
+
+    #[test]
+    fn the_worked_example_is_a_group_worth_copying() {
+        // Models copy examples over prose. Every `--say` here used to be one
+        // short sentence, which taught thin narration on every example the
+        // file gave — while the prose asked for depth.
+        assert!(
+            SKILL.contains("a pane has no width"),
+            "the example shows a real group, not a placeholder"
+        );
+        assert!(SKILL.contains("A `say` of one sentence is almost always a group"));
+    }
+
+    #[test]
     fn an_agent_is_found_by_its_own_directory() {
         // Not by its skills directory: one that has never been given a skill
         // has no `skills/` yet, and that is exactly the one worth telling.
