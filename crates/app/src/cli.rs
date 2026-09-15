@@ -193,6 +193,7 @@ impl Cli {
                     wait,
                     editor,
                     named,
+                    zen: config.zen.clone(),
                     paper: paper.unwrap_or(config.theme.paper),
                     colors: config.theme.colors,
                     dark: config.theme.mode,
@@ -247,6 +248,8 @@ pub struct Opening {
     pub dark: Mode,
     /// How panes are arranged.
     pub layout: Layout,
+    /// How far the screen goes down when the reader asks for quiet.
+    pub zen: deck_core::config::Zen,
 }
 
 /// Read what the command line said to point at.

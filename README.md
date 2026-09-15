@@ -173,6 +173,20 @@ middle of your work. Open it when you are ready; press `h` and it goes back to
 the bar with your comments still in it. The agent cannot open the deck itself,
 and there is no flag that lets it.
 
+### Read with the lights off
+
+`z` puts a shade over every display and leaves the deck on top of it, blurred
+and dimmed, so the only lit thing on screen is the thing you are reading. Press
+it again, or click the dark, to bring the lights up. It goes by itself when the
+deck does.
+
+```toml
+# ~/.deck/config.toml
+[zen]
+dim = 0.72   # how far the rest of the screen goes down
+blur = true  # and whether it is blurred as well as darkened
+```
+
 ### Arrange it the way you read
 
 Drag a seam to resize a pane, `r` to turn the panes a quarter, and the shape is
@@ -183,6 +197,7 @@ remembered for next time.
 | `n` `p` | next / previous group |
 | `c` | comment on the selection, or on the group |
 | `r` | turn the panes |
+| `z` | lights off |
 | `h` | put the deck away |
 | `s` | submit the review |
 | `q` | close without answering |

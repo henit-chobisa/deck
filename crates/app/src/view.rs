@@ -27,8 +27,8 @@ use crate::sheet::{Sheet, Slot};
 gpui_kit::actions!(
     deck,
     [
-        NextGroup, PrevGroup, Comment, Rotate, Hide, Submit, Discard, ZoomIn, ZoomOut, ZoomReset,
-        Close
+        NextGroup, PrevGroup, Comment, Rotate, Zen, Hide, Submit, Discard, ZoomIn, ZoomOut,
+        ZoomReset, Close
     ]
 );
 
@@ -41,6 +41,7 @@ const KEYS: &[(&str, &str, &str)] = &[
     ("p", "prev", "previous group"),
     ("c", "comment", "comment"),
     ("r", "rotate", "turn the panes"),
+    ("z", "zen", "lights off"),
     ("h", "hide", "put it away"),
     ("s", "submit", "submit"),
     ("q", "close", "close"),
@@ -54,6 +55,7 @@ pub fn bindings() -> Vec<KeyBinding> {
         KeyBinding::new("p", PrevGroup, Some("Deck")),
         KeyBinding::new("c", Comment, Some("Deck")),
         KeyBinding::new("r", Rotate, Some("Deck")),
+        KeyBinding::new("z", Zen, Some("Deck")),
         KeyBinding::new("h", Hide, Some("Deck")),
         KeyBinding::new("s", Submit, Some("Deck")),
         KeyBinding::new("q", Close, Some("Deck")),
@@ -627,6 +629,27 @@ impl DeckView {
     /// are done with it, and a deck that reappeared on the bar after being
     /// closed would be impossible to get rid of. Putting one away for later is
     /// `h`, and that is a different key for a different thing.
+    /// Turn the rest of the screen down, or back up.
+    ///
+    /// The deck does not change. What changes is everything that was competing
+    /// with it, which is the only thing wrong with reading on a screen that
+    /// also has eleven other things on it.
+    fn on_zen(&mut self, _: &Zen, window: &mut Window, cx: &mut Context<Self>) {
+        // The deck's own handle, so it can be put back in front afterwards.
+        //
+        // The shade sits at the same window level as the deck — both are
+        // popups — and within a level the last window ordered front is on top.
+        // The shade is opened second, so without this it would cover the very
+        // thing it is there to light.
+        let deck = window.window_handle();
+        cx.defer(move |cx| {
+            if crate::shade::toggle(deck, cx) {
+                let _ = deck.update(cx, |_, window, _| window.activate_window());
+            }
+        });
+        cx.notify();
+    }
+
     fn on_close(&mut self, _: &Close, window: &mut Window, cx: &mut Context<Self>) {
         // The platform's should-close hook does not run when the window is
         // taken away from inside, so the shape is written here.
@@ -1032,6 +1055,11 @@ impl DeckView {
         if let WindowBounds::Windowed(bounds) = window.window_bounds() {
             crate::state::remember_bounds(bounds);
         }
+        // The lights come up first. A shade is drawn over every display and
+        // the deck is the only thing above it, so a shade that outlived the
+        // window it was dimming for would be a near-black screen with nothing
+        // on it to press.
+        crate::shade::lights_on(cx);
         // Back on the queue, and the bar comes up over it. The window goes
         // after, because closing the last one ends the command.
         crate::open_pill(self.pack(), cx);
@@ -1045,6 +1073,7 @@ impl DeckView {
     /// half-written one would be indistinguishable from a finished review.
     /// Leave, and let whatever is still waiting take the screen.
     fn stand_down(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        crate::shade::lights_on(cx);
         if crate::queue::len(cx) > 0 {
             crate::open_pill_over(Vec::new(), cx);
         }
@@ -2111,6 +2140,7 @@ impl Render for DeckView {
             .when(self.composing.is_none(), |this| this.key_context("Deck"))
             .on_action(cx.listener(Self::on_next))
             .on_action(cx.listener(Self::on_prev))
+            .on_action(cx.listener(Self::on_zen))
             .on_action(cx.listener(Self::on_close))
             .on_action(cx.listener(Self::on_comment))
             .on_action(cx.listener(Self::on_rotate))

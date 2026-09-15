@@ -132,6 +132,40 @@ twenty milliseconds. It used to run the event loop in the process that was typed
 which meant an agent running it in the foreground hung there and never wrote a
 group.
 
+## Lights off
+
+`z` is a shade — one borderless window per display, near-black, with the deck
+left sitting above it. Nothing can reach into another application and dim it,
+so covering the screen and leaving one thing uncovered is the whole trick.
+
+Three details carry it, and each was the difference between an overlay and a
+window:
+
+- **Popup level.** An ordinary window sits below the menu bar and inside
+  Mission Control, so the shade turned up as a tile when you swiped and read as
+  a big black window. `WindowKind::PopUp` is above both.
+- **The menu bar is hidden before the shade opens, not after.** AppKit will not
+  put a window over the menu bar however it is asked: request the full display
+  and the window comes back moved down by exactly the bar's height, leaving a
+  seam along the top. The only way past it is `presentationOptions` on the
+  shared application, which GPUI does not expose — and the order matters, since
+  a window is clamped to the screen it can see *at the moment it opens*. Hidden
+  afterwards, the strip reappears under a shade already placed below it.
+- **The deck is re-ordered afterwards.** Both windows are popups, and within a
+  level the last one ordered front wins. The shade opens second, so without
+  `activate_window` it would cover the thing it exists to light.
+
+It also ends by itself when the deck stops being the active window. There is no
+activation hook in GPUI, so while the lights are off it asks every fifth of a
+second — zen is a posture rather than a setting, and the way somebody stops
+reading is by looking at something else.
+
+The shade can never outlive its deck. Every path that closes the deck brings
+the lights up first, and `on_window_closed` catches whatever those miss: if the
+only windows left are shades, they go and the process quits. Clicking the dark
+dismisses it too, which matters because a window cannot be made click-through —
+a click the shade swallowed could take the keyboard with it and leave `z` dead.
+
 ## Diagrams
 
 Some things are in no file at all — how a click reaches a controller, the order
