@@ -386,7 +386,7 @@ pub fn lights_on(cx: &mut App) {
     // And taken away once it has been seen to go.
     cx.spawn(async move |cx| {
         cx.background_executor().timer(UP).await;
-        let _ = cx.update(|cx| {
+        cx.update(|cx| {
             for handle in up {
                 let _ = handle.update(cx, |_, window, _| window.remove_window());
             }
