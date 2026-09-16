@@ -424,6 +424,24 @@ mod tests {
     use super::*;
 
     #[test]
+    fn a_name_is_a_word_a_sentence_can_carry() {
+        for good in ["retry", "batch-2", "a"] {
+            assert!(valid_name(good), "{good}");
+        }
+        for bad in [
+            "Retry",
+            "2batch",
+            "batch-",
+            "two words",
+            "pause",
+            "point",
+            "",
+        ] {
+            assert!(!valid_name(bad), "{bad}");
+        }
+    }
+
+    #[test]
     fn a_name_this_version_does_not_know_reads_as_the_default() {
         // The point of freezing a version: adding a kind, a role or a source
         // later must not stop a v1 client opening a v1 document that happens
