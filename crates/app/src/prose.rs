@@ -63,6 +63,20 @@ pub type Down = std::rc::Rc<dyn Fn(usize, &mut Window, &mut App)>;
 /// Told that the pointer entered or left a word.
 pub type Over = std::rc::Rc<dyn Fn(usize, bool, &mut Window, &mut App)>;
 
+/// What the pointer did to a pane's name in the prose.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Naming {
+    /// It came onto the name.
+    Enter,
+    /// It went off the name.
+    Leave,
+    /// It clicked the name.
+    Click,
+}
+
+/// Told that the pointer did something to a pane's name.
+pub type Name = std::rc::Rc<dyn Fn(SharedString, Naming, &mut Window, &mut App)>;
+
 /// How the narration answers the pointer.
 pub struct Picking {
     /// The words currently selected, as an inclusive range.
@@ -523,6 +537,41 @@ enum Mark {
     Strong,
     Emphasis,
     Code,
+    /// `[retry]`: the name of a pane.
+    Pane,
+}
+
+/// A pane's name in brackets at the start of `text`, and how long it is.
+fn pane_name_at(text: &str) -> Option<(&str, usize)> {
+    let inside = text.strip_prefix('[')?;
+    let end = inside.find(']')?;
+    let name = &inside[..end];
+    deck_core::protocol::valid_name(name).then_some((name, end + 2))
+}
+
+/// The text with each `[name]` said as the plain name.
+///
+/// For the places that show the agent's words without the band's parser: the
+/// rail, the transcript. Brackets there are markup nobody asked to see.
+#[must_use]
+pub fn unname(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut rest = text;
+    while let Some(open) = rest.find('[') {
+        out.push_str(&rest[..open]);
+        match pane_name_at(&rest[open..]) {
+            Some((name, len)) => {
+                out.push_str(name);
+                rest = &rest[open + len..];
+            }
+            None => {
+                out.push('[');
+                rest = &rest[open + 1..];
+            }
+        }
+    }
+    out.push_str(rest);
+    out
 }
 
 /// Whether a character is one a word is made of.
