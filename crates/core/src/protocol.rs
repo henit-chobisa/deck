@@ -141,6 +141,14 @@ pub struct RefSpec {
     /// A short label for the pane and the band.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub note: Option<String>,
+    /// What the narration calls this pane: `[retry]` in the prose means it.
+    ///
+    /// Added because narration had no way to say which pane it meant except
+    /// by where it sat — "the left pane", "the one on the right" — and where a
+    /// pane sits is the layout's decision, made after the prose was written
+    /// and changed by the width of the window. A name survives both.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
     /// A proposed replacement for the range.
     ///
     /// When set, the ref is a change that has not been made: the range reads as
@@ -148,6 +156,23 @@ pub struct RefSpec {
     /// touched.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub after: Option<String>,
+}
+
+/// Whether `name` can name a pane.
+///
+/// A lowercase word, with digits and dashes after the first letter, at most
+/// twenty-four characters — something a sentence can carry in brackets and a
+/// voice can say. `pause` is not one: `[pause]` is already a beat, and a pane
+/// named that would be silence in one place and a pane in another.
+#[must_use]
+pub fn valid_name(name: &str) -> bool {
+    let mut chars = name.chars();
+    chars.next().is_some_and(|first| first.is_ascii_lowercase())
+        && chars.all(|ch| ch.is_ascii_lowercase() || ch.is_ascii_digit() || ch == '-')
+        && name.len() <= 24
+        && !name.ends_with('-')
+        && name != "pause"
+        && name != "point"
 }
 
 /// The review, written back when the reader submits.
