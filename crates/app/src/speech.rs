@@ -205,26 +205,58 @@ impl Voice {
     /// Asks the process rather than remembering, because the interesting case
     /// is the one where it finished on its own — a reader who listened to the
     /// whole group and presses the key again means *say it again*, not *stop*.
+    ///
+    /// A passage walked in silence is not talking. Nothing is, and a queued
+    /// remark still goes through at once.
     pub fn talking(&mut self) -> bool {
         if self.fetching.is_some() {
             return true;
         }
-        match self.said.as_mut() {
-            Some(child) => match child.try_wait() {
-                Ok(None) => true,
-                _ => {
-                    self.said = None;
-                    false
-                }
-            },
-            None => false,
-        }
+        self.playing
+            .as_mut()
+            .is_some_and(|playing| !playing.quiet && !playing.over())
     }
 
-    /// Whether anything is queued or on its way.
+    /// Whether anything is queued, on its way, or still being walked.
     #[must_use]
     pub fn waiting(&self) -> bool {
-        !self.next.is_empty() || self.fetching.is_some()
+        !self.next.is_empty() || self.fetching.is_some() || self.playing.is_some()
+    }
+
+    /// Whether a passage is being made right now.
+    ///
+    /// Worth saying out loud in the panel. A cloud voice takes a second or two
+    /// to answer, and silence with nothing on screen to explain it reads as a
+    /// reply that never came.
+    #[must_use]
+    pub fn making(&self) -> bool {
+        self.fetching.is_some()
+    }
+
+    /// The lines the narration is pointing at, if it is pointing anywhere.
+    #[must_use]
+    pub fn pointing(&self) -> Option<LineRange> {
+        self.playing.as_ref().map_or(self.now, Playing::pointing)
+    }
+
+    /// Whose words are being heard, and which word of them, counted as the
+    /// band counts.
+    #[must_use]
+    pub fn hearing(&self) -> Option<(Narration, usize)> {
+        self.playing.as_ref().and_then(Playing::hearing)
+    }
+
+    /// Take the finger off the page, even mid-passage.
+    ///
+    /// What is being said goes on. The rest of this passage points nowhere,
+    /// because the agent asked to stop pointing, not to stop talking.
+    pub fn forget_point(&mut self) {
+        self.now = None;
+        if let Some(playing) = self.playing.as_mut() {
+            for (_, point) in &mut playing.marks {
+                *point = None;
+            }
+        }
     }
 
     /// Whether the speech pump still has work to do.
