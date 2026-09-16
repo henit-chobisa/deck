@@ -238,6 +238,24 @@ pub struct State {
 }
 
 impl State {
+    /// Whether the reader still holds movement at `at_ms`.
+    ///
+    /// A pause that lapses stops holding once the reader has been still long
+    /// enough — the same rule a show request applies, asked without waiting
+    /// for one to arrive.
+    #[must_use]
+    pub fn holds(&self, at_ms: u64) -> bool {
+        match self.following {
+            Following::Following => false,
+            Following::Paused(reason) => {
+                !reason.lapses()
+                    || self
+                        .paused_at_ms
+                        .is_none_or(|at| at_ms.saturating_sub(at) < RESUME_AFTER_MS)
+            }
+        }
+    }
+
     /// A session whose bar exists and whose reader has not opened it yet.
     #[must_use]
     pub fn new(generation: Generation) -> Self {
@@ -794,6 +812,32 @@ mod tests {
                 source_matches: true,
             })
             .expect("movement returns once the comment is finished");
+    }
+
+    #[test]
+    fn a_hold_lets_go_without_waiting_for_a_show() {
+        // The view asks whether the reader is holding the pane before it
+        // follows the voice down the file. A lapsed scroll must answer no by
+        // itself — nobody is going to send a show request to notice.
+        let mut state = open();
+        state
+            .apply(Action::Pause {
+                generation: generation(),
+                reason: PauseReason::Navigation,
+                at_ms: 1_000,
+            })
+            .unwrap();
+        assert!(state.holds(1_500));
+        assert!(!state.holds(1_000 + RESUME_AFTER_MS));
+
+        state
+            .apply(Action::Pause {
+                generation: generation(),
+                reason: PauseReason::Composer,
+                at_ms: 1_000,
+            })
+            .unwrap();
+        assert!(state.holds(1_000_000), "a composer holds until it closes");
     }
 
     #[test]
