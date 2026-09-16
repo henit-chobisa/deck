@@ -269,34 +269,36 @@ impl Voice {
 
     /// Say this after whatever is already being said.
     ///
-    /// Queued rather than substituted. The reader hears a reply in the order it
-    /// was given, and an agent that answers in three sentences is heard saying
-    /// all three.
-    pub fn say(&mut self, text: &str, speech: &Speech) {
-        let text = text.trim();
-        if text.is_empty() {
+    /// One passage, heard as one sound. The point on each piece arrives when
+    /// that piece is heard rather than when the command did, which is the only
+    /// way the light can mean anything: an agent sends its sentences as fast as
+    /// it can write them, and a reader hears them one at a time.
+    pub fn say(&mut self, said: Vec<Said>, of: Option<Narration>, speech: &Speech) {
+        let said = passage(said);
+        if said.is_empty() {
             return;
         }
-        self.next.push_back(text.to_string());
+        self.next.push_back((said, of));
         self.pump(speech);
     }
 
-    /// Start the next utterance if nothing is being said.
+    /// Start the next passage if nothing is being said.
     ///
-    /// Called as the window paints, which is how the queue advances: the child
-    /// exits, the next render notices, and the following sentence begins.
+    /// Called on a timer while there is work, which is how the queue advances:
+    /// the sound ends, the next tick notices, and the following passage begins.
     pub fn pump(&mut self, speech: &Speech) {
-        // Collect a finished fetch *first*. `talking` counts a fetch in flight
-        // as talking — correctly, since something is on its way — so checking
-        // it before looking in the channel meant this returned early for ever
-        // and the audio was never collected. The panel said "speaking" the
-        // whole time, which was true and useless.
-        if let Some(waiting) = self.fetching.as_ref() {
+        // Collect a finished render *first*. `talking` counts one in flight as
+        // talking — correctly, since something is on its way — so checking it
+        // before looking in the channel meant this returned early for ever and
+        // the audio was never collected. The panel said "speaking" the whole
+        // time, which was true and useless.
+        if let Some((waiting, of)) = self.fetching.as_ref() {
+            let of = *of;
             match waiting.try_recv() {
-                Err(std::sync::mpsc::TryRecvError::Empty) => return,
-                Ok(Ok(at)) => {
+                Err(TryRecvError::Empty) => return,
+                Ok(Ok(ready)) => {
                     self.fetching = None;
-                    self.said = play(&at);
+                    self.begin(ready, of, speech);
                     return;
                 }
                 Ok(Err(why)) => {
@@ -309,46 +311,47 @@ impl Voice {
                     self.next.clear();
                     return;
                 }
-                Err(std::sync::mpsc::TryRecvError::Disconnected) => {
-                    self.fetching = None;
-                }
+                Err(TryRecvError::Disconnected) => self.fetching = None,
             }
         }
 
-        if self.talking() {
-            return;
+        if let Some(playing) = self.playing.as_mut() {
+            if !playing.over() {
+                return;
+            }
+            self.now = playing.pointing();
+            self.playing = None;
         }
-        let Some(text) = self.next.pop_front() else {
-            return;
-        };
 
-        if speech.engine == Engine::Google {
-            let (send, receive) = std::sync::mpsc::channel();
-            let speech = speech.clone();
-            std::thread::Builder::new()
-                .name("deck-speech".into())
-                .spawn(move || {
-                    let _ = send.send(fetch(&text, &speech));
-                })
-                .ok();
-            self.fetching = Some(receive);
-            return;
-        }
-        let Some(mut spoken) = start(&text, speech) else {
-            // Nothing can speak it, so draining the rest would only stall.
-            self.next.clear();
+        let Some((said, of)) = self.next.pop_front() else {
             return;
         };
-        let text = text.as_str();
-        // Written to stdin rather than passed as an argument, because a
-        // narration is prose: it has quotes and dashes in it, and it can be
-        // longer than a command line is allowed to be.
-        if let Some(stdin) = spoken.stdin.as_mut() {
-            let _ = stdin.write_all(prepared(text, speech).as_bytes());
+        if !renders(speech) {
+            self.begin(timed(&said, speech), of, speech);
+            return;
         }
-        // Dropped so the child sees the end of its input and starts speaking.
-        drop(spoken.stdin.take());
-        self.said = Some(spoken);
+        let (send, receive) = std::sync::mpsc::channel();
+        let speech = speech.clone();
+        let spawned = std::thread::Builder::new()
+            .name("deck-speech".into())
+            .spawn(move || {
+                let _ = send.send(rendered(&said, &speech));
+            });
+        if spawned.is_ok() {
+            self.fetching = Some((receive, of));
+        }
+    }
+
+    /// Start hearing a passage that is ready.
+    fn begin(&mut self, ready: Ready, of: Option<Narration>, speech: &Speech) {
+        match Playing::start(ready, of, speech) {
+            Some(playing) => {
+                self.now = playing.pointing();
+                self.playing = Some(playing);
+            }
+            // Nothing can speak it, so draining the rest would only stall.
+            None => self.next.clear(),
+        }
     }
 
     /// Stop, now.
@@ -361,9 +364,10 @@ impl Voice {
         // Whatever is in flight is abandoned. Its thread will finish and find
         // nobody listening, which is cheaper than making it cancellable.
         self.fetching = None;
-        if let Some(mut child) = self.said.take() {
-            let _ = child.kill();
-            let _ = child.wait();
+        if let Some(playing) = self.playing.take() {
+            // The finger stays where the voice was cut off. That is the line
+            // the reader stopped it to look at.
+            self.now = playing.pointing();
         }
     }
 }
@@ -989,44 +993,49 @@ fn prepared(text: &str, speech: &Speech) -> String {
 
 /// Say one line now, and wait for it, so setup can prove a key works.
 ///
+/// Through the same path a deck uses, so a voice that passes here is a voice
+/// that will work in a walk.
+///
 /// # Errors
 ///
 /// When the engine cannot speak, which is the whole point of calling it.
 pub fn test(speech: &Speech) -> anyhow::Result<()> {
-    let line = "Deck will read your decks in this voice.";
-    let mut child = match speech.engine {
-        Engine::Google => play(&fetch(line, speech)?)
-            .ok_or_else(|| anyhow::anyhow!("nothing on this machine plays audio"))?,
-        _ => {
-            let mut child =
-                start(line, speech).ok_or_else(|| anyhow::anyhow!("no voice to speak with"))?;
-            if let Some(stdin) = child.stdin.as_mut() {
-                let _ = stdin.write_all(prepared(line, speech).as_bytes());
-            }
-            drop(child.stdin.take());
-            child
-        }
+    let speech = Speech {
+        aloud: true,
+        ..speech.clone()
     };
-    child.wait()?;
+    let said = [Said {
+        point: None,
+        text: "Deck will read your decks in this voice.".to_string(),
+        words: 8,
+    }];
+    let ready = if renders(&speech) {
+        rendered(&said, &speech)?
+    } else {
+        timed(&said, &speech)
+    };
+    let mut playing = Playing::start(ready, None, &speech)
+        .ok_or_else(|| anyhow::anyhow!("no voice to speak with"))?;
+    while !playing.over() {
+        std::thread::sleep(Duration::from_millis(40));
+    }
     Ok(())
 }
 
-/// Fetch spoken audio from Google, and say where it landed.
+/// One piece, rendered by Google.
 ///
-/// Blocking, and called from a worker thread for that reason: a slow network
-/// must never hold up the paint. The audio is written to a temporary file and
-/// played by whatever this platform plays files with, which keeps the rest of
-/// the voice exactly as it is — something to start, and something to kill.
+/// Blocking, and only ever called from a worker thread: a slow network must
+/// never hold up the paint.
 ///
 /// # Errors
 ///
 /// When the key is missing, the request fails, or the reply is not audio.
-fn fetch(text: &str, speech: &Speech) -> anyhow::Result<PathBuf> {
+fn fetch(text: &str, speech: &Speech) -> anyhow::Result<Vec<u8>> {
     use base64::Engine as _;
 
     let key = speech
         .secret()
-        .ok_or_else(|| anyhow::anyhow!("no key: set DECK_SPEECH_KEY or run `deck live`"))?;
+        .ok_or_else(|| anyhow::anyhow!("no key: set DECK_SPEECH_KEY or run `deck walk`"))?;
     let voice = speech
         .voice
         .clone()
@@ -1062,6 +1071,9 @@ fn fetch(text: &str, speech: &Speech) -> anyhow::Result<PathBuf> {
             }))
             .map_err(|why| anyhow::anyhow!("google would not speak: {why}"))?
             .body_mut()
+            .with_config()
+            // A long answer in raw samples is a few megabytes, past the default.
+            .limit(64 * 1024 * 1024)
             .read_json()
             .map_err(|why| anyhow::anyhow!("google sent something that is not audio: {why}"))?;
 
@@ -1213,6 +1225,15 @@ fn system(speech: &Speech) -> Option<Child> {
 mod tests {
     use super::*;
 
+    /// A passage of one piece, pointing nowhere.
+    fn one(text: &str) -> Vec<Said> {
+        vec![Said {
+            point: None,
+            text: text.to_string(),
+            words: text.split_whitespace().count(),
+        }]
+    }
+
     #[test]
     fn the_speech_pump_retires_only_when_playback_and_the_queue_are_empty() {
         let mut voice = Voice::default();
@@ -1220,7 +1241,7 @@ mod tests {
             !voice.has_work(),
             "an idle voice must not keep waking the window"
         );
-        voice.next.push_back("another turn".into());
+        voice.next.push_back((one("another turn"), None));
         assert!(
             voice.has_work(),
             "a gap before queued speech is not completion"
@@ -1306,7 +1327,7 @@ mod tests {
         // and the panel said "speaking" for ever.
         let (send, receive) = std::sync::mpsc::channel();
         let mut voice = Voice::default();
-        voice.fetching = Some(receive);
+        voice.fetching = Some((receive, None));
         assert!(voice.talking(), "something is on its way");
 
         // The worker finishes and finds nobody listening if pump returns early.
@@ -1331,9 +1352,9 @@ mod tests {
             command: None,
             ..Speech::default()
         };
-        voice.say("first", &speech);
-        voice.say("second", &speech);
-        voice.say("third", &speech);
+        voice.say(one("first"), None, &speech);
+        voice.say(one("second"), None, &speech);
+        voice.say(one("third"), None, &speech);
 
         // With no synthesiser the queue drains rather than stalling, which is
         // the other half: a machine that cannot speak must not silently hold a
@@ -1344,9 +1365,12 @@ mod tests {
     #[test]
     fn what_is_queued_is_kept_in_order() {
         let mut voice = Voice::default();
-        voice.next.push_back("first".into());
-        voice.next.push_back("second".into());
-        assert_eq!(voice.next.front().map(String::as_str), Some("first"));
+        voice.next.push_back((one("first"), None));
+        voice.next.push_back((one("second"), None));
+        assert_eq!(
+            voice.next.front().map(|(said, _)| said),
+            Some(&one("first"))
+        );
     }
 
     #[test]
