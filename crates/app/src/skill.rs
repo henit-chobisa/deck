@@ -535,6 +535,47 @@ mod tests {
     }
 
     #[test]
+    fn the_skill_keeps_one_name_on_the_thing_that_moves() {
+        // The haziness rule. A paragraph that renames its subject every
+        // sentence is describing the system rather than following the thing
+        // through it, and the reader has nothing to hold. The "it" test is the
+        // mechanical half — a model can run it on its own draft.
+        assert!(SKILL.contains("One thing travels, and it keeps its name"));
+        assert!(SKILL.contains("name the travelling thing once, and do not rename it"));
+        assert!(
+            SKILL.contains(r#"If "it" in your third"#),
+            "and the check that catches it"
+        );
+        assert!(SKILL.contains("read your subjects down the page"));
+    }
+
+    #[test]
+    fn the_skill_asks_for_a_sentence_that_adds_nothing() {
+        // "Too fast" is not word count — it is never being allowed to put your
+        // weight down. Every few sentences, one that lands what is already
+        // there rather than adding to it.
+        assert!(SKILL.contains("Give them somewhere to stand"));
+        assert!(SKILL.contains("write one that adds nothing"));
+    }
+
+    #[test]
+    fn the_skill_sends_them_to_reproduce_a_serious_one() {
+        // The only check in a deck that does not depend on the agent being
+        // right: the reader runs it themselves and the code answers. Guarded so
+        // it stays rare — a reproduction on every group is homework.
+        assert!(SKILL.contains("When it is serious, send them to go and look"));
+        assert!(SKILL.contains("their world, not yours"));
+        assert!(
+            SKILL.contains("Say the expected result"),
+            "a reproduction that does not reproduce is information too"
+        );
+        assert!(
+            SKILL.contains("Not\nevery group and not most groups"),
+            "the guard against doing it every time"
+        );
+    }
+
+    #[test]
     fn the_skill_makes_the_groups_join_up() {
         // Grounding, and the connector test. A deck whose groups join with
         // "and then" is a list; one that joins with "but" is an argument.

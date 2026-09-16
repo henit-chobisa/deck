@@ -1274,7 +1274,6 @@ impl DeckView {
                             .min_h_0()
                             .overflow_y_scroll()
                             .track_scroll(&self.band_scroll)
-                            .max_w(px(560.))
                             .text_size(px(13.2))
                             .text_color(paint(self.palette.fg))
                             .child(crate::prose::render(

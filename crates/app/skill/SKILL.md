@@ -299,6 +299,55 @@ And the narration talks about **the lines in this group**. A `say` that discusse
 the reader is not looking at makes them hold two places at once, which is the exact
 work the panes exist to take off them.
 
+## One thing travels, and it keeps its name
+
+A bug is something moving through a system — a value, a request, a lock, a row. The
+paragraph works when the reader can follow that one thing, and goes hazy the moment it
+starts wearing different clothes in every sentence.
+
+Here is the failure, and it is easy to write without noticing:
+
+> **Hazy:** `buildPayload` builds the credentials object from the whole form. Your
+> untouched password box is the empty string, so the payload carries `password: ""`. The
+> form guards this with a `credentialsDirty` check, but username is dirty, so the guard
+> passes and the blank goes with it.
+
+Five names for one object — *password box*, *the empty string*, `password: ""`, *the
+blank*, and a paragraph later *a dict with an empty-string value*. Eleven grammatical
+subjects in two paragraphs. Every sentence is true and the reader still cannot hold it,
+because the thing that moves never keeps its name long enough to become a character.
+
+> **Anchored:** `buildPayload` takes the whole form every time, so the empty box becomes a
+> real value — `password: ""` — riding along in the payload. The `credentialsDirty` guard
+> is meant to stop exactly this, but it asks whether *anything* changed, and the username
+> did. It waves the empty password through.
+
+So: **name the travelling thing once, and do not rename it.** Once it is established you
+can shrink to *it* and still be unambiguous — that is the test. **If "it" in your third
+sentence could mean two things, you have two things and a reader who is guessing.**
+
+The mechanical check: **read your subjects down the page.** If they change every sentence
+you are describing the system instead of following the thing through it. Rewrite so each
+sentence answers *where is it now* — in the payload, past the guard, at line 132, over the
+secret.
+
+## Give them somewhere to stand
+
+Every sentence in a dry paragraph adds a new fact. That is what "too fast" actually is —
+not word count, but never once being allowed to put your weight down.
+
+So every few sentences, **write one that adds nothing**:
+
+> **It is gone.**
+
+> **That is the 63.**
+
+> **Both writers think they won.**
+
+No new noun, no new mechanism, no new line number — the thing you already have, landed. A
+paragraph of six facts and no landing reads as far harder than it is, and the reader
+arrives at your conclusion still carrying all six.
+
 ## Each group stands on the one before it
 
 A concept is **grounded** when the reader either walked in knowing it or met it in an
@@ -322,6 +371,30 @@ surprised you while you were reading the code, you have not found the story yet.
 
 And a size rule with teeth: **if a group needs three separate ideas to land, it is not a
 group — it is two groups glued together.** Split it. One claim, one group.
+
+## When it is serious, send them to go and look
+
+Sometimes the right end to a group is not another sentence. It is: **go and try this, and
+you will see it.**
+
+Do this when the bug is bad enough that they will want it with their own eyes — data
+loss, a leaked secret, money, anything that fires in production and not in tests. Not
+every group and not most groups. The rest of the time it is homework nobody asked for.
+
+When you do it, give the steps in **their world, not yours** — the app, the page, the
+button, the field — and say what they will see:
+
+> **Try it:** open any connection using basic auth, change one character of the username,
+> leave the password box alone, and save. Reopen it and run the connection. It fails to
+> authenticate, and the stored password is now the empty string.
+
+Three or four steps, no more. **Say the expected result**, because a reproduction that
+does *not* reproduce is information too: it means you are wrong somewhere, and you would
+rather hear that from them now than after they have approved it.
+
+This is the one thing in a deck that does not depend on you being right. Everything else
+you show them is your reading of the code, argued as well as you can argue it. This is the
+code itself answering.
 
 ## The two modes (do not be heavy-handed)
 
