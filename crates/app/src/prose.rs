@@ -208,6 +208,156 @@ pub fn unbeat(text: &str) -> String {
     out
 }
 
+/// How an agent says where it is pointing.
+///
+/// `[point 106-110]` inside the narration, or `[point 106]` for one line. It
+/// stands beside the beats and is treated the same way: written once, never
+/// shown and never said. What it does instead is light exactly those lines
+/// inside the range the pane is already showing, for as long as the words
+/// after it are being said.
+///
+/// The lines are the file's own, because that is what the agent has in front
+/// of it and what the pane prints down its gutter. Counting from the top of
+/// the shown range would mean the agent doing arithmetic to point at a line it
+/// can already name.
+pub const POINT: &str = "[point ";
+
+/// `106-110`, or `106` on its own.
+///
+/// Anything else is not a point. An agent writing about pointing is writing
+/// prose, and prose is left exactly as it was rather than swallowed by a
+/// directive it never meant to give.
+fn lines(text: &str) -> Option<LineRange> {
+    let text = text.trim();
+    let (first, last) = text.split_once('-').unwrap_or((text, text));
+    Some(LineRange::new(
+        first.trim().parse().ok()?,
+        last.trim().parse().ok()?,
+    ))
+}
+
+/// The text with every point removed.
+///
+/// A point is for the code pane. The eye gets the prose and the ear gets the
+/// prose; neither should be handed the stage direction that came with it.
+#[must_use]
+pub fn unpoint(text: &str) -> String {
+    let (mut out, mut rest) = (String::with_capacity(text.len()), text);
+    while let Some(at) = rest.find(POINT) {
+        let after = &rest[at + POINT.len()..];
+        let Some(end) = after.find(']') else {
+            break; // an opener with no closer is just text
+        };
+        if lines(&after[..end]).is_none() {
+            out.push_str(&rest[..at + POINT.len()]);
+            rest = after;
+            continue;
+        }
+        out.push_str(&rest[..at]);
+        rest = &after[end + 1..];
+    }
+    out.push_str(rest);
+    // A point sat between two spaces, and taking it out leaves both.
+    while out.contains("  ") {
+        out = out.replace("  ", " ");
+    }
+    out
+}
+
+/// One stretch of narration, and where it points while it is being said.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Said {
+    /// The lines to light inside the pane, for as long as this is said.
+    pub point: Option<LineRange>,
+    /// The words, ready for an engine.
+    pub text: String,
+    /// How many words of the band this piece is.
+    ///
+    /// Counted the way the band counts, so the word being heard can be found
+    /// on the page: the spoken text cannot be counted instead, because a code
+    /// chip is one word on the page and several out loud.
+    pub words: usize,
+}
+
+/// How many words the band draws for this text.
+fn counted(text: &str) -> usize {
+    parse(text).iter().map(|para| para.tokens.len()).sum()
+}
+
+/// The narration cut wherever its pointing changes.
+///
+/// This is the whole mechanism. The pieces are said in order, so the lit lines
+/// move as each piece begins — the finger arrives with the sentence about it,
+/// not four sentences early because the agent sent its commands faster than
+/// anybody could listen to them.
+///
+/// Narration with no points comes back as a single piece, which is what
+/// [`spoken`] returns on its own.
+#[must_use]
+pub fn pointed(say: &str, pause: u16) -> Vec<Said> {
+    let mut out: Vec<Said> = Vec::new();
+    let mut point: Option<LineRange> = None;
+    let mut piece = String::new();
+    let mut rest = say;
+
+    while let Some(at) = rest.find(POINT) {
+        let after = &rest[at + POINT.len()..];
+        let Some(end) = after.find(']') else {
+            break;
+        };
+        let Some(next) = lines(&after[..end]) else {
+            piece.push_str(&rest[..at + POINT.len()]);
+            rest = after;
+            continue;
+        };
+        piece.push_str(&rest[..at]);
+        rest = &after[end + 1..];
+
+        // A paragraph break just before a point is a change of subject, and
+        // cutting there would drop the gap the paragraph was going to get.
+        let cut = piece.trim_end().len();
+        if piece[cut..].matches('\n').count() >= 2 {
+            piece.truncate(cut);
+            piece.push_str(" [pause long]");
+        }
+        // A beat straight after a point belongs to the gap before it. Left at
+        // the front of the next piece it is silence at the start of a clip,
+        // which is exactly what is trimmed off when the pieces are joined.
+        while let Some(beat) = BEATS
+            .iter()
+            .find(|beat| rest.trim_start().starts_with(**beat))
+        {
+            if !piece.trim().is_empty() {
+                piece.push(' ');
+                piece.push_str(beat);
+            }
+            rest = &rest.trim_start()[beat.len()..];
+        }
+
+        let text = spoken(&piece, pause);
+        if !text.is_empty() {
+            out.push(Said {
+                point,
+                text,
+                words: counted(&piece),
+            });
+        }
+        piece.clear();
+        point = Some(next);
+    }
+
+    piece.push_str(rest);
+    let text = spoken(&piece, pause);
+    if !text.is_empty() {
+        out.push(Said {
+            point,
+            text,
+            words: counted(&piece),
+        });
+    }
+    out
+}
+
 /// One code chip, as a person reading the code out would say it.
 ///
 /// Identifiers are the whole problem. `base_url` spoken literally is "base
@@ -514,6 +664,108 @@ mod tests {
     use core::prelude::v1::test;
 
     use super::*;
+
+    #[test]
+    fn a_point_never_reaches_the_eye_or_the_ear() {
+        // Both sides read the same source, so a direction left in either one
+        // is a direction the reader is handed instead of the sentence.
+        let said = "the guard is here. [point 106-110] and it waves it through.";
+        assert!(!unpoint(said).contains("[point"), "{}", unpoint(said));
+        assert!(
+            !spoken(said, 420).contains("point"),
+            "{}",
+            spoken(said, 420)
+        );
+        let seen: String = parse(said)
+            .into_iter()
+            .flat_map(|para| para.tokens)
+            .map(|token| token.text.to_string())
+            .collect();
+        assert!(!seen.contains('['), "{seen}");
+    }
+
+    #[test]
+    fn the_narration_is_cut_where_the_pointing_changes() {
+        let said = "first, the call. [point 106-110] then the guard. [point 140] \
+                    and then nothing happens.";
+        let out = pointed(said, 420);
+
+        assert_eq!(out.len(), 3, "one piece per point, plus what came before");
+        assert_eq!(out[0].point, None, "nothing was pointed at yet");
+        assert_eq!(out[1].point, Some(LineRange::new(106, 110)));
+        assert_eq!(out[2].point, Some(LineRange::new(140, 140)), "one line");
+        assert!(out[1].text.starts_with("then the guard"), "{}", out[1].text);
+    }
+
+    #[test]
+    fn a_pane_name_is_one_word_on_the_page_and_the_name_out_loud() {
+        let said = "the answer is in [batch-2], not in [retry].";
+        let out = parsed(said);
+        assert!(!out[0].0.contains('['), "{}", out[0].0);
+        assert_eq!(out[0].1, vec![Mark::Pane, Mark::Pane]);
+        assert_eq!(spoken(said, 420), "the answer is in batch 2, not in retry.");
+        assert_eq!(unname(said), "the answer is in batch-2, not in retry.");
+    }
+
+    #[test]
+    fn a_bracket_that_is_not_a_name_stays_a_bracket() {
+        assert_eq!(unname("see [1] and [the note]"), "see [1] and [the note]");
+        assert!(parsed("see [the note]")[0].1.is_empty());
+    }
+
+    #[test]
+    fn the_pieces_count_to_the_words_on_the_page() {
+        // The word being heard is found on the page by adding up the pieces
+        // before it. If the pieces counted differently from the page, the lit
+        // sentence would drift further from the voice with every point.
+        let said = "The guard is `base_url`. [point 12] It *asks* whether anything \
+                    changed.\n\n[pause] [point 40] And [retry] waves it through.";
+        let pieces: usize = pointed(said, 420).iter().map(|piece| piece.words).sum();
+        assert_eq!(pieces, words(said).len());
+    }
+
+    #[test]
+    fn a_beat_after_a_point_is_heard_before_it() {
+        // Written after the point, the beat would open the next clip, and the
+        // silence at the front of a clip is what gets trimmed when the pieces
+        // are joined. Moved into the gap before, it survives.
+        let out = pointed(
+            "the guard is here. [point 140] [pause] and it is ignored.",
+            420,
+        );
+        assert_eq!(out.len(), 2);
+        assert!(out[0].text.ends_with("[pause]"), "{}", out[0].text);
+        assert!(!out[1].text.contains("[pause]"), "{}", out[1].text);
+    }
+
+    #[test]
+    fn a_paragraph_ending_at_a_point_keeps_its_gap() {
+        // A paragraph break is a change of subject. Cutting a passage there
+        // used to throw the gap away with the blank line.
+        let out = pointed("the guard is here.\n\n[point 140] and it is ignored.", 420);
+        assert!(out[0].text.ends_with("[pause long]"), "{}", out[0].text);
+    }
+
+    #[test]
+    fn prose_about_pointing_is_still_prose() {
+        // The directive is line numbers in brackets and nothing else. An agent
+        // writing the words `[point at` in a sentence meant the words.
+        let said = "it is worth a [point about the guard] here";
+        assert_eq!(unpoint(said), said);
+        let out = pointed(said, 420);
+        assert_eq!(out.len(), 1);
+        assert_eq!(out[0].point, None);
+    }
+
+    #[test]
+    fn narration_with_no_points_is_one_piece() {
+        // What `spoken` returned on its own, unchanged — otherwise every deck
+        // written before pointing existed would be said differently.
+        let said = "the guard is here.\n\nand it waves it through.";
+        let out = pointed(said, 420);
+        assert_eq!(out.len(), 1);
+        assert_eq!(out[0].text, spoken(said, 420));
+    }
 
     #[test]
     fn an_identifier_is_not_an_emphasis() {
