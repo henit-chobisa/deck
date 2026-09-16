@@ -122,6 +122,16 @@ impl Handle {
         let _ = self.control.publishing.send(moment);
     }
 
+    /// Whether the reader is holding movement right now.
+    ///
+    /// Lapsed pauses count as released, so the view can follow the voice again
+    /// without waiting for the agent's next show request to notice.
+    #[must_use]
+    pub fn reader_holds(&self) -> bool {
+        let at_ms = self.now_ms();
+        self.state().holds(at_ms)
+    }
+
     /// Whether the agent may currently move the reader, for the indicator.
     #[must_use]
     pub fn following(&self) -> deck_core::Following {
