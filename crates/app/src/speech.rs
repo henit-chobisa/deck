@@ -1005,10 +1005,17 @@ fn fetch(text: &str, speech: &Speech) -> anyhow::Result<PathBuf> {
                 // "one [pause long] two"` came back the same length as `text:
                 // "one pause long two"`, to the millisecond. `<break>` is the
                 // one that is actually silence.
+                //
+                // And no `<mark>`. Chirp 3 takes the tag and returns no time
+                // for it, which is why a passage is timed by joining pieces
+                // rather than by asking where a mark landed.
                 "input": { "ssml": ssml(text, speech.pause) },
                 "voice": { "languageCode": language, "name": voice },
                 "audioConfig": {
-                    "audioEncoding": "MP3",
+                    // Raw samples at an agreed rate, not MP3, so pieces can be
+                    // laid end to end and measured by counting.
+                    "audioEncoding": "LINEAR16",
+                    "sampleRateHertz": RATE,
                     // The reader's own pace, expressed the way this API takes it:
                     // a multiple of its own normal speed rather than words a minute.
                     "speakingRate": f64::from(speech.words_a_minute()) / 175.0,
@@ -1023,19 +1030,36 @@ fn fetch(text: &str, speech: &Speech) -> anyhow::Result<PathBuf> {
         .get("audioContent")
         .and_then(serde_json::Value::as_str)
         .ok_or_else(|| anyhow::anyhow!("google sent no audio"))?;
-    let audio = base64::engine::general_purpose::STANDARD
+    base64::engine::general_purpose::STANDARD
         .decode(encoded)
-        .map_err(|why| anyhow::anyhow!("google sent audio that will not decode: {why}"))?;
+        .map_err(|why| anyhow::anyhow!("google sent audio that will not decode: {why}"))
+}
 
-    // A name per utterance. They shared one, so a second fetch overwrote the
-    // file the player still had open.
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|since| since.as_nanos())
-        .unwrap_or_default();
-    let at = std::env::temp_dir().join(format!("deck-said-{}-{now}.mp3", std::process::id()));
-    std::fs::write(&at, audio)?;
-    Ok(at)
+/// One piece, rendered by the system voice into a file instead of the speakers.
+///
+/// macOS only, where `say` can write the agreed shape of sound directly.
+fn said_by_system(text: &str, speech: &Speech) -> anyhow::Result<Vec<u8>> {
+    let at = scratch("wav");
+    let mut say = Command::new("say");
+    say.arg("-r")
+        .arg(speech.words_a_minute().to_string())
+        .arg("-o")
+        .arg(&at)
+        .arg("--file-format=WAVE")
+        .arg(format!("--data-format=LEI16@{RATE}"));
+    if let Some(voice) = speech.voice.as_deref().filter(|name| !name.is_empty()) {
+        say.arg("-v").arg(voice);
+    }
+    let mut child = say.stdin(Stdio::piped()).spawn()?;
+    if let Some(stdin) = child.stdin.as_mut() {
+        stdin.write_all(prepared(text, speech).as_bytes())?;
+    }
+    drop(child.stdin.take());
+    let finished = child.wait()?;
+    let audio = std::fs::read(&at);
+    let _ = std::fs::remove_file(&at);
+    anyhow::ensure!(finished.success(), "the system voice would not speak");
+    Ok(audio?)
 }
 
 /// The narration as SSML, with the beats turned into real silence.
