@@ -268,6 +268,44 @@ enum Mark {
     Code,
 }
 
+/// Whether a character is one a word is made of.
+fn wordish(ch: Option<char>) -> bool {
+    ch.is_some_and(|ch| ch.is_alphanumeric() || ch == '_')
+}
+
+/// Where the mark opened at the start of `after_open` closes, if it does.
+///
+/// Every marker but `_` closes at the first repeat. `_` is the one that turns up
+/// inside ordinary identifiers, and narration about code is full of them: a
+/// group that mentions `base_url` twice would otherwise open an emphasis at the
+/// first underscore, close it at the second, and render the whole sentence
+/// between them in the accent colour with both underscores eaten — leaving
+/// `baseurl` on screen and no way to tell it was ever two words.
+///
+/// So an underscore only marks when it is not flanked by a word: not opening
+/// when the character before it belongs to one, and not closing when the
+/// character after it does. This is CommonMark's rule, and it exists for
+/// exactly this reason.
+fn closes(after_open: &str, marker: &str, before: Option<char>) -> Option<usize> {
+    if marker != "_" {
+        return after_open.find(marker);
+    }
+    if wordish(before) {
+        return None;
+    }
+    // Underscores inside a word are skipped rather than given up on, so
+    // `_snake_case is one term_` still emphasises the whole phrase.
+    let mut from = 0;
+    while let Some(offset) = after_open[from..].find('_') {
+        let at = from + offset;
+        if !wordish(after_open[at + 1..].chars().next()) {
+            return Some(at);
+        }
+        from = at + 1;
+    }
+    None
+}
+
 /// One paragraph, split into the runs it can wrap between.
 fn paragraph(para: &str, said: &mut usize, at: &mut usize) -> Paragraph {
     // A newline inside a paragraph is the agent's line wrapping, not a break.
@@ -321,7 +359,7 @@ fn paragraph(para: &str, said: &mut usize, at: &mut usize) -> Paragraph {
             let Some(after_open) = rest.strip_prefix(marker) else {
                 continue;
             };
-            let Some(len) = after_open.find(marker) else {
+            let Some(len) = closes(after_open, marker, plain.chars().last()) else {
                 continue; // an opener with no closer is just text
             };
 
@@ -365,6 +403,39 @@ mod tests {
     use core::prelude::v1::test;
 
     use super::*;
+
+    #[test]
+    fn an_identifier_is_not_an_emphasis() {
+        // The bug this exists for: narration naming `base_url` twice opened an
+        // emphasis at the first underscore and closed it at the second, eating
+        // both and rendering the sentence between them in the accent colour.
+        // What reached the screen was `baseurl`.
+        let said = "it pins a query to the connection's own base_url, and the \
+                    base_url is exactly what just moved.";
+        let out = parsed(said);
+        assert!(
+            out[0].0.contains("base_url"),
+            "underscore survives: {}",
+            out[0].0
+        );
+        assert!(out[0].1.is_empty(), "and nothing was emphasised");
+    }
+
+    #[test]
+    fn an_underscore_pair_around_words_still_marks() {
+        // The rule narrows `_`, it does not retire it.
+        let out = parsed("the _whole form_, every time");
+        assert_eq!(out[0].1, vec![Mark::Emphasis]);
+    }
+
+    #[test]
+    fn a_mark_may_hold_an_identifier() {
+        // `_` closes on the first underscore that does not sit inside a word,
+        // so a phrase containing snake_case can still be emphasised whole.
+        let out = parsed("_base_url is the one that moved_");
+        assert_eq!(out[0].1, vec![Mark::Emphasis]);
+        assert!(out[0].0.contains("base_url"), "{}", out[0].0);
+    }
 
     /// Each paragraph as its whole text, and the marks it carries.
     fn parsed(say: &str) -> Vec<(String, Vec<Mark>)> {
