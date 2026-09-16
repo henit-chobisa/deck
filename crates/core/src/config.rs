@@ -44,6 +44,14 @@ pub struct Config {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct Speech {
+    /// Whether a voice has been set up at all.
+    ///
+    /// Written by `deck walk`, and the only thing that decides whether the
+    /// window offers to walk you through a deck. Everything else about speech
+    /// has a working default, so without this the key would be offered to
+    /// somebody who has never chosen a voice and would hear nothing.
+    #[serde(default)]
+    pub ready: bool,
     /// Whether going live reads the narration aloud at all.
     ///
     /// Live is a rearrangement of the room first and a voice second. Somebody
@@ -97,6 +105,7 @@ pub struct Speech {
 impl Default for Speech {
     fn default() -> Self {
         Self {
+            ready: false,
             aloud: true,
             engine: Engine::System,
             command: None,
@@ -139,6 +148,16 @@ impl Speech {
             .filter(|key| !key.is_empty())
             .or_else(|| self.key.clone())
             .filter(|key| !key.is_empty())
+    }
+
+    /// Whether the window should offer to walk the reader through a deck.
+    ///
+    /// The flag is written by `deck walk`. A config from before it existed has
+    /// no flag and still has a voice in it, and that reader has plainly set one
+    /// up — so a key or a voice counts as having answered the question.
+    #[must_use]
+    pub fn offered(&self) -> bool {
+        self.aloud && (self.ready || self.key.is_some() || self.voice.is_some())
     }
 
     /// The rate, held inside what a voice will actually do.
@@ -219,6 +238,38 @@ pub struct Theme {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_voice_chosen_before_the_flag_existed_still_counts() {
+        // The window hides the walk until somebody has set a voice up. A config
+        // written before that flag existed has no flag and a voice in it, and
+        // hiding the key from that reader would look like the feature had been
+        // taken away.
+        let old = Speech {
+            ready: false,
+            voice: Some("en-US-Chirp3-HD-Charon".into()),
+            ..Speech::default()
+        };
+        assert!(old.offered());
+
+        let fresh = Speech {
+            ready: false,
+            voice: None,
+            key: None,
+            ..Speech::default()
+        };
+        assert!(
+            !fresh.offered(),
+            "and a reader who has chosen nothing is not offered it"
+        );
+
+        let quiet = Speech {
+            ready: true,
+            aloud: false,
+            ..Speech::default()
+        };
+        assert!(!quiet.offered(), "nor one who asked for silence");
+    }
 
     #[test]
     fn a_shade_can_always_be_seen_past() {
