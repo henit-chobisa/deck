@@ -899,6 +899,102 @@ fn private_file(path: &Path) -> Result<(), std::io::Error> {
 mod tests {
 
     #[test]
+    fn bringing_a_file_says_what_it_displaces() {
+        let plain = super::RequestBody::Bring {
+            file: "crates/core/src/protocol.rs".into(),
+            range: deck_core::LineRange::new(120, 160),
+            name: Some("protocol".into()),
+            note: None,
+            after: None,
+            fold_group: true,
+            fold: Vec::new(),
+        };
+        let json = serde_json::to_value(&plain).unwrap();
+        assert_eq!(json["type"], "bring");
+        // Snake case, like every other field on the wire: the rename on the
+        // enum names the variants, not what is inside them.
+        assert_eq!(json["fold_group"], true);
+        // Nothing it did not ask for travels with it.
+        assert!(json.get("note").is_none(), "{json}");
+        assert!(json.get("fold").is_none(), "{json}");
+        assert_eq!(
+            serde_json::from_value::<super::RequestBody>(json).unwrap(),
+            plain
+        );
+    }
+
+    #[test]
+    fn folding_names_the_panes_it_means() {
+        let json = serde_json::to_value(super::RequestBody::Fold {
+            panes: vec!["retry".into()],
+            group: false,
+            open: false,
+        })
+        .unwrap();
+        assert_eq!(
+            json,
+            serde_json::json!({ "type": "fold", "panes": ["retry"] })
+        );
+    }
+
+    #[test]
+    fn a_show_may_carry_a_replacement_and_usually_does_not() {
+        // Added after the protocol was frozen, so it has to be optional both
+        // ways: an older window reading a newer request ignores it, and a
+        // request without one is byte for byte what it always was.
+        let plain = super::RequestBody::Show {
+            file: "a.rs".into(),
+            range: deck_core::LineRange::new(1, 2),
+            group: None,
+            pane: None,
+            after: None,
+        };
+        let json = serde_json::to_value(&plain).unwrap();
+        assert!(json.get("after").is_none(), "{json}");
+
+        let proposing = super::RequestBody::Show {
+            file: "a.rs".into(),
+            range: deck_core::LineRange::new(1, 2),
+            group: None,
+            pane: None,
+            after: Some("let x = 1;".into()),
+        };
+        let there = serde_json::to_value(&proposing).unwrap();
+        assert_eq!(there["after"], "let x = 1;");
+        assert_eq!(
+            serde_json::from_value::<super::RequestBody>(there).unwrap(),
+            proposing
+        );
+    }
+
+    #[test]
+    fn clearing_is_a_request_of_its_own_on_the_wire() {
+        let json = serde_json::to_value(super::RequestBody::Clear).unwrap();
+        assert_eq!(json, serde_json::json!({ "type": "clear" }));
+        let back: super::RequestBody = serde_json::from_value(json).unwrap();
+        assert_eq!(back, super::RequestBody::Clear);
+    }
+
+    #[test]
+    fn a_note_about_what_the_agent_is_doing_is_its_own_request() {
+        // A new variant rather than a flag on `say`: a note is not a turn, it
+        // is not recorded, and a window that treated it as one would put
+        // "reading the retry loop" in somebody's review.
+        let doing = super::RequestBody::Doing {
+            text: "reading the retry loop".into(),
+        };
+        let json = serde_json::to_value(&doing).unwrap();
+        assert_eq!(
+            json,
+            serde_json::json!({ "type": "doing", "text": "reading the retry loop" })
+        );
+        assert_eq!(
+            serde_json::from_value::<super::RequestBody>(json).unwrap(),
+            doing
+        );
+    }
+
+    #[test]
     fn a_cursor_replays_every_reaction_in_order() {
         // The reason the stream takes a cursor rather than handing back
         // "whatever happened since you asked": an agent that was busy or
@@ -1198,6 +1294,7 @@ mod tests {
                     range: LineRange::single(1),
                     group: None,
                     pane: None,
+                    after: None,
                 },
                 Duration::from_secs(1),
             ),
