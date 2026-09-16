@@ -34,7 +34,7 @@ A presentation surface for agents, written in Rust.
 
 <div align="center">
 
-[Why](#why) • [How it works](#how-it-works) • [Demo](#demo) • [Install](#install) • [In the window](#in-the-window) • [Diagrams](#diagrams) • [Theming](#theming)
+[Why](#why) • [How it works](#how-it-works) • [Demo](#demo) • [Install](#install) • [In the window](#in-the-window) • [Listening](#listening-to-it) • [Diagrams](#diagrams) • [Theming](#theming)
 
 </div>
 
@@ -251,6 +251,49 @@ puts the evidence next to the argument and gives you a key to disagree on.
 And when the file moves underneath you, comments come back with how far to trust
 them — `diff`, `fingerprint`, or `stale` — rather than a line number that may
 have drifted.
+
+## Listening to it
+
+`t` reads the current group's narration aloud, and reads it slowly — prose about
+code is dense, and it is being heard once with no way to glance back at the last
+clause. `t` again stops it. Moving to another group stops it too, since what it
+was saying belongs to the group that just left.
+
+The narration is written for this without trying. It is already ordered, already
+one claim per group, already composed to be read in sequence — so what a reader
+gets is two channels that do not compete: the code in front of their eyes, the
+argument in their ears.
+
+What it does not do is read the marks. Code chips are said the way a person
+would say them — `base_url` is "base url", `buildPayload` is "build payload",
+`if credentials:` drops the colon that belongs to Python rather than the
+sentence — and a paragraph break becomes a real pause, because a break is a
+change of subject and a voice that runs two of them together turns an argument
+back into a stream.
+
+**Get a good voice first.** The voices installed by default are the compact
+ones, and they sound like it. The neural ones are a free download and are close
+to a recording:
+
+```
+System Settings → Accessibility → Spoken Content → System Voice
+  → Manage Voices… → English → anything marked Premium
+```
+
+Then `deck setup` offers it. Nothing is uploaded to make this work — a narration
+describes code that has not shipped yet, and sending it to a service to be turned
+into a sound file is not a trade deck makes on your behalf for a nicer timbre.
+Speed and voice live in `~/.deck/config.toml`:
+
+```toml
+[speech]
+voice = "Ava (Premium)"
+rate = 158    # words a minute
+pause = 420   # milliseconds between paragraphs
+```
+
+macOS reads decks through `say`; Linux through `spd-say` if speech-dispatcher is
+installed. Windows is not wired up yet.
 
 ## Diagrams
 

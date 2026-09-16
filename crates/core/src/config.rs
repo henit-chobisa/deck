@@ -27,6 +27,66 @@ pub struct Config {
     pub theme: Theme,
     /// How much of the screen goes away when the reader asks for quiet.
     pub zen: Zen,
+    /// How the narration sounds when it is read aloud.
+    pub speech: Speech,
+}
+
+/// The `[speech]` section.
+///
+/// A deck can be listened to. The narration is already written to be read in
+/// order, one claim at a time, which is most of what a thing needs to be worth
+/// hearing — and a reader with the code in front of them and the argument in
+/// their ears is doing two things at once that do not compete.
+///
+/// Spoken by the system, on the machine. Nothing is uploaded: a narration is a
+/// description of somebody's unreleased code, and sending it to a service to be
+/// turned into a sound file is not a trade deck gets to make on their behalf.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct Speech {
+    /// Which system voice to use. The system default when unset.
+    ///
+    /// Worth setting. The voices installed by default are the compact ones,
+    /// which are intelligible and plainly synthetic; the neural voices are a
+    /// free download and are the difference between listening to a deck and
+    /// enduring one.
+    pub voice: Option<String>,
+    /// Words per minute.
+    ///
+    /// Below conversational on purpose. Prose about code is dense — a line
+    /// number and an identifier carry more per second than a sentence about
+    /// anything else — and it is being heard once, with no way to glance back
+    /// at the last clause.
+    pub rate: u16,
+    /// Milliseconds of silence between paragraphs.
+    ///
+    /// A paragraph break in the narration is a change of subject, and a voice
+    /// that runs two of them together turns an argument into a stream. This is
+    /// the spoken equivalent of the gap the band already draws.
+    pub pause: u16,
+}
+
+impl Default for Speech {
+    fn default() -> Self {
+        Self {
+            voice: None,
+            // Unhurried. The default on most systems is about 175, which is
+            // fine for a message and too fast for a mechanism.
+            rate: 158,
+            pause: 420,
+        }
+    }
+}
+
+impl Speech {
+    /// The rate, held inside what a voice will actually do.
+    ///
+    /// A rate of zero is silence that looks like a hang, and a very high one is
+    /// unintelligible — both are easier to reach by typo than on purpose.
+    #[must_use]
+    pub fn words_a_minute(&self) -> u16 {
+        self.rate.clamp(80, 400)
+    }
 }
 
 /// The `[zen]` section.

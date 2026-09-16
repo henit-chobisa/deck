@@ -36,6 +36,7 @@ pub fn run() -> anyhow::Result<()> {
 
     open();
     look(&mut config)?;
+    listen(&mut config)?;
     let path = crate::config::path()
         .ok_or_else(|| anyhow::anyhow!("no home directory to write a config into"))?;
     write(&path, &config)?;
@@ -141,6 +142,81 @@ fn pick(editors: &[Editor]) -> anyhow::Result<Editor> {
     let answer = ask("Which?", "1")?;
     let at = answer.parse::<usize>().unwrap_or(1).max(1) - 1;
     Ok(editors.get(at).copied().unwrap_or(editors[0]))
+}
+
+/// Which voice reads a deck aloud.
+///
+/// A deck can be listened to — `t` in the window — and that is worth one
+/// question here, because the answer is a download rather than a setting and
+/// nobody finds it by looking.
+///
+/// The gap between the voices a machine has by default and the neural ones is
+/// most of the difference between listening to a deck and switching it off after
+/// a paragraph. Deck would rather say that plainly than pick a compact voice,
+/// let it sound like 1998, and have the reader conclude the feature is bad.
+fn listen(config: &mut Config) -> anyhow::Result<()> {
+    if !cfg!(target_os = "macos") {
+        return Ok(());
+    }
+    let voices = crate::speech::voices();
+    if voices.is_empty() {
+        return Ok(());
+    }
+
+    println!();
+    rule();
+    println!();
+    println!("  {}", bold("Reading aloud"));
+    println!(
+        "  {}",
+        dim("`t` in the window reads the narration. Spoken on this machine —")
+    );
+    println!(
+        "  {}",
+        dim("nothing about your code is sent anywhere to be turned into sound.")
+    );
+    println!();
+
+    let natural: Vec<_> = voices.iter().filter(|voice| voice.natural).collect();
+    if natural.is_empty() {
+        // The honest version. There is nothing to choose between here, and
+        // offering a list of compact voices would imply there was.
+        println!(
+            "  {}",
+            dim("Only the compact voices are installed, and they sound it.")
+        );
+        println!("  {}", dim("The good ones are a free download:"));
+        println!();
+        println!("    {}", accent(crate::speech::WHERE));
+        println!();
+        println!(
+            "  {}",
+            dim("Then `deck setup` again and it will be offered here.")
+        );
+        return Ok(());
+    }
+
+    let best = natural[0].name.clone();
+    println!("  {}", dim(&format!("Found {}.", list_voices(&natural))));
+    println!();
+    if ask_yes(&format!("Read decks with {best}?"))? {
+        config.speech.voice = Some(best.clone());
+        chose(&format!("{best}, at {} words a minute", config.speech.rate));
+    } else {
+        config.speech.voice = None;
+        chose("the system voice");
+    }
+    Ok(())
+}
+
+/// The voices found, as a sentence.
+fn list_voices(voices: &[&crate::speech::Installed]) -> String {
+    let named: Vec<&str> = voices.iter().take(3).map(|one| one.name.as_str()).collect();
+    match voices.len() {
+        0 => String::new(),
+        n if n > 3 => format!("{}, and {} more", named.join(", "), n - 3),
+        _ => named.join(", "),
+    }
 }
 
 /// Offer to put the skill where each agent will read it.

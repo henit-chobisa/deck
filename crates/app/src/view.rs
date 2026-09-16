@@ -27,7 +27,7 @@ use crate::sheet::{Sheet, Slot};
 gpui_kit::actions!(
     deck,
     [
-        NextGroup, PrevGroup, Comment, Rotate, Zen, Hide, Submit, Discard, ZoomIn, ZoomOut,
+        NextGroup, PrevGroup, Comment, Rotate, Zen, Talk, Hide, Submit, Discard, ZoomIn, ZoomOut,
         ZoomReset, Close
     ]
 );
@@ -42,6 +42,7 @@ const KEYS: &[(&str, &str, &str)] = &[
     ("c", "comment", "comment"),
     ("r", "rotate", "turn the panes"),
     ("z", "zen", "lights off"),
+    ("t", "talk", "read it aloud"),
     ("h", "hide", "put it away"),
     ("s", "submit", "submit"),
     ("q", "close", "close"),
@@ -56,6 +57,7 @@ pub fn bindings() -> Vec<KeyBinding> {
         KeyBinding::new("c", Comment, Some("Deck")),
         KeyBinding::new("r", Rotate, Some("Deck")),
         KeyBinding::new("z", Zen, Some("Deck")),
+        KeyBinding::new("t", Talk, Some("Deck")),
         KeyBinding::new("h", Hide, Some("Deck")),
         KeyBinding::new("s", Submit, Some("Deck")),
         KeyBinding::new("q", Close, Some("Deck")),
@@ -414,6 +416,12 @@ pub struct DeckView {
     /// reader has got to in this window, and a deck put away and brought back
     /// should start at the top of its prose.
     band_scroll: ScrollHandle,
+    /// The voice, and whatever it is currently reading.
+    ///
+    /// Held by the window rather than the app so that closing a deck takes its
+    /// voice with it — a reader who shut the window and kept hearing it would
+    /// have no way left to make it stop.
+    voice: crate::speech::Voice,
     /// Remarks folded down to their header, by index.
     ///
     /// A card sits over the code, so a long one hides the lines under it. The
@@ -528,6 +536,7 @@ impl DeckView {
             sizing: None,
             band_height,
             band_scroll: ScrollHandle::new(),
+            voice: crate::speech::Voice::default(),
             folded,
             drifting: None,
             gliding: Task::ready(()),
@@ -641,6 +650,30 @@ impl DeckView {
     /// are done with it, and a deck that reappeared on the bar after being
     /// closed would be impossible to get rid of. Putting one away for later is
     /// `h`, and that is a different key for a different thing.
+    /// Read this group's narration out loud, or stop.
+    ///
+    /// One key for both, because there is only ever one thing the reader can
+    /// want: if it is talking, they want it to stop; if it is not, they want to
+    /// hear it. Pressing it after a group has finished starts it again rather
+    /// than doing nothing, which is what somebody who missed a clause means.
+    ///
+    /// The group's prose only. The code is on screen, and a voice spelling out
+    /// a line of it would be reading the one thing the reader can already see.
+    fn on_talk(&mut self, _: &Talk, _window: &mut Window, cx: &mut Context<Self>) {
+        if self.voice.talking() {
+            self.voice.hush();
+            cx.notify();
+            return;
+        }
+        let Some(group) = self.group() else {
+            return;
+        };
+        let speech = crate::speech::asked(cx);
+        let said = crate::prose::spoken(&group.say, speech.pause);
+        self.voice.say(&said, &speech);
+        cx.notify();
+    }
+
     /// Turn the rest of the screen down, or back up.
     ///
     /// The deck does not change. What changes is everything that was competing
@@ -1151,6 +1184,9 @@ impl DeckView {
         // last one's scroll over means arriving halfway down a paragraph that
         // has not been read.
         self.band_scroll.set_offset(point(px(0.), px(0.)));
+        // And stops talking, because what it is saying belongs to the group
+        // that just left the screen.
+        self.voice.hush();
 
         let base = self.deck.base();
         let Some(group) = self.deck.groups().get(self.group_ix) else {
@@ -2199,6 +2235,7 @@ impl Render for DeckView {
             .on_action(cx.listener(Self::on_next))
             .on_action(cx.listener(Self::on_prev))
             .on_action(cx.listener(Self::on_zen))
+            .on_action(cx.listener(Self::on_talk))
             .on_action(cx.listener(Self::on_close))
             .on_action(cx.listener(Self::on_comment))
             .on_action(cx.listener(Self::on_rotate))

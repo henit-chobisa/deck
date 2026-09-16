@@ -29,6 +29,7 @@ mod shade;
 mod sheet;
 mod showing;
 mod skill;
+mod speech;
 mod state;
 mod view;
 mod waiting;
@@ -116,6 +117,7 @@ fn main() -> ExitCode {
 fn show(decks: Vec<Deck>, opening: &cli::Opening) {
     let (dark, layout) = (opening.dark, opening.layout);
     let zen = opening.zen.clone();
+    let speech = opening.speech.clone();
     let (editor, paper, colors) = (opening.editor, opening.paper, opening.colors);
     let named = opening.named.clone();
     // With the asset source, or every icon is an empty box: the component
@@ -203,6 +205,7 @@ fn show(decks: Vec<Deck>, opening: &cli::Opening) {
             // Running `deck open` twice on one deck used to give the reader a
             // second window over the one they were reading.
             crate::shade::remember(zen, cx);
+            crate::speech::remember(speech, cx);
 
             let waiting: Vec<Session> = decks
                 .into_iter()

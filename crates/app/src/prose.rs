@@ -137,6 +137,75 @@ pub fn parse(say: &str) -> Vec<Paragraph> {
         .collect()
 }
 
+/// The narration as something worth hearing.
+///
+/// Read the source aloud verbatim and the marks come with it: a listener hears
+/// "backtick build payload backtick" and every code chip lands as punctuation
+/// they have to discard. So this runs the same parse the band renders from, and
+/// spends the marks instead of speaking them — the text of each token, with the
+/// code ones said the way a person would say them.
+///
+/// The paragraph gaps matter as much as the words. A break in the narration is
+/// a change of subject, and a voice that runs two subjects together turns an
+/// argument back into a stream, which is the thing the groups exist to prevent.
+/// `[[slnc n]]` is the system synthesiser's own instruction for a pause.
+#[must_use]
+pub fn spoken(say: &str, pause: u16) -> String {
+    let between = format!(" [[slnc {pause}]] ");
+    parse(say)
+        .into_iter()
+        .map(|para| {
+            para.tokens
+                .iter()
+                .map(|token| match token.mark {
+                    Some(Mark::Code) => aloud(&token.text),
+                    _ => token.text.to_string(),
+                })
+                .collect::<String>()
+                .trim()
+                .to_string()
+        })
+        .filter(|para| !para.is_empty())
+        .collect::<Vec<_>>()
+        .join(&between)
+}
+
+/// One code chip, as a person reading the code out would say it.
+///
+/// Identifiers are the whole problem. `base_url` spoken literally is "base
+/// underscore url", and `buildPayload` is one long word a voice will put the
+/// stress in the wrong place in. Both are two words that were written without a
+/// space for the compiler's benefit, so the space goes back in.
+fn aloud(code: &str) -> String {
+    let (text, space) = split_trailing_space(code);
+
+    // A path is said by its last part. "crates slash app slash src slash view
+    // dot r s" is a sentence nobody needed; the file name is the thing being
+    // pointed at, and the pane is already showing which file it is.
+    let text = text.rsplit('/').next().unwrap_or(&text).to_string();
+    // Empty strings appear in narration about exactly this kind of bug, and
+    // "quote quote" is not what anybody says out loud.
+    let text = text
+        .replace("\"\"", "empty string")
+        .replace("''", "empty string");
+    let text = text.replace("::", " ").replace('_', " ");
+
+    let mut said = String::with_capacity(text.len() + 4);
+    let mut last = '\0';
+    for ch in text.chars() {
+        // The join in camelCase: an upper after a lower, or after a digit.
+        if ch.is_uppercase() && (last.is_lowercase() || last.is_ascii_digit()) {
+            said.push(' ');
+        }
+        said.push(ch);
+        last = ch;
+    }
+    // A trailing colon is Python's, not the sentence's — `if credentials:` is
+    // read "if credentials", and the pause after it belongs to the prose.
+    let said = said.trim_end_matches(':').trim().to_string();
+    format!("{said}{space}")
+}
+
 /// Render paragraphs into the band.
 ///
 /// A wrapping row of tokens rather than one styled string.
@@ -435,6 +504,47 @@ mod tests {
         let out = parsed("_base_url is the one that moved_");
         assert_eq!(out[0].1, vec![Mark::Emphasis]);
         assert!(out[0].0.contains("base_url"), "{}", out[0].0);
+    }
+
+    #[test]
+    fn a_chip_is_said_the_way_a_person_would_say_it() {
+        // Spoken verbatim these are "base underscore url" and one long word
+        // with the stress in the wrong place. Both were written without a space
+        // for the compiler, so the space goes back in.
+        let said = spoken("`base_url` and `buildPayload` and `if credentials:`", 0);
+        assert!(said.contains("base url"), "{said}");
+        assert!(said.contains("build Payload"), "{said}");
+        assert!(said.contains("if credentials"), "{said}");
+        assert!(
+            !said.contains(':'),
+            "the colon is Python's, not the sentence's"
+        );
+        assert!(!said.contains('`'), "and no marker is ever read aloud");
+    }
+
+    #[test]
+    fn a_path_is_said_by_its_last_part() {
+        // "crates slash app slash src slash view dot r s" is a sentence nobody
+        // needed — the pane already shows which file it is.
+        let said = spoken("see `crates/app/src/view.rs`", 0);
+        assert!(said.contains("view.rs"), "{said}");
+        assert!(!said.contains("crates"), "{said}");
+    }
+
+    #[test]
+    fn an_empty_string_is_called_one() {
+        // The narration this came from was about exactly this bug, and "quote
+        // quote" is not what anybody says out loud.
+        assert!(spoken(r#"carries `password: ""`"#, 0).contains("empty string"));
+    }
+
+    #[test]
+    fn paragraphs_are_held_apart() {
+        // A break is a change of subject. Run two together and the argument is
+        // a stream again, which is the thing the groups exist to prevent.
+        let said = spoken("First claim.\n\nSecond claim.", 400);
+        assert!(said.contains("[[slnc 400]]"), "{said}");
+        assert_eq!(said.matches("slnc").count(), 1, "one gap, not two");
     }
 
     /// Each paragraph as its whole text, and the marks it carries.

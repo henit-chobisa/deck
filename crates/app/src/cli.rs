@@ -203,6 +203,7 @@ impl Cli {
                     editor,
                     named,
                     zen: config.zen.clone(),
+                    speech: config.speech.clone(),
                     paper: paper.unwrap_or(config.theme.paper),
                     colors: config.theme.colors,
                     dark: config.theme.mode,
@@ -260,6 +261,8 @@ pub struct Opening {
     pub layout: Layout,
     /// How far the screen goes down when the reader asks for quiet.
     pub zen: deck_core::config::Zen,
+    /// How the narration sounds when it is read aloud.
+    pub speech: deck_core::config::Speech,
 }
 
 /// Read what the command line said to point at.
