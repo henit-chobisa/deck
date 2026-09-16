@@ -249,8 +249,23 @@ impl ShowCommand {
                 range,
                 group,
                 pane,
+                ..
             } => Some((file, *range, group.as_deref(), pane.as_deref())),
-            RequestBody::Say { .. } | RequestBody::Status => None,
+            RequestBody::Say { .. }
+            | RequestBody::Doing { .. }
+            | RequestBody::Clear
+            | RequestBody::Fold { .. }
+            | RequestBody::Bring { .. }
+            | RequestBody::Status => None,
+        }
+    }
+
+    /// What the agent wants the reader to know it is doing right now.
+    #[must_use]
+    pub fn doing(&self) -> Option<&str> {
+        match &self.request.body {
+            RequestBody::Doing { text } => Some(text),
+            _ => None,
         }
     }
 
@@ -261,6 +276,36 @@ impl ShowCommand {
             RequestBody::Say { text, aloud } => Some((text, *aloud)),
             _ => None,
         }
+    }
+
+    /// What the shown range is being proposed to become, if anything.
+    #[must_use]
+    pub fn proposing(&self) -> Option<&str> {
+        match &self.request.body {
+            RequestBody::Show { after, .. } => after.as_deref(),
+            _ => None,
+        }
+    }
+
+    /// What this asks to be folded away, or opened again.
+    #[must_use]
+    pub fn folding(&self) -> Option<(&[String], bool, bool)> {
+        match &self.request.body {
+            RequestBody::Fold { panes, group, open } => Some((panes, *group, *open)),
+            _ => None,
+        }
+    }
+
+    /// The file this asks to be brought into the room, and what it displaces.
+    #[must_use]
+    pub fn bringing(&self) -> Option<&RequestBody> {
+        matches!(self.request.body, RequestBody::Bring { .. }).then_some(&self.request.body)
+    }
+
+    /// Whether this asks to stop pointing.
+    #[must_use]
+    pub fn clearing(&self) -> bool {
+        matches!(self.request.body, RequestBody::Clear)
     }
 
     /// Whether its caller has already withdrawn an unapplied movement.
@@ -358,7 +403,12 @@ fn serve(owner: &Owner, control: &Control) {
                 let status = status_of(&control.state);
                 let _ = owner.acknowledge(&request, status);
             }
-            RequestBody::Say { .. } | RequestBody::Show { .. } => {
+            RequestBody::Say { .. }
+            | RequestBody::Doing { .. }
+            | RequestBody::Show { .. }
+            | RequestBody::Clear
+            | RequestBody::Fold { .. }
+            | RequestBody::Bring { .. } => {
                 let status = status_of(&control.state);
                 if status != ResponseStatus::Ready {
                     let mut response = Response::status(&request, owner.generation(), status);
@@ -668,6 +718,44 @@ mod tests {
             .unwrap();
         assert_eq!(first.moment.text, "before hiding");
         assert_eq!(second.moment.text, "after reopening");
+    }
+
+    #[test]
+    fn a_note_about_what_the_agent_is_doing_reaches_the_visible_view() {
+        // It goes down the same queue as a turn, because it has to arrive in
+        // the order the agent sent it relative to what it says — but it is a
+        // separate request so the view can tell the two apart.
+        let temp = tempfile::tempdir().unwrap();
+        let runtime = temp.path().join("runtime");
+        let deck = deck(temp.path());
+        let owner = Handle::start_at(&runtime, &deck).unwrap();
+        let client = Client::connect(&runtime, &deck).unwrap();
+        owner.ready();
+
+        std::thread::scope(|scope| {
+            let caller = scope.spawn(|| {
+                client
+                    .request(
+                        RequestBody::Doing {
+                            text: "reading the retry loop".into(),
+                        },
+                        Duration::from_secs(5),
+                    )
+                    .unwrap()
+            });
+            let until = Instant::now() + Duration::from_secs(5);
+            let command = loop {
+                if let Some(command) = owner.next_show() {
+                    break command;
+                }
+                assert!(Instant::now() < until, "the note never arrived");
+                std::thread::sleep(Duration::from_millis(5));
+            };
+            assert_eq!(command.doing(), Some("reading the retry loop"));
+            assert!(command.saying().is_none(), "and it is not a turn");
+            command.finish(ShowAnswer::said());
+            assert_eq!(caller.join().unwrap().status, ResponseStatus::Applied);
+        });
     }
 
     #[test]
