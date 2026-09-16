@@ -123,6 +123,15 @@ enum What {
     /// this is the one thing only you can answer.
     Setup,
 
+    /// Read a `Stop` event and say whether the reply should have been a deck.
+    ///
+    /// Run by the agent, never by a person: `deck setup` offers to register it,
+    /// and from then on it reads each finished reply and refuses the ones that
+    /// name two or more `file:line` locations — the shape of an argument the
+    /// reader would otherwise have to assemble themselves.
+    #[command(hide = true)]
+    Hook,
+
     /// Block until the reader submits, then print the review as JSON.
     Wait {
         /// The `.deck` directory.
@@ -223,6 +232,7 @@ impl Cli {
                 })
             })),
             What::Setup => report(crate::setup::run()),
+            What::Hook => report(crate::hook::run()),
             What::Seal { deck } => report(deck_cli::seal(&deck)),
             What::Wait { deck, timeout } => Err(wait(&deck, timeout)),
         }

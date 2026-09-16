@@ -17,6 +17,7 @@
 mod chart;
 mod cli;
 mod config;
+mod hook;
 mod load;
 mod palette;
 mod pane;

@@ -41,6 +41,7 @@ pub fn run() -> anyhow::Result<()> {
     write(&path, &config)?;
 
     tell()?;
+    catch()?;
     close(&path);
     Ok(())
 }
@@ -216,6 +217,72 @@ fn tell() -> anyhow::Result<()> {
                 println!("    {} {}", dim("!"), dim(&format!("{name}: {why}")));
             }
         }
+    }
+    Ok(())
+}
+
+/// Offer to catch the replies the skill does not.
+///
+/// The skill is the sentence that makes an agent reach for a deck, and it
+/// works often enough to be worth installing. It does not always work. An agent
+/// that has just finished an investigation has enormous momentum toward typing
+/// out what it found, and a suggestion loses to that momentum often enough that
+/// a reader who installed deck can go a week without seeing one.
+///
+/// This is the answer to that, and it is offered separately because it is a
+/// different kind of thing: the skill advises, this one refuses. Somebody who
+/// wants the tool available but not insistent should be able to say no here and
+/// keep everything else.
+fn catch() -> anyhow::Result<()> {
+    let Some(home) = deck_core::home::home() else {
+        return Ok(());
+    };
+    if !crate::hook::possible(&home) {
+        return Ok(());
+    }
+
+    println!();
+    rule();
+    println!();
+    println!("  {}", bold("The catch"));
+    println!(
+        "  {}",
+        dim("A skill is a suggestion, and an agent mid-flow will talk past it.")
+    );
+    println!(
+        "  {}",
+        dim("This reads each finished reply, and when one names two or more")
+    );
+    println!(
+        "  {}",
+        dim("file:line locations, sends it back to build the deck instead.")
+    );
+    println!();
+
+    if crate::hook::installed(&home) {
+        println!("  {} {}", accent("·"), dim("already on"));
+        return Ok(());
+    }
+    if !ask_yes("Turn it on for Claude Code?")? {
+        println!();
+        println!(
+            "  {}",
+            dim("Left off. `deck setup` again when you want it.")
+        );
+        return Ok(());
+    }
+
+    println!();
+    match crate::hook::install(&home)? {
+        crate::hook::Put::Written(at) => {
+            println!("    {} {}", accent("+"), short(&at, &home));
+            println!(
+                "    {}",
+                dim("Takes effect in agent sessions started from now on.")
+            );
+        }
+        crate::hook::Put::Already => println!("    {} {}", accent("·"), dim("already on")),
+        crate::hook::Put::Absent => {}
     }
     Ok(())
 }
