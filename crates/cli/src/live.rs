@@ -54,6 +54,67 @@ pub enum RequestBody {
         /// Whether to read it aloud, when the reader has a voice set up.
         aloud: bool,
     },
+    /// Say what the agent is doing while it is doing it.
+    ///
+    /// Not a turn and not a transcript entry: a line the panel shows in place
+    /// of its own guess about the silence, replaced by the next one and thrown
+    /// away when the answer lands. It is also the only proof the window has
+    /// that an agent is still there, so it is what the wait is measured from.
+    Doing {
+        /// A few words in the present tense — `reading the retry loop`.
+        text: String,
+    },
+    /// Stop pointing.
+    ///
+    /// The frame round the pane and the lit lines inside it go out. Nothing
+    /// scrolls, and nothing being said stops: this is the agent taking its hand
+    /// off the page, not asking for quiet.
+    Clear,
+    /// Fold panes away to their spines, or open them again.
+    ///
+    /// Folding is how the room is made for something else. A pane folded is
+    /// still there — its name on a spine at the window's edge, a click from
+    /// coming back — which is the difference between this and closing it.
+    Fold {
+        /// The panes to fold, by the name the prose calls them.
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        panes: Vec<String>,
+        /// Fold every pane of the group, rather than named ones.
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        group: bool,
+        /// Open them instead of folding them.
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        open: bool,
+    },
+    /// Bring a file into the room that the group never showed.
+    ///
+    /// The answer to a question the deck was not written for. What it displaces
+    /// folds in the same movement, so the room moves once: two commands would
+    /// be a fold, a frame of wrong layout, and then a pane arriving.
+    ///
+    /// It is temporary. Turning to another group takes it away, and so does
+    /// closing it.
+    Bring {
+        /// The file to open, as the command named it.
+        file: PathBuf,
+        /// One-based inclusive source lines.
+        range: LineRange,
+        /// What the prose may call it.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        name: Option<String>,
+        /// A short label for the pane.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        note: Option<String>,
+        /// What the range should become, drawn as a change.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        after: Option<String>,
+        /// Fold the whole group behind one spine to make room for it.
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        fold_group: bool,
+        /// Or fold only these panes of it, by name.
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        fold: Vec<String>,
+    },
 }
 
 /// A request committed by a shell command for the native owner.
