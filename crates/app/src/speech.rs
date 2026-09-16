@@ -1291,10 +1291,249 @@ mod tests {
         // The reader asked for quiet. Finishing the backlog first would be
         // ignoring them politely.
         let mut voice = Voice::default();
-        voice.next.push_back("one".into());
-        voice.next.push_back("two".into());
+        voice.next.push_back((one("one"), None));
+        voice.next.push_back((one("two"), None));
         voice.hush();
         assert!(voice.next.is_empty());
+    }
+
+    #[test]
+    fn the_point_waits_for_the_words_it_belongs_to() {
+        // The bug this exists for: an agent writes four sentences in one
+        // breath, so applying each point as its command arrived put the light
+        // on the last line before the first sentence had been heard.
+        //
+        // Walked silently, so the timing is the words' and not a player's.
+        let speech = Speech {
+            aloud: false,
+            rate: 80,
+            ..Speech::default()
+        };
+        let mut voice = Voice::default();
+        let (guard, thrown) = (LineRange::new(106, 110), LineRange::new(140, 140));
+
+        voice.say(
+            vec![
+                Said {
+                    point: Some(guard),
+                    text: "the guard is here and it asks whether anything changed".into(),
+                    words: 10,
+                },
+                Said {
+                    point: Some(thrown),
+                    text: "and the answer is thrown away".into(),
+                    words: 6,
+                },
+            ],
+            None,
+            &speech,
+        );
+        assert_eq!(
+            voice.pointing(),
+            Some(guard),
+            "the first one starts at once"
+        );
+        assert!(!voice.talking(), "and nothing is being said out loud");
+        assert!(voice.has_work(), "but the passage is still being walked");
+    }
+
+    #[test]
+    fn a_passage_points_on_its_own_clock() {
+        // The pieces of one passage are one sound. Each point arrives at the
+        // moment its words start inside it — never at the moment a separate
+        // utterance happened to be fetched.
+        let (guard, thrown) = (LineRange::new(106, 110), LineRange::new(140, 140));
+        let playing = Playing {
+            child: None,
+            file: None,
+            quiet: true,
+            since: Instant::now() - Duration::from_millis(2_000),
+            marks: vec![
+                (Duration::ZERO, Some(guard)),
+                (Duration::from_millis(1_900), Some(thrown)),
+                (Duration::from_millis(9_000), None),
+            ],
+            length: Duration::from_millis(12_000),
+            words: Vec::new(),
+            of: None,
+        };
+        assert_eq!(playing.pointing(), Some(thrown));
+    }
+
+    #[test]
+    fn the_word_being_heard_is_found_inside_its_piece() {
+        // Two pieces of four words each; halfway through the second is the
+        // seventh word, counted from nought.
+        let playing = Playing {
+            child: None,
+            file: None,
+            quiet: true,
+            since: Instant::now() - Duration::from_millis(3_000) + LEAD,
+            marks: vec![(Duration::ZERO, None), (Duration::from_millis(2_000), None)],
+            length: Duration::from_millis(4_000),
+            words: vec![4, 4],
+            of: Some(Narration::Group(0)),
+        };
+        assert_eq!(playing.hearing(), Some((Narration::Group(0), 6)));
+    }
+
+    #[test]
+    fn a_point_rises_in_the_breath_before_its_words() {
+        // The light takes a moment to come up, so it starts a little early.
+        // Here the second piece is 100ms away and already pointed at.
+        let thrown = LineRange::new(140, 140);
+        let playing = Playing {
+            child: None,
+            file: None,
+            quiet: true,
+            since: Instant::now() - Duration::from_millis(1_000),
+            marks: vec![
+                (Duration::ZERO, None),
+                (Duration::from_millis(1_100), Some(thrown)),
+            ],
+            length: Duration::from_millis(3_000),
+            words: Vec::new(),
+            of: None,
+        };
+        assert_eq!(playing.pointing(), Some(thrown));
+    }
+
+    #[test]
+    fn a_finished_argument_keeps_its_finger_where_it_ended() {
+        // Silence is not a reason to stop pointing. The lines the narration
+        // ended on are the lines the reader is looking at, and taking the
+        // light off them the moment the voice stops would leave them reading
+        // the whole range again to find what was being talked about.
+        let speech = Speech {
+            aloud: false,
+            ..Speech::default()
+        };
+        let mut voice = Voice::default();
+        voice.say(
+            vec![Said {
+                point: Some(LineRange::new(12, 14)),
+                text: "done".into(),
+                words: 1,
+            }],
+            None,
+            &speech,
+        );
+        voice.hush();
+        assert_eq!(voice.pointing(), Some(LineRange::new(12, 14)));
+        assert!(!voice.has_work(), "and the silent walk is over");
+    }
+
+    #[test]
+    #[cfg(target_os = "macos")]
+    fn a_tape_written_to_disk_reads_back_as_one_sound() {
+        // The whole path, with the voice this machine already has: two pieces
+        // rendered, trimmed, streamed into a file, and the header written twice
+        // over the same bytes. A seek off by one would leave a file no player
+        // opens, and nothing else here would notice.
+        let speech = Speech {
+            aloud: true,
+            engine: Engine::System,
+            voice: None,
+            ..Speech::default()
+        };
+        let said = vec![
+            Said {
+                point: None,
+                text: "one two three".into(),
+                words: 3,
+            },
+            Said {
+                point: None,
+                text: "four five six".into(),
+                words: 3,
+            },
+        ];
+
+        let at = scratch("wav");
+        let (length, starts) = joined(&said, &speech, &at).expect("the system voice renders");
+        let bytes = std::fs::read(&at).expect("a tape on disk");
+        let _ = std::fs::remove_file(&at);
+
+        assert_eq!(layout(&bytes), Some((starts.clone(), length)));
+        assert_eq!(samples(&bytes).map(|sound| sound.len()).ok(), Some(length));
+        assert_eq!(starts.first(), Some(&0));
+        assert!(
+            starts[1] > 0 && starts[1] < length,
+            "the second piece starts inside the tape: {starts:?} of {length}"
+        );
+    }
+
+    #[test]
+    fn the_header_is_the_same_size_before_and_after_the_sound() {
+        // The tape is written by putting a blank header down, streaming the
+        // pieces after it, and writing the header again over itself. That only
+        // works while its size depends on how many pieces there are and not on
+        // how long they turned out to be.
+        let blank = header(0, &[0, 0, 0]);
+        let filled = header(4_800, &[0, 1_200, 3_600]);
+        assert_eq!(blank.len(), filled.len());
+        assert_ne!(
+            blank, filled,
+            "and the second write has to say something new"
+        );
+    }
+
+    #[test]
+    fn joined_sound_says_where_every_piece_starts() {
+        // The timing is written into the file beside the sound, so a passage
+        // made on an earlier walk is pointed exactly as the first time.
+        let pcm = vec![0u8; 4_800];
+        let file = wav(&pcm, &[0, 2_400]);
+        assert_eq!(layout(&file), Some((vec![0, 2_400], 4_800)));
+        assert_eq!(samples(&file).map(|sound| sound.len()).ok(), Some(4_800));
+    }
+
+    #[test]
+    fn only_the_silence_in_front_is_taken() {
+        // Google opens every clip with nearly half a second of nothing, and
+        // joined end to end that was a stall at every point. The end is left
+        // alone: that is where the agent's own beat before a point lives.
+        let quiet = [0u8, 0].repeat(24_000);
+        let loud = 4_000i16.to_le_bytes().repeat(100);
+        let clip = [quiet.clone(), loud, quiet.clone()].concat();
+
+        let kept = trimmed(&clip);
+        let run_up = kept.len() - 200 - quiet.len();
+        assert!(
+            run_up <= 4_000,
+            "about 80ms kept in front, got {run_up} bytes"
+        );
+        assert!(kept.ends_with(&quiet), "the tail is untouched");
+    }
+
+    #[test]
+    fn a_changed_voice_is_never_answered_from_the_cache() {
+        let said = one("the guard waves it through");
+        let charon = Speech {
+            voice: Some("en-US-Chirp3-HD-Charon".into()),
+            ..Speech::default()
+        };
+        let other = Speech {
+            voice: Some("en-US-Chirp3-HD-Kore".into()),
+            ..Speech::default()
+        };
+        let quicker = Speech {
+            rate: 210,
+            ..charon.clone()
+        };
+        assert_eq!(kept(&said, &charon), kept(&said, &charon));
+        assert_ne!(kept(&said, &charon), kept(&said, &other));
+        assert_ne!(kept(&said, &charon), kept(&said, &quicker));
+    }
+
+    #[test]
+    fn a_sound_in_another_shape_is_refused_rather_than_joined() {
+        // Laid end to end, a clip at another rate plays at the wrong speed and
+        // throws every point after it out of time.
+        let mut file = wav(&[0u8; 8], &[0]);
+        let rate_at = 12 + 8 + 4;
+        file[rate_at..rate_at + 4].copy_from_slice(&22_050u32.to_le_bytes());
+        assert!(samples(&file).is_err());
     }
 
     #[test]
@@ -1302,7 +1541,7 @@ mod tests {
         // A group with an empty narration should not start a process, and
         // should certainly not stop one that is mid-sentence for it.
         let mut voice = Voice::default();
-        voice.say("   ", &Speech::default());
+        voice.say(one("   "), None, &Speech::default());
         assert!(!voice.talking());
     }
 }
