@@ -550,14 +550,82 @@ impl Token {
         let lit = picking
             .range
             .is_some_and(|(from, to)| at >= from.min(to) && at <= from.max(to));
+        // Being heard: a soft ground under the sentence the voice is on, which
+        // rises and falls rather than jumping from one sentence to the next.
+        let heard = picking
+            .heard
+            .iter()
+            .filter(|((from, to), _)| at >= *from && at <= *to)
+            .map(|(_, level)| *level)
+            .fold(0., f32::max);
+
+        // A pane's name answers the pointer by lighting its pane. It is still a
+        // word a selection can run across, so it keeps `over`; it does not take
+        // `down`, because pressing on it means *that pane*, not *start
+        // selecting here*.
+        if self.mark == Some(Mark::Pane) {
+            let (text, trailing) = split_trailing_space(&self.text);
+            let name = SharedString::from(text.clone());
+            if !picking.names.contains(&name) {
+                return div()
+                    .child(format!("[{text}]{trailing}"))
+                    .into_any_element();
+            }
+            let on = picking.named.as_ref() == Some(&name);
+            let (over, told, clicked) = (
+                picking.over.clone(),
+                picking.name.clone(),
+                picking.name.clone(),
+            );
+            let (entered_name, clicked_name) = (name.clone(), name);
+            return div()
+                .id(("say", at))
+                .flex()
+                .items_center()
+                .cursor_pointer()
+                .on_hover(move |entered, window, cx| {
+                    over(at, *entered, window, cx);
+                    let naming = if *entered {
+                        Naming::Enter
+                    } else {
+                        Naming::Leave
+                    };
+                    told(entered_name.clone(), naming, window, cx);
+                })
+                .on_click(move |_, window, cx| {
+                    clicked(clicked_name.clone(), Naming::Click, window, cx);
+                })
+                .child(
+                    div()
+                        .px(px(5.))
+                        .rounded(px(3.))
+                        .text_color(paint(palette.accent))
+                        .bg(paint(
+                            palette
+                                .accent
+                                .mix(palette.band, if on { 0.72 } else { 0.88 }),
+                        ))
+                        .border_1()
+                        .border_color(paint(
+                            palette.accent.mix(palette.band, if on { 0.3 } else { 0.7 }),
+                        ))
+                        .child(text),
+                )
+                .child(trailing)
+                .into_any_element();
+        }
         let (down, over) = (picking.down.clone(), picking.over.clone());
+        let pickable = picking.pickable;
         let wrap = move |inner: AnyElement| {
             div()
                 .id(("say", at))
-                .cursor_pointer()
+                .when(pickable, |this| this.cursor_pointer())
                 .when(lit, |this| {
                     this.bg(paint(palette.accent.mix(palette.band, 0.74)))
                         .rounded(px(2.))
+                })
+                .when(!lit && heard > 0., |this| {
+                    this.bg(paint(palette.band.mix(palette.accent, 0.2 * heard)))
                 })
                 .on_mouse_down(MouseButton::Left, move |_, window, cx| {
                     down(at, window, cx);
