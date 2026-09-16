@@ -318,9 +318,9 @@ pub struct Comment {
 
 /// Whether a remark waits for a gap, or takes the floor.
 ///
-/// This is about **turn-taking**, not about whether the agent hears you. Both
-/// reach it. The difference is when, and it is the same difference as in a
-/// room: you can put your hand up, or you can cut in.
+/// This is about **turn-taking**, and about whether the agent hears you now or
+/// at the end. It is the same difference as in a room: you can keep your note
+/// to yourself until the meeting is over, put your hand up, or cut in.
 ///
 /// A second axis, and it does not overlap [`Kind`]. Kind is *what you want
 /// done*; this is *when you want the floor*. Every combination is meaningful —
@@ -329,11 +329,19 @@ pub struct Comment {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case", from = "String")]
 pub enum When {
+    /// Kept until the review is submitted, and handed over with it.
+    ///
+    /// The default, because a reader in the middle of a deck is still reading.
+    /// An agent woken by every remark starts work on the first one while the
+    /// third is still being written, and the reader pays for that in noise and
+    /// in tokens. Everything deferred arrives at once, in order, when they
+    /// press submit.
+    #[default]
+    Defer,
     /// Wait for a gap. Delivered once the agent stops speaking.
     ///
-    /// The polite default, and the right one for a face: a thumbs-up while
-    /// somebody is mid-sentence should not stop them.
-    #[default]
+    /// For a reader who wants an answer during the walk without cutting a
+    /// sentence in half.
     Queue,
     /// Take the floor. The voice stops and this is delivered at once.
     Interrupt,
@@ -344,7 +352,8 @@ impl From<String> for When {
     fn from(name: String) -> Self {
         match name.as_str() {
             "interrupt" => Self::Interrupt,
-            _ => Self::Queue,
+            "queue" => Self::Queue,
+            _ => Self::Defer,
         }
     }
 }
