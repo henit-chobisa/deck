@@ -255,6 +255,28 @@ fn one_pane_per_block(pointing: &[Pointing]) -> anyhow::Result<()> {
     Ok(())
 }
 
+/// Refuse two panes of one group with the same name.
+///
+/// The prose names a pane to say which one it means. Two answering to the same
+/// name is the ambiguity naming was brought in to remove.
+fn one_pane_per_name(pointing: &[Pointing]) -> anyhow::Result<()> {
+    let names: Vec<&str> = pointing
+        .iter()
+        .filter_map(|one| match one {
+            Pointing::Code(named) => named.name.as_deref(),
+            Pointing::Drawn(_) => None,
+        })
+        .collect();
+    for (ix, name) in names.iter().enumerate() {
+        anyhow::ensure!(
+            !names[ix + 1..].contains(name),
+            "two panes in this group are both named [{name}]. A name is how the \
+             prose says which pane it means, so each one needs its own."
+        );
+    }
+    Ok(())
+}
+
 /// Add a group to the deck at `root`.
 ///
 /// `ord` is worked out from what is already there, so groups can be written one
@@ -278,6 +300,7 @@ pub fn group(root: &Path, say: &str, pointing: Vec<Pointing>) -> anyhow::Result<
 
     show_code_do_not_type_it(say)?;
     one_pane_per_block(&pointing)?;
+    one_pane_per_name(&pointing)?;
     point_at_code_that_exists(root, &pointing)?;
 
     let ord = next_ord(root);
@@ -292,6 +315,7 @@ pub fn group(root: &Path, say: &str, pointing: Vec<Pointing>) -> anyhow::Result<
                     file: named.file,
                     range: named.range,
                     note: named.note,
+                    name: named.name,
                     after: named.after,
                 }),
                 Pointing::Drawn(diagram) => Ref::Diagram(DiagramRef {
@@ -606,6 +630,30 @@ mod tests {
             serde_json::from_str(&std::fs::read_to_string(root.join("g2.json")).unwrap()).unwrap();
         assert_eq!(second.ord, Some(2));
         assert_eq!(second.id, "g2");
+    }
+
+    #[test]
+    fn two_panes_cannot_answer_to_one_name() {
+        // A name is how the prose says which pane it means. Two with the same
+        // one is the ambiguity names were brought in to remove.
+        let at = scratch("names");
+        let root = new(&at, "One", None, None).unwrap();
+        let named = |arg: &str| Pointing::Code(crate::refs::parse(arg).expect("a ref that parses"));
+
+        let refused = group(
+            &root,
+            "the [retry] pane",
+            vec![named("a.rs:1-2 [retry]"), named("b.rs:1-2 [retry]")],
+        );
+        assert!(refused.is_err());
+        assert!(
+            group(
+                &root,
+                "fine",
+                vec![named("a.rs:1-2 [retry]"), named("b.rs:1-2 [write]")]
+            )
+            .is_ok()
+        );
     }
 
     #[test]
