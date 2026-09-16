@@ -10,6 +10,13 @@
 //! File, colon, range, then — after a single space — whatever is left is the
 //! note. It parses from the right rather than the left, because a Windows path
 //! has a colon in it and a note may have anything in it at all.
+//!
+//! A note may open with a name in brackets, which is what the prose calls the
+//! pane:
+//!
+//! ```text
+//! src/batch.ts:140-148 [retry] decremented *twice* when the write fails
+//! ```
 
 use std::path::PathBuf;
 
@@ -24,6 +31,8 @@ pub struct Named {
     pub range: LineRange,
     /// The note, if one was given.
     pub note: Option<String>,
+    /// The pane's name, from a `[name]` at the front of the note.
+    pub name: Option<String>,
     /// What the range should become, when the ref is a proposed change rather
     /// than something to look at. Set by the caller, not by the syntax.
     pub after: Option<String>,
@@ -60,9 +69,12 @@ pub fn parse(argument: &str) -> anyhow::Result<Named> {
             .map_err(|_| anyhow::anyhow!("`{text}` is not a {which} line number, in `{argument}`"))
     };
 
+    let (name, note) = named(note)?;
+
     Ok(Named {
         file: PathBuf::from(file),
         range: LineRange::new(number(first, "first")?, number(last, "last")?),
+        name,
         note: note.filter(|note| !note.is_empty()),
         // The syntax carries no replacement — `--after` is a flag of its own,
         // because a replacement is several lines and a ref is one.
@@ -70,9 +82,64 @@ pub fn parse(argument: &str) -> anyhow::Result<Named> {
     })
 }
 
+/// A `[name]` at the front of a note, and the note after it.
+///
+/// Something that looks like a name and is not one is refused rather than left
+/// in the note. An agent that wrote `[Retry]` meant to name the pane, and a note
+/// that silently kept the brackets would leave every `[Retry]` in its prose
+/// pointing at nothing.
+fn named(note: Option<String>) -> anyhow::Result<(Option<String>, Option<String>)> {
+    let Some(note) = note else {
+        return Ok((None, None));
+    };
+    let Some((inside, rest)) = note
+        .strip_prefix('[')
+        .and_then(|after| after.split_once(']'))
+    else {
+        return Ok((None, Some(note)));
+    };
+    let wordlike = !inside.is_empty()
+        && inside
+            .chars()
+            .all(|ch| ch.is_alphanumeric() || ch == '-' || ch == '_');
+    if !wordlike {
+        return Ok((None, Some(note)));
+    }
+    anyhow::ensure!(
+        deck_core::protocol::valid_name(inside),
+        "`[{inside}]` cannot name a pane. A name is one lowercase word, with \
+         digits or dashes after the first letter, like `[retry]` or \
+         `[batch-2]`; `pause` and `point` are taken."
+    );
+    Ok((Some(inside.to_string()), Some(rest.trim().to_string())))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_name_in_brackets_names_the_pane() {
+        let got = named("src/batch.ts:140-148 [retry] decremented *twice*");
+        assert_eq!(got.name.as_deref(), Some("retry"));
+        assert_eq!(got.note.as_deref(), Some("decremented *twice*"));
+
+        let bare = named("src/batch.ts:140-148 [batch-2]");
+        assert_eq!(bare.name.as_deref(), Some("batch-2"));
+        assert_eq!(bare.note, None);
+    }
+
+    #[test]
+    fn a_name_that_cannot_be_one_is_refused_not_kept() {
+        // `[Retry]` meant a name. Kept in the note, every `[Retry]` in the
+        // prose would point at nothing, and nobody would be told why.
+        assert!(parse("a.rs:1-2 [Retry] note").is_err());
+        assert!(parse("a.rs:1-2 [pause] note").is_err());
+        // Brackets around more than a word are just a note.
+        let prose = named("a.rs:1-2 [see the other pane] note");
+        assert_eq!(prose.name, None);
+        assert_eq!(prose.note.as_deref(), Some("[see the other pane] note"));
+    }
 
     #[test]
     fn a_ref_carries_no_replacement_of_its_own() {
