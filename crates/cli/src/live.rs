@@ -43,6 +43,14 @@ pub enum RequestBody {
         /// Ref id used to disambiguate repeated panes for one file.
         #[serde(skip_serializing_if = "Option::is_none")]
         pane: Option<String>,
+        /// What the range should become, drawn as a change rather than a
+        /// highlight.
+        ///
+        /// The live half of an authored `--after`: an answer that proposes
+        /// code can put the code on the screen instead of describing it. The
+        /// file on disk is never touched.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        after: Option<String>,
     },
     /// Say something to the reader, beside whatever is currently on screen.
     ///

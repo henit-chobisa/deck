@@ -605,6 +605,7 @@ mod tests {
                     range: deck_core::LineRange::single(1),
                     group: None,
                     pane: None,
+                    after: None,
                 },
                 Duration::from_secs(1),
             )
@@ -631,6 +632,7 @@ mod tests {
                             range: deck_core::LineRange::single(3),
                             group: None,
                             pane: None,
+                            after: None,
                         },
                         Duration::from_secs(1),
                     )
