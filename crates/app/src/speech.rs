@@ -26,12 +26,19 @@
 //! process that reads stdin and exits is a thing that can be started and killed,
 //! which is the entire interface needed here.
 
-use std::io::Write as _;
+use std::collections::VecDeque;
+use std::io::{Seek as _, Write as _};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
+use std::sync::atomic::{AtomicU64, Ordering as AtomicOrdering};
+use std::sync::mpsc::{Receiver, TryRecvError};
+use std::time::{Duration, Instant};
 
+use deck_core::LineRange;
 use deck_core::config::{Engine, Speech};
 use gpui_kit::{App, Global};
+
+use crate::prose::Said;
 
 /// What the config said about the voice.
 ///
