@@ -85,6 +85,38 @@ pub struct Picking {
     pub down: Down,
     /// The pointer entered or left this word.
     pub over: Over,
+    /// The names of the panes on screen. A bracketed word that is not one of
+    /// them is drawn as the text it is.
+    pub names: Vec<SharedString>,
+    /// The pane name the reader has lit, if any.
+    pub named: Option<SharedString>,
+    /// The pointer did something to a pane's name.
+    pub name: Name,
+    /// The sentences being heard, as word ranges, each with how lit it is.
+    ///
+    /// Two at most: the one coming up and the one going out.
+    pub heard: Vec<((usize, usize), f32)>,
+    /// Whether the words can be picked at all. The rail's record cannot, and a
+    /// pointer hand over words that do nothing is a promise it breaks.
+    pub pickable: bool,
+}
+
+impl Picking {
+    /// Prose that is read but not picked from: the rail's record of what was
+    /// said. It still lights the sentence being heard.
+    #[must_use]
+    pub fn quiet(heard: Vec<((usize, usize), f32)>) -> Self {
+        Self {
+            range: None,
+            down: std::rc::Rc::new(|_, _, _| {}),
+            over: std::rc::Rc::new(|_, _, _, _| {}),
+            names: Vec::new(),
+            named: None,
+            name: std::rc::Rc::new(|_, _, _, _| {}),
+            heard,
+            pickable: false,
+        }
+    }
 }
 
 /// Every word of `say`, in order, each keeping the space that followed it.
@@ -424,22 +456,77 @@ pub fn render(
     mono: SharedString,
     picking: &Picking,
 ) -> impl IntoElement {
-    div().v_flex().gap(px(9.)).children(
+    render_look(paragraphs, palette, mono, picking, Look::band(palette))
+}
+
+/// How a stretch of prose is set.
+#[derive(Debug, Clone, Copy)]
+pub struct Look {
+    /// Text size.
+    pub size: f32,
+    /// Line height.
+    pub leading: f32,
+    /// The colour of ordinary words.
+    pub tone: deck_core::theme::Rgb,
+}
+
+impl Look {
+    /// The band: the thing being read.
+    #[must_use]
+    pub fn band(palette: &Palette) -> Self {
+        Self {
+            size: 13.2,
+            leading: 21.,
+            tone: palette.fg,
+        }
+    }
+
+    /// The rail: a record of the conversation beside the thing being read.
+    ///
+    /// Smaller, and a shade off the page's own ink. Set the same as the band,
+    /// a long answer in the rail reads as the subject rather than as a note
+    /// about it.
+    #[must_use]
+    pub fn rail(palette: &Palette) -> Self {
+        Self {
+            size: 12.2,
+            leading: 18.6,
+            tone: palette.fg.mix(palette.muted, 0.22),
+        }
+    }
+}
+
+/// [`render`], set the way the caller wants it.
+#[must_use]
+pub fn render_look(
+    paragraphs: Vec<Paragraph>,
+    palette: &Palette,
+    mono: SharedString,
+    picking: &Picking,
+    look: Look,
+) -> impl IntoElement {
+    div().v_flex().gap(px(look.leading * 0.42)).children(
         paragraphs
             .into_iter()
-            .map(|para| para.render(palette, mono.clone(), picking)),
+            .map(|para| para.render(palette, mono.clone(), picking, look)),
     )
 }
 
 impl Paragraph {
-    fn render(self, palette: &Palette, mono: SharedString, picking: &Picking) -> impl IntoElement {
+    fn render(
+        self,
+        palette: &Palette,
+        mono: SharedString,
+        picking: &Picking,
+        look: Look,
+    ) -> impl IntoElement {
         div()
             .flex()
             .flex_wrap()
             .items_center()
-            .text_size(px(13.2))
-            .line_height(px(21.))
-            .text_color(paint(palette.fg))
+            .text_size(px(look.size))
+            .line_height(px(look.leading))
+            .text_color(paint(look.tone))
             .children(
                 self.tokens
                     .into_iter()
