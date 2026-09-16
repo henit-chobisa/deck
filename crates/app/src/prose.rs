@@ -14,6 +14,7 @@
 //! the same primitive a code row uses. Wrapping, selection and measurement come
 //! from GPUI rather than from a flex box full of word fragments.
 
+use deck_core::LineRange;
 use deck_core::theme::Palette;
 use gpui_kit::component::StyledExt as _;
 use gpui_kit::prelude::FluentBuilder as _;
@@ -218,6 +219,8 @@ pub fn spoken(say: &str, pause: u16) -> String {
                 .iter()
                 .map(|token| match token.mark {
                     Some(Mark::Code) => aloud(&token.text),
+                    // Said as the words it is made of. `batch-2` is "batch 2".
+                    Some(Mark::Pane) => aloud(&token.text.replace('-', " ")),
                     _ => token.text.to_string(),
                 })
                 .collect::<String>()
@@ -662,7 +665,7 @@ impl Token {
                 .text_color(paint(palette.accent))
                 .child(self.text)
                 .into_any_element(),
-            None => div().child(self.text).into_any_element(),
+            None | Some(Mark::Pane) => div().child(self.text).into_any_element(),
         })
     }
 }
@@ -770,11 +773,19 @@ fn closes(after_open: &str, marker: &str, before: Option<char>) -> Option<usize>
 /// One paragraph, split into the runs it can wrap between.
 fn paragraph(para: &str, keep_beats: bool, said: &mut usize, at: &mut usize) -> Paragraph {
     // A newline inside a paragraph is the agent's line wrapping, not a break.
-    let flowed = para.replace('\n', " ");
+    // A point is an instruction about the code pane. It is taken out here
+    // rather than only where the voice is fed, because the band renders from
+    // this too and a reader who sees `[point 106]` mid-sentence has been given
+    // the stage directions instead of the play.
+    let flowed = unpoint(&para.replace('\n', " "));
     // Beats are for the ear. Left in, they render as literal brackets in the
     // middle of a sentence; taken out of the spoken copy, the agent's pacing is
     // lost. So each side gets what it needs from the same source.
     let source = if keep_beats { flowed } else { unbeat(&flowed) };
+    // A beat or a point at the very start of a paragraph leaves the space that
+    // followed it, which became a word of its own: an indent on the page, and
+    // one word too many for the voice to count its way back to.
+    let source = source.trim().to_string();
     let mut tokens: Vec<Token> = Vec::new();
     let mut plain = String::new();
     let mut rest = source.as_str();
@@ -820,6 +831,27 @@ fn paragraph(para: &str, keep_beats: bool, said: &mut usize, at: &mut usize) -> 
     }
 
     'outer: while !rest.is_empty() {
+        // A pane's name. Tried before the marks, and only for the exact shape a
+        // name has, so a bracket in ordinary prose stays ordinary.
+        if let Some((name, len)) = pane_name_at(rest) {
+            flush(&mut plain, &mut tokens, said, at);
+            rest = &rest[len..];
+            let spacing: String = rest.chars().take_while(|c| *c == ' ').collect();
+            rest = &rest[spacing.len()..];
+            let text = format!("{name}{spacing}");
+            let ended = ends_a_sentence(&text);
+            tokens.push(Token {
+                text: SharedString::from(text),
+                mark: Some(Mark::Pane),
+                at: *at,
+                said: *said,
+            });
+            *at += 1;
+            if ended {
+                *said += 1;
+            }
+            continue 'outer;
+        }
         for (marker, mark) in MARKS {
             let Some(after_open) = rest.strip_prefix(marker) else {
                 continue;
