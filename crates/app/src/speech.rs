@@ -151,22 +151,45 @@ fn listed(out: &str) -> Vec<Installed> {
 /// one guessed at.
 pub const WHERE: &str = "System Settings → Accessibility → Read & Speak\n    → System Voice → Manage Voices… → English → anything marked Premium\n\n    (macOS 15 and earlier call that pane Spoken Content)";
 
+/// Whose words a passage is, so they can be lit on the page as they are heard.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Narration {
+    /// A group's own narration, by index.
+    Group(usize),
+    /// An answer the agent gave during the walk, by its place in the transcript.
+    Answer(usize),
+}
+
 /// A voice, what it is saying, and what it has still to say.
 ///
-/// Utterances queue. They used to replace: saying a second thing killed the
-/// first mid-word, so an agent that answered in three sentences was heard
-/// saying only the last one. A reply is not an interruption of itself.
+/// A passage is one `say`: everything the agent sent in one breath, cut where
+/// it pointed. Passages queue. They used to replace: saying a second thing
+/// killed the first mid-word, so an agent that answered in three sentences was
+/// heard saying only the last one. A reply is not an interruption of itself.
+///
+/// The pieces *inside* a passage do not queue, and that is what stopped the
+/// voice stalling every time it pointed. Each piece used to be an utterance of
+/// its own — its own request to the engine, its own file, its own player — and
+/// the voice went quiet for as long as all of that took, every time the finger
+/// moved. It sounded like somebody reading a sentence, stopping to point, and
+/// starting again. Now the pieces are rendered together and played as one
+/// sound, and the points ride on that sound's clock.
 #[derive(Debug, Default)]
 pub struct Voice {
-    said: Option<Child>,
-    /// Waiting their turn, in the order they were given.
-    next: std::collections::VecDeque<String>,
-    /// A cloud utterance being fetched on a worker thread.
+    /// Passages waiting their turn, in the order they were given.
+    next: VecDeque<(Vec<Said>, Option<Narration>)>,
+    /// A passage being rendered on a worker thread.
     ///
-    /// Held so the paint thread never blocks on a network round trip. The
-    /// window asks each frame whether it has arrived; until it has, the voice
-    /// is simply not talking yet.
-    fetching: Option<std::sync::mpsc::Receiver<anyhow::Result<PathBuf>>>,
+    /// Held so the paint thread never blocks on a network round trip. Until it
+    /// arrives the voice counts as talking, because something is on its way.
+    fetching: Option<(Receiver<anyhow::Result<Ready>>, Option<Narration>)>,
+    /// The passage being heard, or walked in silence.
+    playing: Option<Playing>,
+    /// Where the last passage left the finger.
+    ///
+    /// Kept when the passage ends: an argument that finished on line 118 did
+    /// not stop being about line 118 because the voice went quiet.
+    now: Option<LineRange>,
 }
 
 impl Voice {
@@ -314,6 +337,581 @@ impl Drop for Voice {
     fn drop(&mut self) {
         self.hush();
     }
+}
+
+/// A passage, ready to be heard.
+#[derive(Debug)]
+struct Ready {
+    sound: Sound,
+    /// When each piece begins, from the start of the sound, and where it points.
+    marks: Vec<(Duration, Option<LineRange>)>,
+    /// How long the whole passage lasts.
+    length: Duration,
+    /// How many words of the page each piece is, in the order of `marks`.
+    words: Vec<usize>,
+}
+
+/// What carries a passage to the reader.
+#[derive(Debug)]
+enum Sound {
+    /// Rendered ahead of time and joined, so every point is timed exactly.
+    File {
+        at: PathBuf,
+        /// Kept for next time, rather than removed once heard.
+        keep: bool,
+    },
+    /// Handed to a program that speaks as it reads. Deck cannot see inside
+    /// that, so the points are timed from the words.
+    Piped(String),
+    /// Nothing is heard. The points still walk, at reading pace.
+    Quiet,
+}
+
+/// A passage being heard, or walked in silence.
+#[derive(Debug)]
+struct Playing {
+    child: Option<Child>,
+    /// The rendered sound, removed once it has been heard.
+    file: Option<PathBuf>,
+    quiet: bool,
+    since: Instant,
+    marks: Vec<(Duration, Option<LineRange>)>,
+    length: Duration,
+    words: Vec<usize>,
+    of: Option<Narration>,
+}
+
+/// How far ahead of its words a point starts to rise.
+///
+/// The light fades in. Started on the first word, it would still be arriving
+/// halfway through the sentence; started in the breath before it, it is there
+/// when the sentence is.
+const LEAD: Duration = Duration::from_millis(220);
+
+impl Playing {
+    /// Start a ready passage, or say that nothing here can.
+    fn start(ready: Ready, of: Option<Narration>, speech: &Speech) -> Option<Self> {
+        let (child, file, quiet) = match ready.sound {
+            Sound::File { at, keep } => (Some(play(&at)?), (!keep).then_some(at), false),
+            Sound::Piped(text) => {
+                let mut child = start(&text, speech)?;
+                // Written to stdin rather than passed as an argument, because a
+                // narration is prose: it has quotes and dashes in it, and it can
+                // be longer than a command line is allowed to be.
+                if let Some(stdin) = child.stdin.as_mut() {
+                    let _ = stdin.write_all(prepared(&text, speech).as_bytes());
+                }
+                // Dropped so the child sees the end of its input and starts.
+                drop(child.stdin.take());
+                (Some(child), None, false)
+            }
+            Sound::Quiet => (None, None, true),
+        };
+        Some(Self {
+            child,
+            file,
+            quiet,
+            since: Instant::now(),
+            marks: ready.marks,
+            length: ready.length,
+            words: ready.words,
+            of,
+        })
+    }
+
+    /// Whether the passage has been heard to its end.
+    fn over(&mut self) -> bool {
+        match self.child.as_mut() {
+            Some(child) => !matches!(child.try_wait(), Ok(None)),
+            None => self.since.elapsed() >= self.length,
+        }
+    }
+
+    /// Where the passage points at this moment.
+    fn pointing(&self) -> Option<LineRange> {
+        let heard = self.since.elapsed() + LEAD;
+        self.marks
+            .iter()
+            .take_while(|(from, _)| *from <= heard)
+            .last()
+            .and_then(|(_, point)| *point)
+    }
+
+    /// Which word of the page is being heard.
+    ///
+    /// Exact to the piece, and an estimate inside it: a piece's words are
+    /// spread evenly over its length. Lit a sentence at a time, the difference
+    /// does not show.
+    #[allow(clippy::cast_possible_truncation, clippy::cast_precision_loss)]
+    fn hearing(&self) -> Option<(Narration, usize)> {
+        let of = self.of?;
+        let heard = self.since.elapsed() + LEAD;
+        let piece = self.marks.iter().rposition(|(from, _)| *from <= heard)?;
+        let start = self.marks[piece].0;
+        let end = self
+            .marks
+            .get(piece + 1)
+            .map_or(self.length, |(from, _)| *from);
+        let span = end.saturating_sub(start).as_secs_f32().max(0.001);
+        let along = (heard.saturating_sub(start).as_secs_f32() / span).clamp(0., 1.);
+        let count = self.words.get(piece).copied().unwrap_or(0);
+        let before: usize = self.words.iter().take(piece).sum();
+        let within = ((along * count as f32) as usize).min(count.saturating_sub(1));
+        Some((of, before + within))
+    }
+}
+
+impl Drop for Playing {
+    fn drop(&mut self) {
+        if let Some(mut child) = self.child.take() {
+            let _ = child.kill();
+            let _ = child.wait();
+        }
+        if let Some(at) = self.file.take() {
+            let _ = std::fs::remove_file(at);
+        }
+    }
+}
+
+/// Whether this engine can render a passage before it is heard.
+///
+/// Only a rendered passage can be timed exactly. A program that speaks as it
+/// reads is a closed box: deck hears when it ends, and nothing about where it
+/// has got to.
+fn renders(speech: &Speech) -> bool {
+    speech.aloud
+        && match speech.engine {
+            Engine::Google => true,
+            Engine::System => cfg!(target_os = "macos"),
+            Engine::Command => false,
+        }
+}
+
+/// A passage timed from its words, for a sound deck cannot see inside.
+///
+/// The same words-a-minute the synthesiser is given, so the light walks at the
+/// pace the reader chose rather than at a second pace invented for silence. It
+/// is a guess at where somebody has got to, and only a guess.
+fn timed(said: &[Said], speech: &Speech) -> Ready {
+    let mut marks = Vec::with_capacity(said.len());
+    let mut length = Duration::ZERO;
+    for piece in said {
+        marks.push((length, piece.point));
+        length += reading(&piece.text, speech.words_a_minute());
+    }
+    let sound = if speech.aloud {
+        let text: Vec<&str> = said.iter().map(|piece| piece.text.as_str()).collect();
+        Sound::Piped(text.join(" "))
+    } else {
+        Sound::Quiet
+    };
+    Ready {
+        sound,
+        marks,
+        length,
+        words: said.iter().map(|piece| piece.words).collect(),
+    }
+}
+
+/// How long this takes to read at `rate` words a minute.
+fn reading(text: &str, rate: u16) -> Duration {
+    #[allow(clippy::cast_precision_loss)]
+    let words = crate::prose::unbeat(text).split_whitespace().count().max(1) as f32;
+    Duration::from_secs_f32(words / f32::from(rate.max(1)) * 60.)
+}
+
+/// Samples a second in every rendered piece.
+///
+/// Both engines are asked for exactly this, because pieces can only be laid end
+/// to end if they agree — and then the length of each one is a matter of
+/// counting bytes.
+const RATE: u32 = 24_000;
+
+/// Bytes of sound a second: one channel, sixteen bits.
+const BYTES_A_SECOND: u64 = RATE as u64 * 2;
+
+fn lasting(bytes: usize) -> Duration {
+    let bytes = u64::try_from(bytes).unwrap_or(u64::MAX);
+    Duration::from_micros(bytes.saturating_mul(1_000_000) / BYTES_A_SECOND)
+}
+
+/// The pieces of a passage as the voice takes them: trimmed, and none empty.
+///
+/// Shared by the walk and the look-ahead, because the cache is keyed by the
+/// pieces. Two spellings of the same passage would render it twice.
+fn passage(said: Vec<Said>) -> Vec<Said> {
+    said.into_iter()
+        .map(|piece| Said {
+            text: piece.text.trim().to_string(),
+            ..piece
+        })
+        .filter(|piece| !piece.text.is_empty())
+        .collect()
+}
+
+/// Render these passages before anybody asks for them.
+///
+/// Turning to a group used to wait for its voice to be made, which for a cloud
+/// voice is seconds of silence at exactly the moment the reader acted. Made in
+/// the background as soon as the deck is open, one passage after another in the
+/// order given, the sound is already on disk when the reader gets there.
+///
+/// Failures are ignored here. The walk asks again, and that is the attempt
+/// that says what went wrong.
+pub fn preload(passages: Vec<Vec<Said>>, speech: &Speech) {
+    if !renders(speech) {
+        return;
+    }
+    let speech = speech.clone();
+    let _ = std::thread::Builder::new()
+        .name("deck-voice-ahead".into())
+        .spawn(move || {
+            for said in passages {
+                let said = passage(said);
+                if !said.is_empty() {
+                    let _ = rendered(&said, &speech);
+                }
+            }
+        });
+}
+
+/// A passage, from the cache if it has been made before.
+///
+/// One render per passage however many ask at once: the walk and the
+/// look-ahead both want the group on screen, and the second waits for the
+/// first and then finds it on disk.
+fn rendered(said: &[Said], speech: &Speech) -> anyhow::Result<Ready> {
+    let Some(at) = kept(said, speech) else {
+        let at = scratch("wav");
+        let (length, starts) = joined(said, speech, &at)?;
+        return Ok(ready(at, false, said, &starts, length));
+    };
+    let turn = turn_for(&at);
+    let _mine = turn
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    if let Some(found) = recalled(&at, said) {
+        return Ok(found);
+    }
+    if let Some(dir) = at.parent() {
+        std::fs::create_dir_all(dir)?;
+        forget_old(dir);
+    }
+    // Written beside and moved into place, so a player never opens half a file.
+    // A failed render leaves the part behind, which is what `forget_old` sweeps.
+    let partial = at.with_extension(format!("{}.part", std::process::id()));
+    let (length, starts) = joined(said, speech, &partial)?;
+    std::fs::rename(&partial, &at)?;
+    Ok(ready(at, true, said, &starts, length))
+}
+
+/// Where a passage is kept between walks.
+///
+/// Named by everything that changes the sound — the engine, the voice, the pace,
+/// the pause and the words of every piece — so a deck opened twice is rendered
+/// once, and a changed voice is never answered with the old one.
+fn kept(said: &[Said], speech: &Speech) -> Option<PathBuf> {
+    use sha2::{Digest as _, Sha256};
+
+    let mut key = Sha256::new();
+    key.update(b"deck voice 1\0");
+    key.update(format!(
+        "{:?}\0{}\0{}\0{}\0",
+        speech.engine,
+        speech.voice.as_deref().unwrap_or_default(),
+        speech.words_a_minute(),
+        speech.pause
+    ));
+    for piece in said {
+        key.update(piece.text.as_bytes());
+        key.update(b"\0");
+    }
+    let name: String = key
+        .finalize()
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect();
+    Some(
+        deck_core::home::deck()?
+            .join("voice")
+            .join(format!("{name}.wav")),
+    )
+}
+
+/// The lock that lets only one thread make a given file.
+fn turn_for(at: &Path) -> std::sync::Arc<std::sync::Mutex<()>> {
+    type Turns =
+        std::sync::Mutex<std::collections::HashMap<PathBuf, std::sync::Arc<std::sync::Mutex<()>>>>;
+    static TURNS: std::sync::OnceLock<Turns> = std::sync::OnceLock::new();
+    TURNS
+        .get_or_init(Turns::default)
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .entry(at.to_path_buf())
+        .or_default()
+        .clone()
+}
+
+/// A passage made on an earlier walk, if it is on disk and still fits.
+fn recalled(at: &Path, said: &[Said]) -> Option<Ready> {
+    let bytes = std::fs::read(at).ok()?;
+    let (starts, sound) = layout(&bytes)?;
+    if starts.len() != said.len() {
+        return None;
+    }
+    // Touched, so clearing out goes by when a sound was last wanted rather than
+    // when it was first made.
+    if let Ok(file) = std::fs::File::options().append(true).open(at) {
+        let _ = file.set_modified(std::time::SystemTime::now());
+    }
+    Some(ready(at.to_path_buf(), true, said, &starts, sound))
+}
+
+fn ready(at: PathBuf, keep: bool, said: &[Said], starts: &[usize], bytes: usize) -> Ready {
+    Ready {
+        sound: Sound::File { at, keep },
+        marks: said
+            .iter()
+            .zip(starts)
+            .map(|(piece, start)| (lasting(*start), piece.point))
+            .collect(),
+        length: lasting(bytes),
+        words: said.iter().map(|piece| piece.words).collect(),
+    }
+}
+
+/// Clear out sounds nobody has wanted for a month, once a run.
+///
+/// Without it the cache is every sentence ever narrated to this machine.
+fn forget_old(dir: &Path) {
+    static ONCE: std::sync::Once = std::sync::Once::new();
+    ONCE.call_once(|| {
+        let Ok(entries) = std::fs::read_dir(dir) else {
+            return;
+        };
+        let now = std::time::SystemTime::now();
+        for entry in entries.flatten() {
+            let path = entry.path();
+            let partial = path
+                .file_name()
+                .and_then(|name| name.to_str())
+                .is_some_and(|name| name.ends_with(".part"));
+            let limit = if partial {
+                Duration::from_secs(60 * 60 * 24)
+            } else {
+                Duration::from_secs(60 * 60 * 24 * 30)
+            };
+            let old = entry
+                .metadata()
+                .and_then(|meta| meta.modified())
+                .ok()
+                .and_then(|when| now.duration_since(when).ok())
+                .is_some_and(|age| age > limit);
+            if old {
+                let _ = std::fs::remove_file(path);
+            }
+        }
+    });
+}
+
+/// Every piece rendered at once, trimmed, and laid end to end.
+///
+/// All at once, so the wait before the voice starts is the slowest piece rather
+/// than all of them added up. Returns the sound, and the byte each piece starts
+/// at in it.
+fn joined(said: &[Said], speech: &Speech, into: &Path) -> anyhow::Result<(usize, Vec<usize>)> {
+    let pieces: Vec<anyhow::Result<Vec<u8>>> = std::thread::scope(|scope| {
+        let working: Vec<_> = said
+            .iter()
+            .map(|piece| scope.spawn(move || samples(&synthesised(&piece.text, speech)?)))
+            .collect();
+        working
+            .into_iter()
+            .map(|work| {
+                work.join()
+                    .unwrap_or_else(|_| Err(anyhow::anyhow!("a voice thread stopped")))
+            })
+            .collect()
+    });
+
+    // Straight onto the disk, not into a buffer. The tape used to be built in
+    // memory and then copied a second time to put a header on it, so a long
+    // answer was held three times over at the peak: the pieces, the tape, and
+    // the file about to be written. Now one piece is in memory at a time.
+    //
+    // The header goes down first with its sizes left blank — they are only
+    // known once the last piece has landed — and is written again at the end,
+    // over itself, with the real length and the real starts in it. Both
+    // writes are the same size because the number of pieces is known from
+    // the start, which is the whole reason this works.
+    let mut tape = std::fs::File::create(into)?;
+    tape.write_all(&header(0, &vec![0; said.len()]))?;
+    let mut starts = Vec::with_capacity(said.len());
+    let mut length = 0;
+    for audio in pieces {
+        let audio = audio?;
+        let sound = trimmed(&audio);
+        starts.push(length);
+        tape.write_all(sound)?;
+        length += sound.len();
+    }
+    tape.seek(std::io::SeekFrom::Start(0))?;
+    tape.write_all(&header(length, &starts))?;
+    Ok((length, starts))
+}
+
+/// One piece as a WAV file's bytes, from whichever engine renders.
+fn synthesised(text: &str, speech: &Speech) -> anyhow::Result<Vec<u8>> {
+    match speech.engine {
+        Engine::Google => fetch(text, speech),
+        _ => said_by_system(text, speech),
+    }
+}
+
+/// A piece with the engine's run-up silence taken off the front.
+///
+/// Google opens every clip with nearly half a second of nothing. Harmless on
+/// one sentence; laid end to end it put that half second in front of every
+/// point, which is the stall this exists to remove. A little is kept, so a
+/// soft first consonant is not clipped.
+///
+/// Only the front. The end of a piece is where the agent's own beat before a
+/// point is, and that silence is meant.
+fn trimmed(pcm: &[u8]) -> &[u8] {
+    const LOUD: u16 = 300;
+    // Eighty milliseconds: one channel, sixteen bits, at the agreed rate.
+    const KEEP: usize = 24_000 * 2 * 80 / 1000;
+    let first = pcm
+        .as_chunks::<2>()
+        .0
+        .iter()
+        .position(|sample| i16::from_le_bytes(*sample).unsigned_abs() > LOUD);
+    first.map_or(pcm, |ix| &pcm[(ix * 2).saturating_sub(KEEP)..])
+}
+
+/// The sound in a WAV file, checked to be the one shape deck joins.
+fn samples(wav: &[u8]) -> anyhow::Result<Vec<u8>> {
+    anyhow::ensure!(
+        wav.len() >= 12 && &wav[..4] == b"RIFF" && &wav[8..12] == b"WAVE",
+        "the voice sent something that is not a WAV file"
+    );
+    let mut at = 12;
+    let mut joinable = false;
+    while at + 8 <= wav.len() {
+        let id = &wav[at..at + 4];
+        let size = usize::try_from(u32::from_le_bytes([
+            wav[at + 4],
+            wav[at + 5],
+            wav[at + 6],
+            wav[at + 7],
+        ]))?;
+        let body = &wav[at + 8..(at + 8).saturating_add(size).min(wav.len())];
+        if id == b"fmt " && body.len() >= 16 {
+            let word = |ix: usize| u16::from_le_bytes([body[ix], body[ix + 1]]);
+            let rate = u32::from_le_bytes([body[4], body[5], body[6], body[7]]);
+            // Plain samples, one channel, the agreed rate, sixteen bits.
+            joinable = word(0) == 1 && word(2) == 1 && rate == RATE && word(14) == 16;
+        }
+        if id == b"data" {
+            anyhow::ensure!(joinable, "the voice sent sound in a shape deck cannot join");
+            // An odd byte would put every later sample out of step by half.
+            return Ok(body[..body.len() & !1].to_vec());
+        }
+        at = at.saturating_add(8 + size + (size & 1));
+    }
+    anyhow::bail!("the voice sent a WAV file with no sound in it")
+}
+
+/// Where each piece starts in a joined sound, as written into the file.
+///
+/// A chunk of deck's own. Players skip chunks they do not know, so the file
+/// stays an ordinary WAV, and the timing travels with the sound it describes
+/// rather than in a second file that could go missing.
+const STARTS: &[u8; 4] = b"dkpc";
+
+/// Samples wrapped in the header a player needs, with the piece starts.
+///
+/// Only the tests build a whole file in memory now. The voice writes the
+/// header, then the sound, then the header again over itself.
+#[cfg(test)]
+fn wav(pcm: &[u8], starts: &[usize]) -> Vec<u8> {
+    [header(pcm.len(), starts), pcm.to_vec()].concat()
+}
+
+/// The bytes in front of the sound: what a player needs, and where each piece
+/// of the passage starts.
+///
+/// Its size depends on how many pieces there are and not on how long they are,
+/// so it can be written before a single sample exists and written again,
+/// exactly over itself, once they are all down.
+fn header(length: usize, starts: &[usize]) -> Vec<u8> {
+    let length = u32::try_from(length).unwrap_or(u32::MAX);
+    let marks: Vec<u8> = starts
+        .iter()
+        .flat_map(|start| u32::try_from(*start).unwrap_or(u32::MAX).to_le_bytes())
+        .collect();
+    let marks_length = u32::try_from(marks.len()).unwrap_or(u32::MAX);
+    let mut out = Vec::with_capacity(marks.len() + 52);
+    out.extend_from_slice(b"RIFF");
+    out.extend_from_slice(
+        &length
+            .saturating_add(marks_length)
+            .saturating_add(44)
+            .to_le_bytes(),
+    );
+    out.extend_from_slice(b"WAVEfmt ");
+    out.extend_from_slice(&16u32.to_le_bytes());
+    out.extend_from_slice(&1u16.to_le_bytes());
+    out.extend_from_slice(&1u16.to_le_bytes());
+    out.extend_from_slice(&RATE.to_le_bytes());
+    out.extend_from_slice(&(RATE * 2).to_le_bytes());
+    out.extend_from_slice(&2u16.to_le_bytes());
+    out.extend_from_slice(&16u16.to_le_bytes());
+    out.extend_from_slice(STARTS);
+    out.extend_from_slice(&marks_length.to_le_bytes());
+    out.extend_from_slice(&marks);
+    out.extend_from_slice(b"data");
+    out.extend_from_slice(&length.to_le_bytes());
+    out
+}
+
+/// The piece starts and the length of the sound, from a file deck wrote.
+fn layout(wav: &[u8]) -> Option<(Vec<usize>, usize)> {
+    let mut at = 12;
+    let mut starts = None;
+    while at + 8 <= wav.len() {
+        let id = &wav[at..at + 4];
+        let size =
+            usize::try_from(u32::from_le_bytes(wav[at + 4..at + 8].try_into().ok()?)).ok()?;
+        let body = wav.get(at + 8..at + 8 + size)?;
+        if id == STARTS {
+            starts = Some(
+                body.as_chunks::<4>()
+                    .0
+                    .iter()
+                    .filter_map(|word| usize::try_from(u32::from_le_bytes(*word)).ok())
+                    .collect(),
+            );
+        }
+        if id == b"data" {
+            return Some((starts?, size));
+        }
+        at += 8 + size + (size & 1);
+    }
+    None
+}
+
+/// A fresh file name in the temporary directory.
+///
+/// A name per use. A shared name let a second render overwrite a file the
+/// player still had open, and pieces now render side by side.
+fn scratch(extension: &str) -> PathBuf {
+    static MADE: AtomicU64 = AtomicU64::new(0);
+    let made = MADE.fetch_add(1, AtomicOrdering::Relaxed);
+    std::env::temp_dir().join(format!(
+        "deck-said-{}-{made}.{extension}",
+        std::process::id()
+    ))
 }
 
 /// The text as this platform's synthesiser wants it.
