@@ -291,26 +291,26 @@ pub struct Comment {
     pub text: String,
 }
 
-/// Whether a remark can wait, or wants the agent to stop.
+/// Whether a remark waits for a gap, or takes the floor.
+///
+/// This is about **turn-taking**, not about whether the agent hears you. Both
+/// reach it. The difference is when, and it is the same difference as in a
+/// room: you can put your hand up, or you can cut in.
 ///
 /// A second axis, and it does not overlap [`Kind`]. Kind is *what you want
-/// done*; this is *when you want it dealt with*, and every combination is
-/// meaningful: a must-fix you are happy to collect at the end, a question you
-/// want answered before the walk goes any further.
-///
-/// Reactions are always [`When::Queue`] — a keystroke that cost nothing should
-/// not be able to derail a walkthrough. Stopping somebody is a thing you do on
-/// purpose, with words.
+/// done*; this is *when you want the floor*. Every combination is meaningful —
+/// a must-fix that can wait for the end of the sentence, a small question that
+/// cannot.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case", from = "String")]
 pub enum When {
-    /// Collect it. The agent reads it when the review comes back.
+    /// Wait for a gap. Delivered once the agent stops speaking.
+    ///
+    /// The polite default, and the right one for a face: a thumbs-up while
+    /// somebody is mid-sentence should not stop them.
     #[default]
     Queue,
-    /// Stop and deal with this now.
-    ///
-    /// During a live walk the agent is watching the event stream, so this is
-    /// the reader reaching through and taking the floor.
+    /// Take the floor. The voice stops and this is delivered at once.
     Interrupt,
 }
 

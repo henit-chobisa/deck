@@ -619,8 +619,13 @@ impl Client {
     /// asleep through the whole conversation and nothing could answer.
     ///
     /// Taken rather than read: the delivered mark advances as this returns, so
-    /// the agent answering and calling `wait` again gets the *next* question
-    /// instead of the same one forever. One waiter, so a file is enough.
+    /// the agent answering and calling `wait` again gets the *next* one instead
+    /// of the same one forever. One waiter, so a file is enough.
+    ///
+    /// Everything the reader did arrives here. Whether they waited for a gap or
+    /// took the floor decided when the window published it, not whether it was
+    /// ever sent — a reaction the author never hears about is a reaction the
+    /// author cannot answer.
     ///
     /// # Errors
     ///
@@ -641,10 +646,13 @@ impl Client {
                     if seen.is_some_and(|seen| event.seq <= seen) {
                         continue;
                     }
-                    // Only what the reader wanted an answer to. A queued
-                    // reaction is collected in the review; stopping the author
-                    // mid-thought is something they did on purpose.
-                    if event.moment.when != deck_core::When::Interrupt {
+                    // Anything the reader did. Both kinds reach the author —
+                    // `when` decided *when* the window let go of it, not
+                    // whether it was ever sent.
+                    if !matches!(
+                        event.moment.what,
+                        deck_core::What::Wrote | deck_core::What::Reacted
+                    ) {
                         continue;
                     }
                     if best.as_ref().is_none_or(|held| event.seq < held.seq) {
@@ -925,10 +933,10 @@ mod tests {
     }
 
     #[test]
-    fn only_an_interrupt_wakes_the_author() {
-        // A queued reaction is collected in the review. A keystroke that cost
-        // the reader nothing must not be able to stop somebody mid-thought, so
-        // it never reaches the agent blocked in `deck wait`.
+    fn both_kinds_reach_the_author() {
+        // `when` is about the floor, not about being heard. Waiting for a gap
+        // decides *when* the window lets go of a remark; a reaction the author
+        // never hears about is a reaction the author cannot answer.
         let temp = tempfile::tempdir().unwrap();
         let runtime = temp.path().join("runtime");
         let deck = deck_dir(temp.path());
@@ -938,19 +946,22 @@ mod tests {
         owner
             .publish(moment("a reaction", deck_core::When::Queue))
             .unwrap();
-        assert!(
-            client.take_asked().unwrap().is_none(),
-            "queued, so nobody is woken"
-        );
-
         owner
             .publish(moment(
                 "so it fires on every edit?",
                 deck_core::When::Interrupt,
             ))
             .unwrap();
-        let asked = client.take_asked().unwrap().expect("an interrupt is taken");
-        assert_eq!(asked.moment.text, "so it fires on every edit?");
+
+        assert_eq!(
+            client.take_asked().unwrap().unwrap().moment.text,
+            "a reaction",
+            "the one that waited its turn is still heard, and heard first"
+        );
+        assert_eq!(
+            client.take_asked().unwrap().unwrap().moment.text,
+            "so it fires on every edit?"
+        );
     }
 
     #[test]

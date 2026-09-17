@@ -55,8 +55,6 @@ pub enum Sheet {
 }
 
 impl Sheet {
-    /// The ref this pane shows, so a remark can name it.
-    #[must_use]
     /// Whether the reader has chosen lines in this pane.
     #[must_use]
     pub fn reader_chose(&self) -> bool {
@@ -66,6 +64,8 @@ impl Sheet {
         }
     }
 
+    /// The ref this pane shows, so a remark can name it.
+    #[must_use]
     pub fn ref_id(&self) -> &SharedString {
         match self {
             Self::Code(code) => &code.ref_id,

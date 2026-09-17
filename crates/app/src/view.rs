@@ -412,6 +412,12 @@ pub struct DeckView {
     composing_when: deck_core::When,
     /// Live mode, while it is on or on its way out.
     walking: Option<Walking>,
+    /// What the reader said while the agent was still speaking.
+    ///
+    /// Held rather than sent, because queueing means *wait for a gap*. They go
+    /// out in order the moment the voice stops, so the author hears them the
+    /// way somebody who waited their turn would be heard.
+    held: Vec<deck_core::Moment>,
     /// When the reader last took the floor and is owed an answer.
     ///
     /// The thing that makes this a conversation rather than shouting into a
@@ -672,6 +678,7 @@ impl DeckView {
             composing_when: deck_core::When::default(),
             walking: None,
             rail_width: None,
+            held: Vec::new(),
             asked_at: None,
             spoken: Vec::new(),
             transcript: Vec::new(),
@@ -1465,19 +1472,9 @@ impl DeckView {
 
         self.composing = Some((about, state, listen));
         self.composing_kind = deck_core::Kind::default();
-        // Typing during a live walk is the reader asking for an answer. The
-        // faces are the channel for things that cost nothing; going to the
-        // trouble of words means you want somebody to hear them, so an
-        // interrupt is the default and queueing is the deliberate act.
-        //
-        // The other way round, two real questions were written, both went out
-        // queued, and the author sat in `deck wait` doing as it was told while
-        // the reader got silence.
-        self.composing_when = if self.walking.is_some_and(|walking| !walking.going) {
-            deck_core::When::Interrupt
-        } else {
-            deck_core::When::Queue
-        };
+        // Waiting for a gap is the polite default, and cutting somebody off is
+        // the thing you should have to choose.
+        self.composing_when = deck_core::When::Queue;
         cx.notify();
     }
 
@@ -1590,11 +1587,18 @@ impl DeckView {
             kind,
             when,
         };
-        // Told to the agent now, and kept for the review. The same value both
-        // ways, so what the agent was told while the walk happened and what the
-        // review says afterwards can never disagree.
-        self.live.publish(moment.clone());
-        self.transcript.push(moment);
+        // The review keeps it either way. What `when` decides is the floor: a
+        // reader who took it is heard at once and the voice stops; a reader who
+        // waited is heard in the next gap.
+        self.transcript.push(moment.clone());
+        if when == deck_core::When::Interrupt {
+            self.voice.hush();
+            self.live.publish(moment);
+        } else if self.voice.talking() {
+            self.held.push(moment);
+        } else {
+            self.live.publish(moment);
+        }
     }
 
     /// One keystroke, one reaction, pinned to what is on screen.
@@ -2544,7 +2548,12 @@ impl DeckView {
                 .gap(px(3.))
                 .children(
                     [
-                        (0usize, deck_core::When::Queue, "queue", palette.muted),
+                        (
+                            0usize,
+                            deck_core::When::Queue,
+                            "wait for a gap",
+                            palette.muted,
+                        ),
                         (
                             1usize,
                             deck_core::When::Interrupt,
@@ -3018,10 +3027,17 @@ impl Render for DeckView {
         // how live the room is, and everything below reads it.
         let live = self.live_pace();
         let speaking = self.voice.talking();
+        // The gap. Whoever waited their turn is heard now, in the order they
+        // waited.
+        if !speaking && !self.held.is_empty() {
+            for moment in std::mem::take(&mut self.held) {
+                self.live.publish(moment);
+            }
+        }
         // Waiting on the author animates, so the window has to keep asking for
         // frames — otherwise the dots freeze and it reads as hung, which is the
         // exact impression the indicator exists to prevent.
-        if self.asked_at.is_some() {
+        if self.asked_at.is_some() || !self.held.is_empty() {
             window.request_animation_frame();
         }
         if self.walking.is_some() && (live > 0.) && (live < 1.) {
@@ -3297,7 +3313,8 @@ impl Render for DeckView {
                             .children(rows),
                     )
                     .when(live > 0., |this| {
-                        this.child(self.render_rail(live, speaking, cx))
+                        this.child(self.render_seam(Divide::Rail, cx))
+                            .child(self.render_rail(live, speaking, cx))
                     })
                     .into_any_element()
             })
