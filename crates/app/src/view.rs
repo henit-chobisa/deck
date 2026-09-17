@@ -3005,7 +3005,23 @@ impl Render for DeckView {
                     .h_flex()
                     .flex_1()
                     .min_h_0()
-                    .child(div().v_flex().flex_1().min_w_0().min_h_0().children(rows))
+                    .child(
+                        // `h_full` is not decoration. Beside the rail these
+                        // panes sit in a row, and a column in a row takes its
+                        // width from the flex and its height from nothing at
+                        // all — it collapsed and the code vanished, leaving the
+                        // rail (which does say `h_full`) as the only thing with
+                        // any height. The old warning one level up says the
+                        // same thing about wrappers; this is that warning
+                        // arriving a second time.
+                        div()
+                            .v_flex()
+                            .flex_1()
+                            .min_w_0()
+                            .h_full()
+                            .min_h_0()
+                            .children(rows),
+                    )
                     .when(live > 0., |this| {
                         this.child(self.render_rail(live, speaking, cx))
                     })
