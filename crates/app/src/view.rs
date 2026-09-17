@@ -2745,8 +2745,80 @@ impl DeckView {
                             .overflow_y_scroll()
                             .children(spoken)
                             .children(said),
-                    ),
+                    )
+                    .child(self.render_reactions(cx)),
             )
+            .into_any_element()
+    }
+}
+
+impl DeckView {
+    /// The three answers, at the bottom of the live box where a hand can reach.
+    ///
+    /// Keys are a shortcut for somebody who already knows them. They are a poor
+    /// *interface*: `1`, `2`, `3` in a legend tell a reader there is a thing to
+    /// learn, not that there is a thing to press. These sit under the
+    /// conversation, look like what they do, and cost one click.
+    fn render_reactions(&self, cx: &mut Context<Self>) -> AnyElement {
+        let palette = &self.palette;
+        let faces = [
+            (
+                0usize,
+                "\u{1F44D}",
+                "noted",
+                deck_core::Kind::Nit,
+                palette.muted,
+            ),
+            (
+                1usize,
+                "\u{1F914}",
+                "wait, what?",
+                deck_core::Kind::Question,
+                palette.accent,
+            ),
+            (
+                2usize,
+                "\u{274C}",
+                "that's wrong",
+                deck_core::Kind::MustFix,
+                palette.del,
+            ),
+        ];
+
+        div()
+            .h_flex()
+            .flex_none()
+            .gap(px(6.))
+            .pt(px(10.))
+            .mt(px(4.))
+            .border_t_1()
+            .border_color(paint(palette.edge))
+            .children(faces.into_iter().map(|(ix, face, what, kind, tone)| {
+                div()
+                    .id(("react", ix))
+                    .h_flex()
+                    .flex_1()
+                    .items_center()
+                    .justify_center()
+                    .gap(px(5.))
+                    .py(px(6.))
+                    .rounded(px(5.))
+                    .bg(paint(palette.wash))
+                    .border_1()
+                    .border_color(paint(palette.edge))
+                    .hover(|style| style.border_color(paint(tone)))
+                    .cursor_pointer()
+                    .on_click(cx.listener(move |deck, _, _window, cx| {
+                        deck.react(kind, cx);
+                    }))
+                    .child(div().text_size(px(14.)).child(face))
+                    .child(
+                        div()
+                            .text_size(px(9.5))
+                            .text_color(paint(palette.muted))
+                            .child(what),
+                    )
+            }))
             .into_any_element()
     }
 }
