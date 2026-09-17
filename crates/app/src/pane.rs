@@ -284,6 +284,17 @@ impl Pane {
         self.selected.unwrap_or(self.spotlight_range())
     }
 
+    /// Whether the reader chose these lines, rather than the agent lighting them.
+    ///
+    /// The difference decides what a bare reaction is about. A lit range is the
+    /// agent pointing; a selected one is the reader pointing. Treating the
+    /// first as the second is how a reaction about a *sentence* ended up
+    /// attached to whatever code happened to be on screen.
+    #[must_use]
+    pub fn reader_chose(&self) -> bool {
+        self.selected.is_some()
+    }
+
     /// The text of `range`, as it was when the deck opened.
     #[must_use]
     pub fn lines_of(&self, range: LineRange) -> String {

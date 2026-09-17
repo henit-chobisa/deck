@@ -1491,8 +1491,19 @@ impl DeckView {
     /// The picked pane, or the first one. Shared by the composer and by a bare
     /// reaction so the two can never disagree about what the reader meant.
     fn pinned(&self) -> Option<About> {
-        let ix = self.panes.iter().position(Sheet::is_picked).unwrap_or(0);
-        self.about(ix)
+        // A reaction is about **what is being said**. It only becomes a remark
+        // on code when the reader themselves chose lines.
+        //
+        // This used to take the picked pane and fall back to pane zero, so
+        // every reaction came out pinned to whatever the agent happened to be
+        // lighting — a thumbs-up at a sentence arrived as a comment on a line
+        // nobody was talking about. The lit range is the agent pointing; a
+        // selected one is the reader pointing, and only the second is an
+        // instruction about code.
+        if let Some(ix) = self.panes.iter().position(Sheet::reader_chose) {
+            return self.about(ix);
+        }
+        self.claim_about()
     }
 
     /// One anchor, one set of words, one kind.
