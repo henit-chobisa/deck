@@ -39,10 +39,10 @@ pub fn live() -> anyhow::Result<()> {
     let mut config = crate::config::read().unwrap_or_default();
 
     println!();
-    println!("  {}  {}", mark(), bold("deck live"));
+    println!("  {}  {}", mark(), bold("deck walk"));
     println!(
         "  {}",
-        dim("A live walk works silently. This is whether it also speaks.")
+        dim("A deck works silently. This is whether it can also read itself.")
     );
     println!();
     rule();
@@ -56,6 +56,8 @@ pub fn live() -> anyhow::Result<()> {
     println!();
     config.speech.aloud = ask_yes("Read the narration aloud?")?;
     if !config.speech.aloud {
+        // Nothing to offer, so the window does not offer it.
+        config.speech.ready = false;
         chose("silent");
         let path = crate::config::path()
             .ok_or_else(|| anyhow::anyhow!("no home directory to write a config into"))?;
@@ -234,6 +236,45 @@ fn pick(editors: &[Editor]) -> anyhow::Result<Editor> {
     Ok(editors.get(at).copied().unwrap_or(editors[0]))
 }
 
+/// Every Chirp 3: HD voice the key can reach, best guess at a useful order.
+///
+/// Asked of Google rather than written down here. The list grows — it was three
+/// hardcoded names, and a reader who wanted any of the others had to know one
+/// existed and edit the file by hand.
+fn chirp_voices(key: &str) -> anyhow::Result<Vec<String>> {
+    let reply: serde_json::Value =
+        ureq::get("https://texttospeech.googleapis.com/v1/voices?languageCode=en-US")
+            .header("X-Goog-Api-Key", key)
+            .call()
+            .map_err(|why| anyhow::anyhow!("google would not list its voices: {why}"))?
+            .body_mut()
+            .read_json()
+            .map_err(|why| anyhow::anyhow!("google sent something that is not a list: {why}"))?;
+
+    let mut found: Vec<String> = reply
+        .get("voices")
+        .and_then(serde_json::Value::as_array)
+        .map(|voices| {
+            voices
+                .iter()
+                .filter_map(|voice| voice.get("name")?.as_str().map(ToString::to_string))
+                .filter(|name| name.contains("Chirp3-HD"))
+                .collect()
+        })
+        .unwrap_or_default();
+    found.sort();
+    anyhow::ensure!(
+        !found.is_empty(),
+        "that key reached Google but found no Chirp 3 voices on it"
+    );
+    Ok(found)
+}
+
+/// The part of a voice's name a person would say: `en-US-Chirp3-HD-Kore` is Kore.
+fn voice_called(name: &str) -> &str {
+    name.rsplit('-').next().unwrap_or(name)
+}
+
 /// Point deck at Google's neural voices, and prove the key works.
 ///
 /// Tested before it is written. A key that is wrong, or a project without the
@@ -277,44 +318,87 @@ fn google(config: &mut Config) -> anyhow::Result<()> {
         );
         println!(
             "  {}",
-            dim("not keep it in a file, then run `deck live` again.")
+            dim("not keep it in a file, then run `deck walk` again.")
         );
         return Ok(());
     }
 
-    println!();
-    println!("    {}  Charon — level, unhurried", accent("1"));
-    println!("    {}  Kore — brighter", accent("2"));
-    println!("    {}  Puck — quicker", accent("3"));
-    println!();
-    let voice = match ask("Which?", "1")?.as_str() {
-        "2" => "en-US-Chirp3-HD-Kore",
-        "3" => "en-US-Chirp3-HD-Puck",
-        _ => "en-US-Chirp3-HD-Charon",
-    };
-    config.speech.voice = Some(voice.to_string());
-    config.speech.key = Some(key);
+    config.speech.key = Some(key.clone());
 
     println!();
-    print!("  {} ", dim("Trying it…"));
+    print!("  {} ", dim("Asking Google which voices it has…"));
     std::io::stdout().flush()?;
-    match crate::speech::test(&config.speech) {
-        Ok(()) => {
-            println!("{}", accent("heard it?"));
-            chose(&format!(
-                "{voice}, at {} words a minute",
-                config.speech.rate
-            ));
+    let voices = match chirp_voices(&key) {
+        Ok(voices) => {
+            println!("{}", accent(&format!("{} of them.", voices.len())));
+            voices
         }
         Err(why) => {
             println!();
             println!("  {} {}", dim("!"), dim(&why.to_string()));
             println!(
                 "  {}",
-                dim("Written anyway, so you can fix the key and try again.")
+                dim("Written anyway, so you can fix the key and run `deck walk` again.")
             );
+            config.speech.voice = Some("en-US-Chirp3-HD-Charon".to_string());
+            return Ok(());
+        }
+    };
+
+    println!();
+    for (ix, name) in voices.iter().enumerate() {
+        println!(
+            "    {}  {}",
+            accent(&(ix + 1).to_string()),
+            voice_called(name)
+        );
+    }
+    println!();
+    println!(
+        "  {}",
+        dim("Type a number to hear that one. Press enter to keep the last you heard.")
+    );
+
+    // Heard before it is chosen. It used to be written first and spoken
+    // afterwards, so trying a second voice meant running the whole thing again
+    // — and nobody tries a voice they have to commit to first.
+    let mut chosen = voices
+        .iter()
+        .position(|name| name.ends_with("Charon"))
+        .unwrap_or(0);
+    loop {
+        println!();
+        let answer = ask("Which?", &(chosen + 1).to_string())?;
+        if answer.is_empty() {
+            break;
+        }
+        let Ok(picked) = answer.parse::<usize>() else {
+            continue;
+        };
+        let Some(name) = voices.get(picked.saturating_sub(1)) else {
+            continue;
+        };
+        chosen = picked - 1;
+        config.speech.voice = Some(name.clone());
+        print!("  {} ", dim(&format!("{}…", voice_called(name))));
+        std::io::stdout().flush()?;
+        match crate::speech::test(&config.speech) {
+            Ok(()) => println!("{}", accent("heard it?")),
+            Err(why) => {
+                println!();
+                println!("  {} {}", dim("!"), dim(&why.to_string()));
+            }
         }
     }
+
+    let voice = voices[chosen].clone();
+    config.speech.voice = Some(voice.clone());
+    config.speech.ready = true;
+    chose(&format!(
+        "{}, at {} words a minute",
+        voice_called(&voice),
+        config.speech.rate
+    ));
     Ok(())
 }
 
@@ -391,6 +475,9 @@ fn listen(config: &mut Config) -> anyhow::Result<()> {
         config.speech.voice = None;
         chose("the system voice");
     }
+    // Either way a voice has been chosen, which is what puts `w` in the
+    // window's legend.
+    config.speech.ready = true;
     Ok(())
 }
 
