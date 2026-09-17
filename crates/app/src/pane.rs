@@ -191,6 +191,26 @@ pub struct Pane {
     /// row has no line to count. See [`Pane::row_of`].
     added: usize,
     scroll: UniformListScrollHandle,
+    /// The same rows, sideways.
+    ///
+    /// Code does not wrap, so a long line has to be reachable somehow. It used
+    /// to be cut off at the pane's right edge with no way to see the rest,
+    /// which on a narrow pane hid the end of most interesting lines.
+    across: ScrollHandle,
+    /// The longest line in the file, in characters.
+    widest: usize,
+    /// How far a proposal that just landed has come up.
+    ///
+    /// A change made during a walk replaces rows under the reader's eye. Coming
+    /// up over half a second, it reads as an answer arriving; painted at once,
+    /// it reads as the file having been different all along.
+    arriving: Fade,
+    /// The replacement this pane is currently drawing as a change, if any.
+    ///
+    /// Authored refs carry one from the start; a live answer can put one here
+    /// and take it away again, which is why it is remembered rather than
+    /// worked out from the rows.
+    proposed: Option<String>,
     label: SharedString,
     note: Option<SharedString>,
     /// Where the lit range sits in the row list, and how tall a row is.
@@ -368,10 +388,68 @@ impl Pane {
         Some(px(-(top - lead).max(0.)))
     }
 
+    /// Where the list would have to sit for the pointed lines to be in view,
+    /// or `None` when they already are.
+    ///
+    /// In the upper third when they fit, so the lines after them are on screen
+    /// too — an explanation usually goes on downwards. Top-aligned, under a
+    /// couple of lines of lead, when they do not fit: a range taller than the
+    /// pane is read from its start.
+    #[must_use]
+    #[allow(clippy::cast_precision_loss)]
+    pub fn point_offset(&self) -> Option<Pixels> {
+        let point = self.point?;
+        let (_, row) = self.laid_out.get()?;
+        let state = self.scroll.0.borrow();
+        let viewport = f32::from(state.base_handle.bounds().size.height);
+        if viewport <= 0. {
+            return None;
+        }
+        let seen = -f32::from(state.base_handle.offset().y);
+        let furthest = f32::from(state.base_handle.max_offset().y).max(0.);
+        let top = self.row_of(point.first) as f32 * row;
+        let bottom = (self.row_of(point.last) + 1) as f32 * row;
+        let height = bottom - top;
+
+        let target = if height + 2. * row <= viewport {
+            if top >= seen && bottom <= seen + viewport {
+                return None;
+            }
+            top - (viewport - height) / 3.
+        } else {
+            let lead = LEAD_IN as f32 * row;
+            if (top - lead - seen).abs() < row {
+                return None;
+            }
+            top - lead
+        };
+        Some(px(-target.clamp(0., furthest)))
+    }
+
     /// The list's own scroll handle, for driving it a frame at a time.
     #[must_use]
     pub fn scroll(&self) -> UniformListScrollHandle {
         self.scroll.clone()
+    }
+
+    /// Bring a proposal up rather than switching it on.
+    ///
+    /// Called by the window after building a pane for a live answer, because
+    /// only the window knows a change arrived now instead of being authored.
+    pub fn arrive(&mut self) {
+        self.arriving.set(true);
+    }
+
+    /// What this pane is proposing the lit range should become.
+    #[must_use]
+    pub fn proposal(&self) -> Option<&str> {
+        self.proposed.as_deref()
+    }
+
+    /// The sideways scroll handle, for the wheel.
+    #[must_use]
+    pub fn across(&self) -> ScrollHandle {
+        self.across.clone()
     }
 
     /// Which way the lit range lies, or `None` while any of it is on screen.
@@ -556,6 +634,24 @@ impl Pane {
         self.laid_out.set(Some((lit_entry, f32::from(row_px))));
         let cards = self.render_cards(marks, row_px, &palette, &view, cx);
 
+        // How wide the rows have to be for the longest line to fit, asked of the
+        // font rather than guessed from its size. A monospace font is one
+        // advance wide per character, every family has its own, and the guess
+        // was right for the two fonts on this machine and nobody else's — and
+        // when it is wrong the end of a long line is unreachable again. The
+        // guess stays as the answer for a font that will not say.
+        #[allow(clippy::cast_precision_loss)]
+        let advance = cx
+            .text_system()
+            .em_advance(
+                cx.text_system().resolve_font(&font(mono.clone())),
+                px(f32::from(size)),
+            )
+            .unwrap_or_else(|_| px(f32::from(size) * 0.62));
+        #[allow(clippy::cast_precision_loss)]
+        let span = advance * self.widest as f32 + px(96.);
+        let across = self.across.clone();
+
         let list = uniform_list("deck-code", rows.len(), move |visible, _window, _cx| {
             visible
                 .map(|ix| {
@@ -706,14 +802,26 @@ impl Pane {
                 .collect()
         })
         .track_scroll(&self.scroll)
-        .size_full();
+        .h_full()
+        // At least as wide as the longest line, and never narrower than the
+        // pane. Given the line width alone, a file of short lines left the lit
+        // ground stopping in the middle of the pane with bare paper beside it.
+        .w_full()
+        .min_w(span);
 
         div()
             .relative()
             .flex_1()
             .min_h_0()
             .overflow_hidden()
-            .child(list)
+            .child(
+                div()
+                    .id(("code-across", pane_ix))
+                    .size_full()
+                    .overflow_x_scroll()
+                    .track_scroll(&across)
+                    .child(list),
+            )
             // The wheel, taken before the list gets it.
             //
             // A list applies a wheel delta to its offset outright, which on a
@@ -750,6 +858,165 @@ impl Pane {
                             .max_fps(60),
                     ),
             )
+            .child(
+                div()
+                    .absolute()
+                    .left_0()
+                    .right_0()
+                    .bottom_0()
+                    .h(Scrollbar::width())
+                    .child(
+                        Scrollbar::horizontal(&self.across)
+                            .viewport_from_layout()
+                            .max_fps(60),
+                    ),
+            )
+    }
+
+    /// The pane folded down to its spine.
+    ///
+    /// A badge with the pane's initial and a hairline running the height of it.
+    /// The name was set standing on end, one letter above the next, and read as
+    /// a column of letters rather than as a word — nothing here can turn text on
+    /// its side, so the answer is not to try. The whole name is a hover away.
+    ///
+    /// Clicking anywhere on it opens the pane again.
+    pub fn render_folded(&self, slot: &Slot, cx: &App) -> AnyElement {
+        let palette = slot.palette;
+        let mono = cx.theme().mono_font_family.clone();
+        let ix = slot.ix;
+        let fold = slot.fold;
+        let left = slot.fold_left;
+        let view = slot.view.clone();
+        // Its name if the agent gave it one, and the file's own name if not:
+        // `protocol` says more than `protocol.rs` does, and far more than `p`.
+        let title: SharedString = self.name.clone().unwrap_or_else(|| {
+            self.file
+                .file_stem()
+                .map_or_else(
+                    || self.label.to_string(),
+                    |stem| stem.to_string_lossy().to_string(),
+                )
+                .into()
+        });
+        // The whole path under it, not just the file. Two panes of `mod.rs` in
+        // a big tree are the same word on two spines, and the reader is left
+        // opening both to find out which is which.
+        let file: SharedString = self.file.display().to_string().into();
+        let said = self.label.clone();
+
+        div()
+            .flex_none()
+            // The spine grows as the pane gives up its place in the grid, so
+            // the two movements are the one movement.
+            .w(px(SPINE * fold))
+            .h_full()
+            .overflow_hidden()
+            .child(
+                div()
+                    .id(("pane-spine", ix))
+                    .w(px(SPINE))
+                    .h_full()
+                    .v_flex()
+                    .items_center()
+                    .pt(px(12.))
+                    .pb(px(14.))
+                    .bg(paint(palette.wash))
+                    .cursor_pointer()
+                    .hover(|style| style.bg(paint(palette.wash.mix(palette.band, 0.55))))
+                    .tooltip(move |_window, cx| {
+                        cx.new(|_| gpui_kit::component::tooltip::Tooltip::new(said.clone()))
+                            .into()
+                    })
+                    .on_mouse_down(MouseButton::Left, {
+                        let view = view.clone();
+                        move |_, _window, cx| {
+                            let _ = view.update(cx, |deck, cx| deck.fold_pane(ix, false, cx));
+                        }
+                    })
+                    .child(
+                        div()
+                            .size(px(18.))
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .text_size(px(12.))
+                            .text_color(paint(palette.muted))
+                            // Pointing the way the pane will open.
+                            .child(if left { "›" } else { "‹" }),
+                    )
+                    // The name the prose calls it, and the file underneath, both
+                    // turned on their side — which the panel could not do until the
+                    // words went through a picture.
+                    .child(
+                        div()
+                            .mt(px(10.))
+                            .flex_none()
+                            .flex()
+                            .justify_center()
+                            .child(sideways(&title, &mono, 12.5, 700, palette.accent, left)),
+                    )
+                    .child(
+                        div()
+                            .mt(px(2.))
+                            .flex_none()
+                            .flex()
+                            .justify_center()
+                            .child(sideways(&file, &mono, 11.5, 500, palette.fg, left)),
+                    )
+                    // The spine itself: a line down the rest of the pane, which is what
+                    // the word means and all the room there is for it.
+                    .child(div().mt(px(12.)).w(px(1.)).flex_1().bg(paint(palette.edge))),
+            )
+            .into_any_element()
+    }
+
+    /// The control that closes a pane brought in to answer a question.
+    fn render_close(&self, slot: &Slot) -> AnyElement {
+        let palette = slot.palette;
+        let ix = slot.ix;
+        let view = slot.view.clone();
+        div()
+            .id(("close-pane", ix))
+            .size(px(18.))
+            .flex_none()
+            .rounded(px(5.))
+            .flex()
+            .items_center()
+            .justify_center()
+            .cursor_pointer()
+            .text_size(px(12.))
+            .text_color(paint(palette.muted))
+            .hover(|style| style.bg(paint(palette.band)).text_color(paint(palette.fg)))
+            .on_mouse_down(MouseButton::Left, move |_, _window, cx| {
+                let _ = view.update(cx, |deck, cx| deck.close_brought(ix, cx));
+            })
+            .child("×")
+            .into_any_element()
+    }
+
+    /// The control that folds this pane away.
+    fn render_fold(&self, slot: &Slot, _cx: &App) -> AnyElement {
+        let palette = slot.palette;
+        let ix = slot.ix;
+        let view = slot.view.clone();
+        div()
+            .id(("fold-pane", ix))
+            .size(px(18.))
+            .flex_none()
+            .rounded(px(5.))
+            .flex()
+            .items_center()
+            .justify_center()
+            .cursor_pointer()
+            .text_size(px(12.))
+            .text_color(paint(palette.muted))
+            .hover(|style| style.bg(paint(palette.band)))
+            .on_mouse_down(MouseButton::Left, move |_, _window, cx| {
+                let _ = view.update(cx, |deck, cx| deck.fold_pane(ix, true, cx));
+            })
+            .child(if slot.fold_left { "‹" } else { "›" })
+            .into_any_element()
     }
 
     /// The remark cards, placed against the code they belong to.
