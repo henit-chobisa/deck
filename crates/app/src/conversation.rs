@@ -45,6 +45,11 @@ impl Conversation {
     /// The record never waits for speech; only delivery waits for a gap.
     pub fn record(&mut self, moment: Moment, speaking: bool) -> Vec<Moment> {
         self.transcript.push(moment.clone());
+        // Deferred is the reader keeping it to themselves until they submit.
+        // It is in the thread and in the review; it simply never wakes anybody.
+        if moment.when == When::Defer {
+            return Vec::new();
+        }
         if moment.when == When::Interrupt || !speaking {
             let mut ready = self.release();
             ready.push(moment);
@@ -62,6 +67,19 @@ impl Conversation {
 
     pub fn queued(&self) -> bool {
         !self.held.is_empty()
+    }
+
+    /// The most recent moment the agent proved it was still there.
+    ///
+    /// A question is the reader's evidence and a note is the agent's, and the
+    /// wait is measured from whichever came later. Before this existed the
+    /// panel measured only from the question, so an agent that was visibly
+    /// working for half a minute was still reported as not having answered.
+    pub fn latest_sign(&self) -> Option<Instant> {
+        [self.asked_at, self.doing.as_ref().map(|(_, at)| *at)]
+            .into_iter()
+            .flatten()
+            .max()
     }
 }
 
