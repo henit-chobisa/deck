@@ -10,8 +10,21 @@ use deck_core::{Moment, When};
 #[derive(Clone)]
 pub struct Conversation {
     pub transcript: Vec<Moment>,
+    /// What the agent actually wrote for each turn it said, by its place in
+    /// the transcript.
+    ///
+    /// The transcript keeps the clean copy — no beats, no points — because
+    /// that is what a review should carry. Saying a turn again wants the copy
+    /// with the pacing and the pointing still in it, so it is kept beside.
+    pub spoken: std::collections::HashMap<usize, String>,
     pub began: Instant,
     pub asked_at: Option<Instant>,
+    /// What the agent last said it was doing, and when it said it.
+    ///
+    /// Not in the transcript on purpose. "reading the retry loop" is true for
+    /// ten seconds and then it is noise; the review keeps what was said, not
+    /// what was being done while nothing was.
+    pub doing: Option<(String, Instant)>,
     held: Vec<Moment>,
 }
 
@@ -19,8 +32,10 @@ impl Default for Conversation {
     fn default() -> Self {
         Self {
             transcript: Vec::new(),
+            spoken: std::collections::HashMap::new(),
             began: Instant::now(),
             asked_at: None,
+            doing: None,
             held: Vec::new(),
         }
     }
@@ -70,6 +85,40 @@ mod tests {
             kind: Some(deck_core::Kind::Question),
             when,
         }
+    }
+
+    #[test]
+    fn a_deferred_remark_waits_for_the_review_and_wakes_nobody() {
+        // The default, and the whole point of it: a reader in the middle of a
+        // deck is still reading. An agent woken by the first remark starts
+        // work while the third is still being written.
+        let mut conversation = Conversation::default();
+        let ready = conversation.record(remark("later", When::Defer), false);
+
+        assert!(ready.is_empty(), "nothing is handed over yet");
+        assert_eq!(conversation.transcript.len(), 1, "but it is in the record");
+        assert!(
+            !conversation.queued(),
+            "and it is not waiting behind speech"
+        );
+    }
+
+    #[test]
+    fn a_note_about_what_the_agent_is_doing_is_a_later_sign_of_life() {
+        // The bug this fixes: the panel measured the wait from the question
+        // alone, so an agent that said "reading the retry loop" ten seconds in
+        // was still reported as silent at the same moment as one that had said
+        // nothing at all.
+        let mut conversation = Conversation::default();
+        assert_eq!(conversation.latest_sign(), None);
+
+        let asked = Instant::now();
+        conversation.asked_at = Some(asked);
+        assert_eq!(conversation.latest_sign(), Some(asked));
+
+        let noted = Instant::now();
+        conversation.doing = Some(("reading the retry loop".into(), noted));
+        assert_eq!(conversation.latest_sign(), Some(noted));
     }
 
     #[test]
