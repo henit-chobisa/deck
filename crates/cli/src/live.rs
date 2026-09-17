@@ -910,6 +910,75 @@ mod tests {
         assert_eq!(seen, vec!["first", "second", "third"]);
     }
 
+    fn moment(text: &str, when: deck_core::When) -> deck_core::Moment {
+        deck_core::Moment {
+            at_ms: 0,
+            what: deck_core::What::Wrote,
+            group: Some("g1".into()),
+            ref_id: None,
+            file: None,
+            range: None,
+            text: text.into(),
+            kind: Some(deck_core::Kind::Question),
+            when,
+        }
+    }
+
+    #[test]
+    fn only_an_interrupt_wakes_the_author() {
+        // A queued reaction is collected in the review. A keystroke that cost
+        // the reader nothing must not be able to stop somebody mid-thought, so
+        // it never reaches the agent blocked in `deck wait`.
+        let temp = tempfile::tempdir().unwrap();
+        let runtime = temp.path().join("runtime");
+        let deck = deck_dir(temp.path());
+        let owner = Owner::claim(&runtime, &deck).unwrap();
+        let client = Client::connect(&runtime, &deck).unwrap();
+
+        owner
+            .publish(moment("a reaction", deck_core::When::Queue))
+            .unwrap();
+        assert!(
+            client.take_asked().unwrap().is_none(),
+            "queued, so nobody is woken"
+        );
+
+        owner
+            .publish(moment(
+                "so it fires on every edit?",
+                deck_core::When::Interrupt,
+            ))
+            .unwrap();
+        let asked = client.take_asked().unwrap().expect("an interrupt is taken");
+        assert_eq!(asked.moment.text, "so it fires on every edit?");
+    }
+
+    #[test]
+    fn a_question_is_answered_once_and_not_asked_again() {
+        // The agent answers and calls `deck wait` again. Reading rather than
+        // taking would hand it the same question for ever, and it would answer
+        // it for ever.
+        let temp = tempfile::tempdir().unwrap();
+        let runtime = temp.path().join("runtime");
+        let deck = deck_dir(temp.path());
+        let owner = Owner::claim(&runtime, &deck).unwrap();
+        let client = Client::connect(&runtime, &deck).unwrap();
+
+        owner
+            .publish(moment("first", deck_core::When::Interrupt))
+            .unwrap();
+        owner
+            .publish(moment("second", deck_core::When::Interrupt))
+            .unwrap();
+
+        assert_eq!(client.take_asked().unwrap().unwrap().moment.text, "first");
+        assert_eq!(client.take_asked().unwrap().unwrap().moment.text, "second");
+        assert!(
+            client.take_asked().unwrap().is_none(),
+            "and then it waits again"
+        );
+    }
+
     #[test]
     fn a_quiet_session_answers_rather_than_hanging() {
         // Nothing happening is the usual case while somebody reads, so it is an

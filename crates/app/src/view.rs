@@ -1118,17 +1118,17 @@ impl DeckView {
 
     /// *Noted.* The cheapest thing a reader can say, and the most common.
     fn on_noted(&mut self, _: &Noted, _window: &mut Window, cx: &mut Context<Self>) {
-        self.react(deck_core::Kind::Nit, deck_core::When::Queue, cx);
+        self.react(FACES[0].1, deck_core::When::Queue, FACES[0].0, cx);
     }
 
     /// *Wait, what?* — the one that should make an agent stop and explain.
     fn on_asked(&mut self, _: &Asked, _window: &mut Window, cx: &mut Context<Self>) {
-        self.react(deck_core::Kind::Question, deck_core::When::Queue, cx);
+        self.react(FACES[3].1, deck_core::When::Queue, FACES[3].0, cx);
     }
 
     /// *That's wrong.* Blocking, and it should read as blocking.
     fn on_wrong(&mut self, _: &Wrong, _window: &mut Window, cx: &mut Context<Self>) {
-        self.react(deck_core::Kind::MustFix, deck_core::When::Queue, cx);
+        self.react(FACES[4].1, deck_core::When::Queue, FACES[4].0, cx);
     }
 
     /// Turn the rest of the screen down, or back up.
@@ -1596,7 +1596,13 @@ impl DeckView {
     ///
     /// While a composer is open the same keys set the kind of the remark being
     /// written instead, because there the reader already has words.
-    fn react(&mut self, kind: deck_core::Kind, when: deck_core::When, cx: &mut Context<Self>) {
+    fn react(
+        &mut self,
+        kind: deck_core::Kind,
+        when: deck_core::When,
+        face: &str,
+        cx: &mut Context<Self>,
+    ) {
         if self.composing.is_some() {
             self.composing_kind = kind;
             cx.notify();
@@ -1605,8 +1611,11 @@ impl DeckView {
         let Some(about) = self.pinned() else {
             return;
         };
-        let remark = Self::remark(about, String::new(), kind, when);
-        self.note(deck_core::What::Reacted, Some(kind), when, "", &remark);
+        // The face is the message. Two faces can ask the agent for the same
+        // thing and still not mean the same thing, so the one the reader
+        // pressed travels with the remark rather than being flattened away.
+        let remark = Self::remark(about, face.to_string(), kind, when);
+        self.note(deck_core::What::Reacted, Some(kind), when, face, &remark);
         self.remarks.push(remark);
         cx.notify();
     }
@@ -2770,46 +2779,35 @@ impl DeckView {
             .iter()
             .enumerate()
             .map(|(ix, remark)| {
-                let (mark, tone) = match remark.kind {
-                    deck_core::Kind::MustFix => ("3", palette.del),
-                    deck_core::Kind::Question => ("2", palette.accent),
-                    deck_core::Kind::Nit => ("1", palette.muted),
+                let tone = match remark.kind {
+                    deck_core::Kind::MustFix => palette.del,
+                    deck_core::Kind::Question => palette.accent,
+                    deck_core::Kind::Nit => palette.muted,
                 };
+                // A reaction's whole text is the face that was pressed, so it
+                // stands on its own. A written remark gets a dot in the colour
+                // of what it asks the agent to do.
+                let reacted = FACES.iter().any(|(face, _)| *face == remark.text);
                 div()
                     .h_flex()
                     .items_start()
-                    .gap(px(8.))
+                    .gap(px(7.))
                     .py(px(5.))
                     .child(
                         div()
                             .flex_none()
-                            .w(px(15.))
-                            .font_family(mono.clone())
+                            .w(px(9.))
                             .text_size(px(10.))
                             .text_color(paint(tone))
-                            .child(SharedString::from(mark)),
+                            .child(if reacted { "" } else { "\u{2022}" }),
                     )
                     .child(
                         div()
                             .flex_1()
                             .min_w_0()
-                            .text_size(px(11.5))
-                            .text_color(paint(if remark.text.is_empty() {
-                                palette.muted
-                            } else {
-                                palette.fg
-                            }))
-                            .child(SharedString::from(if remark.text.is_empty() {
-                                // A reaction has no words. Saying so is better than
-                                // an empty row the reader has to decode.
-                                match remark.kind {
-                                    deck_core::Kind::MustFix => "that's wrong".to_string(),
-                                    deck_core::Kind::Question => "wait, what?".to_string(),
-                                    deck_core::Kind::Nit => "noted".to_string(),
-                                }
-                            } else {
-                                remark.text.clone()
-                            })),
+                            .text_size(if reacted { px(14.) } else { px(11.5) })
+                            .text_color(paint(palette.fg))
+                            .child(SharedString::from(remark.text.clone())),
                     )
                     .id(("said", ix))
                     .into_any_element()
@@ -2931,76 +2929,64 @@ impl DeckView {
         )
     }
 
-    /// The three answers, along the foot of the live box.
+    /// The reactions, in one small box under the conversation.
     ///
-    /// Keys are a shortcut for somebody who already knows them. They were a
-    /// poor *interface*: a legend listing `1`, `2`, `3` tells a reader there is
-    /// something to learn, not that there is something to press — so the
-    /// numbers came off the legend and these went on screen instead.
+    /// Faces and nothing else. A word beside each one is a label on a thing
+    /// that already says what it is, and five labels across the foot of a panel
+    /// read as a form rather than as a row you tap.
     ///
-    /// Quiet on purpose. Three heavy bordered boxes across the bottom read as a
-    /// dialog asking a question; these are closer to the reaction row under a
-    /// message, which is what they are. The face carries the meaning and the
-    /// word underneath is there for the first time only.
+    /// Five rather than three because the [`deck_core::Kind`] a reaction
+    /// carries is what the *agent* must do about it, and that is coarser than
+    /// what a reader wants to express. Two faces can mean the same instruction
+    /// and still not mean the same thing, so the face itself travels as the
+    /// remark's text and the kind rides underneath it.
     fn render_reactions(&self, cx: &mut Context<Self>) -> AnyElement {
         let palette = &self.palette;
-        let faces = [
-            (0usize, YES, "noted", deck_core::Kind::Nit, palette.muted),
-            (
-                1usize,
-                HUH,
-                "wait, what?",
-                deck_core::Kind::Question,
-                palette.accent,
-            ),
-            (
-                2usize,
-                STOP,
-                "that's wrong",
-                deck_core::Kind::MustFix,
-                palette.del,
-            ),
-        ];
 
         div()
             .h_flex()
             .flex_none()
             .items_center()
-            .gap(px(3.))
-            .pt(px(9.))
-            .mt(px(6.))
-            .border_t_1()
+            .justify_center()
+            .gap(px(2.))
+            .mt(px(8.))
+            .p(px(3.))
+            .rounded(px(999.))
+            .bg(paint(palette.wash))
+            .border_1()
             .border_color(paint(palette.edge))
-            .children(faces.into_iter().map(|(ix, face, what, kind, tone)| {
+            .children(FACES.iter().enumerate().map(|(ix, &(face, kind))| {
                 div()
                     .id(("react", ix))
-                    .h_flex()
-                    .items_center()
-                    .gap(px(5.))
-                    .px(px(7.))
-                    .py(px(4.))
+                    .flex_none()
+                    .px(px(6.))
+                    .py(px(3.))
                     .rounded(px(999.))
+                    .text_size(px(15.))
                     .cursor_pointer()
-                    .hover(|style| style.bg(paint(palette.wash)))
+                    .hover(|style| style.bg(paint(palette.band)))
                     .on_click(cx.listener(move |deck, _, _window, cx| {
-                        deck.react(kind, deck_core::When::Queue, cx);
+                        deck.react(kind, deck_core::When::Queue, face, cx);
                     }))
-                    .child(div().text_size(px(13.)).child(face))
-                    .child(div().text_size(px(9.)).text_color(paint(tone)).child(what))
+                    .child(face)
             }))
             .into_any_element()
     }
 }
 
-/// The three faces, in one place so the button and the rail cannot drift apart.
+/// The reactions, and what each one asks the agent to do.
 ///
-/// Chosen for rendering as much as for meaning: these three have colour glyphs
-/// on every platform deck runs on. `\u{274C}` was tried for *that's wrong* and
-/// came out as a plain monochrome cross beside two colour faces, which looked
-/// like a mistake rather than a set.
-const YES: &str = "\u{1F44D}";
-const HUH: &str = "\u{1F914}";
-const STOP: &str = "\u{1F6D1}";
+/// In one place so the box and the rail cannot drift apart. Chosen for
+/// rendering as much as for meaning: each has a colour glyph everywhere deck
+/// runs. `\u{274C}` was tried and came out a flat monochrome cross between two
+/// colour faces, which looked like a mistake rather than a member of a set.
+const FACES: &[(&str, deck_core::Kind)] = &[
+    ("\u{1F44D}", deck_core::Kind::Nit),
+    ("\u{1F525}", deck_core::Kind::Nit),
+    ("\u{1F440}", deck_core::Kind::Question),
+    ("\u{1F914}", deck_core::Kind::Question),
+    ("\u{1F6D1}", deck_core::Kind::MustFix),
+];
 
 /// How wide the rail is once it has finished arriving./// How wide the rail is once it has finished arriving.
 const RAIL: f32 = 232.;
