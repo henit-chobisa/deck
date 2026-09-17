@@ -410,6 +410,12 @@ pub fn open_deck(session: Session, cx: &mut App) {
         // has to be asked for outright.
         is_resizable: true,
         window_min_size: Some(size(px(560.), px(360.))),
+        // The deck draws its own corner, so the platform must not draw one
+        // underneath it. Left opaque, the window rounds itself at whatever
+        // radius this version of macOS likes, and anything deck paints along
+        // that edge — the frame that says it is walking you through the deck —
+        // has to guess the same number. It guessed wrong twice.
+        window_background: WindowBackgroundAppearance::Transparent,
         ..Default::default()
     };
 
