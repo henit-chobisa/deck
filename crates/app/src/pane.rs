@@ -168,6 +168,21 @@ pub struct Pane {
     authored: LineRange,
     /// The independently movable range the live walk asks the reader to see.
     spotlight: LineRange,
+    /// The narrower range the narration is pointing at, inside the spotlight.
+    ///
+    /// The spotlight says which part of the file the reader should be looking
+    /// at, and it holds still while several sentences are said about it. This
+    /// is the agent's finger inside that, and it moves with the sentences.
+    point: Option<LineRange>,
+    /// The lines coming up, and how far up they are.
+    rising: Fade,
+    /// The lines the finger just left, still going out.
+    was: Option<(LineRange, Fade)>,
+    /// Whether anything in the pane is pointed at, which is what dims the rest
+    /// of the lit range's bar.
+    pointing: Fade,
+    /// Whether the agent is talking about this pane at all.
+    heeded: Fade,
     /// Number of source lines, excluding proposed replacement rows.
     source_lines: u32,
     /// How many rows a proposed replacement added under the authored range.
@@ -275,6 +290,57 @@ impl Pane {
     #[must_use]
     pub fn spotlight_range(&self) -> LineRange {
         self.spotlight
+    }
+
+    /// Point at exactly these lines, or stop pointing.
+    ///
+    /// Nothing scrolls. A point belongs inside the range already on screen,
+    /// and a pane that jumped every time the narration moved a sentence on
+    /// would take the code out from under the reader mid-sentence.
+    pub fn point_at(&mut self, range: Option<LineRange>) {
+        let range = range.map(|range| range.clamp_to(self.source_lines));
+        if range == self.point {
+            return;
+        }
+        // The lines being left go out from wherever they had got to.
+        if let Some(left) = self.point {
+            let mut going = self.rising;
+            going.set(false);
+            self.was = Some((left, going));
+        }
+        self.point = range;
+        self.rising = Fade::default();
+        if range.is_some() {
+            self.rising.set(true);
+        }
+        self.pointing.set(range.is_some());
+    }
+
+    /// Say whether the agent is talking about this pane.
+    ///
+    /// Drawn round the whole pane, because a finger on two lines is easy to
+    /// miss in a group of four files, and which file is being talked about is
+    /// the first thing a reader needs to know.
+    pub fn heed(&mut self, on: bool) {
+        self.heeded.set(on);
+    }
+
+    /// Whether a light in this pane is still coming up or going out.
+    ///
+    /// The window keeps asking for frames while this is true, and only then.
+    #[must_use]
+    pub fn fading(&self) -> bool {
+        self.rising.moving()
+            || self.pointing.moving()
+            || self.heeded.moving()
+            || self.arriving.moving()
+            || self.was.is_some_and(|(_, going)| going.moving())
+    }
+
+    /// The lines the narration is pointing at, if any.
+    #[must_use]
+    pub fn pointed(&self) -> Option<LineRange> {
+        self.point
     }
 
     /// The text of line `number`, 1-based, as it was when the deck opened.
@@ -461,6 +527,19 @@ impl Pane {
                     let is_picked =
                         row.number.is_some() && selected.is_some_and(|s| s.contains(number));
                     let has_mark = marked.contains(&number);
+                    let in_point =
+                        row.number.is_some() && point.is_some_and(|at| at.contains(number));
+                    let in_was = row.number.is_some()
+                        && was.is_some_and(|(range, _)| range.contains(number));
+                    // How strongly this row is pointed at, right now. A line in
+                    // both the old range and the new one never dips: it was lit
+                    // and it stays lit.
+                    let pointed = match (in_point, in_was) {
+                        (true, true) => 1.,
+                        (true, false) => rising,
+                        (false, true) => was.map_or(0., |(_, level)| level),
+                        (false, false) => 0.,
+                    };
 
                     div()
                         .id(("row", ix))
@@ -517,12 +596,25 @@ impl Pane {
                         // what the ref came to say. Mixed into the ground
                         // rather than filled with — a diff that shouts is a
                         // diff nobody reads the code of.
+                        // A point is drawn by contrast, not by a colour of
+                        // its own. A quarter of the accent rather than a
+                        // tenth: a tenth is legible on paper and all but gone
+                        // on a dark theme, where the lit ground is already
+                        // close to the page. The lit ground already fills the range; the
+                        // pointed lines take a little of the accent into it and
+                        // the rest of the range gives up its bar, so the eye is
+                        // pulled to the sentence being said without the page
+                        // gaining a third kind of highlight to learn.
                         .bg(paint(match (row.change, is_picked, is_lit) {
-                            (Some(Change::Gone), _, _) => palette.gone,
-                            (Some(Change::New), _, _) => palette.fresh,
+                            (Some(Change::Gone), _, _) => flash.mix(palette.gone, arrived),
+                            (Some(Change::New), _, _) => flash.mix(palette.fresh, arrived),
                             (None, true, _) => palette.focus.mix(palette.accent, 0.14),
-                            (None, false, true) => palette.focus,
-                            (None, false, false) => palette.wash,
+                            (None, false, true) => {
+                                palette.focus.mix(palette.accent, 0.26 * pointed)
+                            }
+                            (None, false, false) => {
+                                palette.wash.mix(palette.accent, 0.26 * pointed)
+                            }
                         }))
                         .child(
                             div()
