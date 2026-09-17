@@ -1465,7 +1465,19 @@ impl DeckView {
 
         self.composing = Some((about, state, listen));
         self.composing_kind = deck_core::Kind::default();
-        self.composing_when = deck_core::When::default();
+        // Typing during a live walk is the reader asking for an answer. The
+        // faces are the channel for things that cost nothing; going to the
+        // trouble of words means you want somebody to hear them, so an
+        // interrupt is the default and queueing is the deliberate act.
+        //
+        // The other way round, two real questions were written, both went out
+        // queued, and the author sat in `deck wait` doing as it was told while
+        // the reader got silence.
+        self.composing_when = if self.walking.is_some_and(|walking| !walking.going) {
+            deck_core::When::Interrupt
+        } else {
+            deck_core::When::Queue
+        };
         cx.notify();
     }
 
@@ -2550,8 +2562,8 @@ impl DeckView {
                             .rounded(px(999.))
                             .cursor_pointer()
                             .text_size(px(10.5))
-                            .text_color(paint(if on { tone } else { palette.muted }))
-                            .when(on, |this| this.bg(paint(palette.wash)))
+                            .text_color(paint(if on { palette.on_accent } else { palette.muted }))
+                            .when(on, |this| this.bg(paint(tone)))
                             .hover(|style| style.bg(paint(palette.wash)))
                             .on_click(cx.listener(move |deck, _, _window, cx| {
                                 deck.composing_when = when;
