@@ -845,6 +845,7 @@ mod tests {
                     range: None,
                     text: text.into(),
                     kind: Some(deck_core::Kind::MustFix),
+                    when: deck_core::When::Queue,
                 })
                 .unwrap();
         }

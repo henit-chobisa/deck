@@ -46,6 +46,7 @@ pub use live::{
 };
 pub use protocol::{
     Comment, DiagramRef, Group, Header, Kind, Moment, Ref, RefSpec, Review, Source, VERSION, What,
+    When,
 };
 pub use relocate::{Relocated, relocate};
 pub use theme::{Imported, Palette, Rgb, derive};

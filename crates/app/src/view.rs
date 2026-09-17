@@ -43,10 +43,6 @@ const KEYS: &[(&str, &str, &str)] = &[
     ("r", "rotate", "turn the panes"),
     ("z", "zen", "lights off"),
     ("l", "live", "live walkthrough"),
-    ("f", "follow", "let it move again"),
-    ("1", "noted", "noted"),
-    ("2", "asked", "wait, what?"),
-    ("3", "wrong", "that's wrong"),
     ("h", "hide", "put it away"),
     ("s", "submit", "submit"),
     ("q", "close", "close"),
@@ -193,6 +189,8 @@ enum Divide {
     Band,
     /// Between the pane row at this index and the one below it.
     Panes(usize),
+    /// Between the panes and the live rail.
+    Rail,
     /// Between the pane at this index and the one to its right.
     ///
     /// Named by pane rather than by column, because the panes either side of
@@ -301,6 +299,8 @@ struct Remark {
     /// the file has moved underneath.
     quote: String,
     text: String,
+    /// Whether it can wait.
+    when: deck_core::When,
     /// What the reader wants done about it.
     ///
     /// Carried per remark rather than decided at submit time, because it is the
@@ -408,8 +408,15 @@ pub struct DeckView {
     /// Reset every time a composer opens: a must-fix should never be inherited
     /// by the next remark.
     composing_kind: deck_core::Kind,
+    /// Whether the remark being written wants the walk to stop.
+    composing_when: deck_core::When,
     /// Live mode, while it is on or on its way out.
     walking: Option<Walking>,
+    /// How wide the reader has dragged the rail, if they have.
+    ///
+    /// Theirs once they touch it, and kept across hide and reopen with the
+    /// other things they decided about this deck.
+    rail_width: Option<f32>,
     /// What the agent has said during this walk, in order.
     ///
     /// Shown in the rail so the conversation reads as a conversation rather
@@ -654,7 +661,9 @@ impl DeckView {
             remarks,
             composing: None,
             composing_kind: deck_core::Kind::default(),
+            composing_when: deck_core::When::default(),
             walking: None,
+            rail_width: None,
             spoken: Vec::new(),
             transcript: Vec::new(),
             began: std::time::Instant::now(),
@@ -782,11 +791,22 @@ impl DeckView {
     /// or no voice at all, still gets the sentence in the rail and in the
     /// transcript, which is where the conversation actually lives.
     fn said_live(&mut self, text: &str, aloud: bool, cx: &mut Context<Self>) {
-        let anchor = self
-            .pinned()
-            .map(|about| Self::remark(about, String::new(), deck_core::Kind::default()));
+        let anchor = self.pinned().map(|about| {
+            Self::remark(
+                about,
+                String::new(),
+                deck_core::Kind::default(),
+                deck_core::When::Queue,
+            )
+        });
         if let Some(anchor) = anchor.as_ref() {
-            self.note(deck_core::What::Said, None, text, anchor);
+            self.note(
+                deck_core::What::Said,
+                None,
+                deck_core::When::Queue,
+                text,
+                anchor,
+            );
         }
         self.spoken.push(SharedString::from(text.to_string()));
         if aloud {
@@ -885,6 +905,7 @@ impl DeckView {
                 range: stage.range,
                 text: String::new(),
                 kind: None,
+                when: deck_core::When::Queue,
             });
             cx.notify();
         }
@@ -1086,17 +1107,17 @@ impl DeckView {
 
     /// *Noted.* The cheapest thing a reader can say, and the most common.
     fn on_noted(&mut self, _: &Noted, _window: &mut Window, cx: &mut Context<Self>) {
-        self.react(deck_core::Kind::Nit, cx);
+        self.react(deck_core::Kind::Nit, deck_core::When::Queue, cx);
     }
 
     /// *Wait, what?* — the one that should make an agent stop and explain.
     fn on_asked(&mut self, _: &Asked, _window: &mut Window, cx: &mut Context<Self>) {
-        self.react(deck_core::Kind::Question, cx);
+        self.react(deck_core::Kind::Question, deck_core::When::Queue, cx);
     }
 
     /// *That's wrong.* Blocking, and it should read as blocking.
     fn on_wrong(&mut self, _: &Wrong, _window: &mut Window, cx: &mut Context<Self>) {
-        self.react(deck_core::Kind::MustFix, cx);
+        self.react(deck_core::Kind::MustFix, deck_core::When::Queue, cx);
     }
 
     /// Turn the rest of the screen down, or back up.
@@ -1462,7 +1483,7 @@ impl DeckView {
     }
 
     /// One anchor, one set of words, one kind.
-    fn remark(about: About, text: String, kind: deck_core::Kind) -> Remark {
+    fn remark(about: About, text: String, kind: deck_core::Kind, when: deck_core::When) -> Remark {
         match about {
             About::Drawn {
                 group,
@@ -1478,6 +1499,7 @@ impl DeckView {
                 quote,
                 text,
                 kind,
+                when,
             },
             About::Lines {
                 group,
@@ -1493,6 +1515,7 @@ impl DeckView {
                 quote,
                 text,
                 kind,
+                when,
             },
             About::Claim { group, quote } => Remark {
                 group,
@@ -1502,6 +1525,7 @@ impl DeckView {
                 quote,
                 text,
                 kind,
+                when,
             },
         }
     }
@@ -1515,6 +1539,7 @@ impl DeckView {
         &mut self,
         what: deck_core::What,
         kind: Option<deck_core::Kind>,
+        when: deck_core::When,
         text: &str,
         of: &Remark,
     ) {
@@ -1527,6 +1552,7 @@ impl DeckView {
             range: of.range,
             text: text.to_string(),
             kind,
+            when,
         };
         // Told to the agent now, and kept for the review. The same value both
         // ways, so what the agent was told while the walk happened and what the
@@ -1546,7 +1572,7 @@ impl DeckView {
     ///
     /// While a composer is open the same keys set the kind of the remark being
     /// written instead, because there the reader already has words.
-    fn react(&mut self, kind: deck_core::Kind, cx: &mut Context<Self>) {
+    fn react(&mut self, kind: deck_core::Kind, when: deck_core::When, cx: &mut Context<Self>) {
         if self.composing.is_some() {
             self.composing_kind = kind;
             cx.notify();
@@ -1555,8 +1581,8 @@ impl DeckView {
         let Some(about) = self.pinned() else {
             return;
         };
-        let remark = Self::remark(about, String::new(), kind);
-        self.note(deck_core::What::Reacted, Some(kind), "", &remark);
+        let remark = Self::remark(about, String::new(), kind, when);
+        self.note(deck_core::What::Reacted, Some(kind), when, "", &remark);
         self.remarks.push(remark);
         cx.notify();
     }
@@ -1573,9 +1599,15 @@ impl DeckView {
             cx.notify();
             return;
         }
-        let remark = Self::remark(about, said, kind);
+        let remark = Self::remark(about, said, kind, self.composing_when);
         let said = remark.text.clone();
-        self.note(deck_core::What::Wrote, Some(kind), &said, &remark);
+        self.note(
+            deck_core::What::Wrote,
+            Some(kind),
+            remark.when,
+            &said,
+            &remark,
+        );
         self.remarks.push(remark);
         cx.notify();
     }
@@ -1670,6 +1702,7 @@ impl DeckView {
                     range: moved.map_or(remark.range, |found| Some(found.range)),
                     source: moved.map(|found| found.source),
                     kind: remark.kind,
+                    when: remark.when,
                     quote: remark.quote.clone(),
                     text: remark.text.clone(),
                 }
@@ -1874,6 +1907,19 @@ impl DeckView {
     ///
     /// The band holds prose, so unlike a pane it has a height its content
     /// wants. Dragging overrides that; until then it is left to size itself.
+    /// Widen or narrow the live rail.
+    ///
+    /// Dragging left makes it wider, which is why the delta is subtracted: the
+    /// seam is on the rail's left edge and the rail grows toward the pointer.
+    fn resize_rail(&mut self, by: Pixels, cx: &mut Context<Self>) {
+        const LEAST: f32 = 150.;
+        const MOST: f32 = 560.;
+
+        let from = self.rail_width.unwrap_or(RAIL);
+        self.rail_width = Some((from - f32::from(by)).clamp(LEAST, MOST));
+        cx.notify();
+    }
+
     fn resize_band(&mut self, by: Pixels, cx: &mut Context<Self>) {
         const LEAST: f32 = 64.;
         const MOST: f32 = 520.;
@@ -2140,6 +2186,7 @@ impl DeckView {
             Divide::Band => ("seam-band".into(), false),
             Divide::Panes(ix) => (("seam-panes", ix).into(), false),
             Divide::Columns(ix) => (("seam-columns", ix).into(), true),
+            Divide::Rail => ("seam-rail".into(), true),
         };
         let group = SharedString::from(format!("{id:?}"));
         let held = self.sizing.map(|(held, _)| held) == Some(what);
@@ -2607,6 +2654,7 @@ impl DeckView {
     ///
     /// Newest last, because a walk reads forwards.
     fn render_rail(&self, pace: f32, speaking: bool, cx: &mut Context<Self>) -> AnyElement {
+        let wide = self.rail_width.unwrap_or(RAIL);
         let palette = &self.palette;
         let mono = cx.theme().mono_font_family.clone();
         let following = matches!(self.live.following(), deck_core::Following::Following);
@@ -2683,7 +2731,7 @@ impl DeckView {
 
         div()
             .flex_none()
-            .w(px(RAIL * pace))
+            .w(px(wide * pace))
             .min_w_0()
             .h_full()
             .overflow_hidden()
@@ -2696,7 +2744,7 @@ impl DeckView {
             .child(
                 div()
                     .v_flex()
-                    .w(px(RAIL))
+                    .w(px(wide))
                     .h_full()
                     .px(px(14.))
                     .pt(px(13.))
@@ -2753,32 +2801,31 @@ impl DeckView {
 }
 
 impl DeckView {
-    /// The three answers, at the bottom of the live box where a hand can reach.
+    /// The three answers, along the foot of the live box.
     ///
-    /// Keys are a shortcut for somebody who already knows them. They are a poor
-    /// *interface*: `1`, `2`, `3` in a legend tell a reader there is a thing to
-    /// learn, not that there is a thing to press. These sit under the
-    /// conversation, look like what they do, and cost one click.
+    /// Keys are a shortcut for somebody who already knows them. They were a
+    /// poor *interface*: a legend listing `1`, `2`, `3` tells a reader there is
+    /// something to learn, not that there is something to press — so the
+    /// numbers came off the legend and these went on screen instead.
+    ///
+    /// Quiet on purpose. Three heavy bordered boxes across the bottom read as a
+    /// dialog asking a question; these are closer to the reaction row under a
+    /// message, which is what they are. The face carries the meaning and the
+    /// word underneath is there for the first time only.
     fn render_reactions(&self, cx: &mut Context<Self>) -> AnyElement {
         let palette = &self.palette;
         let faces = [
-            (
-                0usize,
-                "\u{1F44D}",
-                "noted",
-                deck_core::Kind::Nit,
-                palette.muted,
-            ),
+            (0usize, YES, "noted", deck_core::Kind::Nit, palette.muted),
             (
                 1usize,
-                "\u{1F914}",
+                HUH,
                 "wait, what?",
                 deck_core::Kind::Question,
                 palette.accent,
             ),
             (
                 2usize,
-                "\u{274C}",
+                STOP,
                 "that's wrong",
                 deck_core::Kind::MustFix,
                 palette.del,
@@ -2788,42 +2835,44 @@ impl DeckView {
         div()
             .h_flex()
             .flex_none()
-            .gap(px(6.))
-            .pt(px(10.))
-            .mt(px(4.))
+            .items_center()
+            .gap(px(3.))
+            .pt(px(9.))
+            .mt(px(6.))
             .border_t_1()
             .border_color(paint(palette.edge))
             .children(faces.into_iter().map(|(ix, face, what, kind, tone)| {
                 div()
                     .id(("react", ix))
                     .h_flex()
-                    .flex_1()
                     .items_center()
-                    .justify_center()
                     .gap(px(5.))
-                    .py(px(6.))
-                    .rounded(px(5.))
-                    .bg(paint(palette.wash))
-                    .border_1()
-                    .border_color(paint(palette.edge))
-                    .hover(|style| style.border_color(paint(tone)))
+                    .px(px(7.))
+                    .py(px(4.))
+                    .rounded(px(999.))
                     .cursor_pointer()
+                    .hover(|style| style.bg(paint(palette.wash)))
                     .on_click(cx.listener(move |deck, _, _window, cx| {
-                        deck.react(kind, cx);
+                        deck.react(kind, deck_core::When::Queue, cx);
                     }))
-                    .child(div().text_size(px(14.)).child(face))
-                    .child(
-                        div()
-                            .text_size(px(9.5))
-                            .text_color(paint(palette.muted))
-                            .child(what),
-                    )
+                    .child(div().text_size(px(13.)).child(face))
+                    .child(div().text_size(px(9.)).text_color(paint(tone)).child(what))
             }))
             .into_any_element()
     }
 }
 
-/// How wide the rail is once it has finished arriving.
+/// The three faces, in one place so the button and the rail cannot drift apart.
+///
+/// Chosen for rendering as much as for meaning: these three have colour glyphs
+/// on every platform deck runs on. `\u{274C}` was tried for *that's wrong* and
+/// came out as a plain monochrome cross beside two colour faces, which looked
+/// like a mistake rather than a set.
+const YES: &str = "\u{1F44D}";
+const HUH: &str = "\u{1F914}";
+const STOP: &str = "\u{1F6D1}";
+
+/// How wide the rail is once it has finished arriving./// How wide the rail is once it has finished arriving.
 const RAIL: f32 = 232.;
 
 impl Render for DeckView {
@@ -3045,6 +3094,7 @@ impl Render for DeckView {
                     let by = along - from;
                     match what {
                         Divide::Band => deck.resize_band(by, cx),
+                        Divide::Rail => deck.resize_rail(by, cx),
                         Divide::Panes(ix) => {
                             deck.resize_panes(ix, by, window.viewport_size().height, cx);
                         }

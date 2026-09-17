@@ -201,6 +201,16 @@ pub struct Moment {
     /// For a reaction or a comment, which of the three it was.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub kind: Option<Kind>,
+    /// For a reaction or a comment, whether it wants the walk to stop.
+    ///
+    /// The field an agent watching the stream actually branches on.
+    #[serde(default, skip_serializing_if = "is_queue")]
+    pub when: When,
+}
+
+/// Queue is the common case and the default, so it stays off the wire.
+fn is_queue(when: &When) -> bool {
+    *when == When::Queue
 }
 
 /// What kind of moment a [`Moment`] records.
@@ -268,6 +278,9 @@ pub struct Comment {
     /// What kind of response the comment is asking for. See [`Kind`].
     #[serde(default)]
     pub kind: Kind,
+    /// Whether it can wait. See [`When`].
+    #[serde(default)]
+    pub when: When,
     /// The text the comment was pinned to when it was written.
     ///
     /// The far side relocates by searching for this when `range` is stale. For
@@ -276,6 +289,39 @@ pub struct Comment {
     pub quote: String,
     /// What the reader actually said.
     pub text: String,
+}
+
+/// Whether a remark can wait, or wants the agent to stop.
+///
+/// A second axis, and it does not overlap [`Kind`]. Kind is *what you want
+/// done*; this is *when you want it dealt with*, and every combination is
+/// meaningful: a must-fix you are happy to collect at the end, a question you
+/// want answered before the walk goes any further.
+///
+/// Reactions are always [`When::Queue`] — a keystroke that cost nothing should
+/// not be able to derail a walkthrough. Stopping somebody is a thing you do on
+/// purpose, with words.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case", from = "String")]
+pub enum When {
+    /// Collect it. The agent reads it when the review comes back.
+    #[default]
+    Queue,
+    /// Stop and deal with this now.
+    ///
+    /// During a live walk the agent is watching the event stream, so this is
+    /// the reader reaching through and taking the floor.
+    Interrupt,
+}
+
+/// Read from the wire, forgivingly. See [`Kind`]'s own implementation.
+impl From<String> for When {
+    fn from(name: String) -> Self {
+        match name.as_str() {
+            "interrupt" => Self::Interrupt,
+            _ => Self::Queue,
+        }
+    }
 }
 
 /// How a comment's range was arrived at, and so how far to trust it.
@@ -486,6 +532,7 @@ mod tests {
                 range: Some(LineRange::new(122, 124)),
                 source: Some(Source::Diff),
                 kind: Kind::MustFix,
+                when: When::default(),
                 quote: "if (--pending === 0) finish()".into(),
                 text: "why does this assume sorted input?".into(),
             }],
@@ -519,6 +566,7 @@ mod tests {
                 range: None,
                 source: None,
                 kind: Kind::MustFix,
+                when: When::default(),
                 quote: String::new(),
                 text: "this whole approach is wrong".into(),
             }],
