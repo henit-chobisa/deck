@@ -412,9 +412,10 @@ impl Chart {
             .overflow_hidden()
             .bg(paint(palette.wash))
             .child(crate::pane::chrome(
+                None,
                 self.label.clone(),
                 self.note.clone(),
-                None,
+                crate::pane::Controls::default(),
                 palette,
                 cx,
             ))
