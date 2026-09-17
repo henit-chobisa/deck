@@ -3575,11 +3575,17 @@ impl DeckView {
     /// popped into place would make the reader find their place again.
     ///
     /// Newest last, because a walk reads forwards.
-    fn render_rail(&self, pace: f32, speaking: bool, cx: &mut Context<Self>) -> AnyElement {
+    fn render_rail(&self, speaking: bool, cx: &mut Context<Self>) -> AnyElement {
         let wide = self.rail_width.unwrap_or(RAIL);
+        let open = self.rail_open.level();
         let palette = &self.palette;
         let mono = cx.theme().mono_font_family.clone();
-        let following = matches!(self.live.following(), deck_core::Following::Following);
+        // A pause that has lapsed is not holding anything, even before the next
+        // show request gets round to noticing — so the label says "following"
+        // as soon as the agent may move the reader again.
+        let following = !self.live.reader_holds();
+        // What the reader has written and not yet handed over.
+        let said = self.remarks.len();
 
         // One timeline, in the order things happened.
         //
@@ -3602,102 +3608,215 @@ impl DeckView {
                         | deck_core::What::Shown
                 )
             })
-            .map(|(ix, moment)| {
-                if moment.what == deck_core::What::Shown {
+            .collect();
+        let last = shown.len().saturating_sub(1);
+        let lines: Vec<AnyElement> = shown
+            .into_iter()
+            .enumerate()
+            .map(|(place, (ix, moment))| {
+                let mine = moment.what == deck_core::What::Said;
+                let again = self.conversation.spoken.contains_key(&ix);
+                // Older turns sink into the page. What was just said is what
+                // the reader is in the middle of; six turns back is context,
+                // and context as black as the sentence in front of you is
+                // context you have to read past.
+                #[allow(clippy::cast_precision_loss)]
+                let age = ((last - place) as f32 / 6.).clamp(0., 1.) * 0.55;
+                let sunk = |tone: deck_core::theme::Rgb| tone.mix(palette.band, age);
+                let reacted = moment.what == deck_core::What::Reacted;
+                let moved = moment.what == deck_core::What::Shown;
+                let tone = match moment.kind {
+                    Some(deck_core::Kind::MustFix) => palette.del,
+                    Some(deck_core::Kind::Question) => palette.accent,
+                    _ => palette.muted,
+                };
+
+                // Minutes and seconds into the walk. A clock time says nothing
+                // about the conversation; "two minutes in" does, and it does
+                // not go stale the way "12s ago" would on a panel that is not
+                // redrawn every second.
+                let into = moment.at_ms / 1000;
+                let when = format!("{}:{:02}", into / 60, into % 60);
+
+                let who = if mine {
+                    "agent"
+                } else if moved {
+                    "moved"
+                } else {
+                    "you"
+                };
+                // Where it was written, not just which group it was in. A
+                // line in the thread that says only `you · g2` leaves the
+                // reader hunting for the lines they wrote about.
+                let at = moment.file.as_ref().and_then(|file| {
+                    let name = file.file_name()?.to_string_lossy().to_string();
+                    Some(
+                        moment
+                            .range
+                            .map_or(name.clone(), |range| format!("{name}:{range}")),
+                    )
+                });
+                let meta = format!(
+                    "{who} · {}{}",
+                    at.unwrap_or_else(|| moment.group.clone().unwrap_or_else(|| "walk".into())),
+                    if moment.when == deck_core::When::Interrupt {
+                        " · interrupted"
+                    } else {
+                        ""
+                    },
+                );
+
+                let body: AnyElement = if moved {
                     let target = moment.file.as_ref().map_or_else(
                         || moment.group.clone().unwrap_or_default(),
                         |file| {
+                            let name = file.file_name().map_or_else(
+                                || file.display().to_string(),
+                                |name| name.to_string_lossy().to_string(),
+                            );
                             format!(
-                                "{}{}",
-                                file.display(),
+                                "{name}{}",
                                 moment
                                     .range
                                     .map_or_else(String::new, |range| format!(":{range}"))
                             )
                         },
                     );
-                    return div()
-                        .flex_none()
-                        .px(px(8.))
-                        .py(px(7.))
+                    div()
                         .font_family(mono.clone())
-                        .text_size(px(9.5))
-                        .text_color(paint(palette.muted))
-                        .child(SharedString::from(format!("Showing {target}")))
-                        .into_any_element();
-                }
-                let mine = moment.what == deck_core::What::Said;
-                let reacted = moment.what == deck_core::What::Reacted;
-                let tone = match moment.kind {
-                    Some(deck_core::Kind::MustFix) => palette.del,
-                    Some(deck_core::Kind::Question) => palette.accent,
-                    _ => palette.muted,
+                        .text_size(px(10.5))
+                        .text_color(paint(sunk(palette.muted)))
+                        .child(SharedString::from(target))
+                        .into_any_element()
+                } else if reacted {
+                    div()
+                        .font_family(mono.clone())
+                        .text_size(px(11.5))
+                        .text_color(paint(sunk(tone)))
+                        .child(SharedString::from(moment.text.clone()))
+                        .into_any_element()
+                } else {
+                    // The band's own reading of prose, so a name in backticks
+                    // is a chip here too, and the sentence being heard is lit.
+                    let picking = crate::prose::Picking::quiet(
+                        self.heard_in(crate::speech::Narration::Answer(ix)),
+                    );
+                    crate::prose::render_look(
+                        crate::prose::parse(&moment.text),
+                        palette,
+                        mono.clone(),
+                        &picking,
+                        // The reader's own words keep the page's ink; the
+                        // agent's step back a shade, so a thread skimmed from
+                        // the top says who is talking before it is read.
+                        crate::prose::Look {
+                            tone: sunk(if mine {
+                                crate::prose::Look::rail(palette).tone
+                            } else {
+                                palette.fg
+                            }),
+                            ..crate::prose::Look::rail(palette)
+                        },
+                    )
+                    .into_any_element()
                 };
+
+                // The knot on the thread. Hollow for the agent, filled for the
+                // reader, and in the colour of what the reader asked for — the
+                // same code the composer uses, so a must-fix is findable by
+                // scanning the thread.
+                let knot = div()
+                    .absolute()
+                    .top(px(if moved { 7. } else { 6. }))
+                    .left(px(if moved { 7. } else { 6. }))
+                    .size(px(if moved { 7. } else { 9. }))
+                    .rounded_full()
+                    .border_1()
+                    .border_color(paint(sunk(if mine || moved {
+                        palette.muted
+                    } else {
+                        tone
+                    })))
+                    .bg(paint(if mine || moved {
+                        palette.band
+                    } else {
+                        sunk(tone)
+                    }));
+                // The thread runs from the first knot to the last, not past
+                // either end, so it reads as one conversation with a start.
+                let thread = div()
+                    .absolute()
+                    .left(px(10.))
+                    .w(px(1.))
+                    .bg(paint(palette.edge))
+                    .top(px(if place == 0 { 10. } else { 0. }))
+                    .when(place == last, |this| this.h(px(10.)))
+                    .when(place != last, |this| this.bottom_0());
+
                 div()
                     .h_flex()
-                    .items_start()
-                    .gap(px(7.))
-                    .px(px(8.))
-                    .py(px(9.))
-                    .rounded(px(5.))
-                    .when(self.picked_reply == Some(ix), |this| {
-                        this.bg(paint(palette.wash))
-                    })
+                    .items_stretch()
                     .child(
                         div()
+                            .relative()
                             .flex_none()
-                            .w(px(9.))
-                            .text_size(px(10.))
-                            .text_color(paint(tone))
-                            // The agent's own lines carry no mark. Only what the
-                            // reader put in needs pointing at.
-                            .child(if mine || reacted { "" } else { "\u{2022}" }),
+                            .w(px(24.))
+                            .when(last > 0, |this| this.child(thread))
+                            .child(knot),
                     )
                     .child(
                         div()
                             .flex_1()
                             .min_w_0()
-                            // A reaction was a face and wanted to be large. It
-                            // is a word now, and a word set larger than the
-                            // sentence beside it reads as shouting.
                             .v_flex()
                             .gap(px(4.))
-                            .text_size(px(13.))
-                            .when(reacted, |this| this.font_family(mono.clone()))
+                            .pt(px(3.))
+                            .pb(px(if moved { 10. } else { 16. }))
                             .child(
                                 div()
+                                    .h_flex()
+                                    .justify_between()
+                                    .items_center()
+                                    .gap(px(8.))
                                     .font_family(mono.clone())
-                                    .text_size(px(9.5))
-                                    .text_color(paint(palette.muted))
-                                    .child(SharedString::from(format!(
-                                        "{} · {}{}",
-                                        if mine { "agent" } else { "you" },
-                                        moment.group.as_deref().unwrap_or("walk"),
-                                        if moment.when == deck_core::When::Interrupt {
-                                            " · interrupted"
-                                        } else {
-                                            ""
-                                        },
-                                    ))),
+                                    .text_size(px(9.))
+                                    .text_color(paint(sunk(palette.muted)))
+                                    .child(
+                                        div().min_w_0().truncate().child(SharedString::from(meta)),
+                                    )
+                                    .child(
+                                        div()
+                                            .h_flex()
+                                            .flex_none()
+                                            .items_center()
+                                            .gap(px(7.))
+                                            // Say it again. Cheap: the sound of
+                                            // a turn is already on disk, so a
+                                            // replay starts at once — which is
+                                            // the whole reason it is worth a
+                                            // button rather than a re-ask.
+                                            .when(again, |this| {
+                                                this.child(
+                                                    div()
+                                                        .id(("again", ix))
+                                                        .cursor_pointer()
+                                                        .text_color(paint(palette.muted))
+                                                        .hover(|style| {
+                                                            style.text_color(paint(palette.accent))
+                                                        })
+                                                        .on_click(cx.listener(
+                                                            move |deck, _, _window, cx| {
+                                                                deck.say_again(ix, cx);
+                                                            },
+                                                        ))
+                                                        .child("↻"),
+                                                )
+                                            })
+                                            .child(SharedString::from(when)),
+                                    ),
                             )
-                            .text_color(paint(if reacted { tone } else { palette.fg }))
-                            .child(SharedString::from(moment.text.clone())),
+                            .child(body),
                     )
-                    .id(("line", ix))
-                    .cursor_pointer()
-                    .hover(|style| style.bg(paint(palette.wash)))
-                    .on_click(cx.listener(move |deck, _, _window, cx| {
-                        if deck.composing.is_some() {
-                            return;
-                        }
-                        deck.picked_reply = Some(ix);
-                        deck.picked_said = None;
-                        for pane in &mut deck.panes {
-                            pane.unpick();
-                        }
-                        deck.live.pause(PauseReason::Selection);
-                        cx.notify();
-                    }))
                     .into_any_element()
             })
             .collect();
