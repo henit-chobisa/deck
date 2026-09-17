@@ -164,19 +164,106 @@ enum What {
         timeout: u64,
     },
 
+    /// Say what you are doing, while you are doing it.
+    ///
+    /// A few words in the present tense, shown in the panel until the next one
+    /// replaces it or your answer lands. Send one whenever an answer is going
+    /// to take more than a moment: it is the only thing that tells the reader
+    /// somebody is still there, and without it the panel eventually has to
+    /// admit it has no idea.
+    Doing {
+        /// The `.deck` directory owned by the native window.
+        deck: PathBuf,
+        /// What you are doing: `reading the retry loop`, `checking the fonts`.
+        #[arg(long)]
+        text: String,
+        /// Give up if the window has not taken it by then.
+        #[arg(long, default_value_t = 5)]
+        timeout: u64,
+    },
+
+    /// Fold panes away to their spines, or open them again.
+    ///
+    /// A folded pane is still there: its name on a spine at the window's edge,
+    /// one click from coming back. Folding is how you make room without taking
+    /// anything away.
+    Fold {
+        /// The `.deck` directory owned by the native window.
+        deck: PathBuf,
+        /// The pane to fold, by the name the prose calls it. Repeatable.
+        #[arg(long = "pane", value_name = "NAME")]
+        panes: Vec<String>,
+        /// Open them again instead of folding them.
+        #[arg(long)]
+        open: bool,
+        /// Give up if the window has not taken it by then.
+        #[arg(long, default_value_t = 5)]
+        timeout: u64,
+    },
+
+    /// Bring a file into the room that this group never showed.
+    ///
+    /// For a question the deck was not written for. Say what to show and what
+    /// it displaces, and the room moves once.
+    ///
+    /// Think first about whether you need anything already on screen. If you
+    /// do, fold the panes you do not need by name and this arrives beside the
+    /// ones you kept. If you do not, `--fold-group` folds the whole group
+    /// behind one spine and this has the room to itself.
+    ///
+    /// It is temporary: closing it, or turning to another group, takes it away
+    /// and gives the group back.
+    Bring {
+        /// The `.deck` directory owned by the native window.
+        deck: PathBuf,
+        /// A file and one-based line range, with an optional `[name]` and note:
+        /// `src/batch.ts:140-148 [retry] the loop that gives up`.
+        #[arg(long = "ref", value_name = "FILE:FIRST-LAST [NAME] [NOTE]")]
+        reference: String,
+        /// What the range should become, drawn as a change rather than a
+        /// highlight. The file on disk is never touched.
+        #[arg(long, value_name = "REPLACEMENT")]
+        after: Option<String>,
+        /// Fold the whole group behind one spine to make room for it.
+        #[arg(long)]
+        fold_group: bool,
+        /// Or fold only these panes of it, by name. Repeatable.
+        #[arg(long = "fold", value_name = "NAME")]
+        fold: Vec<String>,
+        /// Give up if the window has not taken it by then.
+        #[arg(long, default_value_t = 5)]
+        timeout: u64,
+    },
+
+    /// Take the agent's hand off the page during a live walk.
+    ///
+    /// The frame round the pane being talked about and the lit lines inside it
+    /// fade out. Both also go by themselves a few seconds after the voice stops;
+    /// this is for ending a point on purpose, or finishing the walk.
+    Clear {
+        /// The `.deck` directory owned by the native window.
+        deck: PathBuf,
+        /// Give up if the window has not taken it by then.
+        #[arg(long, default_value_t = 5)]
+        timeout: u64,
+    },
+
     /// Say the deck is finished. Nothing more can be added after this.
     Seal {
         /// The `.deck` directory.
         deck: PathBuf,
     },
 
-    /// Choose whether a live walk has a voice, and whose.
+    /// Choose whether a deck can walk you through itself, and in whose voice.
     ///
-    /// Live works silently without this: the author's words land in the panel
-    /// and the panes light. A voice is an upgrade to that, which is why it is
-    /// its own command rather than something that starts talking the first time
-    /// you press a key.
-    Live,
+    /// Everything else works without this: the narration lands in the panel,
+    /// clicking a sentence lights the code it is about, and the conversation
+    /// is always there. A voice is an upgrade to that, which is why it is its
+    /// own command rather than something that starts talking the first time
+    /// somebody presses a key. Once it is set up, `w` in the window starts and
+    /// stops it — and until it is, the window does not offer the key at all.
+    #[command(aliases = ["live", "read"])]
+    Walk,
 
     /// Choose how deck looks, once.
     ///
@@ -728,13 +815,7 @@ fn ask(deck: &std::path::Path, body: deck_cli::live::RequestBody, timeout: u64) 
         }
     };
 
-    match client.request(
-        deck_cli::live::RequestBody::Say {
-            text: text.to_string(),
-            aloud,
-        },
-        std::time::Duration::from_secs(timeout),
-    ) {
+    match client.request(body, std::time::Duration::from_secs(timeout)) {
         Ok(response) => {
             match serde_json::to_string(&response) {
                 Ok(json) => println!("{json}"),
