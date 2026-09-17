@@ -124,12 +124,21 @@ fn ends_a_sentence(word: &str) -> bool {
 /// this understands — and the only one narration uses.
 #[must_use]
 pub fn parse(say: &str) -> Vec<Paragraph> {
+    tokenised(say, false)
+}
+
+/// [`parse`], saying whether beats survive it.
+///
+/// They must not reach the eye and must reach the ear, and both sides want the
+/// same tokenising and the same marks spent — so the one difference is a flag
+/// rather than a second parser that could drift from this one.
+fn tokenised(say: &str, keep_beats: bool) -> Vec<Paragraph> {
     let (mut said, mut at) = (0, 0);
     say.split("\n\n")
         .map(str::trim)
         .filter(|para| !para.is_empty())
         .map(|para| {
-            let parsed = paragraph(para, &mut said, &mut at);
+            let parsed = paragraph(para, keep_beats, &mut said, &mut at);
             // A paragraph break always ends a sentence, whatever it ends with.
             said += 1;
             parsed
@@ -151,8 +160,12 @@ pub fn parse(say: &str) -> Vec<Paragraph> {
 /// `[[slnc n]]` is the system synthesiser's own instruction for a pause.
 #[must_use]
 pub fn spoken(say: &str, pause: u16) -> String {
-    let between = format!(" [[slnc {pause}]] ");
-    parse(say)
+    // Google's own spelling, used as the one neutral way to write a beat.
+    // Every engine renders it differently and none of them show it, so there is
+    // no reason for a second syntax that would have to be translated twice.
+    let _ = pause;
+    let between = " [pause long] ".to_string();
+    tokenised(say, true)
         .into_iter()
         .map(|para| {
             para.tokens
@@ -168,6 +181,31 @@ pub fn spoken(say: &str, pause: u16) -> String {
         .filter(|para| !para.is_empty())
         .collect::<Vec<_>>()
         .join(&between)
+}
+
+/// Every beat an agent may write, and what it is spelled.
+///
+/// Chirp 3 takes these in its `markup` field and decides how long each one
+/// should be from what surrounds it. They are for the ear only: [`parse`]
+/// takes them out, so a reader never sees stage directions in the prose.
+pub const BEATS: &[&str] = &["[pause long]", "[pause short]", "[pause]"];
+
+/// The text with every beat removed.
+///
+/// Called on the way into the band. An agent writing for the ear should not
+/// have to write a second copy for the eye, so it writes one and each side
+/// takes what it needs.
+#[must_use]
+pub fn unbeat(text: &str) -> String {
+    let mut out = text.to_string();
+    for beat in BEATS {
+        out = out.replace(beat, "");
+    }
+    // A beat sat between two spaces, and removing it leaves both.
+    while out.contains("  ") {
+        out = out.replace("  ", " ");
+    }
+    out
 }
 
 /// One code chip, as a person reading the code out would say it.
@@ -376,9 +414,13 @@ fn closes(after_open: &str, marker: &str, before: Option<char>) -> Option<usize>
 }
 
 /// One paragraph, split into the runs it can wrap between.
-fn paragraph(para: &str, said: &mut usize, at: &mut usize) -> Paragraph {
+fn paragraph(para: &str, keep_beats: bool, said: &mut usize, at: &mut usize) -> Paragraph {
     // A newline inside a paragraph is the agent's line wrapping, not a break.
-    let source = para.replace('\n', " ");
+    let flowed = para.replace('\n', " ");
+    // Beats are for the ear. Left in, they render as literal brackets in the
+    // middle of a sentence; taken out of the spoken copy, the agent's pacing is
+    // lost. So each side gets what it needs from the same source.
+    let source = if keep_beats { flowed } else { unbeat(&flowed) };
     let mut tokens: Vec<Token> = Vec::new();
     let mut plain = String::new();
     let mut rest = source.as_str();
@@ -507,6 +549,26 @@ mod tests {
     }
 
     #[test]
+    fn a_beat_is_heard_and_never_seen() {
+        // The agent writes one copy. The ear gets the pacing it asked for; the
+        // eye never gets a stage direction in the middle of a sentence.
+        let say = "It waves the empty password through. [pause] Then line 132.";
+        assert!(spoken(say, 420).contains("[pause]"), "the ear keeps it");
+
+        let seen: String = tokenised(say, false)
+            .into_iter()
+            .flat_map(|para| para.tokens)
+            .map(|token| token.text.to_string())
+            .collect();
+        assert!(!seen.contains("[pause]"), "the eye never sees it: {seen}");
+        assert!(
+            !seen.contains("  "),
+            "and it leaves no double space: {seen}"
+        );
+        assert!(seen.contains("through. Then"), "{seen}");
+    }
+
+    #[test]
     fn a_chip_is_said_the_way_a_person_would_say_it() {
         // Spoken verbatim these are "base underscore url" and one long word
         // with the stress in the wrong place. Both were written without a space
@@ -542,9 +604,13 @@ mod tests {
     fn paragraphs_are_held_apart() {
         // A break is a change of subject. Run two together and the argument is
         // a stream again, which is the thing the groups exist to prevent.
+        //
+        // Written in Google's spelling because one engine has to win, and that
+        // is the one that understands a beat natively and judges its length
+        // from what surrounds it. The others are told what to do with it.
         let said = spoken("First claim.\n\nSecond claim.", 400);
-        assert!(said.contains("[[slnc 400]]"), "{said}");
-        assert_eq!(said.matches("slnc").count(), 1, "one gap, not two");
+        assert!(said.contains("[pause long]"), "{said}");
+        assert_eq!(said.matches("[pause").count(), 1, "one gap, not two");
     }
 
     /// Each paragraph as its whole text, and the marks it carries.

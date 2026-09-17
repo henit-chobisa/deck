@@ -550,6 +550,32 @@ mod tests {
     }
 
     #[test]
+    fn the_skill_teaches_the_beats_a_voice_understands() {
+        // Written in the prose and never drawn: deck takes them out of the band
+        // and hands them to the voice, which judges each length from context.
+        // An agent that does not know they exist writes prose that is read flat.
+        assert!(SKILL.contains("Write it so it can be heard"));
+        assert!(SKILL.contains("[pause long]"));
+        assert!(
+            SKILL.contains("The reader never sees them"),
+            "or an agent will avoid them, thinking they show"
+        );
+        assert!(
+            SKILL.contains("not one per sentence"),
+            "a beat everywhere is the same as a beat nowhere"
+        );
+    }
+
+    #[test]
+    fn the_skill_does_not_promise_a_tone_control() {
+        // Chirp 3 has pace, pauses and pronunciation — and no way to ask for a
+        // style. Telling an agent otherwise would have it writing directions
+        // nothing reads.
+        assert!(SKILL.contains("There is no way to ask for a\ntone"));
+        assert!(SKILL.contains("Do not write stage directions"));
+    }
+
+    #[test]
     fn the_skill_asks_for_a_sentence_that_adds_nothing() {
         // "Too fast" is not word count — it is never being allowed to put your
         // weight down. Every few sentences, one that lands what is already

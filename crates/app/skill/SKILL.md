@@ -372,6 +372,40 @@ surprised you while you were reading the code, you have not found the story yet.
 And a size rule with teeth: **if a group needs three separate ideas to land, it is not a
 group — it is two groups glued together.** Split it. One claim, one group.
 
+## Write it so it can be heard
+
+A deck can be walked live, and then the narration is read aloud while the reader
+looks at the code. Write for that as well as for the page — it costs nothing when
+nobody is listening, and it is the difference between being walked through
+something and being read at.
+
+**Mark the beats.** `[pause]`, `[pause short]` and `[pause long]` go in the prose
+where a person explaining this would stop. The reader never sees them: deck takes
+them out of what it draws and hands them to the voice, which judges the length
+from what is around it.
+
+> The guard asks whether *anything* changed, and the username did. `[pause]` It
+> waves the empty password through.
+
+One before the consequence, one after a question, one where you want somebody to
+catch up. Three or four in a group, not one per sentence — a beat everywhere is
+the same as a beat nowhere.
+
+**Punctuation is the only other control you have.** There is no way to ask for a
+tone: the voice reads what you wrote and takes its pacing from the sentence. So a
+long clause runs long. A short one lands. A full stop is a real stop, and a
+semicolon is not — if you want the voice to stop, write a full stop.
+
+Which means the rules already in this document do double work. **One thing
+travels** keeps a listener from losing the subject, because they cannot glance
+back the way a reader can. **Give them somewhere to stand** matters more aloud
+than on the page: a sentence that adds nothing is where a listener catches up,
+and without one they are still holding your third fact when you start the fifth.
+
+**Do not write stage directions.** No "let me explain", no "as you can see", no
+"now look at". Say the thing. A voice reading filler is a voice the reader turns
+off, and they cannot skim past it the way they would on a page.
+
 ## When it is serious, send them to go and look
 
 Sometimes the right end to a group is not another sentence. It is: **go and try this, and

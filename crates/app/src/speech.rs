@@ -308,14 +308,23 @@ impl Drop for Voice {
 /// paragraph gaps. Anywhere else it is four brackets and a number that would be
 /// read out, so it comes back off.
 fn prepared(text: &str, speech: &Speech) -> String {
-    // `[[slnc n]]` is macOS `say`'s own instruction. Piped to anything else it
-    // is four brackets and a number that would be read out, so it comes off —
-    // the gap is deck's to keep, not the engine's to understand.
+    // Beats are written in Google's spelling, because one of the engines has to
+    // win and that is the one that understands them natively.
+    //
+    // macOS `say` has its own instruction for silence and can be told exactly.
+    // Everything else would read the brackets out loud, so they come off — the
+    // gap is deck's to keep, not the engine's to understand.
     if speech.engine == Engine::System && cfg!(target_os = "macos") {
-        return text.to_string();
+        let long = format!("[[slnc {}]]", speech.pause);
+        let short = format!("[[slnc {}]]", speech.pause / 2);
+        return text
+            .replace("[pause long]", &long)
+            .replace("[pause short]", &short)
+            .replace("[pause]", &short);
     }
+    let text = crate::prose::unbeat(text);
     let mut out = String::with_capacity(text.len());
-    let mut rest = text;
+    let mut rest = text.as_str();
     while let Some(at) = rest.find("[[") {
         out.push_str(&rest[..at]);
         match rest[at..].find("]]") {
