@@ -27,6 +27,25 @@ use crate::view::DeckView;
 pub struct Slot<'a> {
     /// Which pane this is, so a row can name it when the pointer lands on it.
     pub ix: usize,
+    /// How folded this pane is, nought open and one folded to its spine.
+    pub fold: f32,
+    /// Whether this pane was brought in to answer a question.
+    ///
+    /// It gets a way to be closed, which an authored pane does not: the deck
+    /// decides what an authored group shows, and the reader decides how long a
+    /// borrowed pane stays.
+    pub temporary: bool,
+    /// Whether this pane may be folded at all.
+    ///
+    /// The last open pane may not: there would be nobody to give its width to.
+    /// The control is not drawn rather than drawn and refused.
+    pub foldable: bool,
+    /// Whether it folds to the left edge of the window or the right one.
+    ///
+    /// A pane folds to the side it is already nearest, so the spine never
+    /// crosses the code to get to its edge and the open panes stay in the
+    /// middle of the window.
+    pub fold_left: bool,
     /// How much of its row's width it takes.
     ///
     /// It goes on the pane's own root rather than on a wrapper, because a
@@ -150,6 +169,16 @@ impl Sheet {
         match self {
             Self::Code(code) => code.range_away(),
             Self::Drawn(_) => None,
+        }
+    }
+
+    /// The pane folded down to its spine, or nothing for a picture.
+    pub fn render_folded(&self, slot: &Slot, cx: &App) -> AnyElement {
+        match self {
+            Self::Code(code) => code.render_folded(slot, cx),
+            // A picture has no name to put on a spine and nothing to read down
+            // the side of it, so it folds away to nothing at all.
+            Self::Drawn(_) => gpui_kit::div().into_any_element(),
         }
     }
 
