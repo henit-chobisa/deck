@@ -388,7 +388,12 @@ fn fetch(text: &str, speech: &Speech) -> anyhow::Result<PathBuf> {
         ureq::post("https://texttospeech.googleapis.com/v1/text:synthesize")
             .header("X-Goog-Api-Key", &key)
             .send_json(serde_json::json!({
-                "input": { "text": text },
+                // SSML, not text. The documented `markup` field is accepted,
+                // returns audio, and reads the tags out as words — `markup:
+                // "one [pause long] two"` came back the same length as `text:
+                // "one pause long two"`, to the millisecond. `<break>` is the
+                // one that is actually silence.
+                "input": { "ssml": ssml(text, speech.pause) },
                 "voice": { "languageCode": language, "name": voice },
                 "audioConfig": {
                     "audioEncoding": "MP3",
@@ -419,6 +424,24 @@ fn fetch(text: &str, speech: &Speech) -> anyhow::Result<PathBuf> {
     let at = std::env::temp_dir().join(format!("deck-said-{}-{now}.mp3", std::process::id()));
     std::fs::write(&at, audio)?;
     Ok(at)
+}
+
+/// The narration as SSML, with the beats turned into real silence.
+///
+/// Escaped first and marked up second, so a narration full of `&&`, `<` and `>`
+/// — which prose about code always is — cannot close a tag it did not open.
+fn ssml(text: &str, pause: u16) -> String {
+    let escaped = text
+        .replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;");
+    let long = format!("<break time=\"{pause}ms\"/>");
+    let short = format!("<break time=\"{}ms\"/>", pause / 2);
+    let body = escaped
+        .replace("[pause long]", &long)
+        .replace("[pause short]", &short)
+        .replace("[pause]", &format!("<break time=\"{}ms\"/>", pause * 3 / 4));
+    format!("<speak>{body}</speak>")
 }
 
 /// Play a file, with whatever this machine plays files with.
@@ -551,6 +574,37 @@ mod tests {
             ..Speech::default()
         };
         assert!(start("anything", &speech).is_none());
+    }
+
+    #[test]
+    fn a_beat_becomes_real_silence() {
+        // The documented `markup` field is accepted, returns audio, and reads
+        // the tags out as words — `markup: "one [pause long] two"` came back
+        // the same length as `text: "one pause long two"`, to the millisecond.
+        // `<break>` is the one that is actually silence.
+        let said = ssml("one [pause long] two [pause short] three", 420);
+        assert!(said.starts_with("<speak>") && said.ends_with("</speak>"));
+        assert!(said.contains(r#"<break time="420ms"/>"#), "{said}");
+        assert!(said.contains(r#"<break time="210ms"/>"#), "{said}");
+        assert!(
+            !said.contains("[pause"),
+            "no tag survives to be read: {said}"
+        );
+    }
+
+    #[test]
+    fn code_in_the_narration_cannot_break_the_markup() {
+        // Prose about code is full of `&&`, `<` and `>`. Unescaped, the first
+        // one closes a tag nobody opened and the whole request is rejected —
+        // or worse, silently mangled.
+        let said = ssml("if a && b < c > d", 420);
+        assert!(said.contains("&amp;&amp;"), "{said}");
+        assert!(said.contains("&lt;") && said.contains("&gt;"), "{said}");
+        assert_eq!(
+            said.matches("<break").count() + said.matches("<speak").count(),
+            1,
+            "the only tags are deck's own"
+        );
     }
 
     #[test]
