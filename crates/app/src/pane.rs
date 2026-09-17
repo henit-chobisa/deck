@@ -453,26 +453,68 @@ impl Pane {
         cx: &App,
     ) -> impl IntoElement {
         let palette = slot.palette;
+        let fold = slot.fold;
         let label = chrome(
+            self.name.clone(),
             self.label.clone(),
             self.note.clone(),
-            focus_button,
+            Controls {
+                focus_button,
+                // A borrowed pane offers no fold, only a close. Folding one
+                // would leave a spine for something that is not part of the
+                // deck, and when it is the only thing open the fold has to be
+                // refused anyway — which reads as the way back being barred.
+                fold: (fold <= 0. && slot.foldable && !slot.temporary)
+                    .then(|| self.render_fold(slot, cx)),
+                close: (fold <= 0. && slot.temporary).then(|| self.render_close(slot)),
+            },
             palette,
             cx,
         );
 
+        let heeded = self.heeded.level();
+
         div()
             .v_flex()
-            .flex_grow(slot.share)
+            .relative()
+            .overflow_hidden()
+            // Folding is a width, not a hiding. The pane gives up its share of
+            // the row a frame at a time and keeps only its spine, and whatever
+            // is beside it takes the room as it goes.
+            .flex_grow(slot.share * (1. - fold))
             .flex_shrink(1.)
+            // Nothing at all once it is folded. The spine it leaves behind is a
+            // column of its own at the window's edge, and a basis here as well
+            // meant the same width was set aside twice — a folded pane left a
+            // pane-shaped hole beside its own spine.
             .flex_basis(px(0.))
             .h_full()
             .min_w_0()
             .min_h_0()
             .overflow_hidden()
             .bg(paint(palette.wash))
-            .child(label)
-            .child(self.render_code(slot.ix, marks, palette, slot.view, cx))
+            .child(
+                div()
+                    .v_flex()
+                    .size_full()
+                    .min_h_0()
+                    .opacity(1. - fold)
+                    .child(label)
+                    .child(self.render_code(slot.ix, marks, palette, slot.view, cx)),
+            )
+            // The pane being talked about, outlined. Drawn over the pane rather
+            // than as its border, so lighting it moves nothing: a border that
+            // appeared would push every row down by its width, mid-sentence.
+            // It has no handlers, so nothing under it stops being clickable.
+            .when(heeded > 0., |pane| {
+                pane.child(
+                    div()
+                        .absolute()
+                        .inset_0()
+                        .border_2()
+                        .border_color(paint(palette.wash.mix(palette.accent, 0.9 * heeded))),
+                )
+            })
     }
 
     fn render_code(
