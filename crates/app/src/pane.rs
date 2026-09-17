@@ -479,6 +479,25 @@ impl Pane {
         }
     }
 
+    /// Put the first line of a proposed change in view.
+    ///
+    /// A replacement is spliced in under the range it replaces, so showing the
+    /// top of the range can leave the new code below the fold — which is the
+    /// half the answer was about. With nothing proposed, the lit range is the
+    /// subject as usual.
+    pub fn show_change(&self) {
+        let Some(first) = self
+            .rows
+            .iter()
+            .position(|row| row.change == Some(Change::New))
+        else {
+            self.show_range();
+            return;
+        };
+        self.scroll
+            .scroll_to_item(first.saturating_sub(LEAD_IN as usize), ScrollStrategy::Top);
+    }
+
     /// Put the lit range back in view.
     ///
     /// Asked for after anything that changes row heights, since a scroll
