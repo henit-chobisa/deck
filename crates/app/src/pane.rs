@@ -288,6 +288,8 @@ pub struct Pane {
     laid_out: std::cell::Cell<Option<(usize, f32)>>,
     /// The ref this pane shows, so a comment can name it.
     pub ref_id: SharedString,
+    /// What the prose calls this pane, when the agent named it.
+    pub name: Option<SharedString>,
     /// The file, for the review payload and for relocating later.
     pub file: std::path::PathBuf,
     /// The lines the reader has picked, if any.
@@ -330,6 +332,11 @@ impl Pane {
         // hard against the top edge. The scroll is deferred to the next layout,
         // which is the only moment the list knows how tall it is.
         let scroll = UniformListScrollHandle::new();
+        let widest = rows
+            .iter()
+            .map(|row| row.text.chars().count())
+            .max()
+            .unwrap_or(0);
         let top = authored.first.saturating_sub(LEAD_IN).max(1);
         scroll.scroll_to_item((top - 1) as usize, ScrollStrategy::Top);
 
@@ -340,12 +347,22 @@ impl Pane {
             source_lines: total,
             added,
             scroll,
+            across: ScrollHandle::new(),
+            widest,
             label: format!("{}:{}", code.file.display(), authored).into(),
             note: code.note.clone().map(SharedString::from),
             laid_out: std::cell::Cell::new(None),
             ref_id: code.id.clone().into(),
+            name: code.name.clone().map(SharedString::from),
             file: code.file.clone(),
             selected: None,
+            arriving: Fade::default(),
+            proposed: code.after.clone(),
+            point: None,
+            rising: Fade::default(),
+            was: None,
+            pointing: Fade::default(),
+            heeded: Fade::default(),
         };
         pane.spotlight(authored);
         pane
@@ -368,6 +385,9 @@ impl Pane {
     /// layout visibility accurately after the next frame.
     pub fn spotlight(&mut self, range: LineRange) {
         self.spotlight = range.clamp_to(self.source_lines);
+        // A new subject, so the old finger is pointing at nothing. Left in
+        // place it would light a line of the new range for no stated reason.
+        self.point_at(None);
         self.label = format!("{}:{}", self.file.display(), self.spotlight).into();
         self.laid_out.set(None);
     }
@@ -861,11 +881,18 @@ impl Pane {
                                 .flex_none()
                                 .text_center()
                                 .text_color(paint(match row.change {
-                                    Some(Change::Gone) => palette.del,
-                                    Some(Change::New) => palette.add,
+                                    Some(Change::Gone) => palette.accent.mix(palette.del, arrived),
+                                    Some(Change::New) => palette.accent.mix(palette.add, arrived),
                                     None if has_mark => palette.add,
-                                    None if is_picked || is_lit => palette.accent,
-                                    None => palette.wash,
+                                    None if is_picked => palette.accent,
+                                    // While the narration is pointing, the rest
+                                    // of the lit range steps back. Two ranges
+                                    // with the same bar is two claims about
+                                    // where to look.
+                                    None if is_lit => {
+                                        palette.accent.mix(palette.muted, pointing * (1. - pointed))
+                                    }
+                                    None => palette.wash.mix(palette.accent, pointed),
                                 }))
                                 .child(match row.change {
                                     Some(Change::Gone) => "−",
@@ -938,7 +965,7 @@ impl Pane {
             .child(div().absolute().inset_0().on_scroll_wheel({
                 let view = wheeling;
                 move |event: &ScrollWheelEvent, window, cx| {
-                    let by = event.delta.pixel_delta(window.line_height()).y;
+                    let by = event.delta.pixel_delta(window.line_height());
                     let _ = view.update(cx, |deck, cx| deck.wheel(pane_ix, by, cx));
                     cx.stop_propagation();
                 }
@@ -1305,12 +1332,18 @@ fn highlight(source: &str, lines: &[&str], file: &std::path::Path, cx: &App) -> 
 /// pane is recognisable by its header — a deck where one kind of pane wore a
 /// different hat would read as two tools sharing a window.
 pub fn chrome(
+    name: Option<SharedString>,
     label: SharedString,
     note: Option<SharedString>,
-    focus_button: Option<AnyElement>,
+    controls: Controls,
     palette: &Palette,
     cx: &App,
 ) -> impl IntoElement {
+    let Controls {
+        focus_button,
+        fold,
+        close,
+    } = controls;
     div()
         .h_flex()
         .flex_none()
