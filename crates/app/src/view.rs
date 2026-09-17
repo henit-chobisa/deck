@@ -431,11 +431,6 @@ pub struct DeckView {
     /// Theirs once they touch it, and kept across hide and reopen with the
     /// other things they decided about this deck.
     rail_width: Option<f32>,
-    /// What the agent has said during this walk, in order.
-    ///
-    /// Shown in the rail so the conversation reads as a conversation rather
-    /// than as the reader talking to themselves.
-    spoken: Vec<SharedString>,
     /// The walk, as it happened.
     ///
     /// Grown in place while the deck is open and handed to the review whole.
@@ -680,7 +675,6 @@ impl DeckView {
             rail_width: None,
             held: Vec::new(),
             asked_at: None,
-            spoken: Vec::new(),
             transcript: Vec::new(),
             began: std::time::Instant::now(),
             picked_said: None,
@@ -824,7 +818,6 @@ impl DeckView {
                 anchor,
             );
         }
-        self.spoken.push(SharedString::from(text.to_string()));
         // The author answered, so nothing is owed.
         self.asked_at = None;
         if aloud {
@@ -2784,39 +2777,31 @@ impl DeckView {
         let mono = cx.theme().mono_font_family.clone();
         let following = matches!(self.live.following(), deck_core::Following::Following);
 
-        // The agent's own words first, then the reader's. Two voices in one
-        // column, because a rail that showed only one half would read as
-        // somebody talking to themselves.
-        let spoken: Vec<AnyElement> = self
-            .spoken
+        // One timeline, in the order things happened.
+        //
+        // This was two lists — everything the agent said, then everything the
+        // reader said — so a question asked early appeared below an answer
+        // given late and the conversation read backwards. The transcript is
+        // already in order, so it *is* the rail; keeping a second list beside
+        // it was what let the two disagree.
+        let lines: Vec<AnyElement> = self
+            .transcript
             .iter()
             .enumerate()
-            .map(|(ix, text)| {
-                div()
-                    .py(px(5.))
-                    .pl(px(23.))
-                    .text_size(px(11.5))
-                    .text_color(paint(palette.muted))
-                    .child(text.clone())
-                    .id(("spoken", ix))
-                    .into_any_element()
+            .filter(|(_, moment)| {
+                matches!(
+                    moment.what,
+                    deck_core::What::Said | deck_core::What::Reacted | deck_core::What::Wrote
+                )
             })
-            .collect();
-
-        let said: Vec<AnyElement> = self
-            .remarks
-            .iter()
-            .enumerate()
-            .map(|(ix, remark)| {
-                let tone = match remark.kind {
-                    deck_core::Kind::MustFix => palette.del,
-                    deck_core::Kind::Question => palette.accent,
-                    deck_core::Kind::Nit => palette.muted,
+            .map(|(ix, moment)| {
+                let mine = moment.what == deck_core::What::Said;
+                let reacted = moment.what == deck_core::What::Reacted;
+                let tone = match moment.kind {
+                    Some(deck_core::Kind::MustFix) => palette.del,
+                    Some(deck_core::Kind::Question) => palette.accent,
+                    _ => palette.muted,
                 };
-                // A reaction's whole text is the face that was pressed, so it
-                // stands on its own. A written remark gets a dot in the colour
-                // of what it asks the agent to do.
-                let reacted = FACES.iter().any(|(face, _)| *face == remark.text);
                 div()
                     .h_flex()
                     .items_start()
@@ -2828,17 +2813,19 @@ impl DeckView {
                             .w(px(9.))
                             .text_size(px(10.))
                             .text_color(paint(tone))
-                            .child(if reacted { "" } else { "\u{2022}" }),
+                            // The agent's own lines carry no mark. Only what the
+                            // reader put in needs pointing at.
+                            .child(if mine || reacted { "" } else { "\u{2022}" }),
                     )
                     .child(
                         div()
                             .flex_1()
                             .min_w_0()
-                            .text_size(if reacted { px(14.) } else { px(11.5) })
-                            .text_color(paint(palette.fg))
-                            .child(SharedString::from(remark.text.clone())),
+                            .text_size(if reacted { px(15.) } else { px(11.5) })
+                            .text_color(paint(if mine { palette.muted } else { palette.fg }))
+                            .child(SharedString::from(moment.text.clone())),
                     )
-                    .id(("said", ix))
+                    .id(("line", ix))
                     .into_any_element()
             })
             .collect();
@@ -2905,8 +2892,7 @@ impl DeckView {
                             .flex_1()
                             .min_h_0()
                             .overflow_y_scroll()
-                            .children(spoken)
-                            .children(said),
+                            .children(lines),
                     )
                     .children(self.render_pending())
                     .child(self.render_reactions(cx)),
@@ -2930,7 +2916,12 @@ impl DeckView {
 
         let since = self.asked_at?.elapsed();
         let palette = &self.palette;
-        let (dots, tone) = if since >= PATIENCE {
+        // Still held means the reader waited for a gap and the gap has not come.
+        // Saying so is better than "thinking", which would be a lie about who
+        // is holding things up.
+        let (dots, tone) = if !self.held.is_empty() {
+            ("waiting for a gap", palette.muted)
+        } else if since >= PATIENCE {
             ("no answer yet", palette.muted)
         } else {
             // Three dots, one at a time, so it reads as live rather than as a
@@ -2958,17 +2949,16 @@ impl DeckView {
         )
     }
 
-    /// The reactions, in one small box under the conversation.
+    /// The reactions, under a rule at the foot of the panel.
     ///
-    /// Faces and nothing else. A word beside each one is a label on a thing
-    /// that already says what it is, and five labels across the foot of a panel
-    /// read as a form rather than as a row you tap.
+    /// A rule rather than a box. A bordered pill full of faces reads as a
+    /// widget sitting on the panel; a divider reads as the bottom of the panel,
+    /// which is what it is.
     ///
-    /// Five rather than three because the [`deck_core::Kind`] a reaction
-    /// carries is what the *agent* must do about it, and that is coarser than
-    /// what a reader wants to express. Two faces can mean the same instruction
-    /// and still not mean the same thing, so the face itself travels as the
-    /// remark's text and the kind rides underneath it.
+    /// Seven, and they are the ones this work actually uses. The set matters
+    /// more than the count: a reader reviewing code wants to say *nice*,
+    /// *looking*, *I do not follow*, *careful*, *that is a bug*, *stop* — and a
+    /// generic set of smileys cannot carry any of it.
     fn render_reactions(&self, cx: &mut Context<Self>) -> AnyElement {
         let palette = &self.palette;
 
@@ -2976,24 +2966,21 @@ impl DeckView {
             .h_flex()
             .flex_none()
             .items_center()
-            .justify_center()
-            .gap(px(2.))
-            .mt(px(8.))
-            .p(px(3.))
-            .rounded(px(999.))
-            .bg(paint(palette.wash))
-            .border_1()
+            .gap(px(1.))
+            .mt(px(9.))
+            .pt(px(8.))
+            .border_t_1()
             .border_color(paint(palette.edge))
             .children(FACES.iter().enumerate().map(|(ix, &(face, kind))| {
                 div()
                     .id(("react", ix))
                     .flex_none()
-                    .px(px(6.))
+                    .px(px(5.))
                     .py(px(3.))
-                    .rounded(px(999.))
+                    .rounded(px(4.))
                     .text_size(px(15.))
                     .cursor_pointer()
-                    .hover(|style| style.bg(paint(palette.band)))
+                    .hover(|style| style.bg(paint(palette.wash)))
                     .on_click(cx.listener(move |deck, _, _window, cx| {
                         deck.react(kind, deck_core::When::Queue, face, cx);
                     }))
@@ -3010,10 +2997,19 @@ impl DeckView {
 /// runs. `\u{274C}` was tried and came out a flat monochrome cross between two
 /// colour faces, which looked like a mistake rather than a member of a set.
 const FACES: &[(&str, deck_core::Kind)] = &[
+    // ship it
     ("\u{1F44D}", deck_core::Kind::Nit),
+    // nice
     ("\u{1F525}", deck_core::Kind::Nit),
+    // looking
     ("\u{1F440}", deck_core::Kind::Question),
+    // I do not follow
     ("\u{1F914}", deck_core::Kind::Question),
+    // careful
+    ("\u{26A0}\u{FE0F}", deck_core::Kind::MustFix),
+    // that is a bug
+    ("\u{1F41B}", deck_core::Kind::MustFix),
+    // stop
     ("\u{1F6D1}", deck_core::Kind::MustFix),
 ];
 
