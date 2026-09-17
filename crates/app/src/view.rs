@@ -868,6 +868,24 @@ impl DeckView {
             };
             code.spotlight(range);
             code.show_range();
+            // What the reader was shown is the claim the transcript makes, and
+            // it was the one thing the transcript did not record: it held what
+            // the agent said and what the reader pressed, and nothing about
+            // where either of them was looking. A move is a moment.
+            //
+            // Kept out of the published stream on purpose. That stream is what
+            // the *reader* did, and an agent being told about the move it just
+            // asked for is an echo it would have to learn to ignore.
+            self.transcript.push(deck_core::Moment {
+                at_ms: u64::try_from(self.began.elapsed().as_millis()).unwrap_or(u64::MAX),
+                what: deck_core::What::Shown,
+                group: Some(stage.group.clone()),
+                ref_id: stage.ref_id.clone(),
+                file: stage.file.clone(),
+                range: stage.range,
+                text: String::new(),
+                kind: None,
+            });
             cx.notify();
         }
         command.finish(crate::live::ShowAnswer::shown(stage, changed));
