@@ -1984,7 +1984,59 @@ impl DeckView {
         for pane in &mut self.panes {
             pane.unpick();
         }
+        self.follow_said(at, cx);
         cx.notify();
+    }
+
+    /// Light the code a sentence of the narration is about.
+    ///
+    /// The same thing the voice does, with the reader as the clock. A voice
+    /// reaches a word and the code lights; a reader puts their pointer on a
+    /// word and the code lights. Which one is driving is the only difference,
+    /// and the light should not care.
+    fn follow_said(&mut self, at: usize, cx: &mut Context<Self>) {
+        let Some(point) = self.point_of(at) else {
+            return;
+        };
+        self.attend();
+        self.point_at(Some(point), cx);
+        // Carried there even though the pane is held. Pressing on a sentence
+        // sets a pause — it is reader activity, and the agent must not move
+        // somebody who is busy reading — and that pause was then blocking the
+        // one movement the reader had just asked for. A click is a request.
+        if let Some((ix, target)) = self.point_away() {
+            self.followed = Some(std::time::Instant::now());
+            self.glide(ix, target, cx);
+        }
+    }
+
+    /// The pane whose pointed lines are off screen, and where it would have to
+    /// sit for them not to be.
+    fn point_away(&self) -> Option<(usize, Pixels)> {
+        self.panes.iter().enumerate().find_map(|(ix, pane)| {
+            let code = pane.code()?;
+            code.pointed()?;
+            Some((ix, code.point_offset()?))
+        })
+    }
+
+    /// Where the narration is pointing at word `at`.
+    ///
+    /// The narration is cut into pieces at its points, and every piece knows
+    /// how many words of the page it is — so the word the reader touched falls
+    /// inside exactly one of them, and that piece carries the lines.
+    fn point_of(&self, at: usize) -> Option<LineRange> {
+        let group = self.group()?;
+        let mut seen = 0;
+        // The pause only changes what a voice hears, and nothing here is
+        // heard. Cutting is the same either way.
+        for piece in crate::prose::pointed(&group.say, 0) {
+            seen += piece.words;
+            if at < seen {
+                return piece.point;
+            }
+        }
+        None
     }
 
     /// Remember which word the pointer is over. Selects nothing by itself.
@@ -3099,7 +3151,29 @@ impl DeckView {
     /// move. Travelling shows which way it went and how far, so the range
     /// arrives somewhere the eye already is.
     fn glide_to(&mut self, pane_ix: usize, cx: &mut Context<Self>) {
-        const STEPS: usize = 26;
+        let Some(target) = self
+            .panes
+            .get(pane_ix)
+            .and_then(Sheet::code)
+            .and_then(Pane::focus_offset)
+        else {
+            return;
+        };
+        self.glide(pane_ix, target, cx);
+    }
+
+    /// Carry a pane's list to `target` over a few frames.
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    fn glide(&mut self, pane_ix: usize, target: Pixels, cx: &mut Context<Self>) {
+        /// A frame, near enough. Shorter than this and the timer is doing more
+        /// work than the screen can show.
+        const FRAME: std::time::Duration = std::time::Duration::from_millis(8);
+        /// The shortest a move takes, however near it is.
+        const AT_LEAST: f32 = 420.;
+        /// And the longest, however far.
+        const AT_MOST: f32 = 950.;
+        /// Milliseconds per pixel between the two.
+        const PER_PIXEL: f32 = 0.7;
 
         // Whatever the wheel was doing, it is not what the reader asked for
         // now. Two things moving one pane would fight over every frame.
