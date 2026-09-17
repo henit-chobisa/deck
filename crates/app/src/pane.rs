@@ -1335,13 +1335,47 @@ pub fn chrome(
                 .flex_1()
                 .min_w_0()
                 .gap(px(3.))
-                .child(div().truncate().child(label))
+                // The name first, in the accent: it is the word the prose uses,
+                // so it is the word a reader's eye goes looking for up here.
+                .child(
+                    div()
+                        .h_flex()
+                        .gap(px(8.))
+                        .min_w_0()
+                        .children(name.map(|name| {
+                            div()
+                                .flex_none()
+                                .text_color(paint(palette.accent))
+                                .child(name)
+                        }))
+                        .child(div().min_w_0().truncate().child(label)),
+                )
                 .children(
                     note.as_deref()
                         .map(|note| div().overflow_hidden().child(emphasise(note, palette))),
                 ),
         )
-        .child(div().flex_none().children(focus_button))
+        .child(
+            div()
+                .h_flex()
+                .flex_none()
+                .items_center()
+                .gap(px(6.))
+                .children(focus_button)
+                .children(fold)
+                .children(close),
+        )
+}
+
+/// What a pane's header offers, beside its name.
+#[derive(Default)]
+pub struct Controls {
+    /// The way back to the lit range, when it has been scrolled away from.
+    pub focus_button: Option<AnyElement>,
+    /// The way to fold the pane down to its spine.
+    pub fold: Option<AnyElement>,
+    /// The way to close a pane that was brought in to answer a question.
+    pub close: Option<AnyElement>,
 }
 
 /// A note, with its emphasised words picked out in the accent.
