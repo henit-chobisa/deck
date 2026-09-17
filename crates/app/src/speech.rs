@@ -150,10 +150,16 @@ fn listed(out: &str) -> Vec<Installed> {
 /// one guessed at.
 pub const WHERE: &str = "System Settings → Accessibility → Read & Speak\n    → System Voice → Manage Voices… → English → anything marked Premium\n\n    (macOS 15 and earlier call that pane Spoken Content)";
 
-/// A voice, and whatever it is currently saying.
+/// A voice, what it is saying, and what it has still to say.
+///
+/// Utterances queue. They used to replace: saying a second thing killed the
+/// first mid-word, so an agent that answered in three sentences was heard
+/// saying only the last one. A reply is not an interruption of itself.
 #[derive(Debug, Default)]
 pub struct Voice {
     said: Option<Child>,
+    /// Waiting their turn, in the order they were given.
+    next: std::collections::VecDeque<String>,
 }
 
 impl Voice {
@@ -175,20 +181,37 @@ impl Voice {
         }
     }
 
-    /// Say this, stopping whatever was being said before.
+    /// Say this after whatever is already being said.
     ///
-    /// Silent when there is no synthesiser to run: a machine without one is not
-    /// a machine deck should refuse to open a deck on.
+    /// Queued rather than substituted. The reader hears a reply in the order it
+    /// was given, and an agent that answers in three sentences is heard saying
+    /// all three.
     pub fn say(&mut self, text: &str, speech: &Speech) {
-        self.hush();
         let text = text.trim();
         if text.is_empty() {
             return;
         }
+        self.next.push_back(text.to_string());
+        self.pump(speech);
+    }
 
-        let Some(mut spoken) = start(text, speech) else {
+    /// Start the next utterance if nothing is being said.
+    ///
+    /// Called as the window paints, which is how the queue advances: the child
+    /// exits, the next render notices, and the following sentence begins.
+    pub fn pump(&mut self, speech: &Speech) {
+        if self.talking() {
+            return;
+        }
+        let Some(text) = self.next.pop_front() else {
             return;
         };
+        let Some(mut spoken) = start(&text, speech) else {
+            // Nothing can speak it, so draining the rest would only stall.
+            self.next.clear();
+            return;
+        };
+        let text = text.as_str();
         // Written to stdin rather than passed as an argument, because a
         // narration is prose: it has quotes and dashes in it, and it can be
         // longer than a command line is allowed to be.
@@ -206,6 +229,7 @@ impl Voice {
     /// want the room quiet, and a voice that finishes its sentence first is a
     /// voice that ignored them.
     pub fn hush(&mut self) {
+        self.next.clear();
         if let Some(mut child) = self.said.take() {
             let _ = child.kill();
             let _ = child.wait();
@@ -355,6 +379,48 @@ mod tests {
             ..Speech::default()
         };
         assert!(start("anything", &speech).is_none());
+    }
+
+    #[test]
+    fn a_reply_of_three_sentences_is_heard_as_three() {
+        // Saying a second thing used to kill the first mid-word, so an agent
+        // that answered in three sentences was heard saying only the last one.
+        // A reply is not an interruption of itself.
+        let mut voice = Voice::default();
+        let speech = Speech {
+            engine: Engine::Command,
+            // Nothing to run, so nothing is spawned and nothing is spoken —
+            // but the queue is the thing under test, not the sound.
+            command: None,
+            ..Speech::default()
+        };
+        voice.say("first", &speech);
+        voice.say("second", &speech);
+        voice.say("third", &speech);
+
+        // With no synthesiser the queue drains rather than stalling, which is
+        // the other half: a machine that cannot speak must not silently hold a
+        // backlog for ever.
+        assert!(voice.next.is_empty());
+    }
+
+    #[test]
+    fn what_is_queued_is_kept_in_order() {
+        let mut voice = Voice::default();
+        voice.next.push_back("first".into());
+        voice.next.push_back("second".into());
+        assert_eq!(voice.next.front().map(String::as_str), Some("first"));
+    }
+
+    #[test]
+    fn hushing_forgets_what_was_still_to_come() {
+        // The reader asked for quiet. Finishing the backlog first would be
+        // ignoring them politely.
+        let mut voice = Voice::default();
+        voice.next.push_back("one".into());
+        voice.next.push_back("two".into());
+        voice.hush();
+        assert!(voice.next.is_empty());
     }
 
     #[test]

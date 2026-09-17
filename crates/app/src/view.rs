@@ -3030,6 +3030,8 @@ impl Render for DeckView {
         // because the pace is already a function of the clock: one place decides
         // how live the room is, and everything below reads it.
         let live = self.live_pace();
+        let speech = crate::speech::asked(cx);
+        self.voice.pump(&speech);
         let speaking = self.voice.talking();
         // The gap. Whoever waited their turn is heard now, in the order they
         // waited.
@@ -3041,7 +3043,7 @@ impl Render for DeckView {
         // Waiting on the author animates, so the window has to keep asking for
         // frames — otherwise the dots freeze and it reads as hung, which is the
         // exact impression the indicator exists to prevent.
-        if self.asked_at.is_some() || !self.held.is_empty() {
+        if self.asked_at.is_some() || !self.held.is_empty() || speaking {
             window.request_animation_frame();
         }
         if self.walking.is_some() && (live > 0.) && (live < 1.) {
