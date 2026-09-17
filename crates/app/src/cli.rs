@@ -97,6 +97,10 @@ enum What {
         /// space: `src/batch.ts:140-148 decremented *twice*`.
         ///
         /// Give it once per pane. A single number is one line.
+        ///
+        /// Start the note with a name in brackets to name the pane —
+        /// `src/batch.ts:140-148 [retry] decremented *twice*` — and write
+        /// `[retry]` in `--say` to mean that pane. Never "left" or "right".
         #[arg(long = "ref", value_name = "FILE:FIRST-LAST [NOTE]")]
         refs: Vec<String>,
         /// What the range should become: the lines marked as going, and this
@@ -121,9 +125,18 @@ enum What {
         /// Select an authored group instead of the currently visible one.
         #[arg(long)]
         group: Option<String>,
-        /// Disambiguate when one group shows the same file more than once.
+        /// Disambiguate when one group shows the same file more than once:
+        /// the pane's name, or its ref id.
         #[arg(long)]
         pane: Option<String>,
+        /// What the shown range should become: the lines are drawn as going
+        /// and this is spliced in under them, as a change rather than a
+        /// highlight. The file on disk is never touched.
+        ///
+        /// Use it when the answer is code. Showing the change beats describing
+        /// it, and the reader can comment on the lines you are proposing.
+        #[arg(long, value_name = "REPLACEMENT")]
+        after: Option<String>,
         /// Retry identity. Reusing it with the same request returns its result.
         #[arg(long)]
         request_id: Option<String>,
@@ -304,15 +317,52 @@ impl Cli {
                 reference,
                 group,
                 pane,
+                after,
                 request_id,
                 timeout,
-            } => Err(show(&deck, &reference, group, pane, request_id, timeout)),
+            } => Err(show(
+                &deck, &reference, group, pane, after, request_id, timeout,
+            )),
             What::Say {
                 deck,
                 text,
                 silent,
                 timeout,
             } => Err(say(&deck, &text, !silent, timeout)),
+            What::Doing {
+                deck,
+                text,
+                timeout,
+            } => Err(ask(
+                &deck,
+                deck_cli::live::RequestBody::Doing { text },
+                timeout,
+            )),
+            What::Clear { deck, timeout } => {
+                Err(ask(&deck, deck_cli::live::RequestBody::Clear, timeout))
+            }
+            What::Fold {
+                deck,
+                panes,
+                open,
+                timeout,
+            } => Err(ask(
+                &deck,
+                deck_cli::live::RequestBody::Fold {
+                    panes,
+                    group: false,
+                    open,
+                },
+                timeout,
+            )),
+            What::Bring {
+                deck,
+                reference,
+                after,
+                fold_group,
+                fold,
+                timeout,
+            } => Err(bring(&deck, &reference, after, fold_group, fold, timeout)),
             What::Seal { deck } => report(deck_cli::seal(&deck)),
             What::Next {
                 deck,
@@ -550,6 +600,7 @@ fn show(
         range: named.range,
         group,
         pane,
+        after,
     };
     let timeout = std::time::Duration::from_secs(timeout);
     let result = match request_id {
@@ -606,6 +657,52 @@ fn show(
 
 /// Put the agent's words into an open walk.
 fn say(deck: &std::path::Path, text: &str, aloud: bool, timeout: u64) -> ExitCode {
+    ask(
+        deck,
+        deck_cli::live::RequestBody::Say {
+            text: text.to_string(),
+            aloud,
+        },
+        timeout,
+    )
+}
+
+/// Bring a file the group never showed into the room.
+fn bring(
+    deck: &std::path::Path,
+    reference: &str,
+    after: Option<String>,
+    fold_group: bool,
+    fold: Vec<String>,
+    timeout: u64,
+) -> ExitCode {
+    let named = match deck_cli::refs::parse(reference) {
+        Ok(named) => named,
+        Err(err) => {
+            println!(
+                "{}",
+                serde_json::json!({ "status": "invalid-request", "reason": err.to_string() })
+            );
+            return ExitCode::FAILURE;
+        }
+    };
+    ask(
+        deck,
+        deck_cli::live::RequestBody::Bring {
+            file: named.file,
+            range: named.range,
+            name: named.name,
+            note: named.note,
+            after,
+            fold_group,
+            fold,
+        },
+        timeout,
+    )
+}
+
+/// Send one request that answers only with whether the window took it.
+fn ask(deck: &std::path::Path, body: deck_cli::live::RequestBody, timeout: u64) -> ExitCode {
     let Some(runtime) = deck_core::home::deck() else {
         println!(
             "{}",
