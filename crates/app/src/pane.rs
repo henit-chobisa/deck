@@ -161,6 +161,72 @@ pub struct Mark {
     pub folded: bool,
 }
 
+/// A word set on its side, as a picture.
+///
+/// Nothing in this toolkit can turn text: a glyph goes into the scene with the
+/// identity transform and no way to pass another one. A *picture* can be turned,
+/// and gpui rasterises SVG with the system fonts loaded — so the word goes into
+/// a tiny SVG that already has it rotated, and that is painted where the text
+/// would have been.
+///
+/// Left-hand spines read upwards and right-hand ones downwards, which is the way
+/// vertical tabs are set everywhere else, and it keeps the start of the word
+/// nearest the pane it belongs to.
+///
+/// The rendered picture is cached by path and size, so the path carries the word
+/// and the colour: two spines the same size with different names would otherwise
+/// be handed each other's picture.
+pub fn sideways(
+    text: &str,
+    family: &str,
+    size: f32,
+    weight: u16,
+    tone: deck_core::theme::Rgb,
+    up: bool,
+) -> impl IntoElement {
+    // Roughly what the word will measure. It only has to be big enough: the
+    // text is centred in the box, and a box a little long is invisible.
+    #[allow(clippy::cast_precision_loss)]
+    let length = (text.chars().count() as f32).mul_add(size * 0.68, 10.);
+    let across = size * 1.5;
+    let turn = if up { -90 } else { 90 };
+    let svg = format!(
+        r##"<svg xmlns="http://www.w3.org/2000/svg" width="{across}" height="{length}" viewBox="0 0 {across} {length}"><text x="{cx}" y="{cy}" transform="rotate({turn} {cx} {cy})" font-family="{family}" font-size="{size}" font-weight="{weight}" text-anchor="middle" dominant-baseline="central" fill="#000">{text}</text></svg>"##,
+        across = across,
+        length = length,
+        cx = across / 2.,
+        cy = length / 2.,
+        turn = turn,
+        family = family,
+        size = size,
+        weight = weight,
+        text = text
+            .replace('&', "&amp;")
+            .replace('<', "&lt;")
+            .replace('>', "&gt;"),
+    );
+    // Keyed by everything that changes the picture, because the atlas keys it
+    // by this and the size alone.
+    let key: SharedString = format!("deck-sideways:{turn}:{size}:{weight}:{text}").into();
+    let data: std::sync::Arc<[u8]> = svg.into_bytes().into();
+
+    gpui_kit::canvas(
+        |_, _, _| (),
+        move |bounds, (), window, cx| {
+            let _ = window.paint_svg(
+                bounds,
+                key.clone(),
+                Some(&data),
+                gpui_kit::TransformationMatrix::unit(),
+                paint(tone),
+                cx,
+            );
+        },
+    )
+    .w(px(across))
+    .h(px(length))
+}
+
 /// One code pane.
 pub struct Pane {
     rows: Vec<Row>,
