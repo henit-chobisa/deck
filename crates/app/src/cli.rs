@@ -157,6 +157,14 @@ enum What {
         deck: PathBuf,
     },
 
+    /// Choose whether a live walk has a voice, and whose.
+    ///
+    /// Live works silently without this: the author's words land in the panel
+    /// and the panes light. A voice is an upgrade to that, which is why it is
+    /// its own command rather than something that starts talking the first time
+    /// you press a key.
+    Live,
+
     /// Choose how deck looks, once.
     ///
     /// Asks whether to borrow your editor's colours, and writes the answer to
@@ -288,6 +296,7 @@ impl Cli {
                     println!("{}", path.display());
                 })
             })),
+            What::Live => report(crate::setup::live()),
             What::Setup => report(crate::setup::run()),
             What::Hook => report(crate::hook::run()),
             What::Show {
@@ -789,7 +798,26 @@ fn wait(deck: &std::path::Path, timeout: u64) -> ExitCode {
     let until =
         (timeout > 0).then(|| std::time::Instant::now() + std::time::Duration::from_secs(timeout));
 
+    // The author's side of the huddle. The agent is already blocked here, so
+    // this is where a question has to reach it — a second verb it would have to
+    // poll is a habit no agent has, and the author stayed asleep because of it.
+    let live = deck_core::home::deck()
+        .and_then(|runtime| deck_cli::live::Client::connect(&runtime, deck).ok());
+
     loop {
+        if let Some(client) = live.as_ref()
+            && let Ok(Some(asked)) = client.take_asked()
+        {
+            match serde_json::to_string(&serde_json::json!({ "asked": asked.moment })) {
+                Ok(json) => println!("{json}"),
+                Err(err) => {
+                    eprintln!("deck: the question will not print: {err}");
+                    return ExitCode::FAILURE;
+                }
+            }
+            return ExitCode::SUCCESS;
+        }
+
         match deck_cli::review(deck) {
             Ok(Some(review)) => {
                 match serde_json::to_string_pretty(&review) {

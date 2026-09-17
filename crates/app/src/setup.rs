@@ -26,6 +26,91 @@ use deck_core::config::Config;
 use deck_core::theme::Mode;
 use deck_theme::Editor;
 
+/// Set up the voice a live walk speaks with.
+///
+/// Its own command because voice is an option, not the feature. A live walk
+/// without one still shows the author's words and lights the panes it is
+/// talking about; this only decides whether you also hear it.
+///
+/// # Errors
+///
+/// When the terminal cannot be read, or the config cannot be written.
+pub fn live() -> anyhow::Result<()> {
+    let mut config = crate::config::read().unwrap_or_default();
+
+    println!();
+    println!("  {}  {}", mark(), bold("deck live"));
+    println!(
+        "  {}",
+        dim("A live walk works silently. This is whether it also speaks.")
+    );
+    println!();
+    rule();
+
+    println!();
+    println!("  {}", bold("Aloud"));
+    println!(
+        "  {}",
+        dim("Off is a reasonable answer, and the usual one in an office.")
+    );
+    println!();
+    config.speech.aloud = ask_yes("Read the narration aloud?")?;
+    if !config.speech.aloud {
+        chose("silent");
+        let path = crate::config::path()
+            .ok_or_else(|| anyhow::anyhow!("no home directory to write a config into"))?;
+        write(&path, &config)?;
+        close(&path);
+        return Ok(());
+    }
+
+    println!();
+    rule();
+    println!();
+    println!("  {}", bold("Whose voice"));
+    println!(
+        "  {}",
+        dim("Deck pipes the words to whatever you name, and plays nothing")
+    );
+    println!(
+        "  {}",
+        dim("itself — so the provider is yours, and so is what leaves the machine.")
+    );
+    println!();
+    println!("    {}  this machine's own voice", accent("1"));
+    println!(
+        "    {}  a program I name (Kokoro, Piper, a script)",
+        accent("2")
+    );
+    println!();
+
+    if ask("Which?", "1")?.as_str() == "2" {
+        config.speech.engine = deck_core::config::Engine::Command;
+        println!();
+        println!(
+            "  {}",
+            dim("It reads the words on stdin and plays them. No quotes needed.")
+        );
+        println!();
+        let said = ask("Command", "kokoro-cli --voice af_heart -")?;
+        config.speech.command = Some(if said.is_empty() {
+            "kokoro-cli --voice af_heart -".to_string()
+        } else {
+            said
+        });
+        chose(config.speech.command.as_deref().unwrap_or(""));
+    } else {
+        config.speech.engine = deck_core::config::Engine::System;
+        listen(&mut config)?;
+    }
+
+    let path = crate::config::path()
+        .ok_or_else(|| anyhow::anyhow!("no home directory to write a config into"))?;
+    write(&path, &config)?;
+    close(&path);
+    Ok(())
+}
+
 /// Ask, and write the answers to `~/.deck/config.toml`.
 ///
 /// # Errors

@@ -611,6 +611,57 @@ impl Client {
     /// Commit without waiting, for asynchronous commands and transport tests.
     ///
     /// # Errors
+    /// The next thing the reader wants answered, taken once.
+    ///
+    /// This is the author's half of a huddle. The agent that wrote the deck is
+    /// already blocked in `deck wait`; making it *also* poll a second verb was
+    /// the mistake — no agent naturally sits in a loop, so the author stayed
+    /// asleep through the whole conversation and nothing could answer.
+    ///
+    /// Taken rather than read: the delivered mark advances as this returns, so
+    /// the agent answering and calling `wait` again gets the *next* question
+    /// instead of the same one forever. One waiter, so a file is enough.
+    ///
+    /// # Errors
+    ///
+    /// When the session directory cannot be read or the mark cannot be written.
+    pub fn take_asked(&self) -> Result<Option<Event>, std::io::Error> {
+        let mark = self.session.join("delivered");
+        let seen = std::fs::read_to_string(&mark)
+            .ok()
+            .and_then(|text| text.trim().parse::<u64>().ok());
+
+        let mut best: Option<Event> = None;
+        match std::fs::read_dir(self.session.join("events")) {
+            Ok(listing) => {
+                for entry in listing.flatten() {
+                    let Ok(event) = read_bounded::<Event>(&entry.path()) else {
+                        continue;
+                    };
+                    if seen.is_some_and(|seen| event.seq <= seen) {
+                        continue;
+                    }
+                    // Only what the reader wanted an answer to. A queued
+                    // reaction is collected in the review; stopping the author
+                    // mid-thought is something they did on purpose.
+                    if event.moment.when != deck_core::When::Interrupt {
+                        continue;
+                    }
+                    if best.as_ref().is_none_or(|held| event.seq < held.seq) {
+                        best = Some(event);
+                    }
+                }
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+            Err(error) => return Err(error),
+        }
+
+        if let Some(event) = best.as_ref() {
+            std::fs::write(&mark, event.seq.to_string())?;
+        }
+        Ok(best)
+    }
+
     /// The first event after `after`, waiting up to `timeout` for one.
     ///
     /// The cursor is a sequence, so a caller that crashes and comes back reads

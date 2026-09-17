@@ -412,6 +412,14 @@ pub struct DeckView {
     composing_when: deck_core::When,
     /// Live mode, while it is on or on its way out.
     walking: Option<Walking>,
+    /// When the reader last took the floor and is owed an answer.
+    ///
+    /// The thing that makes this a conversation rather than shouting into a
+    /// void: the moment you interrupt, the panel says the author has it. It is
+    /// cleared by the answer arriving, and after long enough it says the author
+    /// has not replied rather than spinning forever — a huddle where somebody
+    /// has gone quiet should say so.
+    asked_at: Option<std::time::Instant>,
     /// How wide the reader has dragged the rail, if they have.
     ///
     /// Theirs once they touch it, and kept across hide and reopen with the
@@ -664,6 +672,7 @@ impl DeckView {
             composing_when: deck_core::When::default(),
             walking: None,
             rail_width: None,
+            asked_at: None,
             spoken: Vec::new(),
             transcript: Vec::new(),
             began: std::time::Instant::now(),
@@ -809,6 +818,8 @@ impl DeckView {
             );
         }
         self.spoken.push(SharedString::from(text.to_string()));
+        // The author answered, so nothing is owed.
+        self.asked_at = None;
         if aloud {
             let speech = crate::speech::asked(cx);
             if speech.aloud {
@@ -1453,6 +1464,8 @@ impl DeckView {
         });
 
         self.composing = Some((about, state, listen));
+        self.composing_kind = deck_core::Kind::default();
+        self.composing_when = deck_core::When::default();
         cx.notify();
     }
 
@@ -2457,14 +2470,77 @@ impl DeckView {
                 // competes with the one thing the reader needs to read.
                 .child(
                     div()
-                        .font_family(cx.theme().mono_font_family.clone())
-                        .text_size(px(11.))
-                        .text_color(paint(self.palette.muted))
                         .h_flex()
-                        .gap(px(14.))
-                        .child("⌘⏎ save")
-                        .child("esc discard"),
+                        .items_center()
+                        .justify_between()
+                        .gap(px(12.))
+                        .child(
+                            div()
+                                .font_family(cx.theme().mono_font_family.clone())
+                                .text_size(px(11.))
+                                .text_color(paint(self.palette.muted))
+                                .h_flex()
+                                .gap(px(14.))
+                                .child("⌘⏎ save")
+                                .child("esc discard"),
+                        )
+                        // Only while somebody is listening. Outside a live walk
+                        // there is nobody to interrupt, so offering the choice
+                        // would be a control that does nothing.
+                        .children(self.render_urgency(cx)),
                 ),
+        )
+    }
+
+    /// Whether this remark can wait, offered only when it can matter.
+    ///
+    /// Queued is the default and the common case: the author reads it when the
+    /// review comes back. Interrupting is the reader taking the floor — it
+    /// wakes the agent out of `deck wait` with this one question, which is the
+    /// whole of the back-and-forth.
+    fn render_urgency(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
+        if self.walking.is_none_or(|walking| walking.going) {
+            return None;
+        }
+        let palette = &self.palette;
+        let picked = self.composing_when;
+
+        Some(
+            div()
+                .h_flex()
+                .flex_none()
+                .gap(px(3.))
+                .children(
+                    [
+                        (0usize, deck_core::When::Queue, "queue", palette.muted),
+                        (
+                            1usize,
+                            deck_core::When::Interrupt,
+                            "interrupt",
+                            palette.accent,
+                        ),
+                    ]
+                    .into_iter()
+                    .map(move |(ix, when, label, tone)| {
+                        let on = when == picked;
+                        div()
+                            .id(("urgency", ix))
+                            .px(px(9.))
+                            .py(px(4.))
+                            .rounded(px(999.))
+                            .cursor_pointer()
+                            .text_size(px(10.5))
+                            .text_color(paint(if on { tone } else { palette.muted }))
+                            .when(on, |this| this.bg(paint(palette.wash)))
+                            .hover(|style| style.bg(paint(palette.wash)))
+                            .on_click(cx.listener(move |deck, _, _window, cx| {
+                                deck.composing_when = when;
+                                cx.notify();
+                            }))
+                            .child(label)
+                    }),
+                )
+                .into_any_element(),
         )
     }
 
@@ -2794,6 +2870,7 @@ impl DeckView {
                             .children(spoken)
                             .children(said),
                     )
+                    .children(self.render_pending())
                     .child(self.render_reactions(cx)),
             )
             .into_any_element()
@@ -2801,6 +2878,48 @@ impl DeckView {
 }
 
 impl DeckView {
+    /// That the author has your question, before the answer exists.
+    ///
+    /// Without this the reader says something and the panel goes silent, which
+    /// is indistinguishable from the message never arriving — and that is
+    /// exactly what it felt like. Three dots while it is fresh, and an honest
+    /// admission once it has been too long: an author who has gone quiet should
+    /// be reported as quiet rather than waited on forever.
+    fn render_pending(&self) -> Option<AnyElement> {
+        /// How long before silence stops being "thinking" and starts being
+        /// "not answering".
+        const PATIENCE: std::time::Duration = std::time::Duration::from_secs(25);
+
+        let since = self.asked_at?.elapsed();
+        let palette = &self.palette;
+        let (dots, tone) = if since >= PATIENCE {
+            ("no answer yet", palette.muted)
+        } else {
+            // Three dots, one at a time, so it reads as live rather than as a
+            // label somebody forgot to clear.
+            let step = (since.as_millis() / 400) % 4;
+            (
+                match step {
+                    0 => "thinking",
+                    1 => "thinking.",
+                    2 => "thinking..",
+                    _ => "thinking...",
+                },
+                palette.accent,
+            )
+        };
+
+        Some(
+            div()
+                .flex_none()
+                .pt(px(7.))
+                .text_size(px(10.5))
+                .text_color(paint(tone))
+                .child(SharedString::from(dots))
+                .into_any_element(),
+        )
+    }
+
     /// The three answers, along the foot of the live box.
     ///
     /// Keys are a shortcut for somebody who already knows them. They were a
@@ -2890,6 +3009,12 @@ impl Render for DeckView {
         // how live the room is, and everything below reads it.
         let live = self.live_pace();
         let speaking = self.voice.talking();
+        // Waiting on the author animates, so the window has to keep asking for
+        // frames — otherwise the dots freeze and it reads as hung, which is the
+        // exact impression the indicator exists to prevent.
+        if self.asked_at.is_some() {
+            window.request_animation_frame();
+        }
         if self.walking.is_some() && (live > 0.) && (live < 1.) {
             window.request_animation_frame();
         }
