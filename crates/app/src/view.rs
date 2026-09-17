@@ -451,18 +451,60 @@ pub struct DeckView {
     composing_kind: deck_core::Kind,
     /// Whether the remark being written wants the walk to stop.
     composing_when: deck_core::When,
-    /// Live mode, while it is on or on its way out.
-    walking: Option<Walking>,
+    /// Whether a voice is reading the deck aloud.
+    aloud: bool,
     /// The timer that advances the voice, while there is anything to advance.
     talking_task: Option<Task<()>>,
+    /// When the view last carried a pane back to the lit lines.
+    ///
+    /// Following is checked every tick, not only when the light moves, because
+    /// a reader who scrolls away mid-sentence has to be brought back too. This
+    /// keeps that from restarting the travel on every one of those ticks.
+    followed: Option<std::time::Instant>,
+    /// How many groups have had their voice made ahead of time.
+    ///
+    /// Groups arrive while the agent is still writing, so this is a count
+    /// rather than a flag: each new group is sent to be made as it lands.
+    ahead: usize,
+    /// The pane name under the reader's pointer in the prose, if any.
+    name_hovered: Option<SharedString>,
+    /// The pane name the reader clicked in the prose, which stays lit.
+    name_pinned: Option<SharedString>,
+    /// Until when the agent holds the reader's attention on a pane.
+    ///
+    /// Pushed on by every show and every moment of speech, and let go a few
+    /// seconds after both stop. The frame round a pane and the lit lines in it
+    /// last exactly this long: they used to stay until something replaced
+    /// them, which in practice was for ever.
+    attending: Option<std::time::Instant>,
+    /// Which panes were brought in to answer a question, rather than authored.
+    ///
+    /// They are ordinary panes in every other way — folded, pointed at,
+    /// commented on — and they go when the reader turns to another group,
+    /// because they belong to the question and not to the deck.
+    temporary: std::collections::HashSet<usize>,
+    /// How folded each pane is, by pane index.
+    ///
+    /// A pane folds to a spine on its own side of the row, the way the
+    /// conversation folds to one on the right. Kept here rather than on the
+    /// pane because it is a thing about the room, not about the file: what may
+    /// fold depends on how many panes are open beside it.
+    folds: Vec<crate::pane::Fade>,
+    /// Whether the live rail is open, or folded down to its spine.
+    ///
+    /// Folded when live starts. The code is what the reader came for; the
+    /// conversation is a click away.
+    rail_open: crate::pane::Fade,
+    /// The sentence being heard, and how far its light has come up.
+    heard_now: Option<(crate::speech::Narration, (usize, usize), crate::pane::Fade)>,
+    /// The sentence just heard, its light going out.
+    heard_was: Option<(crate::speech::Narration, (usize, usize), crate::pane::Fade)>,
     conversation: crate::conversation::Conversation,
     /// How wide the reader has dragged the rail, if they have.
     ///
     /// Theirs once they touch it, and kept across hide and reopen with the
     /// other things they decided about this deck.
     rail_width: Option<f32>,
-    /// Replies must remain addressable after the agent has moved to another group.
-    picked_reply: Option<usize>,
     rail_scroll: ScrollHandle,
     /// Whether the narration is the thing a comment would land on.
     /// Which sentence of the narration is picked, if any.
@@ -705,11 +747,20 @@ impl DeckView {
             composing: None,
             composing_kind: deck_core::Kind::default(),
             composing_when: deck_core::When::default(),
-            walking: walking.then(Walking::arriving),
+            aloud,
             talking_task: None,
+            followed: None,
+            ahead: 0,
+            name_hovered: None,
+            name_pinned: None,
+            heard_now: None,
+            heard_was: None,
+            attending: None,
+            folds: Vec::new(),
+            temporary: std::collections::HashSet::new(),
+            rail_open: crate::pane::Fade::default(),
             rail_width,
             conversation,
-            picked_reply,
             rail_scroll,
             picked_said,
             said_from: None,
@@ -1169,30 +1220,377 @@ impl DeckView {
     ///
     /// One key for both directions, because there is only ever one thing the
     /// reader can want from it.
-    fn on_live(&mut self, _: &Live, _window: &mut Window, cx: &mut Context<Self>) {
-        match &self.walking {
-            // Already leaving, and asked again: come straight back.
-            Some(walking) if walking.going => {
-                self.walking = Some(Walking::arriving());
-                self.speak(cx);
-            }
-            Some(_) => {
-                self.walking = Some(Walking::leaving());
-                self.voice.hush();
-                self.flush_held();
-            }
-            None => {
-                self.walking = Some(Walking::arriving());
-                self.speak(cx);
+    fn on_walk(&mut self, _: &Walk, _window: &mut Window, cx: &mut Context<Self>) {
+        self.aloud = !self.aloud;
+        if self.aloud {
+            // From the top of the group in front of them. A selection made
+            // while reading was off was the reader pointing; once a voice is
+            // reading, the voice is what points.
+            self.picked_said = None;
+            self.said_from = None;
+            self.speak(cx);
+        } else {
+            self.voice.hush();
+            self.flush_held();
+            self.rest(cx);
+        }
+        cx.notify();
+    }
+
+    /// Hand the narration to the voice, a sentence's worth at a time.
+    ///
+    /// Cut wherever the agent moved its finger, so each piece carries the lines
+    /// it is about. That is what keeps the light and the words together: the
+    /// agent writes its commands as fast as it can, and a reader hears them one
+    /// at a time.
+    ///
+    /// Runs with the voice off as well, because the points are worth having
+    /// without one — then the pieces are walked at reading pace rather than
+    /// spoken, and nothing is heard.
+    fn narrate(
+        &mut self,
+        text: &str,
+        of: Option<crate::speech::Narration>,
+        speech: &deck_core::config::Speech,
+        cx: &mut Context<Self>,
+    ) {
+        let said = crate::prose::pointed(text, speech.pause);
+        // Nothing to carry and nobody to carry it to. A silent walk of prose
+        // that never points would only keep a timer alive to change nothing.
+        if !speech.aloud && !said.iter().any(|piece| piece.point.is_some()) {
+            return;
+        }
+        // One passage, not a sentence at a time. Queued piece by piece, the
+        // voice went quiet at every point while the next piece was fetched.
+        self.voice.say(said, of, speech);
+        self.attend();
+        self.point_at(self.voice.pointing(), cx);
+        self.keep_talking(cx);
+    }
+
+    /// Make the voice for groups the reader has not reached yet.
+    ///
+    /// From the render, because a render is what happens once the reader has
+    /// the deck open: a deck still sitting on the bar is not worth paying for
+    /// a voice nobody may hear. The group on screen first, then the ones after
+    /// it, because that is the way a walk goes.
+    fn look_ahead(&mut self, cx: &mut Context<Self>) {
+        let groups = self.deck.groups();
+        if groups.len() <= self.ahead {
+            return;
+        }
+        let speech = crate::speech::asked(cx);
+        let fresh = self.ahead..groups.len();
+        let mut order: Vec<usize> = fresh.clone().filter(|ix| *ix >= self.group_ix).collect();
+        order.extend(fresh.filter(|ix| *ix < self.group_ix));
+        let passages = order
+            .into_iter()
+            .map(|ix| crate::prose::pointed(&groups[ix].say, speech.pause))
+            .collect();
+        self.ahead = groups.len();
+        if speech.aloud {
+            crate::speech::preload(passages, &speech);
+        }
+    }
+
+    /// Follow the sentence being heard. Says whether it moved on.
+    fn listen(&mut self) -> bool {
+        let now = self.voice.hearing().and_then(|(of, word)| {
+            let text = match of {
+                crate::speech::Narration::Group(ix) => self.deck.groups().get(ix)?.say.as_str(),
+                crate::speech::Narration::Answer(ix) => {
+                    self.conversation.transcript.get(ix)?.text.as_str()
+                }
+            };
+            Some((of, crate::prose::sentence_around(text, word)?))
+        });
+        if now == self.heard_now.map(|(of, range, _)| (of, range)) {
+            return false;
+        }
+        // The last sentence goes out from wherever its light had got to.
+        if let Some((of, range, mut light)) = self.heard_now.take() {
+            light.set(false);
+            self.heard_was = Some((of, range, light));
+        }
+        self.heard_now = now.map(|(of, range)| {
+            let mut light = crate::pane::Fade::default();
+            light.set(true);
+            (of, range, light)
+        });
+        true
+    }
+
+    /// The sentences of `of` being heard, with how lit each one is.
+    fn heard_in(&self, of: crate::speech::Narration) -> Vec<((usize, usize), f32)> {
+        [self.heard_now, self.heard_was]
+            .into_iter()
+            .flatten()
+            .filter(|(whose, _, _)| *whose == of)
+            .map(|(_, range, light)| (range, light.level()))
+            .filter(|(_, level)| *level > 0.)
+            .collect()
+    }
+
+    /// Fold what the agent asked to fold, by name or the whole group.
+    ///
+    /// Silent about names it does not know: an agent folding `retry` in a group
+    /// that has no `retry` has made a mistake about the room, and the room is
+    /// not the place to argue about it.
+    fn apply_fold(&mut self, names: &[String], group: bool, open: bool, cx: &mut Context<Self>) {
+        let wanted: Vec<usize> = if group {
+            // Everything the deck itself put there. What was brought in to
+            // answer a question stays: folding it away with the group would
+            // leave the window with nothing in it at all.
+            (0..self.panes.len())
+                .filter(|ix| !self.temporary.contains(ix))
+                .collect()
+        } else {
+            names
+                .iter()
+                .filter_map(|name| {
+                    self.panes.iter().position(|pane| {
+                        pane.code()
+                            .is_some_and(|code| code.name.as_deref() == Some(name.as_str()))
+                    })
+                })
+                .collect()
+        };
+        for ix in wanted {
+            if let Some(fold) = self.folds.get_mut(ix) {
+                fold.set(!open);
             }
         }
         cx.notify();
     }
 
-    /// Read the current group aloud, if a voice is configured to do it.
+    /// Bring a file the group never showed into the room.
+    fn apply_bring(&mut self, brought: Brought, cx: &mut Context<Self>) -> crate::live::ShowAnswer {
+        let Brought {
+            file,
+            range,
+            name,
+            note,
+            after,
+            fold_group,
+            fold,
+        } = brought;
+        let base = self.deck.base();
+        let source = self
+            .snapshots
+            .entry(file.clone())
+            .or_insert_with(|| std::sync::Arc::from(read_source(&base, &file)))
+            .clone();
+        if source.is_empty() {
+            return crate::live::ShowAnswer::refused(
+                deck_cli::live::ResponseStatus::NotFound,
+                "there is nothing at that path to bring in",
+            );
+        }
+        // A pane of its own, with an id nothing in the deck can collide with.
+        let spec = deck_core::protocol::RefSpec {
+            id: format!("brought-{}", self.panes.len()),
+            file,
+            range,
+            note,
+            name,
+            after,
+        };
+        let pane = Pane::new(&spec, &source, cx);
+        // What it displaces folds in the same movement, so the room moves once.
+        self.apply_fold(&fold, fold_group, false, cx);
+        self.panes.push(Sheet::Code(pane));
+        self.folds.push(crate::pane::Fade::default());
+        self.temporary.insert(self.panes.len() - 1);
+        self.attend();
+        self.keep_talking(cx);
+        crate::live::ShowAnswer::said()
+    }
+
+    /// Close a pane that was brought in to answer a question.
     ///
-    /// The group's prose only. The code is on screen, and a voice spelling out
-    /// a line of it would be reading the one thing the reader can already see.
+    /// The group comes back with it: whatever was folded to make the room is
+    /// opened again, because the room was only ever borrowed.
+    pub fn close_brought(&mut self, ix: usize, cx: &mut Context<Self>) {
+        if !self.temporary.remove(&ix) {
+            return;
+        }
+        // Whatever the question borrowed, the group has back.
+        self.panes.remove(ix);
+        if ix < self.folds.len() {
+            self.folds.remove(ix);
+        }
+        // Indices above it have all moved down by one.
+        self.temporary = self
+            .temporary
+            .iter()
+            .map(|at| if *at > ix { at - 1 } else { *at })
+            .collect();
+        if self.temporary.is_empty() {
+            for fold in &mut self.folds {
+                fold.set(false);
+            }
+        }
+        cx.notify();
+    }
+
+    /// Fold a pane down to its spine, or open it again.
+    ///
+    /// Folding needs somewhere for the room to go: with one pane open there is
+    /// nothing to give the width to, and a deck folded to nothing but spines is
+    /// a window showing no code at all. Opening is always allowed.
+    pub fn fold_pane(&mut self, ix: usize, away: bool, cx: &mut Context<Self>) {
+        // Folding something borrowed is closing it. It was brought in to answer
+        // a question, and a spine for it would sit among the deck's own panes
+        // claiming to be one of them.
+        if away && self.temporary.contains(&ix) {
+            self.close_brought(ix, cx);
+            return;
+        }
+        let open = self
+            .folds
+            .iter()
+            .enumerate()
+            .filter(|(at, fold)| *at != ix && !fold.on())
+            .count();
+        if away && open == 0 {
+            return;
+        }
+        if let Some(fold) = self.folds.get_mut(ix) {
+            fold.set(away);
+            cx.notify();
+        }
+    }
+
+    /// The reader pointed at a pane's name in the prose.
+    ///
+    /// Hovering lights the pane for as long as the pointer stays; clicking keeps
+    /// it lit until clicked again, for a reader who wants to read the pane with
+    /// the pointer somewhere else.
+    fn on_name(
+        &mut self,
+        name: SharedString,
+        naming: crate::prose::Naming,
+        cx: &mut Context<Self>,
+    ) {
+        use crate::prose::Naming;
+        match naming {
+            Naming::Enter => self.name_hovered = Some(name),
+            Naming::Leave => {
+                if self.name_hovered.as_ref() == Some(&name) {
+                    self.name_hovered = None;
+                }
+            }
+            Naming::Click => {
+                self.name_pinned = if self.name_pinned.as_ref() == Some(&name) {
+                    None
+                } else {
+                    Some(name)
+                };
+            }
+        }
+        cx.notify();
+    }
+
+    /// Outline the pane the agent is talking about, and only that one.
+    ///
+    /// The pane it is pointing into, when it is pointing. Otherwise the pane it
+    /// last moved the spotlight in. And only while live: a reader going through
+    /// a deck alone is not being talked to about anything.
+    ///
+    /// Worked out from state every frame rather than set at each place that
+    /// state changes. There are five of those, and a light left on by the one
+    /// that was forgotten is worse than no light.
+    fn heed(&mut self) {
+        let pointed = self
+            .panes
+            .iter()
+            .position(|pane| pane.code().is_some_and(|code| code.pointed().is_some()));
+        let staged = self
+            .live
+            .stage()
+            .filter(|stage| self.group().is_some_and(|group| group.id == stage.group));
+        let shown = staged.and_then(|stage| {
+            self.panes.iter().position(|pane| {
+                pane.code()
+                    .is_some_and(|code| stage.ref_id.as_deref() == Some(code.ref_id.as_ref()))
+            })
+        });
+        // The reader asking beats the agent pointing. They put the pointer on a
+        // name to find its pane, and showing them some other pane because a
+        // sentence moved on would answer a question they did not ask.
+        let asked = self
+            .name_hovered
+            .as_ref()
+            .or(self.name_pinned.as_ref())
+            .and_then(|name| {
+                self.panes.iter().position(|pane| {
+                    pane.code()
+                        .is_some_and(|code| code.name.as_ref() == Some(name))
+                })
+            });
+        let attending = self
+            .attending
+            .is_some_and(|until| std::time::Instant::now() < until);
+        let about = asked.or(pointed.or(shown).filter(|_| attending));
+        for (ix, pane) in self.panes.iter_mut().enumerate() {
+            if let Some(code) = pane.code_mut() {
+                code.heed(Some(ix) == about);
+            }
+        }
+    }
+
+    /// Light the lines the narration is pointing at, and say whether that moved.
+    ///
+    /// The pane is chosen by the lines themselves: a point belongs to whichever
+    /// pane is already showing them. Picking the first pane instead would put
+    /// the finger on a coincidence whenever a group shows two files.
+    ///
+    /// Lines no pane is showing light nothing. There is no honest place to put
+    /// that finger, and guessing one means that moving the spotlight mid-walk
+    /// leaves the old point burning somewhere it no longer belongs.
+    fn point_at(&mut self, at: Option<LineRange>, cx: &mut Context<Self>) -> bool {
+        let owner = at.and_then(|at| {
+            self.panes.iter().position(|pane| {
+                pane.code().is_some_and(|code| {
+                    let lit = code.spotlight_range();
+                    lit.first <= at.last && at.first <= lit.last
+                })
+            })
+        });
+        // The light is about to land in a pane that is folded away, so the
+        // pane comes back. Lighting lines nobody can see is the same as
+        // lighting nothing, and a walk that points into a spine has stopped
+        // being a walk.
+        if let Some(owner) = owner
+            && let Some(fold) = self.folds.get_mut(owner)
+        {
+            fold.set(false);
+        }
+        let mut moved = false;
+        for (ix, pane) in self.panes.iter_mut().enumerate() {
+            let Some(code) = pane.code_mut() else {
+                continue;
+            };
+            let want = if Some(ix) == owner { at } else { None };
+            if code.pointed() != want {
+                code.point_at(want);
+                moved = true;
+            }
+        }
+        // Follow the finger down the file. A point on lines scrolled out of
+        // sight — below a tall range, or somewhere the reader wandered from —
+        // lit nothing anybody could see. Not while the reader is holding the
+        // pane still: their scroll is theirs until it lapses.
+        if moved
+            && !self.live.reader_holds()
+            && let Some(owner) = owner
+            && let Some(target) = self.panes[owner].code().and_then(Pane::point_offset)
+        {
+            self.glide(owner, target, cx);
+        }
+        moved
+    }
+
     /// Keep the voice moving without repainting to do it.
     ///
     /// One utterance ends and the next begins; that is all this is watching
@@ -1237,6 +1635,90 @@ impl DeckView {
         }));
     }
 
+    /// Draw a pane's lit range as a change to `after`, or back as it was.
+    ///
+    /// The whole pane is built again from the authored ref, with the
+    /// replacement put in — the same path an authored `--after` takes, so a
+    /// proposal made in an answer reads exactly like one written into a group.
+    fn propose(&mut self, pane_ix: usize, range: LineRange, after: Option<String>, cx: &mut App) {
+        let base = self.deck.base();
+        let after_is_new = after.is_some();
+        let Some(Ref::Code(code)) = self
+            .deck
+            .groups()
+            .get(self.group_ix)
+            .and_then(|group| group.refs.get(pane_ix))
+        else {
+            return;
+        };
+        let mut spec = code.clone();
+        // The range being proposed about is the one on screen, not the one the
+        // group was authored with: an answer proposes about what it just showed.
+        spec.range = range;
+        spec.after = after;
+        let source = self
+            .snapshots
+            .entry(spec.file.clone())
+            .or_insert_with(|| std::sync::Arc::from(read_source(&base, &spec.file)))
+            .clone();
+        if let Some(slot) = self.panes.get_mut(pane_ix) {
+            let mut pane = Pane::new(&spec, &source, cx);
+            // Authored changes are part of the page from the first frame. This
+            // one arrived while the reader was looking, so it arrives.
+            if after_is_new {
+                pane.arrive();
+            }
+            *slot = Sheet::Code(pane);
+        }
+    }
+
+    /// Carry a pane back to the lit lines when they have gone off screen.
+    ///
+    /// Checked while the voice is going rather than only when the light moves.
+    /// A reader who scrolls away in the middle of a sentence used to be left
+    /// there: the light was already where it belonged, so nothing noticed that
+    /// it had stopped being visible.
+    ///
+    /// Their scroll still wins while it is theirs — `reader_holds` is true for
+    /// a few seconds after they touch the pane, and this waits that out.
+    fn follow_point(&mut self, cx: &mut Context<Self>) {
+        /// Long enough that the travel finishes before it can be asked for
+        /// again, so a pane never jitters between two of them.
+        const AGAIN_AFTER: std::time::Duration = std::time::Duration::from_millis(1_100);
+
+        if !self.voice.talking() || self.live.reader_holds() {
+            return;
+        }
+        if self.followed.is_some_and(|at| at.elapsed() < AGAIN_AFTER) {
+            return;
+        }
+        if let Some((ix, target)) = self.point_away() {
+            self.followed = Some(std::time::Instant::now());
+            self.glide(ix, target, cx);
+        }
+    }
+
+    /// Hold the reader's attention on the agent's pane a little longer.
+    fn attend(&mut self) {
+        /// How long the frame and the lit lines outlast the last word.
+        const LINGER: std::time::Duration = std::time::Duration::from_millis(3_000);
+        self.attending = Some(std::time::Instant::now() + LINGER);
+    }
+
+    /// Let go: the frame round the pane and the lit lines in it fade out.
+    ///
+    /// Says whether there was anything to let go of.
+    fn rest(&mut self, cx: &mut Context<Self>) -> bool {
+        let held = self.attending.take().is_some();
+        self.voice.forget_point();
+        let moved = self.point_at(None, cx);
+        held || moved
+    }
+
+    /// Read the current group aloud, if a voice is configured to do it.
+    ///
+    /// The group's prose only. The code is on screen, and a voice spelling out
+    /// a line of it would be reading the one thing the reader can already see.
     fn speak(&mut self, cx: &mut Context<Self>) {
         let Some(group) = self.group() else {
             return;
