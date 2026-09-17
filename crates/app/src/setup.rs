@@ -77,31 +77,36 @@ pub fn live() -> anyhow::Result<()> {
         dim("itself — so the provider is yours, and so is what leaves the machine.")
     );
     println!();
-    println!("    {}  this machine's own voice", accent("1"));
+    println!("    {}  Google Cloud — the neural voices", accent("1"));
+    println!("    {}  this machine's own voice", accent("2"));
     println!(
         "    {}  a program I name (Kokoro, Piper, a script)",
-        accent("2")
+        accent("3")
     );
     println!();
 
-    if ask("Which?", "1")?.as_str() == "2" {
-        config.speech.engine = deck_core::config::Engine::Command;
-        println!();
-        println!(
-            "  {}",
-            dim("It reads the words on stdin and plays them. No quotes needed.")
-        );
-        println!();
-        let said = ask("Command", "kokoro-cli --voice af_heart -")?;
-        config.speech.command = Some(if said.is_empty() {
-            "kokoro-cli --voice af_heart -".to_string()
-        } else {
-            said
-        });
-        chose(config.speech.command.as_deref().unwrap_or(""));
-    } else {
-        config.speech.engine = deck_core::config::Engine::System;
-        listen(&mut config)?;
+    match ask("Which?", "1")?.as_str() {
+        "2" => {
+            config.speech.engine = deck_core::config::Engine::System;
+            listen(&mut config)?;
+        }
+        "3" => {
+            config.speech.engine = deck_core::config::Engine::Command;
+            println!();
+            println!(
+                "  {}",
+                dim("It reads the words on stdin and plays them. No quotes needed.")
+            );
+            println!();
+            let said = ask("Command", "kokoro-cli --voice af_heart -")?;
+            config.speech.command = Some(if said.is_empty() {
+                "kokoro-cli --voice af_heart -".to_string()
+            } else {
+                said
+            });
+            chose(config.speech.command.as_deref().unwrap_or(""));
+        }
+        _ => google(&mut config)?,
     }
 
     let path = crate::config::path()
@@ -227,6 +232,90 @@ fn pick(editors: &[Editor]) -> anyhow::Result<Editor> {
     let answer = ask("Which?", "1")?;
     let at = answer.parse::<usize>().unwrap_or(1).max(1) - 1;
     Ok(editors.get(at).copied().unwrap_or(editors[0]))
+}
+
+/// Point deck at Google's neural voices, and prove the key works.
+///
+/// Tested before it is written. A key that is wrong, or a project without the
+/// API enabled, fails at the first sentence of a live walk — by which point the
+/// reader is in a window with no terminal to read the error in. Finding out
+/// here costs one request.
+fn google(config: &mut Config) -> anyhow::Result<()> {
+    config.speech.engine = deck_core::config::Engine::Google;
+
+    println!();
+    println!(
+        "  {}",
+        dim("Chirp 3: HD includes 1,000,000 characters a month, and it renews.")
+    );
+    println!(
+        "  {}",
+        dim("A five-group deck is about five thousand, so ordinary use is free.")
+    );
+    println!(
+        "  {}",
+        dim("Billing has to be enabled on the project even so — a card on file,")
+    );
+    println!(
+        "  {}",
+        dim("which Google requires before it will serve any of it.")
+    );
+    println!();
+    println!(
+        "    {}",
+        accent("console.cloud.google.com → APIs → Text-to-Speech")
+    );
+    println!("    {}", accent("→ enable it, then Credentials → API key"));
+    println!();
+
+    let key = ask("Key", "")?;
+    if key.is_empty() {
+        println!();
+        println!(
+            "  {}",
+            dim("Nothing written. Set DECK_SPEECH_KEY instead if you would rather")
+        );
+        println!(
+            "  {}",
+            dim("not keep it in a file, then run `deck live` again.")
+        );
+        return Ok(());
+    }
+
+    println!();
+    println!("    {}  Charon — level, unhurried", accent("1"));
+    println!("    {}  Kore — brighter", accent("2"));
+    println!("    {}  Puck — quicker", accent("3"));
+    println!();
+    let voice = match ask("Which?", "1")?.as_str() {
+        "2" => "en-US-Chirp3-HD-Kore",
+        "3" => "en-US-Chirp3-HD-Puck",
+        _ => "en-US-Chirp3-HD-Charon",
+    };
+    config.speech.voice = Some(voice.to_string());
+    config.speech.key = Some(key);
+
+    println!();
+    print!("  {} ", dim("Trying it…"));
+    std::io::stdout().flush()?;
+    match crate::speech::test(&config.speech) {
+        Ok(()) => {
+            println!("{}", accent("heard it?"));
+            chose(&format!(
+                "{voice}, at {} words a minute",
+                config.speech.rate
+            ));
+        }
+        Err(why) => {
+            println!();
+            println!("  {} {}", dim("!"), dim(&why.to_string()));
+            println!(
+                "  {}",
+                dim("Written anyway, so you can fix the key and try again.")
+            );
+        }
+    }
+    Ok(())
 }
 
 /// Which voice reads a deck aloud.

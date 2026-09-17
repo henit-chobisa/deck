@@ -27,6 +27,7 @@
 //! which is the entire interface needed here.
 
 use std::io::Write as _;
+use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 
 use deck_core::config::{Engine, Speech};
@@ -160,6 +161,12 @@ pub struct Voice {
     said: Option<Child>,
     /// Waiting their turn, in the order they were given.
     next: std::collections::VecDeque<String>,
+    /// A cloud utterance being fetched on a worker thread.
+    ///
+    /// Held so the paint thread never blocks on a network round trip. The
+    /// window asks each frame whether it has arrived; until it has, the voice
+    /// is simply not talking yet.
+    fetching: Option<std::sync::mpsc::Receiver<anyhow::Result<PathBuf>>>,
 }
 
 impl Voice {
@@ -169,6 +176,9 @@ impl Voice {
     /// is the one where it finished on its own — a reader who listened to the
     /// whole group and presses the key again means *say it again*, not *stop*.
     pub fn talking(&mut self) -> bool {
+        if self.fetching.is_some() {
+            return true;
+        }
         match self.said.as_mut() {
             Some(child) => match child.try_wait() {
                 Ok(None) => true,
@@ -203,9 +213,47 @@ impl Voice {
         if self.talking() {
             return;
         }
+        // A cloud utterance arrives from a worker thread. Until it does, there
+        // is nothing to start and nothing to wait on.
+        if let Some(waiting) = self.fetching.as_ref() {
+            match waiting.try_recv() {
+                Err(std::sync::mpsc::TryRecvError::Empty) => return,
+                Ok(Ok(at)) => {
+                    self.fetching = None;
+                    self.said = play(&at);
+                    return;
+                }
+                Ok(Err(why)) => {
+                    // Said once, to the terminal, rather than swallowed: a
+                    // reader whose key is wrong should be told, not left
+                    // wondering why the deck went quiet.
+                    eprintln!("deck: {why}");
+                    self.fetching = None;
+                    self.next.clear();
+                    return;
+                }
+                Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                    self.fetching = None;
+                }
+            }
+        }
+
         let Some(text) = self.next.pop_front() else {
             return;
         };
+
+        if speech.engine == Engine::Google {
+            let (send, receive) = std::sync::mpsc::channel();
+            let speech = speech.clone();
+            std::thread::Builder::new()
+                .name("deck-speech".into())
+                .spawn(move || {
+                    let _ = send.send(fetch(&text, &speech));
+                })
+                .ok();
+            self.fetching = Some(receive);
+            return;
+        }
         let Some(mut spoken) = start(&text, speech) else {
             // Nothing can speak it, so draining the rest would only stall.
             self.next.clear();
@@ -230,6 +278,9 @@ impl Voice {
     /// voice that ignored them.
     pub fn hush(&mut self) {
         self.next.clear();
+        // Whatever is in flight is abandoned. Its thread will finish and find
+        // nobody listening, which is cheaper than making it cancellable.
+        self.fetching = None;
         if let Some(mut child) = self.said.take() {
             let _ = child.kill();
             let _ = child.wait();
@@ -270,6 +321,108 @@ fn prepared(text: &str, speech: &Speech) -> String {
     }
     out.push_str(rest);
     out
+}
+
+/// Say one line now, and wait for it, so setup can prove a key works.
+///
+/// # Errors
+///
+/// When the engine cannot speak, which is the whole point of calling it.
+pub fn test(speech: &Speech) -> anyhow::Result<()> {
+    let line = "Deck will read your decks in this voice.";
+    let mut child = match speech.engine {
+        Engine::Google => play(&fetch(line, speech)?)
+            .ok_or_else(|| anyhow::anyhow!("nothing on this machine plays audio"))?,
+        _ => {
+            let mut child =
+                start(line, speech).ok_or_else(|| anyhow::anyhow!("no voice to speak with"))?;
+            if let Some(stdin) = child.stdin.as_mut() {
+                let _ = stdin.write_all(prepared(line, speech).as_bytes());
+            }
+            drop(child.stdin.take());
+            child
+        }
+    };
+    child.wait()?;
+    Ok(())
+}
+
+/// Fetch spoken audio from Google, and say where it landed.
+///
+/// Blocking, and called from a worker thread for that reason: a slow network
+/// must never hold up the paint. The audio is written to a temporary file and
+/// played by whatever this platform plays files with, which keeps the rest of
+/// the voice exactly as it is — something to start, and something to kill.
+///
+/// # Errors
+///
+/// When the key is missing, the request fails, or the reply is not audio.
+fn fetch(text: &str, speech: &Speech) -> anyhow::Result<PathBuf> {
+    use base64::Engine as _;
+
+    let key = speech
+        .secret()
+        .ok_or_else(|| anyhow::anyhow!("no key: set DECK_SPEECH_KEY or run `deck live`"))?;
+    let voice = speech
+        .voice
+        .clone()
+        .unwrap_or_else(|| "en-US-Chirp3-HD-Charon".to_string());
+    // The locale is the part of the name before the third dash, and the API
+    // wants it separately from the voice it already identifies.
+    let language = voice.splitn(3, '-').take(2).collect::<Vec<_>>().join("-");
+
+    let reply: serde_json::Value =
+        ureq::post("https://texttospeech.googleapis.com/v1/text:synthesize")
+            .header("X-Goog-Api-Key", &key)
+            .send_json(serde_json::json!({
+                "input": { "text": text },
+                "voice": { "languageCode": language, "name": voice },
+                "audioConfig": {
+                    "audioEncoding": "MP3",
+                    // The reader's own pace, expressed the way this API takes it:
+                    // a multiple of its own normal speed rather than words a minute.
+                    "speakingRate": f64::from(speech.words_a_minute()) / 175.0,
+                },
+            }))
+            .map_err(|why| anyhow::anyhow!("google would not speak: {why}"))?
+            .body_mut()
+            .read_json()
+            .map_err(|why| anyhow::anyhow!("google sent something that is not audio: {why}"))?;
+
+    let encoded = reply
+        .get("audioContent")
+        .and_then(serde_json::Value::as_str)
+        .ok_or_else(|| anyhow::anyhow!("google sent no audio"))?;
+    let audio = base64::engine::general_purpose::STANDARD
+        .decode(encoded)
+        .map_err(|why| anyhow::anyhow!("google sent audio that will not decode: {why}"))?;
+
+    let at = std::env::temp_dir().join(format!("deck-said-{}.mp3", std::process::id()));
+    std::fs::write(&at, audio)?;
+    Ok(at)
+}
+
+/// Play a file, with whatever this machine plays files with.
+fn play(at: &Path) -> Option<Child> {
+    let (program, args): (&str, &[&str]) = if cfg!(target_os = "macos") {
+        ("afplay", &[])
+    } else if cfg!(target_os = "windows") {
+        ("powershell", &["-NoProfile", "-Command"])
+    } else {
+        ("ffplay", &["-nodisp", "-autoexit", "-loglevel", "quiet"])
+    };
+
+    if cfg!(target_os = "windows") {
+        return Command::new(program)
+            .args(args)
+            .arg(format!(
+                "(New-Object Media.SoundPlayer '{}').PlaySync()",
+                at.display()
+            ))
+            .spawn()
+            .ok();
+    }
+    Command::new(program).args(args).arg(at).spawn().ok()
 }
 
 /// Start a synthesiser reading stdin, if there is one to start.

@@ -60,6 +60,12 @@ pub struct Speech {
     /// command reaches all of them and you decide what your code is worth
     /// sending anywhere.
     pub engine: Engine,
+    /// The key for a cloud engine.
+    ///
+    /// `DECK_SPEECH_KEY` is read first and is the better place for it: this
+    /// file is plain text, and a key in it is a key in every backup.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub key: Option<String>,
     /// The program to pipe narration into, when `engine = "command"`.
     ///
     /// Reads the text on stdin and plays it. Split on spaces, so quote nothing:
@@ -94,6 +100,7 @@ impl Default for Speech {
             aloud: true,
             engine: Engine::System,
             command: None,
+            key: None,
             voice: None,
             // Unhurried. The default on most systems is about 175, which is
             // fine for a message and too fast for a mechanism.
@@ -112,9 +119,26 @@ pub enum Engine {
     System,
     /// A program of the reader's choosing, fed on stdin.
     Command,
+    /// Google Cloud Text-to-Speech.
+    ///
+    /// The neural voices, and the only tier that sounds like a person reading.
+    /// Chirp 3: HD carries a recurring free allowance that covers ordinary use,
+    /// and it is the same voice on every platform — which matters most on
+    /// Windows, where there is no system synthesiser at all.
+    Google,
 }
 
 impl Speech {
+    /// The key to use, preferring the environment over the file on disk.
+    #[must_use]
+    pub fn secret(&self) -> Option<String> {
+        std::env::var("DECK_SPEECH_KEY")
+            .ok()
+            .filter(|key| !key.is_empty())
+            .or_else(|| self.key.clone())
+            .filter(|key| !key.is_empty())
+    }
+
     /// The rate, held inside what a voice will actually do.
     ///
     /// A rate of zero is silence that looks like a hang, and a very high one is
