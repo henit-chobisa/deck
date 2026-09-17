@@ -39,6 +39,75 @@ const LINE_HEIGHT: f32 = 1.62;
 /// Lines of context shown above the range when the pane opens.
 const LEAD_IN: u32 = 2;
 
+/// How wide a pane is once it is folded down to its spine.
+///
+/// The same width the conversation folds to on the other side, so a window with
+/// one of each has a matching margin down both edges.
+///
+/// Wide enough for a short word set the way words are set. It was narrower, and
+/// the name had to be a single letter — which told nobody anything about which
+/// pane they were looking at.
+pub(crate) const SPINE: f32 = 58.;
+
+/// How long a light takes to come up.
+const RISE: std::time::Duration = std::time::Duration::from_millis(520);
+
+/// How long a light takes to go out. Slower than coming up, so the eye has
+/// already moved to the new lines before the old ones are gone.
+const FALL: std::time::Duration = std::time::Duration::from_millis(760);
+
+/// A light easing between off and on, from wherever it was when it was told.
+///
+/// Time-based rather than a GPUI animation, for the reason the live room is:
+/// an animation keyed to a list of rows that changes length between frames is
+/// a bounds-check panic. A start instant cannot go out of step with the tree.
+#[derive(Debug, Clone, Copy, Default)]
+pub(crate) struct Fade {
+    on: bool,
+    /// The level it was at when it was last told to change.
+    from: f32,
+    since: Option<std::time::Instant>,
+}
+
+impl Fade {
+    /// Head towards `on`. Says whether that was a change.
+    pub(crate) fn set(&mut self, on: bool) -> bool {
+        if self.on == on {
+            return false;
+        }
+        // From the level it had reached, not from the end it was heading for.
+        // A light turned back halfway would otherwise flash.
+        self.from = self.level();
+        self.on = on;
+        self.since = Some(std::time::Instant::now());
+        true
+    }
+
+    /// Nought to one, eased at both ends.
+    pub(crate) fn level(&self) -> f32 {
+        let to = if self.on { 1. } else { 0. };
+        let Some(since) = self.since else {
+            return to;
+        };
+        let whole = if self.on { RISE } else { FALL };
+        let along = (since.elapsed().as_secs_f32() / whole.as_secs_f32()).clamp(0., 1.);
+        // Smoothstep: no snap at either end, which is the whole ask.
+        let eased = along * along * (3. - 2. * along);
+        self.from + (to - self.from) * eased
+    }
+
+    /// Whether it is on, or on its way there.
+    pub(crate) fn on(&self) -> bool {
+        self.on
+    }
+
+    /// Whether it is still on its way somewhere.
+    pub(crate) fn moving(&self) -> bool {
+        let whole = if self.on { RISE } else { FALL };
+        self.since.is_some_and(|since| since.elapsed() < whole)
+    }
+}
+
 /// One line, ready to draw.
 #[derive(Clone)]
 struct Row {
@@ -875,6 +944,34 @@ mod tests {
         assert_eq!(row(5), 4, "the last line of the range has not moved");
         assert_eq!(row(6), 7, "the line after it is past the two new ones");
         assert_eq!(row(7), 8);
+    }
+
+    #[test]
+    fn a_light_turned_back_halfway_does_not_flash() {
+        // The light starts from the level it had reached. Starting from the
+        // end it had been heading for would jump to full and fall from there.
+        let mut light = Fade::default();
+        light.set(true);
+        light.since = Some(std::time::Instant::now() - RISE / 2);
+        let reached = light.level();
+        assert!(reached > 0.3 && reached < 0.7, "{reached}");
+
+        light.set(false);
+        assert!((light.level() - reached).abs() < 0.05, "{}", light.level());
+    }
+
+    #[test]
+    fn a_settled_light_asks_for_no_frames() {
+        // Frames are asked for only while a light is moving. A light that
+        // reported moving for ever would repaint the window sixty times a
+        // second for nothing, which was the sluggishness already paid for once.
+        let mut light = Fade::default();
+        assert!(!light.moving());
+        light.set(true);
+        assert!(light.moving());
+        light.since = Some(std::time::Instant::now() - RISE);
+        assert!(!light.moving());
+        assert!((light.level() - 1.).abs() < f32::EPSILON);
     }
 
     #[test]
