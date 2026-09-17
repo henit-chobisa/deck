@@ -2555,6 +2555,10 @@ impl DeckView {
         self.voice.hush();
         self.flush_held();
         self.picked_said = None;
+        // Names belong to a group. The next group may use the same word for a
+        // different pane, and a pin carried over would light the wrong one.
+        self.name_hovered = None;
+        self.name_pinned = None;
 
         let base = self.deck.base();
         let Some(group) = self.deck.groups().get(self.group_ix) else {
@@ -2698,6 +2702,24 @@ impl DeckView {
                                         std::rc::Rc::new(move |at, entered, _window, cx| {
                                             deck.update(cx, |deck, _| deck.hover_say(at, entered))
                                                 .ok();
+                                        })
+                                    },
+                                    names: self
+                                        .panes
+                                        .iter()
+                                        .filter_map(|pane| pane.code()?.name.clone())
+                                        .collect(),
+                                    named: self.name_hovered.clone().or(self.name_pinned.clone()),
+                                    heard: self
+                                        .heard_in(crate::speech::Narration::Group(self.group_ix)),
+                                    pickable: true,
+                                    name: {
+                                        let deck = cx.entity().downgrade();
+                                        std::rc::Rc::new(move |name, naming, _window, cx| {
+                                            deck.update(cx, |deck, cx| {
+                                                deck.on_name(name, naming, cx)
+                                            })
+                                            .ok();
                                         })
                                     },
                                 },
