@@ -2,8 +2,8 @@
 //!
 //! An agent has a shell in every setup it runs in — a terminal, an editor's
 //! panel, a tool call. So one command reaches all of them, and these are the
-//! four verbs behind it: start a deck, add a group, seal it, wait for the
-//! answer.
+//! verbs behind it: start a deck, add a group, seal it, wait for the answer,
+//! and cross the acknowledged local mailbox of a live native session.
 //!
 //! # Why this exists at all
 //!
@@ -19,9 +19,9 @@
 //!
 //! # What is here and what is not
 //!
-//! This crate writes files and nothing else. It does not open a window, and it
-//! knows nothing about one. The window is `deck-app`, and the two meet only at
-//! a path on disk.
+//! This crate performs filesystem transport and nothing else. It does not open
+//! a window and knows nothing about one. The window is `deck-app`, and the two
+//! meet only through committed files and an advisory ownership lock.
 
 use anyhow::Context as _;
 use std::io::Write as _;
@@ -30,6 +30,7 @@ use std::path::{Path, PathBuf};
 use deck_core::diagram::Diagram;
 use deck_core::protocol::{DiagramRef, Group, Header, Ref, RefSpec, Review, VERSION};
 
+pub mod live;
 pub mod refs;
 
 /// The file that says a deck is finished.

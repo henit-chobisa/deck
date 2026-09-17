@@ -159,6 +159,78 @@ pub struct Review {
     pub deck: String,
     /// Every comment, in the order they were written.
     pub comments: Vec<Comment>,
+    /// What happened during a live walk, in order.
+    ///
+    /// Empty and omitted for a deck that was simply read. When a reader walked
+    /// it live, this is the part nothing else produces: not that a review
+    /// happened, but **what the reader was shown, in what order, and what they
+    /// said about each part**. A comment says what somebody thought; the
+    /// transcript says what they were looking at when they thought it.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub transcript: Vec<Moment>,
+}
+
+/// One thing that happened while a deck was being walked.
+///
+/// Deliberately flat rather than an enum-per-shape. A client that has never
+/// heard of a `what` it receives keeps the timestamp, the anchor and the text,
+/// which is enough to show a reader what went on — and a transcript that drops
+/// entries it does not recognise is worse than one that renders them plainly.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Moment {
+    /// Milliseconds since the walk began.
+    pub at_ms: u64,
+    /// What kind of moment this was. See [`What`].
+    #[serde(default)]
+    pub what: What,
+    /// The group on screen at the time.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub group: Option<String>,
+    /// The ref on screen at the time, when there was one.
+    #[serde(rename = "ref", skip_serializing_if = "Option::is_none")]
+    pub ref_id: Option<String>,
+    /// The file on screen at the time.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub file: Option<PathBuf>,
+    /// The lines on screen at the time.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub range: Option<LineRange>,
+    /// What the agent said, or what the reader wrote. Empty for a bare move.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub text: String,
+    /// For a reaction or a comment, which of the three it was.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub kind: Option<Kind>,
+}
+
+/// What kind of moment a [`Moment`] records.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case", from = "String")]
+pub enum What {
+    /// The agent moved the reader's eyes to something.
+    #[default]
+    Shown,
+    /// The agent said something, whether or not it was spoken aloud.
+    Said,
+    /// The reader tapped one of the three keys.
+    Reacted,
+    /// The reader wrote something.
+    Wrote,
+    /// The reader opened the deck, hid it, or submitted.
+    Turned,
+}
+
+/// Read from the wire, forgivingly. See [`Kind`]'s own implementation.
+impl From<String> for What {
+    fn from(name: String) -> Self {
+        match name.as_str() {
+            "said" => Self::Said,
+            "reacted" => Self::Reacted,
+            "wrote" => Self::Wrote,
+            "turned" => Self::Turned,
+            _ => Self::Shown,
+        }
+    }
 }
 
 /// One remark.
@@ -405,6 +477,7 @@ mod tests {
     fn a_review_round_trips_without_losing_a_field() {
         let review = Review {
             v: VERSION,
+            transcript: Vec::new(),
             deck: "d-1788265010-8842".into(),
             comments: vec![Comment {
                 group: "g1".into(),
@@ -437,6 +510,7 @@ mod tests {
         // carrying nulls the far side has to interpret.
         let review = Review {
             v: VERSION,
+            transcript: Vec::new(),
             deck: "d-1".into(),
             comments: vec![Comment {
                 group: "g1".into(),

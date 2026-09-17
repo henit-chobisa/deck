@@ -1,6 +1,7 @@
 //! The `deck` command.
 //!
-//! Five verbs. Four of them write files and return; the fifth opens a window.
+//! Static deck verbs write files or open the window. Live verbs cross the
+//! owning window's acknowledged local mailbox and still return as commands.
 //!
 //! The help text these produce is deck's whole interface for an agent — the
 //! protocol document is for people writing clients, and a model should never
@@ -110,6 +111,46 @@ enum What {
         diagram: Vec<PathBuf>,
     },
 
+    /// Move the live spotlight to code already shown in an authored group.
+    Show {
+        /// The `.deck` directory owned by the native window.
+        deck: PathBuf,
+        /// A file and one-based line range: `src/view.rs:106-110`.
+        #[arg(long = "ref", value_name = "FILE:FIRST-LAST")]
+        reference: String,
+        /// Select an authored group instead of the currently visible one.
+        #[arg(long)]
+        group: Option<String>,
+        /// Disambiguate when one group shows the same file more than once.
+        #[arg(long)]
+        pane: Option<String>,
+        /// Retry identity. Reusing it with the same request returns its result.
+        #[arg(long)]
+        request_id: Option<String>,
+        /// Give up if the visible view has not applied the target by then.
+        #[arg(long, default_value_t = 5)]
+        timeout: u64,
+    },
+
+    /// Say something to the reader during a live walk.
+    ///
+    /// Lands beside whatever is on screen and goes into the transcript whether
+    /// or not a voice is set up, because what you said is part of the walk even
+    /// when nobody heard it.
+    Say {
+        /// The `.deck` directory owned by the native window.
+        deck: PathBuf,
+        /// What to say. Markdown, as a group's `--say` is.
+        #[arg(long)]
+        text: String,
+        /// Record it without reading it aloud.
+        #[arg(long)]
+        silent: bool,
+        /// Give up if the window has not taken it by then.
+        #[arg(long, default_value_t = 5)]
+        timeout: u64,
+    },
+
     /// Say the deck is finished. Nothing more can be added after this.
     Seal {
         /// The `.deck` directory.
@@ -131,6 +172,21 @@ enum What {
     /// reader would otherwise have to assemble themselves.
     #[command(hide = true)]
     Hook,
+
+    /// Read durable reader events from an open live session.
+    Next {
+        /// The `.deck` directory whose native session owns the event stream.
+        deck: PathBuf,
+        /// Return the current lifecycle immediately without consuming an event.
+        #[arg(long)]
+        status: bool,
+        /// Return the first event after this generation-scoped cursor.
+        #[arg(long)]
+        after: Option<String>,
+        /// Give up after this many seconds.
+        #[arg(long, default_value_t = 2)]
+        timeout: u64,
+    },
 
     /// Block until the reader submits, then print the review as JSON.
     Wait {
@@ -234,7 +290,27 @@ impl Cli {
             })),
             What::Setup => report(crate::setup::run()),
             What::Hook => report(crate::hook::run()),
+            What::Show {
+                deck,
+                reference,
+                group,
+                pane,
+                request_id,
+                timeout,
+            } => Err(show(&deck, &reference, group, pane, request_id, timeout)),
+            What::Say {
+                deck,
+                text,
+                silent,
+                timeout,
+            } => Err(say(&deck, &text, !silent, timeout)),
             What::Seal { deck } => report(deck_cli::seal(&deck)),
+            What::Next {
+                deck,
+                status,
+                after,
+                timeout,
+            } => Err(next(&deck, status, after.as_deref(), timeout)),
             What::Wait { deck, timeout } => Err(wait(&deck, timeout)),
         }
     }
@@ -405,6 +481,303 @@ fn paired(refs: usize, after: &[String]) -> anyhow::Result<Vec<Option<String>>> 
     }
 
     Ok(changes)
+}
+
+/// Move a visible code pane only after the native view acknowledges it.
+fn show(
+    deck: &std::path::Path,
+    reference: &str,
+    group: Option<String>,
+    pane: Option<String>,
+    request_id: Option<String>,
+    timeout: u64,
+) -> ExitCode {
+    let named = match deck_cli::refs::parse(reference) {
+        Ok(named) if named.note.is_none() => named,
+        Ok(_) => {
+            println!(
+                "{}",
+                serde_json::json!({
+                    "status": "invalid-request",
+                    "reason": "a live --ref is only FILE:FIRST-LAST; pane narration stays in the authored group"
+                })
+            );
+            return ExitCode::FAILURE;
+        }
+        Err(err) => {
+            println!(
+                "{}",
+                serde_json::json!({ "status": "invalid-request", "reason": err.to_string() })
+            );
+            return ExitCode::FAILURE;
+        }
+    };
+    let Some(runtime) = deck_core::home::deck() else {
+        println!(
+            "{}",
+            serde_json::json!({ "status": "failed", "reason": "no home directory for live Deck state" })
+        );
+        return ExitCode::FAILURE;
+    };
+    let client = match deck_cli::live::Client::connect(&runtime, deck) {
+        Ok(client) => client,
+        Err(deck_cli::live::ClientError::NotOpen(reason)) => {
+            println!(
+                "{}",
+                serde_json::json!({ "status": "not-open", "reason": reason })
+            );
+            return ExitCode::from(4);
+        }
+        Err(err) => {
+            println!(
+                "{}",
+                serde_json::json!({ "status": "failed", "reason": err.to_string() })
+            );
+            return ExitCode::FAILURE;
+        }
+    };
+    let body = deck_cli::live::RequestBody::Show {
+        file: named.file,
+        range: named.range,
+        group,
+        pane,
+    };
+    let timeout = std::time::Duration::from_secs(timeout);
+    let result = match request_id {
+        Some(id) => client.request_with_id(id, body, timeout),
+        None => client.request(body, timeout),
+    };
+    match result {
+        Ok(response) => {
+            let exit = match response.status {
+                deck_cli::live::ResponseStatus::Applied
+                | deck_cli::live::ResponseStatus::Unchanged => ExitCode::SUCCESS,
+                deck_cli::live::ResponseStatus::Waiting
+                | deck_cli::live::ResponseStatus::Hidden
+                | deck_cli::live::ResponseStatus::Ambiguous
+                | deck_cli::live::ResponseStatus::NotFound
+                | deck_cli::live::ResponseStatus::OutOfRange
+                | deck_cli::live::ResponseStatus::SourceChanged
+                | deck_cli::live::ResponseStatus::Paused
+                | deck_cli::live::ResponseStatus::Paced => ExitCode::from(5),
+                deck_cli::live::ResponseStatus::Ready => ExitCode::FAILURE,
+            };
+            match serde_json::to_string(&response) {
+                Ok(json) => println!("{json}"),
+                Err(err) => {
+                    eprintln!("deck: show result will not print: {err}");
+                    return ExitCode::FAILURE;
+                }
+            }
+            exit
+        }
+        Err(deck_cli::live::ClientError::Timeout) => {
+            println!(
+                "{}",
+                serde_json::json!({ "status": "timeout", "reason": "the view did not apply the target before the timeout" })
+            );
+            ExitCode::from(3)
+        }
+        Err(deck_cli::live::ClientError::NotOpen(reason)) => {
+            println!(
+                "{}",
+                serde_json::json!({ "status": "not-open", "reason": reason })
+            );
+            ExitCode::from(4)
+        }
+        Err(err) => {
+            println!(
+                "{}",
+                serde_json::json!({ "status": "failed", "reason": err.to_string() })
+            );
+            ExitCode::FAILURE
+        }
+    }
+}
+
+/// Put the agent's words into an open walk.
+fn say(deck: &std::path::Path, text: &str, aloud: bool, timeout: u64) -> ExitCode {
+    let Some(runtime) = deck_core::home::deck() else {
+        println!(
+            "{}",
+            serde_json::json!({ "status": "failed", "reason": "no home directory" })
+        );
+        return ExitCode::FAILURE;
+    };
+    let client = match deck_cli::live::Client::connect(&runtime, deck) {
+        Ok(client) => client,
+        Err(deck_cli::live::ClientError::NotOpen(reason)) => {
+            println!(
+                "{}",
+                serde_json::json!({ "status": "not-open", "reason": reason })
+            );
+            return ExitCode::from(4);
+        }
+        Err(err) => {
+            println!(
+                "{}",
+                serde_json::json!({ "status": "failed", "reason": err.to_string() })
+            );
+            return ExitCode::FAILURE;
+        }
+    };
+
+    match client.request(
+        deck_cli::live::RequestBody::Say {
+            text: text.to_string(),
+            aloud,
+        },
+        std::time::Duration::from_secs(timeout),
+    ) {
+        Ok(response) => {
+            match serde_json::to_string(&response) {
+                Ok(json) => println!("{json}"),
+                Err(err) => eprintln!("deck: live reply will not print: {err}"),
+            }
+            if response.status == deck_cli::live::ResponseStatus::Applied {
+                ExitCode::SUCCESS
+            } else {
+                ExitCode::from(5)
+            }
+        }
+        Err(deck_cli::live::ClientError::Timeout) => {
+            println!("{}", serde_json::json!({ "status": "timeout" }));
+            ExitCode::from(3)
+        }
+        Err(err) => {
+            println!(
+                "{}",
+                serde_json::json!({ "status": "failed", "reason": err.to_string() })
+            );
+            ExitCode::FAILURE
+        }
+    }
+}
+
+/// Read live status through the same acknowledged mailbox later events use.
+fn next(deck: &std::path::Path, status: bool, after: Option<&str>, timeout: u64) -> ExitCode {
+    if status && after.is_some() {
+        println!(
+            "{}",
+            serde_json::json!({
+                "status": "invalid-request",
+                "reason": "--after reads an event and cannot be combined with --status"
+            })
+        );
+        return ExitCode::FAILURE;
+    }
+
+    let Some(runtime) = deck_core::home::deck() else {
+        println!(
+            "{}",
+            serde_json::json!({
+                "status": "failed",
+                "reason": "no home directory for live Deck state"
+            })
+        );
+        return ExitCode::FAILURE;
+    };
+    let client = match deck_cli::live::Client::connect(&runtime, deck) {
+        Ok(client) => client,
+        Err(deck_cli::live::ClientError::NotOpen(reason)) => {
+            println!(
+                "{}",
+                serde_json::json!({ "status": "not-open", "reason": reason })
+            );
+            return ExitCode::from(4);
+        }
+        Err(err) => {
+            println!(
+                "{}",
+                serde_json::json!({ "status": "failed", "reason": err.to_string() })
+            );
+            return ExitCode::FAILURE;
+        }
+    };
+
+    if !status {
+        // The reader's half of the loop. A cursor rather than "whatever
+        // happened since you asked", so an agent that was busy or restarting
+        // does not lose a must-fix somebody pressed while it was away.
+        let after = match after.map(str::parse::<u64>) {
+            Some(Ok(seq)) => Some(seq),
+            Some(Err(_)) => {
+                println!(
+                    "{}",
+                    serde_json::json!({
+                        "status": "invalid-request",
+                        "reason": "--after takes a cursor from an earlier event"
+                    })
+                );
+                return ExitCode::FAILURE;
+            }
+            None => None,
+        };
+        return match client.events(after, std::time::Duration::from_secs(timeout)) {
+            Ok(Some(event)) => match serde_json::to_string(&event) {
+                Ok(json) => {
+                    println!("{json}");
+                    ExitCode::SUCCESS
+                }
+                Err(err) => {
+                    eprintln!("deck: live event will not print: {err}");
+                    ExitCode::FAILURE
+                }
+            },
+            // Nothing happened, which is the usual answer while somebody reads.
+            Ok(None) => {
+                println!("{}", serde_json::json!({ "status": "quiet" }));
+                ExitCode::from(3)
+            }
+            Err(err) => {
+                println!(
+                    "{}",
+                    serde_json::json!({ "status": "failed", "reason": err.to_string() })
+                );
+                ExitCode::FAILURE
+            }
+        };
+    }
+
+    match client.request(
+        deck_cli::live::RequestBody::Status,
+        std::time::Duration::from_secs(timeout),
+    ) {
+        Ok(response) => match serde_json::to_string(&response) {
+            Ok(json) => {
+                println!("{json}");
+                ExitCode::SUCCESS
+            }
+            Err(err) => {
+                eprintln!("deck: live status will not print: {err}");
+                ExitCode::FAILURE
+            }
+        },
+        Err(deck_cli::live::ClientError::Timeout) => {
+            println!(
+                "{}",
+                serde_json::json!({
+                    "status": "timeout",
+                    "reason": format!("no live status after {timeout}s")
+                })
+            );
+            ExitCode::from(3)
+        }
+        Err(deck_cli::live::ClientError::NotOpen(reason)) => {
+            println!(
+                "{}",
+                serde_json::json!({ "status": "not-open", "reason": reason })
+            );
+            ExitCode::from(4)
+        }
+        Err(err) => {
+            println!(
+                "{}",
+                serde_json::json!({ "status": "failed", "reason": err.to_string() })
+            );
+            ExitCode::FAILURE
+        }
+    }
 }
 
 /// Wait for a review to land beside the deck, and print it.

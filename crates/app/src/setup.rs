@@ -146,7 +146,7 @@ fn pick(editors: &[Editor]) -> anyhow::Result<Editor> {
 
 /// Which voice reads a deck aloud.
 ///
-/// A deck can be listened to — `t` in the window — and that is worth one
+/// A deck can be walked live — `l` in the window — and that is worth one
 /// question here, because the answer is a download rather than a setting and
 /// nobody finds it by looking.
 ///
@@ -169,15 +169,16 @@ fn listen(config: &mut Config) -> anyhow::Result<()> {
     println!("  {}", bold("Reading aloud"));
     println!(
         "  {}",
-        dim("`t` in the window reads the narration. Spoken on this machine —")
+        dim("`l` goes live: the rail slides in, and the narration is read to you.")
     );
+    println!("  {}", dim("Spoken on this machine —"));
     println!(
         "  {}",
         dim("nothing about your code is sent anywhere to be turned into sound.")
     );
     println!();
 
-    let natural: Vec<_> = voices.iter().filter(|voice| voice.natural).collect();
+    let natural: Vec<_> = voices.iter().filter(|voice| voice.natural()).collect();
     if natural.is_empty() {
         // The honest version. There is nothing to choose between here, and
         // offering a list of compact voices would imply there was.
@@ -192,6 +193,16 @@ fn listen(config: &mut Config) -> anyhow::Result<()> {
         println!(
             "  {}",
             dim("Then `deck setup` again and it will be offered here.")
+        );
+        println!(
+            "  {}",
+            dim("Or point deck at any other voice in ~/.deck/config.toml:")
+        );
+        println!("    {}", accent("[speech]"));
+        println!("    {}", accent("engine  = \"command\""));
+        println!(
+            "    {}",
+            accent("command = \"kokoro-cli --voice af_heart -\"")
         );
         return Ok(());
     }

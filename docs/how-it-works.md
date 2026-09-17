@@ -19,10 +19,37 @@ deck seal       ────────►  done
 deck wait       ◄────────  <id>.review         ◄────  you comment and submit
 ```
 
-Nothing runs in the background. There is no daemon and no server — `deck open`
-is a process holding a window, `deck wait` is a process watching for a file, and
-every other command writes one file and exits. That is the whole architecture,
-and it is why deck works with any agent that has a shell.
+There is no daemon and no server. `deck open` is the process holding the bar or
+window, and it owns a private local mailbox for as long as that session exists.
+`deck wait` watches for the final review file. Other commands write a committed
+request, wait for the owning process to acknowledge it, and exit. This is why
+deck works with any agent that has a shell without requiring an agent protocol.
+
+### The live owner
+
+A live session starts with the bar rather than with the first render. It survives
+hide and reopen, and ends when the session is closed or submitted. An OS
+advisory lock on a digest of the canonical deck path is the ownership authority;
+the pid in its metadata is diagnostic only. Copied deck ids and two paths to the
+same directory therefore cannot route commands to the wrong window.
+
+`deck next <deck> --status` reports `waiting`, `ready`, or `hidden` only after
+the owner acknowledges the request. `deck show <deck> --ref FILE:FIRST-LAST`
+uses the same mailbox to move a code pane that already exists in the selected
+authored group. `--group` selects another authored group and `--pane`
+disambiguates repeated views of one file. It never opens, raises, focuses, or
+unhides a window.
+
+The native view resolves the target against its retained source snapshot. It
+refuses changed source, missing or diagram-only targets, ranges outside the
+snapshot, ambiguous panes, hidden windows, and movement while the reader is
+selecting, composing, scrolling, or navigating. The reader can press `f` to
+return movement to the live driver. A successful acknowledgement means the
+view model applied and revealed the spotlight; it does not claim that a later
+frame was visible on a physical display. Reusing `--request-id` with the same
+request returns the recorded outcome, while different content is a conflict.
+A request file landing is never success. Later `say` and reader-event commands
+will use the same generation-scoped mailbox.
 
 ## Four crates
 

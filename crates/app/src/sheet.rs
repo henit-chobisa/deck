@@ -73,6 +73,15 @@ impl Sheet {
         }
     }
 
+    /// The code pane, to move its live spotlight without rebuilding the group.
+    #[must_use]
+    pub fn code_mut(&mut self) -> Option<&mut Pane> {
+        match self {
+            Self::Code(code) => Some(code),
+            Self::Drawn(_) => None,
+        }
+    }
+
     /// The diagram pane, if this is one.
     #[must_use]
     pub fn chart(&self) -> Option<&Chart> {

@@ -1502,6 +1502,7 @@ dependencies = [
  "objc2-app-kit 0.3.2",
  "serde",
  "serde_json",
+ "tempfile",
  "toml 0.9.12+spec-1.1.0",
 ]
 
@@ -1511,7 +1512,12 @@ version = "0.0.9"
 dependencies = [
  "anyhow",
  "deck-core",
+ "fs2",
+ "serde",
  "serde_json",
+ "sha2 0.10.9",
+ "tempfile",
+ "uuid",
 ]
 
 [[package]]
@@ -2130,6 +2136,16 @@ dependencies = [
  "cc",
  "libc",
  "pkg-config",
+]
+
+[[package]]
+name = "fs2"
+version = "0.4.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9564fc758e15025b46aa6643b1b77d047d1a56a1aea6e01002ac0c7026876213"
+dependencies = [
+ "libc",
+ "winapi",
 ]
 
 [[package]]

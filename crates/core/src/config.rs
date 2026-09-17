@@ -44,6 +44,28 @@ pub struct Config {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct Speech {
+    /// Whether going live reads the narration aloud at all.
+    ///
+    /// Live is a rearrangement of the room first and a voice second. Somebody
+    /// in an office wants the rail and the reactions without a voice starting
+    /// in their headphones, so this turns the sound off and leaves everything
+    /// else.
+    pub aloud: bool,
+    /// What turns text into sound.
+    ///
+    /// `system` is whatever the machine already has and needs no setup.
+    /// `command` hands the text to a program of your choosing, which is the
+    /// whole answer to "which provider": deck never has to grow a backend for
+    /// Kokoro, Fish Audio, ElevenLabs or whatever ships next, because a shell
+    /// command reaches all of them and you decide what your code is worth
+    /// sending anywhere.
+    pub engine: Engine,
+    /// The program to pipe narration into, when `engine = "command"`.
+    ///
+    /// Reads the text on stdin and plays it. Split on spaces, so quote nothing:
+    /// `kokoro-cli --voice af_heart -`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub command: Option<String>,
     /// Which system voice to use. The system default when unset.
     ///
     /// Worth setting. The voices installed by default are the compact ones,
@@ -69,6 +91,9 @@ pub struct Speech {
 impl Default for Speech {
     fn default() -> Self {
         Self {
+            aloud: true,
+            engine: Engine::System,
+            command: None,
             voice: None,
             // Unhurried. The default on most systems is about 175, which is
             // fine for a message and too fast for a mechanism.
@@ -76,6 +101,17 @@ impl Default for Speech {
             pause: 420,
         }
     }
+}
+
+/// What turns narration into sound.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum Engine {
+    /// Whatever the machine already has. Works with nothing installed.
+    #[default]
+    System,
+    /// A program of the reader's choosing, fed on stdin.
+    Command,
 }
 
 impl Speech {

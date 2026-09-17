@@ -29,7 +29,7 @@
 use std::io::Write as _;
 use std::process::{Child, Command, Stdio};
 
-use deck_core::config::Speech;
+use deck_core::config::{Engine, Speech};
 use gpui_kit::{App, Global};
 
 /// What the config said about the voice.
@@ -54,18 +54,41 @@ pub fn asked(cx: &App) -> Speech {
         .map_or_else(Speech::default, |asked| asked.0.clone())
 }
 
+/// How good a voice is, which the system says in its name.
+///
+/// Three tiers and they are genuinely different models, not marketing. Compact
+/// is what ships by default and is what people mean when they say a computer
+/// voice. Enhanced is a real jump. Premium is a bigger model again, and is the
+/// one worth the download.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum Grade {
+    /// The best the system offers.
+    Premium,
+    /// Neural, and a long way past compact.
+    Enhanced,
+    /// Installed by default, and it sounds like it.
+    Compact,
+}
+
 /// A voice the machine has, and how good it is.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Installed {
     /// Its name, as the synthesiser wants it back.
     pub name: String,
-    /// Whether it is one of the neural ones.
+    /// Which model it is.
+    pub grade: Grade,
+}
+
+impl Installed {
+    /// Whether this is one of the neural voices.
     ///
-    /// This is the whole quality question. The compact voices shipped by
-    /// default are the ones people mean when they say a computer voice; the
-    /// neural ones are a free download and are close to a recording. Nothing
-    /// deck can do to the text closes that gap.
-    pub natural: bool,
+    /// The line deck actually cares about: above it there is a voice worth
+    /// offering, below it there is only a reason to send somebody to the
+    /// download page.
+    #[must_use]
+    pub fn natural(&self) -> bool {
+        self.grade != Grade::Compact
+    }
 }
 
 /// Every English voice installed, best first.
@@ -78,37 +101,40 @@ pub fn voices() -> Vec<Installed> {
     let Ok(out) = Command::new("say").arg("-v").arg("?").output() else {
         return Vec::new();
     };
-    let listed = String::from_utf8_lossy(&out.stdout);
+    listed(&String::from_utf8_lossy(&out.stdout))
+}
 
-    let mut found: Vec<Installed> = listed
+/// [`voices`], against the text the synthesiser printed.
+///
+/// Split out because this is the part that can rot. The listing is a column
+/// layout meant for a person, its quality suffix is the only thing marking a
+/// voice as worth using, and both are Apple's to change — which they have.
+fn listed(out: &str) -> Vec<Installed> {
+    let mut found: Vec<Installed> = out
         .lines()
         .filter_map(|line| {
-            // `Ava (Premium)        en_US    # Hello! My name is Ava.`
+            // `Ava (Enhanced)      en_US    # Hello! My name is Ava.`
             let said = line.split('#').next()?.trim_end();
             let (name, locale) = said.rsplit_once(char::is_whitespace)?;
             locale.starts_with("en").then(|| Installed {
+                grade: if name.contains("(Premium)") {
+                    Grade::Premium
+                } else if name.contains("(Enhanced)") {
+                    Grade::Enhanced
+                } else {
+                    Grade::Compact
+                },
                 name: name.trim().to_string(),
-                natural: name.contains("(Premium)") || name.contains("(Enhanced)"),
             })
         })
         .collect();
 
-    // Premium and Enhanced first; within each, the order the system gave them.
-    found.sort_by_key(|voice| !voice.natural);
+    // Best model first, and within a tier the order the system gave them. Sorted
+    // by grade rather than by whether it is neural at all, because a machine
+    // with both an Enhanced and a Premium voice installed should be offered the
+    // Premium one — and alphabetical order would hand it Ava over Zoe.
+    found.sort_by_key(|voice| voice.grade);
     found
-}
-
-/// The best voice on this machine, if it has one worth naming.
-///
-/// `None` means every installed voice is a compact one, and deck would rather
-/// leave the system default in place and say so than pick a robot on the
-/// reader's behalf and let them think that is the best it does.
-#[must_use]
-pub fn best() -> Option<String> {
-    voices()
-        .into_iter()
-        .find(|voice| voice.natural)
-        .map(|voice| voice.name)
 }
 
 /// Where a reader goes to get a voice worth listening to.
@@ -116,7 +142,13 @@ pub fn best() -> Option<String> {
 /// Worth printing in full. Nobody finds this by looking, and the difference it
 /// makes is the difference between the feature working and the feature being
 /// switched off after one paragraph.
-pub const WHERE: &str = "System Settings → Accessibility → Spoken Content → \n    System Voice → Manage Voices… → English, and pick any marked Premium";
+///
+/// Both names, because Apple moved it. macOS 26 calls the pane **Read & Speak**
+/// and files it under Vision; every earlier version calls it Spoken Content. A
+/// reader following a path that is not on their screen concludes the
+/// instructions are stale and stops, so both are named rather than the newer
+/// one guessed at.
+pub const WHERE: &str = "System Settings → Accessibility → Read & Speak\n    → System Voice → Manage Voices… → English → anything marked Premium\n\n    (macOS 15 and earlier call that pane Spoken Content)";
 
 /// A voice, and whatever it is currently saying.
 #[derive(Debug, Default)]
@@ -161,7 +193,7 @@ impl Voice {
         // narration is prose: it has quotes and dashes in it, and it can be
         // longer than a command line is allowed to be.
         if let Some(stdin) = spoken.stdin.as_mut() {
-            let _ = stdin.write_all(prepared(text).as_bytes());
+            let _ = stdin.write_all(prepared(text, speech).as_bytes());
         }
         // Dropped so the child sees the end of its input and starts speaking.
         drop(spoken.stdin.take());
@@ -196,8 +228,11 @@ impl Drop for Voice {
 /// `[[slnc n]]` is macOS's own instruction for a pause and is what gives the
 /// paragraph gaps. Anywhere else it is four brackets and a number that would be
 /// read out, so it comes back off.
-fn prepared(text: &str) -> String {
-    if cfg!(target_os = "macos") {
+fn prepared(text: &str, speech: &Speech) -> String {
+    // `[[slnc n]]` is macOS `say`'s own instruction. Piped to anything else it
+    // is four brackets and a number that would be read out, so it comes off —
+    // the gap is deck's to keep, not the engine's to understand.
+    if speech.engine == Engine::System && cfg!(target_os = "macos") {
         return text.to_string();
     }
     let mut out = String::with_capacity(text.len());
@@ -213,18 +248,47 @@ fn prepared(text: &str) -> String {
     out
 }
 
-/// Start a synthesiser reading stdin, if this machine has one.
+/// Start a synthesiser reading stdin, if there is one to start.
+///
+/// The reader's own command first. That is the whole provider story: deck pipes
+/// text to a program and plays nothing itself, so Kokoro, Piper, Fish Audio,
+/// ElevenLabs and whatever ships next are all reachable without deck learning
+/// any of them — and the reader decides what leaves their machine.
 fn start(_text: &str, speech: &Speech) -> Option<Child> {
+    if speech.engine == Engine::Command {
+        return spoken_by(speech.command.as_deref()?);
+    }
+    system(speech)
+}
+
+/// Run the reader's own program, reading text on stdin.
+///
+/// Split on whitespace rather than shelled out. A shell would mean quoting
+/// rules, an extra process, and a config field that can run arbitrary pipelines
+/// — and the thing on the other end only ever needs a program and its flags.
+fn spoken_by(command: &str) -> Option<Child> {
+    let mut words = command.split_whitespace();
+    let program = words.next()?;
+    Command::new(program)
+        .args(words)
+        .stdin(Stdio::piped())
+        .spawn()
+        .ok()
+}
+
+/// Whatever this machine already has.
+fn system(speech: &Speech) -> Option<Child> {
     let rate = speech.words_a_minute();
+    let voice = speech.voice.as_deref().filter(|name| !name.is_empty());
 
     #[cfg(target_os = "macos")]
     {
         let mut say = Command::new("say");
         say.arg("-r").arg(rate.to_string());
-        if let Some(voice) = speech.voice.as_deref().filter(|name| !name.is_empty()) {
+        if let Some(voice) = voice {
             say.arg("-v").arg(voice);
         }
-        return say.stdin(Stdio::piped()).spawn().ok();
+        say.stdin(Stdio::piped()).spawn().ok()
     }
 
     #[cfg(target_os = "linux")]
@@ -236,15 +300,17 @@ fn start(_text: &str, speech: &Speech) -> Option<Child> {
         spd.arg("-e")
             .arg("-r")
             .arg(scaled.clamp(-100, 100).to_string());
-        if let Some(voice) = speech.voice.as_deref().filter(|name| !name.is_empty()) {
+        if let Some(voice) = voice {
             spd.arg("-y").arg(voice);
         }
-        return spd.stdin(Stdio::piped()).spawn().ok();
+        spd.stdin(Stdio::piped()).spawn().ok()
     }
 
     #[cfg(not(any(target_os = "macos", target_os = "linux")))]
     {
-        let _ = rate;
+        // Windows has no system synthesiser deck can pipe into. `engine =
+        // "command"` is the answer there, and setup says so.
+        let _ = (rate, voice);
         None
     }
 }
@@ -254,21 +320,41 @@ mod tests {
     use super::*;
 
     #[test]
-    fn a_pause_is_left_alone_where_it_means_something() {
-        // On macOS the synthesiser reads it as an instruction, which is the
+    fn the_system_voice_keeps_the_pause_it_understands() {
+        // On macOS `say` reads `[[slnc n]]` as an instruction, which is the
         // whole reason it is in the text.
+        let speech = Speech::default();
         if cfg!(target_os = "macos") {
-            assert_eq!(prepared("one [[slnc 400]] two"), "one [[slnc 400]] two");
+            assert_eq!(
+                prepared("one [[slnc 400]] two", &speech),
+                "one [[slnc 400]] two"
+            );
         }
     }
 
     #[test]
-    fn a_pause_is_taken_out_where_it_would_be_read_aloud() {
-        // Everywhere else those brackets are four characters and a number that
-        // a listener would hear.
-        if !cfg!(target_os = "macos") {
-            assert_eq!(prepared("one [[slnc 400]] two"), "one  two");
-        }
+    fn another_engine_never_hears_a_pause_marker() {
+        // Piped to Kokoro or an ElevenLabs script those brackets are four
+        // characters and a number a listener would hear. The gap is deck's to
+        // keep, not the engine's to understand.
+        let speech = Speech {
+            engine: Engine::Command,
+            command: Some("some-voice -".into()),
+            ..Speech::default()
+        };
+        assert_eq!(prepared("one [[slnc 400]] two", &speech), "one  two");
+    }
+
+    #[test]
+    fn a_command_engine_with_nothing_to_run_stays_quiet() {
+        // Rather than falling back to the system voice, which would be deck
+        // quietly ignoring what the reader configured.
+        let speech = Speech {
+            engine: Engine::Command,
+            command: None,
+            ..Speech::default()
+        };
+        assert!(start("anything", &speech).is_none());
     }
 
     #[test]

@@ -95,8 +95,13 @@ pub struct Mark {
 /// One code pane.
 pub struct Pane {
     rows: Vec<Row>,
-    lit: LineRange,
-    /// How many rows a proposed replacement added under the lit range.
+    /// The range authored in the group, which fixes proposed-diff geometry.
+    authored: LineRange,
+    /// The independently movable range the live walk asks the reader to see.
+    spotlight: LineRange,
+    /// Number of source lines, excluding proposed replacement rows.
+    source_lines: u32,
+    /// How many rows a proposed replacement added under the authored range.
     ///
     /// Kept because everything else here counts in file lines, and a spliced
     /// row has no line to count. See [`Pane::row_of`].
@@ -128,7 +133,7 @@ impl Pane {
     pub fn new(code: &RefSpec, source: &str, cx: &App) -> Self {
         let lines: Vec<&str> = source.lines().collect();
         let total = u32::try_from(lines.len()).unwrap_or(u32::MAX).max(1);
-        let lit = code.range.clamp_to(total);
+        let authored = code.range.clamp_to(total);
         let mut rows = highlight(source, &lines, &code.file, cx);
         let mut added = 0usize;
 
@@ -137,7 +142,7 @@ impl Pane {
         // per line added, which is why nothing may look a row up by its line
         // number afterwards — see `row_of`.
         if let Some(after) = code.after.as_deref() {
-            for row in &mut rows[(lit.first as usize - 1)..(lit.last as usize)] {
+            for row in &mut rows[(authored.first as usize - 1)..(authored.last as usize)] {
                 row.change = Some(Change::Gone);
             }
 
@@ -148,28 +153,32 @@ impl Pane {
                 row.change = Some(Change::New);
             }
             added = fresh.len();
-            rows.splice((lit.last as usize)..(lit.last as usize), fresh);
+            rows.splice((authored.last as usize)..(authored.last as usize), fresh);
         }
 
         // Open on the range, a couple of lines above it so it does not start
         // hard against the top edge. The scroll is deferred to the next layout,
         // which is the only moment the list knows how tall it is.
         let scroll = UniformListScrollHandle::new();
-        let top = lit.first.saturating_sub(LEAD_IN).max(1);
+        let top = authored.first.saturating_sub(LEAD_IN).max(1);
         scroll.scroll_to_item((top - 1) as usize, ScrollStrategy::Top);
 
-        Self {
+        let mut pane = Self {
             rows,
-            lit,
+            authored,
+            spotlight: authored,
+            source_lines: total,
             added,
             scroll,
-            label: format!("{}:{}", code.file.display(), lit).into(),
+            label: format!("{}:{}", code.file.display(), authored).into(),
             note: code.note.clone().map(SharedString::from),
             laid_out: std::cell::Cell::new(None),
             ref_id: code.id.clone().into(),
             file: code.file.clone(),
             selected: None,
-        }
+        };
+        pane.spotlight(authored);
+        pane
     }
 
     /// Which row of the list a file line is drawn on.
@@ -180,7 +189,23 @@ impl Pane {
     /// have to come through here, or they land somewhere the reader did not
     /// point at.
     fn row_of(&self, number: u32) -> usize {
-        row_of(number, self.lit.last, self.added)
+        row_of(number, self.authored.last, self.added)
+    }
+
+    /// Move only the live spotlight, leaving authored diff rows where they are.
+    ///
+    /// Revealing is separate so an owner can apply the state first and report
+    /// layout visibility accurately after the next frame.
+    pub fn spotlight(&mut self, range: LineRange) {
+        self.spotlight = range.clamp_to(self.source_lines);
+        self.label = format!("{}:{}", self.file.display(), self.spotlight).into();
+        self.laid_out.set(None);
+    }
+
+    /// The range currently presented as the live subject.
+    #[must_use]
+    pub fn spotlight_range(&self) -> LineRange {
+        self.spotlight
     }
 
     /// The text of line `number`, 1-based, as it was when the deck opened.
@@ -230,7 +255,7 @@ impl Pane {
 
         let top = f32::from(-state.base_handle.offset().y);
         let first = entry as f32 * row;
-        let last = first + (self.lit.len() as f32 * row);
+        let last = first + (self.spotlight_range().len() as f32 * row);
 
         if last <= top {
             Some(Away::Above)
@@ -247,7 +272,7 @@ impl Pane {
     /// position measured in rows means something different once the rows are a
     /// different size.
     pub fn show_range(&self) {
-        let top = self.lit.first.saturating_sub(LEAD_IN).max(1);
+        let top = self.spotlight.first.saturating_sub(LEAD_IN).max(1);
         self.scroll
             .scroll_to_item(self.row_of(top), ScrollStrategy::Top);
     }
@@ -256,7 +281,7 @@ impl Pane {
     /// range when nothing is.
     #[must_use]
     pub fn comment_range(&self) -> LineRange {
-        self.selected.unwrap_or(self.lit)
+        self.selected.unwrap_or(self.spotlight_range())
     }
 
     /// The text of `range`, as it was when the deck opened.
@@ -319,7 +344,7 @@ impl Pane {
         // Everything a row needs is copied in: the closure outlives this call
         // and so cannot borrow the pane.
         let rows = self.rows.clone();
-        let lit = self.lit;
+        let lit = self.spotlight;
         let palette = *palette;
         let gutter_fg = palette.fg.mix(palette.wash, 0.6);
         let selected = self.selected;
@@ -336,7 +361,7 @@ impl Pane {
         // to find; the card sits on top, is any height it likes, and can be
         // closed. It is placed from the scroll offset, so it travels with the
         // line it belongs to.
-        let lit_entry = self.row_of(self.lit.first);
+        let lit_entry = self.row_of(self.spotlight.first);
         let view = view.clone();
         let wheeling = view.clone();
 
@@ -768,9 +793,13 @@ fn emphasise(note: &str, palette: &Palette) -> impl IntoElement {
 /// matters more here than usual: it is off-by-one arithmetic that fails
 /// silently, by putting a comment card or a scroll target a couple of lines
 /// from where the reader pointed.
-fn row_of(number: u32, lit_last: u32, added: usize) -> usize {
+fn row_of(number: u32, authored_last: u32, added: usize) -> usize {
     let ix = (number.max(1) - 1) as usize;
-    if number > lit_last { ix + added } else { ix }
+    if number > authored_last {
+        ix + added
+    } else {
+        ix
+    }
 }
 
 /// The highlighter's name for the language in `file`.
@@ -829,6 +858,19 @@ mod tests {
         assert_eq!(row(5), 4, "the last line of the range has not moved");
         assert_eq!(row(6), 7, "the line after it is past the two new ones");
         assert_eq!(row(7), 8);
+    }
+
+    #[test]
+    fn a_live_spotlight_does_not_move_the_proposed_replacement() {
+        // The insertion coordinate belongs to the authored ref. Moving a live
+        // spotlight below it must not make the proposed rows jump below the
+        // new subject or change where later source lines are drawn.
+        let authored_last = 5;
+        let _spotlight = LineRange::new(20, 22);
+
+        assert_eq!(row_of(5, authored_last, 2), 4);
+        assert_eq!(row_of(6, authored_last, 2), 7);
+        assert_eq!(row_of(20, authored_last, 2), 21);
     }
 
     #[test]

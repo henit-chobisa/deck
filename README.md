@@ -34,7 +34,7 @@ A presentation surface for agents, written in Rust.
 
 <div align="center">
 
-[Why](#why) • [How it works](#how-it-works) • [Demo](#demo) • [Install](#install) • [In the window](#in-the-window) • [Listening](#listening-to-it) • [Diagrams](#diagrams) • [Theming](#theming)
+[Why](#why) • [How it works](#how-it-works) • [Demo](#demo) • [Install](#install) • [In the window](#in-the-window) • [Live](#going-live) • [Diagrams](#diagrams) • [Theming](#theming)
 
 </div>
 
@@ -252,48 +252,89 @@ And when the file moves underneath you, comments come back with how far to trust
 them — `diff`, `fingerprint`, or `stale` — rather than a line number that may
 have drifted.
 
-## Listening to it
+## Going live
 
-`t` reads the current group's narration aloud, and reads it slowly — prose about
-code is dense, and it is being heard once with no way to glance back at the last
-clause. `t` again stops it. Moving to another group stops it too, since what it
-was saying belongs to the group that just left.
+`l` puts the deck into a walkthrough. The room rearranges around the same deck —
+the rail slides in beside the panes carrying everything that has been said, the
+voice picks up the current group, and the agent that wrote the deck can move
+your eyes while it talks. `l` again puts it all back.
 
-The narration is written for this without trying. It is already ordered, already
-one claim per group, already composed to be read in sequence — so what a reader
-gets is two channels that do not compete: the code in front of their eyes, the
-argument in their ears.
-
-What it does not do is read the marks. Code chips are said the way a person
-would say them — `base_url` is "base url", `buildPayload` is "build payload",
-`if credentials:` drops the colon that belongs to Python rather than the
-sentence — and a paragraph break becomes a real pause, because a break is a
-change of subject and a voice that runs two of them together turns an argument
-back into a stream.
-
-**Get a good voice first.** The voices installed by default are the compact
-ones, and they sound like it. The neural ones are a free download and are close
-to a recording:
+Three keys answer, and they cost one keystroke each:
 
 ```
-System Settings → Accessibility → Spoken Content → System Voice
-  → Manage Voices… → English → anything marked Premium
+1   noted
+2   wait, what?
+3   that's wrong
 ```
 
-Then `deck setup` offers it. Nothing is uploaded to make this work — a narration
-describes code that has not shipped yet, and sending it to a service to be turned
-into a sound file is not a trade deck makes on your behalf for a nicer timbre.
-Speed and voice live in `~/.deck/config.toml`:
+Tapping one leaves a reaction pinned to whatever is on screen — no typing, no
+composer, nothing to close. `c` is still there when you have actual words, and
+while the composer is open those same three keys set what the comment is asking
+for instead of leaving a bare reaction.
+
+This is what `Kind` in the protocol has always been for. Every comment used to
+go back marked `question` whatever you meant, which left the agent guessing your
+tone from your prose.
+
+### What the agent can do while you watch
+
+```sh
+deck show <deck> --ref "src/view.rs:106-110"   # move my eyes here
+deck say  <deck> --text "…"                    # say something, spoken if you have a voice
+deck next <deck> --after <cursor>              # block until the reader does something
+```
+
+All shell commands, so this works the same with Claude Code, Codex, Cursor and
+Amp — the same reason the other verbs do. `deck next` returns a cursor, so an
+agent that was busy or restarting reads from where it got to rather than losing
+what you pressed while it was away.
+
+Movement is yours the moment you take it. Scroll, select, or start typing and
+the agent stops moving you; the rail says **paused** while that holds. It lapses
+on its own after a few seconds of stillness, and `f` takes it back immediately.
+A composer holds it until you close it, because nobody should have the ground
+moved while they are writing about it.
+
+### What comes back
+
+`deck wait` returns the comments as always, and for a walked deck it also
+returns a `transcript`: what you were shown, in what order, and what you said
+about each part. Not that a review happened — **what the reviewer actually
+looked at.**
+
+### The voice
+
+Reading aloud is optional and off in one line. It is also not deck's to choose a
+provider for:
 
 ```toml
 [speech]
-voice = "Ava (Premium)"
-rate = 158    # words a minute
-pause = 420   # milliseconds between paragraphs
+aloud   = true
+engine  = "system"     # or "command"
+rate    = 158
+pause   = 420
+
+# engine = "command" — anything that reads text on stdin and plays it.
+# Kokoro, Piper, an ElevenLabs or Fish Audio script, whatever ships next.
+command = "kokoro-cli --voice af_heart -"
 ```
 
-macOS reads decks through `say`; Linux through `spd-say` if speech-dispatcher is
-installed. Windows is not wired up yet.
+`system` uses whatever the machine already has and needs no setup — macOS
+through `say`, Linux through `spd-say`. Windows has no system synthesiser to
+pipe into, so `engine = "command"` is the answer there.
+
+On macOS the voices installed by default are the compact ones and they sound
+like it. The neural ones are a free download:
+
+```
+System Settings → Accessibility → Read & Speak → System Voice
+  → Manage Voices… → English → anything marked Premium
+```
+
+On macOS 15 and earlier that pane is called Spoken Content. Then `deck setup`
+offers it by name. Nothing is uploaded for `system` or for any command you run
+locally — a narration describes code that has not shipped, and where it goes is
+your call, not deck's.
 
 ## Diagrams
 

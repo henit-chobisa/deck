@@ -15,6 +15,7 @@
 //!
 //! - [`line`] — line coordinates, and the single sanctioned exit from 1-based
 //!   counting.
+//! - [`live`] — pure state transitions for an anchored live conversation.
 //! - [`protocol`] — the wire format, mirroring the JSON field for field.
 //! - [`relocate`] — following a pinned line while the file moves under it.
 //! - [`layout`] — how many panes fit beside each other.
@@ -28,6 +29,7 @@ pub mod diagram;
 pub mod home;
 pub mod layout;
 pub mod line;
+pub mod live;
 pub mod protocol;
 pub mod relocate;
 pub mod theme;
@@ -37,8 +39,13 @@ pub mod theme;
 pub use diagram::{Diagram, Role, Weight};
 pub use layout::{Arrange, Grid, Layout};
 pub use line::LineRange;
+pub use live::{
+    Action as LiveAction, AudioPhase, CapturedAnchor, Effect as LiveEffect, EntryId, Following,
+    Generation, Lifecycle, PauseReason, Refusal as LiveRefusal, Stage, StageId, State as LiveState,
+    UtteranceId,
+};
 pub use protocol::{
-    Comment, DiagramRef, Group, Header, Kind, Ref, RefSpec, Review, Source, VERSION,
+    Comment, DiagramRef, Group, Header, Kind, Moment, Ref, RefSpec, Review, Source, VERSION, What,
 };
 pub use relocate::{Relocated, relocate};
 pub use theme::{Imported, Palette, Rgb, derive};

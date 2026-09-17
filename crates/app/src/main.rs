@@ -1,9 +1,9 @@
 //! The `deck` command, and the window it opens.
 //!
 //! `deck new`, `deck group` and `deck seal` write a deck; `deck open` puts it
-//! on screen; `deck wait` blocks until the answer comes back. Nothing runs in
-//! the background: the agent opens the window, so there is no drop directory to
-//! watch, no deck to claim, and no question of which client wins.
+//! on screen; `deck wait` blocks until the answer comes back. There is no
+//! daemon: the process holding the bar/window also owns its private live
+//! mailbox, and the OS lock on that mailbox decides which process may answer.
 //!
 //! What arrives first is a bar, not the deck. An agent finishes when it
 //! finishes, and being interrupted by a review is not the same as being ready
@@ -18,6 +18,7 @@ mod chart;
 mod cli;
 mod config;
 mod hook;
+mod live;
 mod load;
 mod palette;
 mod pane;
@@ -27,7 +28,6 @@ mod queue;
 mod setup;
 mod shade;
 mod sheet;
-mod showing;
 mod skill;
 mod speech;
 mod state;
@@ -201,18 +201,20 @@ fn show(decks: Vec<Deck>, opening: &cli::Opening) {
                 cx,
             );
 
-            // Anything another window is already showing is dropped here.
-            // Running `deck open` twice on one deck used to give the reader a
-            // second window over the one they were reading.
+            // Claim live ownership before a session reaches the queue. The
+            // canonical path, rather than the copyable header id, is what keeps
+            // a second `deck open` from putting another window over this one.
             crate::shade::remember(zen, cx);
             crate::speech::remember(speech, cx);
 
             let waiting: Vec<Session> = decks
                 .into_iter()
-                .filter(|deck| !crate::showing::taken(&deck.header.id))
-                .map(|deck| {
-                    crate::showing::take(&deck.header.id);
-                    Session::fresh(deck).arranged(layout)
+                .filter_map(|deck| match crate::live::Handle::start(&deck.root) {
+                    Ok(live) => Some(Session::fresh(deck, live).arranged(layout)),
+                    Err(err) => {
+                        eprintln!("deck: cannot own {}: {err}", deck.root.display());
+                        None
+                    }
                 })
                 .collect();
 

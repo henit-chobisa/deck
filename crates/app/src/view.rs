@@ -12,7 +12,7 @@
 use deck_core::layout::{Arrange, Layout as GridSpec};
 use deck_core::protocol::{Group, Ref};
 use deck_core::theme::Palette;
-use deck_core::{LineRange, Relocated};
+use deck_core::{LineRange, LiveEffect, PauseReason, Relocated, Stage, StageId};
 use gpui_kit::component::input::{InputEvent, Textarea, TextareaState};
 use gpui_kit::component::*;
 use gpui_kit::prelude::FluentBuilder as _;
@@ -27,8 +27,8 @@ use crate::sheet::{Sheet, Slot};
 gpui_kit::actions!(
     deck,
     [
-        NextGroup, PrevGroup, Comment, Rotate, Zen, Talk, Hide, Submit, Discard, ZoomIn, ZoomOut,
-        ZoomReset, Close
+        NextGroup, PrevGroup, Comment, Rotate, Zen, Live, Follow, Hide, Submit, Discard, Noted,
+        Asked, Wrong, ZoomIn, ZoomOut, ZoomReset, Close
     ]
 );
 
@@ -42,7 +42,11 @@ const KEYS: &[(&str, &str, &str)] = &[
     ("c", "comment", "comment"),
     ("r", "rotate", "turn the panes"),
     ("z", "zen", "lights off"),
-    ("t", "talk", "read it aloud"),
+    ("l", "live", "live walkthrough"),
+    ("f", "follow", "let it move again"),
+    ("1", "noted", "noted"),
+    ("2", "asked", "wait, what?"),
+    ("3", "wrong", "that's wrong"),
     ("h", "hide", "put it away"),
     ("s", "submit", "submit"),
     ("q", "close", "close"),
@@ -57,7 +61,11 @@ pub fn bindings() -> Vec<KeyBinding> {
         KeyBinding::new("c", Comment, Some("Deck")),
         KeyBinding::new("r", Rotate, Some("Deck")),
         KeyBinding::new("z", Zen, Some("Deck")),
-        KeyBinding::new("t", Talk, Some("Deck")),
+        KeyBinding::new("l", Live, Some("Deck")),
+        KeyBinding::new("1", Noted, Some("Deck")),
+        KeyBinding::new("2", Asked, Some("Deck")),
+        KeyBinding::new("3", Wrong, Some("Deck")),
+        KeyBinding::new("f", Follow, Some("Deck")),
         KeyBinding::new("h", Hide, Some("Deck")),
         KeyBinding::new("s", Submit, Some("Deck")),
         KeyBinding::new("q", Close, Some("Deck")),
@@ -119,6 +127,22 @@ fn quarter(turn: u8) -> (Arrange, bool) {
 /// A file with no snapshot is skipped rather than guessed at — its remark keeps
 /// the range it was written with and says nothing about how far to trust it,
 /// which is the honest answer to a question nobody can answer.
+fn resolved_path(base: &std::path::Path, file: &std::path::Path) -> std::path::PathBuf {
+    let joined = if file.is_absolute() {
+        file.to_path_buf()
+    } else {
+        base.join(file)
+    };
+    std::fs::canonicalize(&joined).unwrap_or(joined)
+}
+
+fn snapshot_identity(source: &str) -> String {
+    use std::hash::{Hash as _, Hasher as _};
+    let mut hash = std::collections::hash_map::DefaultHasher::new();
+    source.hash(&mut hash);
+    format!("snapshot:{:016x}", hash.finish())
+}
+
 fn follow(
     pins: &[(usize, &std::path::Path, LineRange)],
     snapshots: &std::collections::HashMap<std::path::PathBuf, std::sync::Arc<str>>,
@@ -188,15 +212,82 @@ const BAND_NATURAL: f32 = 168.;
 /// particular line, and it is the remark most worth carrying back.
 #[derive(Clone, PartialEq)]
 enum About {
-    /// Lines of one pane's file. Carries the pane, so the composer can name it.
-    Lines { pane: usize, range: LineRange },
-    /// A diagram, and whichever node of it is picked.
-    ///
-    /// No range, because a picture has no lines. What the remark is pinned to
-    /// is the node's own label, which travels back in the comment's `quote`.
-    Drawn { pane: usize },
-    /// The narration: what the group claims.
-    Claim,
+    /// Lines of one pane's immutable snapshot.
+    Lines {
+        group: SharedString,
+        ref_id: SharedString,
+        file: std::path::PathBuf,
+        range: LineRange,
+        quote: String,
+    },
+    /// A diagram and whichever node of it was picked.
+    Drawn {
+        group: SharedString,
+        ref_id: SharedString,
+        quote: String,
+    },
+    /// The selected narration, or the group's opening claim.
+    Claim { group: SharedString, quote: String },
+}
+
+/// Live mode, and how far through its transition it is.
+///
+/// Time-based rather than a GPUI animation list, for a reason paid for once
+/// already: a `with_animation` list whose length changes between frames is a
+/// bounds-check panic, and the number of things moving here depends on how many
+/// panes the group has. A start instant and a direction cannot go out of step
+/// with the tree.
+#[derive(Debug, Clone, Copy)]
+struct Walking {
+    since: std::time::Instant,
+    /// True while sliding back out.
+    going: bool,
+}
+
+/// How long the room takes to rearrange, each way.
+///
+/// Out is quicker than in. Arriving somewhere should feel like it settles;
+/// leaving should feel like it gets out of your way.
+const ARRIVE: std::time::Duration = std::time::Duration::from_millis(420);
+const LEAVE: std::time::Duration = std::time::Duration::from_millis(260);
+
+impl Walking {
+    fn arriving() -> Self {
+        Self {
+            since: std::time::Instant::now(),
+            going: false,
+        }
+    }
+
+    fn leaving() -> Self {
+        Self {
+            since: std::time::Instant::now(),
+            going: true,
+        }
+    }
+
+    /// Nought to one, eased, where one is fully live.
+    fn pace(self) -> f32 {
+        let whole = if self.going { LEAVE } else { ARRIVE };
+        let raw = (self.since.elapsed().as_secs_f32() / whole.as_secs_f32()).clamp(0., 1.);
+        // Ease out cubic. Fast to start so it answers the key immediately, slow
+        // to finish so nothing lands with a snap.
+        let eased = 1. - (1. - raw).powi(3);
+        if self.going { 1. - eased } else { eased }
+    }
+
+    /// Whether this transition has finished leaving and can be forgotten.
+    fn spent(self) -> bool {
+        self.going && self.since.elapsed() >= LEAVE
+    }
+}
+
+/// A show request resolved entirely against authored groups and snapshots.
+struct ResolvedShow {
+    group_ix: usize,
+    pane_ix: usize,
+    stage: Stage,
+    source_matches: bool,
 }
 
 /// A remark the reader has written, before it goes back.
@@ -210,6 +301,14 @@ struct Remark {
     /// the file has moved underneath.
     quote: String,
     text: String,
+    /// What the reader wants done about it.
+    ///
+    /// Carried per remark rather than decided at submit time, because it is the
+    /// reader's word and they said it when they wrote the remark. Every comment
+    /// used to go out as `Question` whatever they meant, which made the agent
+    /// guess tone from prose — the exact thing [`deck_core::Kind`] exists to
+    /// stop.
+    kind: deck_core::Kind,
 }
 
 /// Everything the deck is holding, so it survives being put away.
@@ -225,6 +324,8 @@ struct Remark {
 pub struct Session {
     /// The deck, and whatever has landed of it so far.
     pub deck: Deck,
+    /// The local command owner, retained while the deck waits or is hidden.
+    live: crate::live::Handle,
     /// How panes are arranged, as the config asked.
     layout: GridSpec,
     /// Every file this deck has shown, as it was the first time it was seen.
@@ -246,9 +347,10 @@ pub struct Session {
 impl Session {
     /// A deck nobody has read yet.
     #[must_use]
-    pub fn fresh(deck: Deck) -> Self {
+    pub fn fresh(deck: Deck, live: crate::live::Handle) -> Self {
         Self {
             deck,
+            live,
             layout: GridSpec::default(),
             snapshots: std::collections::HashMap::new(),
             remarks: Vec::new(),
@@ -281,6 +383,8 @@ impl Session {
 /// The window.
 pub struct DeckView {
     deck: Deck,
+    /// The session owner whose status follows this view through hide/reopen.
+    live: crate::live::Handle,
     /// See [`Session::snapshots`].
     snapshots: std::collections::HashMap<std::path::PathBuf, std::sync::Arc<str>>,
     palette: Palette,
@@ -297,6 +401,28 @@ pub struct DeckView {
     /// The subscription rides along so it lives exactly as long as the composer
     /// does: dropping it is what stops the old textarea being listened to.
     composing: Option<(About, Entity<TextareaState>, Subscription)>,
+    /// What the remark being written is asking for.
+    ///
+    /// Held beside the composer rather than inside `About`, because `About` is
+    /// *what the remark is pinned to* and this is *what the reader wants done*.
+    /// Reset every time a composer opens: a must-fix should never be inherited
+    /// by the next remark.
+    composing_kind: deck_core::Kind,
+    /// Live mode, while it is on or on its way out.
+    walking: Option<Walking>,
+    /// What the agent has said during this walk, in order.
+    ///
+    /// Shown in the rail so the conversation reads as a conversation rather
+    /// than as the reader talking to themselves.
+    spoken: Vec<SharedString>,
+    /// The walk, as it happened.
+    ///
+    /// Grown in place while the deck is open and handed to the review whole.
+    /// This is the part nothing else produces — not that a review happened, but
+    /// what the reader was shown and what they said about each part.
+    transcript: Vec<deck_core::Moment>,
+    /// When this walk began, for the transcript's clock.
+    began: std::time::Instant,
     /// Whether the narration is the thing a comment would land on.
     /// Which sentence of the narration is picked, if any.
     ///
@@ -336,6 +462,11 @@ pub struct DeckView {
     /// closes — a deck that went on polling a directory nobody is reading
     /// would be the daemon this whole design exists to avoid.
     tailing: Task<()>,
+    /// The loop applying live commands for as long as this view is visible.
+    ///
+    /// Separate from group tailing because sealing ends authored input, not the
+    /// conversation. Hiding drops this task while the session owner remains.
+    controlling: Task<()>,
     /// The pane the wheel is carrying, and where it is carrying it to.
     ///
     /// `None` when nothing is moving. Holding the target rather than the
@@ -498,6 +629,7 @@ impl DeckView {
         crate::palette::install(&palette, dark, cx);
         let Session {
             deck,
+            live,
             layout,
             snapshots,
             remarks,
@@ -509,8 +641,10 @@ impl DeckView {
             folded,
         } = session;
 
+        live.ready();
         let mut view = Self {
             deck,
+            live,
             snapshots,
             palette,
             grid: layout,
@@ -519,6 +653,11 @@ impl DeckView {
             focus: cx.focus_handle(),
             remarks,
             composing: None,
+            composing_kind: deck_core::Kind::default(),
+            walking: None,
+            spoken: Vec::new(),
+            transcript: Vec::new(),
+            began: std::time::Instant::now(),
             picked_said: None,
             said_from: None,
             said_over: None,
@@ -541,11 +680,13 @@ impl DeckView {
             drifting: None,
             gliding: Task::ready(()),
             tailing: Task::ready(()),
+            controlling: Task::ready(()),
             spread: false,
             spreading: Task::ready(()),
         };
         view.build_panes(cx);
         view.tail(cx);
+        view.control(cx);
         view.spread_later(cx);
         view
     }
@@ -615,6 +756,229 @@ impl DeckView {
         });
     }
 
+    /// Apply live control independently of authored group tailing.
+    ///
+    /// Sealing stops new group discovery but must not close the conversation,
+    /// so this loop has its own lifetime and runs only while the view is open.
+    fn control(&mut self, cx: &mut Context<Self>) {
+        const EVERY: std::time::Duration = std::time::Duration::from_millis(40);
+
+        self.controlling = cx.spawn(async move |view, cx| {
+            loop {
+                cx.background_executor().timer(EVERY).await;
+                if view
+                    .update(cx, |deck, cx| deck.apply_live_show(cx))
+                    .is_err()
+                {
+                    return;
+                }
+            }
+        });
+    }
+
+    /// Put the agent's own words into the walk, and read them if asked.
+    ///
+    /// Recorded whether or not anybody heard them: a reader with the voice off,
+    /// or no voice at all, still gets the sentence in the rail and in the
+    /// transcript, which is where the conversation actually lives.
+    fn said_live(&mut self, text: &str, aloud: bool, cx: &mut Context<Self>) {
+        let anchor = self
+            .pinned()
+            .map(|about| Self::remark(about, String::new(), deck_core::Kind::default()));
+        if let Some(anchor) = anchor.as_ref() {
+            self.note(deck_core::What::Said, None, text, anchor);
+        }
+        self.spoken.push(SharedString::from(text.to_string()));
+        if aloud {
+            let speech = crate::speech::asked(cx);
+            if speech.aloud {
+                let said = crate::prose::spoken(text, speech.pause);
+                self.voice.say(&said, &speech);
+            }
+        }
+        cx.notify();
+    }
+
+    fn apply_live_show(&mut self, cx: &mut Context<Self>) {
+        let Some(command) = self.live.next_show() else {
+            return;
+        };
+        if command.expired() {
+            command.finish(crate::live::ShowAnswer::refused(
+                deck_cli::live::ResponseStatus::NotFound,
+                "the show request expired before it could be applied",
+            ));
+            return;
+        }
+        // Saying something does not move the reader, so it is not paced, not
+        // refused by a pause, and not subject to a stage at all. It lands
+        // beside whatever is on screen and goes into the walk.
+        if let Some((text, aloud)) = command.saying() {
+            let text = text.to_string();
+            self.said_live(&text, aloud, cx);
+            command.finish(crate::live::ShowAnswer::said());
+            return;
+        }
+        let resolved = match self.resolve_show(&command) {
+            Ok(resolved) => resolved,
+            Err(answer) => {
+                command.finish(answer);
+                return;
+            }
+        };
+        let mut stage = resolved.stage.clone();
+        let effects = match self
+            .live
+            .apply_stage(stage.clone(), resolved.source_matches)
+        {
+            Ok(effects) => effects,
+            Err(error) => {
+                command.finish(crate::live::refusal(error));
+                return;
+            }
+        };
+
+        let mut changed = false;
+        for effect in effects {
+            match effect {
+                LiveEffect::StageApplied(_) => changed = true,
+                LiveEffect::StageUnchanged(id) => stage.id = id,
+                _ => {}
+            }
+        }
+
+        if changed {
+            if self.group_ix != resolved.group_ix {
+                self.group_ix = resolved.group_ix;
+                self.build_panes(cx);
+            }
+            let Some(code) = self
+                .panes
+                .get_mut(resolved.pane_ix)
+                .and_then(Sheet::code_mut)
+            else {
+                command.finish(crate::live::ShowAnswer::refused(
+                    deck_cli::live::ResponseStatus::NotFound,
+                    "the resolved code pane is no longer present",
+                ));
+                return;
+            };
+            let Some(range) = stage.range else {
+                return;
+            };
+            code.spotlight(range);
+            code.show_range();
+            cx.notify();
+        }
+        command.finish(crate::live::ShowAnswer::shown(stage, changed));
+    }
+
+    fn resolve_show(
+        &self,
+        command: &crate::live::ShowCommand,
+    ) -> Result<ResolvedShow, crate::live::ShowAnswer> {
+        let Some((asked_file, range, asked_group, asked_pane)) = command.target() else {
+            return Err(crate::live::ShowAnswer::refused(
+                deck_cli::live::ResponseStatus::NotFound,
+                "the request has no show target",
+            ));
+        };
+        let group_ix = match asked_group {
+            Some(id) => self
+                .deck
+                .groups()
+                .iter()
+                .position(|group| group.id == id)
+                .ok_or_else(|| {
+                    crate::live::ShowAnswer::refused(
+                        deck_cli::live::ResponseStatus::NotFound,
+                        format!("group `{id}` is not readable in this deck"),
+                    )
+                })?,
+            None => self.group_ix,
+        };
+        let Some(group) = self.deck.groups().get(group_ix) else {
+            return Err(crate::live::ShowAnswer::refused(
+                deck_cli::live::ResponseStatus::NotFound,
+                "the deck has no readable group",
+            ));
+        };
+
+        let base = self.deck.base();
+        let wanted = resolved_path(&base, asked_file);
+        let candidates: Vec<(usize, &deck_core::protocol::RefSpec)> = group
+            .refs
+            .iter()
+            .enumerate()
+            .filter_map(|(ix, reference)| {
+                let Ref::Code(code) = reference else {
+                    return None;
+                };
+                (resolved_path(&base, &code.file) == wanted
+                    && asked_pane.is_none_or(|pane| code.id == pane))
+                .then_some((ix, code))
+            })
+            .collect();
+
+        let (pane_ix, code) = match candidates.as_slice() {
+            [] => {
+                return Err(crate::live::ShowAnswer::refused(
+                    deck_cli::live::ResponseStatus::NotFound,
+                    "that file is not represented by a code pane in the selected group",
+                ));
+            }
+            [one] => *one,
+            _ => {
+                return Err(crate::live::ShowAnswer::refused(
+                    deck_cli::live::ResponseStatus::Ambiguous,
+                    "more than one pane shows that file; name one with --pane",
+                ));
+            }
+        };
+
+        let snapshot = self.snapshots.get(&code.file).cloned().or_else(|| {
+            std::fs::read_to_string(&wanted)
+                .ok()
+                .map(std::sync::Arc::<str>::from)
+        });
+        let Some(snapshot) = snapshot else {
+            return Err(crate::live::ShowAnswer::refused(
+                deck_cli::live::ResponseStatus::NotFound,
+                format!("cannot read `{}`", wanted.display()),
+            ));
+        };
+        let line_count = u32::try_from(snapshot.lines().count()).unwrap_or(u32::MAX);
+        if line_count == 0 || range.last > line_count {
+            return Err(crate::live::ShowAnswer::refused(
+                deck_cli::live::ResponseStatus::OutOfRange,
+                format!("the displayed snapshot has {line_count} lines, not {range}"),
+            ));
+        }
+        let quote = snapshot
+            .lines()
+            .skip(range.first.saturating_sub(1) as usize)
+            .take(range.len() as usize)
+            .collect::<Vec<_>>()
+            .join("\n");
+        let current = std::fs::read_to_string(&wanted).ok();
+        let source_matches = current.as_deref() == Some(snapshot.as_ref());
+
+        Ok(ResolvedShow {
+            group_ix,
+            pane_ix,
+            stage: Stage {
+                id: StageId(command.id().to_string()),
+                group: group.id.clone(),
+                ref_id: Some(code.id.clone()),
+                file: Some(code.file.clone()),
+                range: Some(range),
+                quote,
+                snapshot: Some(snapshot_identity(&snapshot)),
+            },
+            source_matches,
+        })
+    }
+
     fn group(&self) -> Option<&Group> {
         self.deck.groups().get(self.group_ix)
     }
@@ -631,8 +995,15 @@ impl DeckView {
         if next >= self.deck.groups().len() {
             return;
         }
+        self.live.pause(PauseReason::Navigation);
         self.group_ix = next;
         self.build_panes(cx);
+        // Live means being walked through it. `build_panes` has just stopped
+        // the voice mid-sentence because the group it belonged to left the
+        // screen, so the new one picks up where the reader now is.
+        if self.walking.is_some_and(|walking| !walking.going) {
+            self.speak(cx);
+        }
         cx.notify();
     }
 
@@ -650,28 +1021,64 @@ impl DeckView {
     /// are done with it, and a deck that reappeared on the bar after being
     /// closed would be impossible to get rid of. Putting one away for later is
     /// `h`, and that is a different key for a different thing.
-    /// Read this group's narration out loud, or stop.
+    /// Go live, or come back out.
     ///
-    /// One key for both, because there is only ever one thing the reader can
-    /// want: if it is talking, they want it to stop; if it is not, they want to
-    /// hear it. Pressing it after a group has finished starts it again rather
-    /// than doing nothing, which is what somebody who missed a clause means.
+    /// Live is not a second window and not a different deck — it is the same
+    /// deck with the room rearranged around it. The narration comes forward,
+    /// the rail carrying what you have said slides in beside it, the panes make
+    /// space, and the voice picks up the current group. Pressing `l` again puts
+    /// everything back where it was.
+    ///
+    /// One key for both directions, because there is only ever one thing the
+    /// reader can want from it.
+    fn on_live(&mut self, _: &Live, _window: &mut Window, cx: &mut Context<Self>) {
+        match &self.walking {
+            // Already leaving, and asked again: come straight back.
+            Some(walking) if walking.going => {
+                self.walking = Some(Walking::arriving());
+                self.speak(cx);
+            }
+            Some(_) => {
+                self.walking = Some(Walking::leaving());
+                self.voice.hush();
+            }
+            None => {
+                self.walking = Some(Walking::arriving());
+                self.speak(cx);
+            }
+        }
+        cx.notify();
+    }
+
+    /// Read the current group aloud, if a voice is configured to do it.
     ///
     /// The group's prose only. The code is on screen, and a voice spelling out
     /// a line of it would be reading the one thing the reader can already see.
-    fn on_talk(&mut self, _: &Talk, _window: &mut Window, cx: &mut Context<Self>) {
-        if self.voice.talking() {
-            self.voice.hush();
-            cx.notify();
-            return;
-        }
+    fn speak(&mut self, cx: &mut Context<Self>) {
         let Some(group) = self.group() else {
             return;
         };
         let speech = crate::speech::asked(cx);
+        if !speech.aloud {
+            return;
+        }
         let said = crate::prose::spoken(&group.say, speech.pause);
         self.voice.say(&said, &speech);
-        cx.notify();
+    }
+
+    /// *Noted.* The cheapest thing a reader can say, and the most common.
+    fn on_noted(&mut self, _: &Noted, _window: &mut Window, cx: &mut Context<Self>) {
+        self.react(deck_core::Kind::Nit, cx);
+    }
+
+    /// *Wait, what?* — the one that should make an agent stop and explain.
+    fn on_asked(&mut self, _: &Asked, _window: &mut Window, cx: &mut Context<Self>) {
+        self.react(deck_core::Kind::Question, cx);
+    }
+
+    /// *That's wrong.* Blocking, and it should read as blocking.
+    fn on_wrong(&mut self, _: &Wrong, _window: &mut Window, cx: &mut Context<Self>) {
+        self.react(deck_core::Kind::MustFix, cx);
     }
 
     /// Turn the rest of the screen down, or back up.
@@ -679,6 +1086,11 @@ impl DeckView {
     /// The deck does not change. What changes is everything that was competing
     /// with it, which is the only thing wrong with reading on a screen that
     /// also has eleven other things on it.
+    fn on_follow(&mut self, _: &Follow, _window: &mut Window, cx: &mut Context<Self>) {
+        self.live.follow();
+        cx.notify();
+    }
+
     fn on_zen(&mut self, _: &Zen, window: &mut Window, cx: &mut Context<Self>) {
         // The deck's own handle, so it can be put back in front afterwards.
         //
@@ -760,6 +1172,7 @@ impl DeckView {
     /// Shift keeps the anchor where it was, so shift-clicking reaches from the
     /// line the selection started on rather than from its nearest edge.
     pub fn start_pick(&mut self, pane_ix: usize, line: u32, extend: bool, cx: &mut Context<Self>) {
+        self.live.pause(PauseReason::Selection);
         let anchor = match self.drag_from {
             Some((had_pane, had_line)) if extend && had_pane == pane_ix => had_line,
             _ => line,
@@ -814,6 +1227,7 @@ impl DeckView {
     /// is what turns a remark about one box back into a remark about the whole
     /// drawing.
     pub fn pick_node(&mut self, pane_ix: usize, node_ix: usize, cx: &mut Context<Self>) {
+        self.live.pause(PauseReason::Selection);
         let already = self
             .panes
             .get(pane_ix)
@@ -837,20 +1251,56 @@ impl DeckView {
         cx.notify();
     }
 
-    /// What a remark on pane `ix` would be about.
-    fn about(&self, ix: usize) -> About {
-        match self.panes.get(ix) {
-            Some(Sheet::Code(code)) => About::Lines {
-                pane: ix,
-                range: code.comment_range(),
-            },
-            Some(Sheet::Drawn(_)) => About::Drawn { pane: ix },
-            None => About::Claim,
+    /// Capture what a remark on pane `ix` is about now.
+    ///
+    /// No pane index escapes this method. A live stage can move while the
+    /// composer is open, so resolving the pane again on save would attach the
+    /// reader's words to evidence they did not comment on.
+    fn about(&self, ix: usize) -> Option<About> {
+        let group: SharedString = self.group()?.id.clone().into();
+        match self.panes.get(ix)? {
+            Sheet::Code(code) => {
+                let range = code.comment_range();
+                Some(About::Lines {
+                    group,
+                    ref_id: code.ref_id.clone(),
+                    file: code.file.clone(),
+                    range,
+                    quote: code.lines_of(range),
+                })
+            }
+            Sheet::Drawn(chart) => Some(About::Drawn {
+                group,
+                ref_id: chart.ref_id.clone(),
+                quote: chart.quote(),
+            }),
         }
+    }
+
+    /// Capture the narration selection before a composer can outlive it.
+    fn claim_about(&self) -> Option<About> {
+        let group = self.group()?;
+        let quote = self.picked_said.map_or_else(
+            || group.say.lines().next().unwrap_or_default().to_string(),
+            |(from, to)| {
+                let said = crate::prose::words(&group.say);
+                let (a, b) = (from.min(to), from.max(to).min(said.len().saturating_sub(1)));
+                said.get(a..=b)
+                    .unwrap_or_default()
+                    .concat()
+                    .trim()
+                    .to_string()
+            },
+        );
+        Some(About::Claim {
+            group: group.id.clone().into(),
+            quote,
+        })
     }
 
     /// The pointer went down on a word of the narration.
     fn start_say_pick(&mut self, at: usize, cx: &mut Context<Self>) {
+        self.live.pause(PauseReason::Selection);
         self.said_from = Some(at);
         self.said_dragged = false;
         self.picked_said = Some((at, at));
@@ -924,19 +1374,22 @@ impl DeckView {
             return;
         }
         let about = if self.picked_said.is_some() || self.panes.is_empty() {
-            About::Claim
+            self.claim_about()
         } else {
             let pane = self.panes.iter().position(Sheet::is_picked).unwrap_or(0);
             self.about(pane)
         };
-        self.open_composer(about, window, cx);
+        if let Some(about) = about {
+            self.open_composer(about, window, cx);
+        }
     }
 
     fn open_composer(&mut self, about: About, window: &mut Window, cx: &mut Context<Self>) {
+        self.live.pause(PauseReason::Composer);
         let asking = match about {
             About::Lines { .. } => "what you want to say about these lines",
             About::Drawn { .. } => "what you want to say about this",
-            About::Claim => "what you want to say about this group",
+            About::Claim { .. } => "what you want to say about this group",
         };
         let state = cx.new(|cx| TextareaState::new(window, cx).placeholder(asking));
         state.update(cx, |state, cx| state.focus(window, cx));
@@ -981,73 +1434,130 @@ impl DeckView {
         }
     }
 
+    /// What a remark made right now would be pinned to.
+    ///
+    /// The picked pane, or the first one. Shared by the composer and by a bare
+    /// reaction so the two can never disagree about what the reader meant.
+    fn pinned(&self) -> Option<About> {
+        let ix = self.panes.iter().position(Sheet::is_picked).unwrap_or(0);
+        self.about(ix)
+    }
+
+    /// One anchor, one set of words, one kind.
+    fn remark(about: About, text: String, kind: deck_core::Kind) -> Remark {
+        match about {
+            About::Drawn {
+                group,
+                ref_id,
+                quote,
+            } => Remark {
+                group,
+                ref_id: Some(ref_id),
+                // A diagram is in no file, so there is nothing to relocate and
+                // nothing to point an editor at.
+                file: None,
+                range: None,
+                quote,
+                text,
+                kind,
+            },
+            About::Lines {
+                group,
+                ref_id,
+                file,
+                range,
+                quote,
+            } => Remark {
+                group,
+                ref_id: Some(ref_id),
+                file: Some(file),
+                range: Some(range),
+                quote,
+                text,
+                kind,
+            },
+            About::Claim { group, quote } => Remark {
+                group,
+                ref_id: None,
+                file: None,
+                range: None,
+                quote,
+                text,
+                kind,
+            },
+        }
+    }
+
+    /// Record one moment of the walk, against a remark's own anchor.
+    ///
+    /// Written at the instant the thing happens rather than reconstructed at
+    /// submit time, because the anchor is the point: a reaction three groups
+    /// ago was about what was in front of the reader *then*.
+    fn note(
+        &mut self,
+        what: deck_core::What,
+        kind: Option<deck_core::Kind>,
+        text: &str,
+        of: &Remark,
+    ) {
+        let moment = deck_core::Moment {
+            at_ms: u64::try_from(self.began.elapsed().as_millis()).unwrap_or(u64::MAX),
+            what,
+            group: Some(of.group.to_string()),
+            ref_id: of.ref_id.as_ref().map(ToString::to_string),
+            file: of.file.clone(),
+            range: of.range,
+            text: text.to_string(),
+            kind,
+        };
+        // Told to the agent now, and kept for the review. The same value both
+        // ways, so what the agent was told while the walk happened and what the
+        // review says afterwards can never disagree.
+        self.live.publish(moment.clone());
+        self.transcript.push(moment);
+    }
+
+    /// One keystroke, one reaction, pinned to what is on screen.
+    ///
+    /// The thing [`deck_core::Kind`] was written for and never had: *"Terse
+    /// remarks read as neutral, and an agent left to infer tone from prose gets
+    /// it wrong. Naming it costs the reader one keystroke."* A reaction is a
+    /// remark with no words — the kind *is* the message — so it costs nothing
+    /// to leave one, and a walk ends up dense with exactly where the reader
+    /// agreed and where they did not.
+    ///
+    /// While a composer is open the same keys set the kind of the remark being
+    /// written instead, because there the reader already has words.
+    fn react(&mut self, kind: deck_core::Kind, cx: &mut Context<Self>) {
+        if self.composing.is_some() {
+            self.composing_kind = kind;
+            cx.notify();
+            return;
+        }
+        let Some(about) = self.pinned() else {
+            return;
+        };
+        let remark = Self::remark(about, String::new(), kind);
+        self.note(deck_core::What::Reacted, Some(kind), "", &remark);
+        self.remarks.push(remark);
+        cx.notify();
+    }
+
     fn save_remark(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let Some((about, state, _listen)) = self.composing.take() else {
             return;
         };
         let said = state.read(cx).value().trim().to_string();
+        let kind = self.composing_kind;
         self.focus.focus(window, cx);
 
         if said.is_empty() {
             cx.notify();
             return;
         }
-        let Some(group) = self.group() else { return };
-        let group_id: SharedString = group.id.clone().into();
-        let claim = group.say.clone();
-
-        let remark = match &about {
-            About::Drawn { pane } => {
-                let Some(chart) = self.panes.get(*pane).and_then(Sheet::chart) else {
-                    return;
-                };
-                Remark {
-                    group: group_id,
-                    ref_id: Some(chart.ref_id.clone()),
-                    // A diagram is in no file, so there is nothing to relocate
-                    // and nothing to point an editor at.
-                    file: None,
-                    range: None,
-                    quote: chart.quote(),
-                    text: said,
-                }
-            }
-            About::Lines { pane, range } => {
-                let Some(pane) = self.panes.get(*pane).and_then(Sheet::code) else {
-                    return;
-                };
-                Remark {
-                    group: group_id,
-                    ref_id: Some(pane.ref_id.clone()),
-                    file: Some(pane.file.clone()),
-                    range: Some(*range),
-                    quote: pane.lines_of(*range),
-                    text: said,
-                }
-            }
-            About::Claim => Remark {
-                group: group_id,
-                ref_id: None,
-                file: None,
-                range: None,
-                // The sentence being answered, so the remark reads on its own
-                // — the one that was clicked, not whichever came first.
-                quote: self.picked_said.map_or_else(
-                    || claim.lines().next().unwrap_or_default().to_string(),
-                    |(from, to)| {
-                        let said = crate::prose::words(&claim);
-                        let (a, b) = (from.min(to), from.max(to).min(said.len().saturating_sub(1)));
-                        said.get(a..=b)
-                            .unwrap_or_default()
-                            .concat()
-                            .trim()
-                            .to_string()
-                    },
-                ),
-                text: said,
-            },
-        };
-
+        let remark = Self::remark(about, said, kind);
+        let said = remark.text.clone();
+        self.note(deck_core::What::Wrote, Some(kind), &said, &remark);
         self.remarks.push(remark);
         cx.notify();
     }
@@ -1078,6 +1588,7 @@ impl DeckView {
     fn pack(&self) -> Session {
         Session {
             deck: self.deck.clone(),
+            live: self.live.clone(),
             layout: self.grid,
             snapshots: self.snapshots.clone(),
             remarks: self.remarks.clone(),
@@ -1105,6 +1616,7 @@ impl DeckView {
         // window it was dimming for would be a near-black screen with nothing
         // on it to press.
         crate::shade::lights_on(cx);
+        self.live.hidden();
         // Back on the queue, and the bar comes up over it. The window goes
         // after, because closing the last one ends the command.
         crate::open_pill(self.pack(), cx);
@@ -1139,7 +1651,7 @@ impl DeckView {
                     file: remark.file.clone(),
                     range: moved.map_or(remark.range, |found| Some(found.range)),
                     source: moved.map(|found| found.source),
-                    kind: deck_core::Kind::Question,
+                    kind: remark.kind,
                     quote: remark.quote.clone(),
                     text: remark.text.clone(),
                 }
@@ -1148,6 +1660,7 @@ impl DeckView {
 
         let review = deck_core::Review {
             v: deck_core::VERSION,
+            transcript: std::mem::take(&mut self.transcript),
             deck: self.deck.header.id.clone(),
             comments,
         };
@@ -1705,6 +2218,7 @@ impl DeckView {
     /// trackpad flick is one continuous movement rather than forty of them, and
     /// a mouse notch is a glide rather than a jump.
     pub fn wheel(&mut self, pane_ix: usize, by: Pixels, cx: &mut Context<Self>) {
+        self.live.pause(PauseReason::Navigation);
         let Some(pane) = self.panes.get(pane_ix).and_then(Sheet::code) else {
             return;
         };
@@ -1821,26 +2335,16 @@ impl DeckView {
     fn render_composer(&self, cx: &mut Context<Self>) -> Option<impl IntoElement> {
         let (about, state, _) = self.composing.as_ref()?;
         let where_at = match about {
-            About::Lines { pane, range } => self
-                .panes
-                .get(*pane)
-                .and_then(Sheet::code)
-                .map(|pane| format!("comment on {}:{range}", pane.file.display()))
-                .unwrap_or_default(),
-            About::Drawn { pane } => self
-                .panes
-                .get(*pane)
-                .and_then(Sheet::chart)
-                .map(|chart| format!("comment on {}", chart.quote()))
-                .unwrap_or_default(),
-            About::Claim => "comment on this group".to_string(),
-        };
-        let ref_id = match about {
-            About::Lines { pane, .. } | About::Drawn { pane } => {
-                self.panes.get(*pane).map(|pane| pane.ref_id().clone())
+            About::Lines { file, range, .. } => {
+                format!("comment on {}:{range}", file.display())
             }
-            About::Claim => self.group().map(|g| SharedString::from(g.id.clone())),
+            About::Drawn { quote, .. } => format!("comment on {quote}"),
+            About::Claim { .. } => "comment on this group".to_string(),
         };
+        let ref_id = Some(match about {
+            About::Lines { ref_id, .. } | About::Drawn { ref_id, .. } => ref_id.clone(),
+            About::Claim { group, .. } => group.clone(),
+        });
 
         Some(
             div()
@@ -2061,6 +2565,177 @@ impl DeckView {
     }
 }
 
+impl DeckView {
+    /// How live the window currently is, nought to one.
+    ///
+    /// Also retires a transition that has finished leaving, so `walking` is
+    /// `None` again and the next `l` is an arrival rather than a reversal.
+    fn live_pace(&mut self) -> f32 {
+        match self.walking {
+            Some(walking) if walking.spent() => {
+                self.walking = None;
+                0.
+            }
+            Some(walking) => walking.pace(),
+            None => 0.,
+        }
+    }
+
+    /// The rail: everything you have said, in the order you said it.
+    ///
+    /// Slides in rather than appearing, and carries its own width so the panes
+    /// beside it are squeezed by the same number in the same frame. A rail that
+    /// popped into place would make the reader find their place again.
+    ///
+    /// Newest last, because a walk reads forwards.
+    fn render_rail(&self, pace: f32, speaking: bool, cx: &mut Context<Self>) -> AnyElement {
+        let palette = &self.palette;
+        let mono = cx.theme().mono_font_family.clone();
+        let following = matches!(self.live.following(), deck_core::Following::Following);
+
+        // The agent's own words first, then the reader's. Two voices in one
+        // column, because a rail that showed only one half would read as
+        // somebody talking to themselves.
+        let spoken: Vec<AnyElement> = self
+            .spoken
+            .iter()
+            .enumerate()
+            .map(|(ix, text)| {
+                div()
+                    .py(px(5.))
+                    .pl(px(23.))
+                    .text_size(px(11.5))
+                    .text_color(paint(palette.muted))
+                    .child(text.clone())
+                    .id(("spoken", ix))
+                    .into_any_element()
+            })
+            .collect();
+
+        let said: Vec<AnyElement> = self
+            .remarks
+            .iter()
+            .enumerate()
+            .map(|(ix, remark)| {
+                let (mark, tone) = match remark.kind {
+                    deck_core::Kind::MustFix => ("3", palette.del),
+                    deck_core::Kind::Question => ("2", palette.accent),
+                    deck_core::Kind::Nit => ("1", palette.muted),
+                };
+                div()
+                    .h_flex()
+                    .items_start()
+                    .gap(px(8.))
+                    .py(px(5.))
+                    .child(
+                        div()
+                            .flex_none()
+                            .w(px(15.))
+                            .font_family(mono.clone())
+                            .text_size(px(10.))
+                            .text_color(paint(tone))
+                            .child(SharedString::from(mark)),
+                    )
+                    .child(
+                        div()
+                            .flex_1()
+                            .min_w_0()
+                            .text_size(px(11.5))
+                            .text_color(paint(if remark.text.is_empty() {
+                                palette.muted
+                            } else {
+                                palette.fg
+                            }))
+                            .child(SharedString::from(if remark.text.is_empty() {
+                                // A reaction has no words. Saying so is better than
+                                // an empty row the reader has to decode.
+                                match remark.kind {
+                                    deck_core::Kind::MustFix => "that's wrong".to_string(),
+                                    deck_core::Kind::Question => "wait, what?".to_string(),
+                                    deck_core::Kind::Nit => "noted".to_string(),
+                                }
+                            } else {
+                                remark.text.clone()
+                            })),
+                    )
+                    .id(("said", ix))
+                    .into_any_element()
+            })
+            .collect();
+
+        div()
+            .flex_none()
+            .w(px(RAIL * pace))
+            .min_w_0()
+            .h_full()
+            .overflow_hidden()
+            .border_l_1()
+            .border_color(paint(palette.edge))
+            .bg(paint(palette.band))
+            // Fades a little behind the slide, so it reads as arriving rather
+            // than as the panes merely getting narrower.
+            .opacity(pace.powi(2))
+            .child(
+                div()
+                    .v_flex()
+                    .w(px(RAIL))
+                    .h_full()
+                    .px(px(14.))
+                    .pt(px(13.))
+                    .pb(px(10.))
+                    .gap(px(2.))
+                    .child(
+                        div()
+                            .h_flex()
+                            .justify_between()
+                            .items_center()
+                            .pb(px(9.))
+                            .child(
+                                div()
+                                    .font_family(mono.clone())
+                                    .text_size(px(9.5))
+                                    .text_color(paint(palette.muted))
+                                    .child("LIVE"),
+                            )
+                            .child(
+                                div()
+                                    .font_family(mono)
+                                    .text_size(px(9.5))
+                                    .text_color(paint(if following {
+                                        palette.muted
+                                    } else {
+                                        palette.accent
+                                    }))
+                                    // The thing that was missing entirely: a
+                                    // reader could pause movement by clicking
+                                    // and had no way to know they had.
+                                    .child(if !following {
+                                        "paused — f"
+                                    } else if speaking {
+                                        "speaking"
+                                    } else {
+                                        "following"
+                                    }),
+                            ),
+                    )
+                    .child(
+                        div()
+                            .v_flex()
+                            .id("said-rail")
+                            .flex_1()
+                            .min_h_0()
+                            .overflow_y_scroll()
+                            .children(spoken)
+                            .children(said),
+                    ),
+            )
+            .into_any_element()
+    }
+}
+
+/// How wide the rail is once it has finished arriving.
+const RAIL: f32 = 232.;
+
 impl Render for DeckView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         // Built up front rather than inside `.children()`: rendering a pane
@@ -2069,6 +2744,16 @@ impl Render for DeckView {
         // Rows call back into the view when clicked, and a weak handle is what
         // a closure that outlives this frame is allowed to hold.
         let me = cx.entity().downgrade();
+
+        // Live is a time-based transition, so the window has to keep asking for
+        // frames until it settles. Driven here rather than from a spawned timer
+        // because the pace is already a function of the clock: one place decides
+        // how live the room is, and everything below reads it.
+        let live = self.live_pace();
+        let speaking = self.voice.talking();
+        if self.walking.is_some() && (live > 0.) && (live < 1.) {
+            window.request_animation_frame();
+        }
 
         // The grid decides how many panes stand beside each other, from the
         // width actually available. `min_pane_width` is in the same unit, so
@@ -2235,7 +2920,11 @@ impl Render for DeckView {
             .on_action(cx.listener(Self::on_next))
             .on_action(cx.listener(Self::on_prev))
             .on_action(cx.listener(Self::on_zen))
-            .on_action(cx.listener(Self::on_talk))
+            .on_action(cx.listener(Self::on_live))
+            .on_action(cx.listener(Self::on_noted))
+            .on_action(cx.listener(Self::on_asked))
+            .on_action(cx.listener(Self::on_wrong))
+            .on_action(cx.listener(Self::on_follow))
             .on_action(cx.listener(Self::on_close))
             .on_action(cx.listener(Self::on_comment))
             .on_action(cx.listener(Self::on_rotate))
@@ -2308,11 +2997,18 @@ impl Render for DeckView {
                 // chain from here down to it must be unbroken: a pane sized to
                 // its content would leave the list nothing to fill and it would
                 // render no rows at all.
+                //
+                // In live mode the rail stands beside them and takes its width
+                // out of theirs, so the two move as one thing rather than the
+                // rail landing on top of the code.
                 div()
-                    .v_flex()
+                    .h_flex()
                     .flex_1()
                     .min_h_0()
-                    .children(rows)
+                    .child(div().v_flex().flex_1().min_w_0().min_h_0().children(rows))
+                    .when(live > 0., |this| {
+                        this.child(self.render_rail(live, speaking, cx))
+                    })
                     .into_any_element()
             })
             .children(self.render_composer(cx))

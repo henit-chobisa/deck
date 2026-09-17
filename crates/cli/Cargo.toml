@@ -9,7 +9,14 @@ repository.workspace = true
 [dependencies]
 anyhow = "1.0.104"
 deck-core = { path = "../core" }
+fs2 = "0.4"
+serde = { workspace = true }
 serde_json = { workspace = true }
+sha2 = "0.10"
+uuid = { version = "1", features = ["v4"] }
+
+[dev-dependencies]
+tempfile = "3"
 
 [lints]
 workspace = true
