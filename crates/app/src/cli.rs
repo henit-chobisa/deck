@@ -154,6 +154,10 @@ enum What {
         /// The `.deck` directory owned by the native window.
         deck: PathBuf,
         /// What to say. Markdown, as a group's `--say` is.
+        ///
+        /// `[point 106-110]` inside it lights those lines of the code on
+        /// screen, from the moment the words after it are said. The reader
+        /// never sees the direction, and neither does the voice.
         #[arg(long)]
         text: String,
         /// Record it without reading it aloud.
@@ -396,7 +400,7 @@ impl Cli {
                     println!("{}", path.display());
                 })
             })),
-            What::Live => report(crate::setup::live()),
+            What::Walk => report(crate::setup::live()),
             What::Setup => report(crate::setup::run()),
             What::Hook => report(crate::hook::run()),
             What::Show {
@@ -630,11 +634,13 @@ fn paired(refs: usize, after: &[String]) -> anyhow::Result<Vec<Option<String>>> 
 }
 
 /// Move a visible code pane only after the native view acknowledges it.
+#[allow(clippy::too_many_arguments)]
 fn show(
     deck: &std::path::Path,
     reference: &str,
     group: Option<String>,
     pane: Option<String>,
+    after: Option<String>,
     request_id: Option<String>,
     timeout: u64,
 ) -> ExitCode {
