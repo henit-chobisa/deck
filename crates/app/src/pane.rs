@@ -630,7 +630,23 @@ impl Pane {
         // and so cannot borrow the pane.
         let rows = self.rows.clone();
         let lit = self.spotlight;
+        let point = self.point;
+        let rising = self.rising.level();
+        let was = self.was.map(|(range, going)| (range, going.level()));
+        let pointing = self.pointing.level();
+        // A change that was authored is simply there; one that just arrived
+        // comes up out of the page.
+        let arrived = if self.proposed.is_some() && self.arriving.on() {
+            self.arriving.level()
+        } else {
+            1.
+        };
         let palette = *palette;
+        // A change comes up *through* the accent. The diff colours are pale by
+        // design, and a pale colour rising out of paper is a change nobody sees
+        // arrive; a warm flash that settles into the diff colour is one nobody
+        // misses.
+        let flash = palette.focus.mix(palette.accent, 0.3);
         let gutter_fg = palette.fg.mix(palette.wash, 0.6);
         let selected = self.selected;
         // A comment covers a range, so its bar covers the range: a mark on the
