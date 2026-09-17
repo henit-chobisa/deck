@@ -210,11 +210,11 @@ impl Voice {
     /// Called as the window paints, which is how the queue advances: the child
     /// exits, the next render notices, and the following sentence begins.
     pub fn pump(&mut self, speech: &Speech) {
-        if self.talking() {
-            return;
-        }
-        // A cloud utterance arrives from a worker thread. Until it does, there
-        // is nothing to start and nothing to wait on.
+        // Collect a finished fetch *first*. `talking` counts a fetch in flight
+        // as talking — correctly, since something is on its way — so checking
+        // it before looking in the channel meant this returned early for ever
+        // and the audio was never collected. The panel said "speaking" the
+        // whole time, which was true and useless.
         if let Some(waiting) = self.fetching.as_ref() {
             match waiting.try_recv() {
                 Err(std::sync::mpsc::TryRecvError::Empty) => return,
@@ -224,9 +224,10 @@ impl Voice {
                     return;
                 }
                 Ok(Err(why)) => {
-                    // Said once, to the terminal, rather than swallowed: a
-                    // reader whose key is wrong should be told, not left
-                    // wondering why the deck went quiet.
+                    // Said once, to the terminal. A reader whose key is wrong
+                    // is in a window with nowhere to show it, so the queue is
+                    // dropped rather than left stuck behind a voice that will
+                    // never arrive.
                     eprintln!("deck: {why}");
                     self.fetching = None;
                     self.next.clear();
@@ -238,6 +239,9 @@ impl Voice {
             }
         }
 
+        if self.talking() {
+            return;
+        }
         let Some(text) = self.next.pop_front() else {
             return;
         };
@@ -397,7 +401,13 @@ fn fetch(text: &str, speech: &Speech) -> anyhow::Result<PathBuf> {
         .decode(encoded)
         .map_err(|why| anyhow::anyhow!("google sent audio that will not decode: {why}"))?;
 
-    let at = std::env::temp_dir().join(format!("deck-said-{}.mp3", std::process::id()));
+    // A name per utterance. They shared one, so a second fetch overwrote the
+    // file the player still had open.
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|since| since.as_nanos())
+        .unwrap_or_default();
+    let at = std::env::temp_dir().join(format!("deck-said-{}-{now}.mp3", std::process::id()));
     std::fs::write(&at, audio)?;
     Ok(at)
 }
@@ -532,6 +542,26 @@ mod tests {
             ..Speech::default()
         };
         assert!(start("anything", &speech).is_none());
+    }
+
+    #[test]
+    fn a_fetch_in_flight_is_still_collected() {
+        // The deadlock this exists for: `talking` counts a fetch in flight as
+        // talking, and `pump` used to check that before looking in the channel
+        // — so once a cloud utterance started, the audio was never collected
+        // and the panel said "speaking" for ever.
+        let (send, receive) = std::sync::mpsc::channel();
+        let mut voice = Voice::default();
+        voice.fetching = Some(receive);
+        assert!(voice.talking(), "something is on its way");
+
+        // The worker finishes and finds nobody listening if pump returns early.
+        drop(send);
+        voice.pump(&Speech::default());
+        assert!(
+            voice.fetching.is_none(),
+            "pump reached the channel rather than returning at the door"
+        );
     }
 
     #[test]
