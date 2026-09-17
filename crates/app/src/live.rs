@@ -121,6 +121,17 @@ impl Handle {
         u64::try_from(self.control.started.elapsed().as_millis()).unwrap_or(u64::MAX)
     }
 
+    /// The composer is finished with the anchor it was holding.
+    ///
+    /// A composer pause does not lapse — nobody should have the ground move
+    /// while they are writing about it — so it has to be handed back
+    /// explicitly. Without this, opening one composer paused the agent for the
+    /// rest of the session and every `show` came back refused.
+    pub fn composer_closed(&self) {
+        let generation = self.generation();
+        let _ = self.state().apply(LiveAction::CloseComposer { generation });
+    }
+
     /// Return movement to the live driver when the reader asks explicitly.
     pub fn follow(&self) {
         let generation = self.generation();

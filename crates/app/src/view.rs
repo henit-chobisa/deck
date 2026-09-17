@@ -1480,6 +1480,9 @@ impl DeckView {
 
     fn on_discard(&mut self, _: &Discard, window: &mut Window, cx: &mut Context<Self>) {
         self.composing = None;
+        // Thrown away rather than saved, but the anchor still goes back: the
+        // hold belongs to the composer, not to whether it produced anything.
+        self.live.composer_closed();
         self.focus.focus(window, cx);
         cx.notify();
     }
@@ -1640,6 +1643,11 @@ impl DeckView {
         let Some((about, state, _listen)) = self.composing.take() else {
             return;
         };
+        // The anchor goes back the moment the composer does. It is held so that
+        // nothing moves under somebody who is writing, and that hold does not
+        // lapse on its own — so failing to say this once left the agent unable
+        // to move anything for the rest of the session.
+        self.live.composer_closed();
         let said = state.read(cx).value().trim().to_string();
         let kind = self.composing_kind;
         self.focus.focus(window, cx);
