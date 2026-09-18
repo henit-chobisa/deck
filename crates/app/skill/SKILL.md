@@ -499,6 +499,13 @@ idea, name the part of the code that *is* that part, and point at it: *the scene
 are `pieces`, this list here*. The reader should leave able to find the idea in
 the file without you.
 
+**A change is not the subject. The code is.** After you have edited something the
+pull is to narrate the edit — what you added, what you skipped, what now happens
+instead. But the reader is looking at the file, not at your diff, and a sentence
+like *"we skip the whole create path"* names nothing they can see. Say which
+lines make the skip, by name, and point at them. The change is the reason you
+are both here; the code on screen is what the walk is about.
+
 **Every point has to earn itself.** A point puts a light on somebody's code. The
 words while it is lit have to say what is under it — by name — or the light is
 noise. Three things, in one breath:
@@ -764,7 +771,8 @@ deck group <path> \
 nothing else on the page twitches. Feels like the most ordinary thing in the world.
 
 Here is what I like about it: **a pane has no width.** Nowhere. Not in pixels, not in
-any struct, not hiding in a layout pass. Two lists of plain `f32` and that is your lot.
+any struct, not hiding in a layout pass. `[point 239-240]` That is [state] — two lists
+of plain `f32`, `shares` and `widths`, and that is your lot.
 
 So before you scroll — if the drag is not setting a size, what is it doing? Have a
 guess. The answer is in [drag] and I think it is nicer than you expect." \
@@ -777,6 +785,16 @@ it opens on their hands rather than on a function, it names the surprise, it has
 opinion (*here is what I like about it*), it bets before it reveals, and the two panes
 only mean something together — the state, and the thing that changes the state. The
 next group pays the bet off and says what the drag actually moves.
+
+Notice what the prose does with the panes, because it is the part that gets left out:
+it **names both of them** — [state] and [drag] — and it **points** at the lines while
+it talks about them. A group whose `say` mentions neither is a chat message with code
+sitting next to it. `deck group` says so on the way past when it sees one.
+
+**Points are not a voice feature.** Nobody has to be listening. A point is what ties a
+sentence to the lines it is about, so pressing that sentence in the rail lights them,
+and the light follows the reader. Write points in every group you write, whether or not
+anybody has a voice set up.
 
 A `say` of one sentence is almost always a group that has not been written yet.
 
@@ -887,6 +905,16 @@ thing and means they never see two pieces of evidence at once, which is the enti
 And one more plan check, for teaching decks: **does the story make them reason, or just
 receive?** If the deck reveals everything top-down with nothing for them to predict, you
 have written a lecture. Find the spot where you can point at the code and ask them first.
+
+### Read your own `say` back before you send it
+
+Three things, every group. They take a second each and they are the difference
+between a walk and a wall of text with code beside it:
+
+1. **Does it name a pane?** Every pane you talk about, by its `[name]`.
+2. **Does it point?** At least once, on the lines the sentence is about.
+3. **Does it name something in the code?** A function, a field, a variable — not
+   "this line", not "here", not "the whole create path".
 
 ## 4. When the answer is a picture
 
