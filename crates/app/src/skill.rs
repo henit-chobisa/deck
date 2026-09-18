@@ -312,6 +312,48 @@ mod tests {
     }
 
     #[test]
+    fn every_group_the_skill_writes_would_pass_decks_own_check() {
+        // The examples are what an agent copies, so they are held to the rule
+        // the tool prints when a group is written: points in the narration, and
+        // every named pane referred to by name. This is the file marking its
+        // own homework, and it has failed it before — thirteen examples wrapped
+        // their points in backticks and taught every agent to do the same.
+        let mut checked = 0;
+        for block in SKILL.split("```bash").skip(1) {
+            let Some(block) = block.split("```").next() else {
+                continue;
+            };
+            if !block.contains("deck group") || !block.contains("--say") {
+                continue;
+            }
+            // The arguments are single-quoted: the say first, the refs after.
+            let quoted: Vec<&str> = block.split('\'').skip(1).step_by(2).collect();
+            let Some((say, refs)) = quoted.split_first() else {
+                continue;
+            };
+            assert!(
+                say.contains("[point "),
+                "an example group points at nothing:\n{say}"
+            );
+            for one in refs {
+                let Some(open) = one.find('[') else {
+                    continue;
+                };
+                let Some(close) = one[open..].find(']') else {
+                    continue;
+                };
+                let name = &one[open..=open + close];
+                assert!(
+                    say.contains(name),
+                    "an example names a pane {name} its narration never mentions:\n{say}"
+                );
+            }
+            checked += 1;
+        }
+        assert!(checked >= 2, "only {checked} example groups were found");
+    }
+
+    #[test]
     fn the_skill_says_the_waiter_is_not_optional() {
         // Seen in the wild with more than one agent: groups written, deck
         // sealed, turn ended. The reader walks it, comments, submits — and
