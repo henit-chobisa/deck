@@ -34,7 +34,7 @@ A presentation surface for agents, written in Rust.
 
 <div align="center">
 
-[Why](#why) • [How it works](#how-it-works) • [Demo](#demo) • [Install](#install) • [In the window](#in-the-window) • [Live](#going-live) • [Diagrams](#diagrams) • [Theming](#theming)
+[Why](#why) • [How it works](#how-it-works) • [Demo](#demo) • [Install](#install) • [In the window](#in-the-window) • [The walk](#the-walk) • [Diagrams](#diagrams) • [Theming](#theming)
 
 </div>
 
@@ -252,12 +252,26 @@ And when the file moves underneath you, comments come back with how far to trust
 them — `diff`, `fingerprint`, or `stale` — rather than a line number that may
 have drifted.
 
-## Going live
+## The walk
 
-`l` puts the deck into a walkthrough. The room rearranges around the same deck —
-the rail slides in beside the panes carrying everything that has been said, the
-voice picks up the current group, and the agent that wrote the deck can move
-your eyes while it talks. `l` again puts it all back.
+There is no mode to enter. The rail sits beside the panes with everything that
+has been said in it, and the agent that wrote the deck can move your eyes while
+it talks, whether or not anybody is listening.
+
+`w` adds the voice. The narration is read out loud, the code lights up under the
+sentence being said — sentence by sentence, from the sound's own clock — and
+panes fold down to a spine when they are not the point, unfolding again when
+something points at them. `w` again stops it.
+
+The voice wants a Google API key, set once:
+
+```sh
+deck walk
+```
+
+It lists every Chirp 3 HD voice and plays one before you choose it. Until that
+is done the window does not offer the key at all, and everything else works
+without it.
 
 Three keys answer, and they cost one keystroke each:
 
@@ -268,7 +282,9 @@ Three keys answer, and they cost one keystroke each:
 ```
 
 Tapping one leaves a reaction pinned to whatever is on screen — no typing, no
-composer, nothing to close. `c` is still there when you have actual words, and
+composer, nothing to close. It waits for the review like every other remark, so
+the agent is not off working on half a thought; the composer offers *wait for a
+gap* and *interrupt* when you want it heard sooner. `c` is still there when you have actual words, and
 while the composer is open those same three keys set what the comment is asking
 for instead of leaving a bare reaction.
 
@@ -283,6 +299,9 @@ deck show  <deck> --ref "src/view.rs:106-110"  # move my eyes here
 deck say   <deck> --text "…"                   # say something, spoken if you have a voice
 deck doing <deck> --text "reading the retry loop"  # what it is doing, while it does it
 deck next  <deck> --after <cursor>             # block until the reader does something
+deck fold  <deck> --pane protocol              # fold that pane away to its spine
+deck bring <deck> --ref "src/live.rs:40-60"    # borrow a file the group does not carry
+deck clear <deck>                              # put the borrowed panes back
 ```
 
 All shell commands, so this works the same with Claude Code, Codex, Cursor and
