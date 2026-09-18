@@ -329,37 +329,29 @@ looked at.**
 
 ### The voice
 
-Reading aloud is optional and off in one line. It is also not deck's to choose a
-provider for:
+Reading aloud is optional and off in one line. It speaks with Google's Chirp 3:
+HD and nothing else — `deck walk` sets the key and picks the voice:
 
 ```toml
 [speech]
-aloud   = true
-engine  = "system"     # or "command"
-rate    = 158
-pause   = 420
-
-# engine = "command" — anything that reads text on stdin and plays it.
-# Kokoro, Piper, an ElevenLabs or Fish Audio script, whatever ships next.
-command = "kokoro-cli --voice af_heart -"
+aloud = true
+voice = "en-US-Chirp3-HD-Kore"
+rate  = 182
+pause = 420
 ```
 
-`system` uses whatever the machine already has and needs no setup — macOS
-through `say`, Linux through `spd-say`. Windows has no system synthesiser to
-pipe into, so `engine = "command"` is the answer there.
+The key lives in `DECK_SPEECH_KEY` if you would rather it were not in a file
+that ends up in every backup.
 
-On macOS the voices installed by default are the compact ones and they sound
-like it. The neural ones are a free download:
+One voice rather than a choice of them, because the ones a machine already has
+are the reason people switch narration off after a paragraph — and because only
+a rendered passage can be timed exactly, which is what lets the light move with
+the words instead of near them. Chirp 3: HD includes a million characters a
+month and renews; a five-group deck is about five thousand.
 
-```
-System Settings → Accessibility → Read & Speak → System Voice
-  → Manage Voices… → English → anything marked Premium
-```
-
-On macOS 15 and earlier that pane is called Spoken Content. Then `deck setup`
-offers it by name. Nothing is uploaded for `system` or for any command you run
-locally — a narration describes code that has not shipped, and where it goes is
-your call, not deck's.
+Worth naming plainly: the narration is sent to Google to be turned into sound.
+The narration, not your code — the prose the agent wrote about it. Nothing is
+sent until a key is set up, and a deck with no key still walks, in silence.
 
 ## Diagrams
 
