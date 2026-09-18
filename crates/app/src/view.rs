@@ -358,8 +358,7 @@ impl Session {
             band_offset: point(px(0.), px(0.)),
             rail_width: None,
             rail_scroll: ScrollHandle::new(),
-            picked_reply: None,
-            walking: false,
+            aloud: false,
             draft: None,
             group_ix: 0,
             // Whatever the reader last turned a page to. `None` only for
@@ -688,8 +687,7 @@ impl DeckView {
             band_offset,
             rail_width,
             rail_scroll,
-            picked_reply,
-            walking,
+            aloud,
             draft,
             group_ix,
             turn,
@@ -790,8 +788,8 @@ impl DeckView {
                 }
             }
         }
-        if let Some(asked) = view.conversation.asked_at {
-            view.watch_answer(asked, cx);
+        if let Some(sign) = view.conversation.latest_sign() {
+            view.watch_answer(sign, cx);
         }
         view.tail(cx);
         view.control(cx);
@@ -894,7 +892,7 @@ impl DeckView {
         // showed it verbatim, so the reader watched "[pause]" scroll past in
         // the middle of a sentence — which is the one thing beats exist not to
         // do.
-        let seen = crate::prose::unbeat(text);
+        let seen = crate::prose::unname(&crate::prose::unbeat(&crate::prose::unpoint(text)));
         let anchor = self.pinned().map(|about| {
             Self::remark(
                 about,
@@ -903,6 +901,7 @@ impl DeckView {
                 deck_core::When::Queue,
             )
         });
+        let mut of = None;
         if let Some(anchor) = anchor.as_ref() {
             self.note(
                 deck_core::What::Said,
@@ -1171,8 +1170,11 @@ impl DeckView {
                 let Ref::Code(code) = reference else {
                     return None;
                 };
+                // A pane is picked by its ref id or by the name the prose
+                // calls it — an agent that named a pane will reach for the name.
                 (resolved_path(&base, &code.file) == wanted
-                    && asked_pane.is_none_or(|pane| code.id == pane))
+                    && asked_pane
+                        .is_none_or(|pane| code.id == pane || code.name.as_deref() == Some(pane)))
                 .then_some((ix, code))
             })
             .collect();
@@ -1255,10 +1257,10 @@ impl DeckView {
         self.live.pause(PauseReason::Navigation);
         self.group_ix = next;
         self.build_panes(cx);
-        // Live means being walked through it. `build_panes` has just stopped
-        // the voice mid-sentence because the group it belonged to left the
-        // screen, so the new one picks up where the reader now is.
-        if self.walking.is_some_and(|walking| !walking.going) {
+        // `build_panes` has just stopped the voice mid-sentence, because what
+        // it was saying belonged to the group that left the screen. If the
+        // reader is being read to, the new group picks up where they now are.
+        if self.aloud {
             self.speak(cx);
         }
         cx.notify();
@@ -1684,13 +1686,30 @@ impl DeckView {
                         deck.flush_held();
                     }
                     deck.voice.pump(&speech);
+                    // The finger moves when the utterance carrying it starts,
+                    // which is here: one queued piece ends and the next begins.
+                    let moved = deck.point_at(deck.voice.pointing(), cx);
+                    deck.follow_point(cx);
+                    let heard = deck.listen();
                     let now = deck.voice.talking();
-                    if was != now || delivered {
+                    // Speech holds attention. Once it stops, the frame and the
+                    // lit lines stay for a breath and then go.
+                    if deck.voice.has_work() {
+                        deck.attend();
+                    }
+                    // A sentence the reader is holding keeps its light. Only
+                    // the agent's own attention lapses.
+                    let rested = deck.picked_said.is_none()
+                        && deck
+                            .attending
+                            .is_some_and(|until| std::time::Instant::now() >= until)
+                        && deck.rest(cx);
+                    if was != now || delivered || moved || heard || rested {
                         cx.notify();
                     }
                     // The inverted queue check kept an idle task alive forever,
                     // and could retire it precisely when more speech was queued.
-                    deck.voice.has_work()
+                    deck.voice.has_work() || deck.attending.is_some()
                 });
                 match more {
                     Ok(true) => {}
@@ -1795,24 +1814,24 @@ impl DeckView {
         if !speech.aloud {
             return;
         }
-        let said = crate::prose::spoken(&group.say, speech.pause);
-        self.voice.say(&said, &speech);
-        self.keep_talking(cx);
+        let say = group.say.clone();
+        let of = crate::speech::Narration::Group(self.group_ix);
+        self.narrate(&say, Some(of), &speech, cx);
     }
 
     /// *Noted.* The cheapest thing a reader can say, and the most common.
     fn on_noted(&mut self, _: &Noted, _window: &mut Window, cx: &mut Context<Self>) {
-        self.react(FACES[0].1, deck_core::When::Queue, FACES[0].0, cx);
+        self.react(FACES[0].1, deck_core::When::default(), FACES[0].0, cx);
     }
 
     /// *Wait, what?* — the one that should make an agent stop and explain.
     fn on_asked(&mut self, _: &Asked, _window: &mut Window, cx: &mut Context<Self>) {
-        self.react(FACES[3].1, deck_core::When::Queue, FACES[3].0, cx);
+        self.react(FACES[3].1, deck_core::When::default(), FACES[3].0, cx);
     }
 
     /// *That's wrong.* Blocking, and it should read as blocking.
     fn on_wrong(&mut self, _: &Wrong, _window: &mut Window, cx: &mut Context<Self>) {
-        self.react(FACES[4].1, deck_core::When::Queue, FACES[4].0, cx);
+        self.react(FACES[4].1, deck_core::When::default(), FACES[4].0, cx);
     }
 
     /// Turn the rest of the screen down, or back up.
@@ -1935,7 +1954,6 @@ impl DeckView {
 
     /// Select from the drag's anchor to `line`.
     pub fn pick(&mut self, pane_ix: usize, line: u32, cx: &mut Context<Self>) {
-        self.picked_reply = None;
         self.picked_said = None;
         self.said_from = None;
         let anchor = match self.drag_from {
@@ -2014,15 +2032,6 @@ impl DeckView {
 
     /// Capture the narration selection before a composer can outlive it.
     fn claim_about(&self) -> Option<About> {
-        if let Some(moment) = self
-            .picked_reply
-            .and_then(|ix| self.conversation.transcript.get(ix))
-        {
-            return Some(About::Claim {
-                group: moment.group.clone()?.into(),
-                quote: moment.text.clone(),
-            });
-        }
         let group = self.group()?;
         let quote = self.picked_said.map_or_else(
             || group.say.lines().next().unwrap_or_default().to_string(),
@@ -2044,7 +2053,6 @@ impl DeckView {
 
     /// The pointer went down on a word of the narration.
     fn start_say_pick(&mut self, at: usize, cx: &mut Context<Self>) {
-        self.picked_reply = None;
         self.live.pause(PauseReason::Selection);
         self.said_from = Some(at);
         self.said_dragged = false;
@@ -2170,13 +2178,12 @@ impl DeckView {
         if self.composing.is_some() {
             return;
         }
-        let about =
-            if self.picked_reply.is_some() || self.picked_said.is_some() || self.panes.is_empty() {
-                self.claim_about()
-            } else {
-                let pane = self.panes.iter().position(Sheet::is_picked).unwrap_or(0);
-                self.about(pane)
-            };
+        let about = if self.picked_said.is_some() || self.panes.is_empty() {
+            self.claim_about()
+        } else {
+            let pane = self.panes.iter().position(Sheet::is_picked).unwrap_or(0);
+            self.about(pane)
+        };
         if let Some(about) = about {
             self.open_composer(about, window, cx);
         }
@@ -2206,7 +2213,7 @@ impl DeckView {
 
         self.composing = Some((about, state, listen));
         self.composing_kind = deck_core::Kind::default();
-        self.composing_when = deck_core::When::Queue;
+        self.composing_when = deck_core::When::default();
         cx.notify();
     }
 
@@ -2362,14 +2369,16 @@ impl DeckView {
         self.watch_answer(asked, cx);
     }
 
-    fn watch_answer(&self, asked: std::time::Instant, cx: &mut Context<Self>) {
-        let remaining = PATIENCE.saturating_sub(asked.elapsed());
+    fn watch_answer(&self, sign: std::time::Instant, cx: &mut Context<Self>) {
+        let remaining = PATIENCE.saturating_sub(sign.elapsed());
         // A status label needs one deadline, not sixty full-window redraws a
-        // second. An older deadline cannot expire a newer question.
+        // second. An older deadline cannot expire a newer question — or a
+        // newer note, which is a sign of life the same way an answer is and
+        // owns the deadline from the moment it arrives.
         cx.spawn(async move |deck, cx| {
             cx.background_executor().timer(remaining).await;
             let _ = deck.update(cx, |deck, cx| {
-                if deck.conversation.asked_at == Some(asked) {
+                if deck.conversation.latest_sign() == Some(sign) {
                     cx.notify();
                 }
             });
@@ -2508,8 +2517,7 @@ impl DeckView {
             band_offset: self.band_scroll.offset(),
             rail_width: self.rail_width,
             rail_scroll: self.rail_scroll.clone(),
-            picked_reply: self.picked_reply,
-            walking: self.walking.is_some_and(|walk| !walk.going),
+            aloud: self.aloud,
             draft: self.composing.as_ref().map(|(about, state, _)| {
                 (
                     about.clone(),
@@ -2661,6 +2669,11 @@ impl DeckView {
                 Ref::Diagram(drawn) => Sheet::Drawn(Chart::new(drawn)),
             })
             .collect();
+        // Every pane of a new group arrives open. A fold belongs to the group
+        // it was made in, and so does anything brought in to answer a question
+        // about it.
+        self.folds = vec![crate::pane::Fade::default(); self.panes.len()];
+        self.temporary.clear();
     }
 
     fn render_band(&self, cx: &mut Context<Self>) -> impl IntoElement {
@@ -3081,9 +3094,7 @@ impl DeckView {
     /// it went quiet while it was still being dragged, and the reader lost the
     /// one thing telling them what they had hold of.
     fn render_seam(&self, what: Divide, cx: &mut Context<Self>) -> AnyElement {
-        /// How much of the page the handle claims. Wider than the rule it
-        /// draws, because a one-pixel target is not a target.
-        const GRIP: f32 = 7.;
+        const GRIP: f32 = SEAM;
 
         let (id, sideways): (ElementId, bool) = match what {
             Divide::Band => ("seam-band".into(), false),
@@ -3178,11 +3189,22 @@ impl DeckView {
     /// the pane is still catching up moves the target further, so a long
     /// trackpad flick is one continuous movement rather than forty of them, and
     /// a mouse notch is a glide rather than a jump.
-    pub fn wheel(&mut self, pane_ix: usize, by: Pixels, cx: &mut Context<Self>) {
+    pub fn wheel(&mut self, pane_ix: usize, by: Point<Pixels>, cx: &mut Context<Self>) {
         self.live.pause(PauseReason::Navigation);
         let Some(pane) = self.panes.get(pane_ix).and_then(Sheet::code) else {
             return;
         };
+        // Sideways goes straight through. A long line is being followed across
+        // the pane, and easing that would feel like the text sliding away from
+        // under the eye rather than the pane moving under it.
+        if by.x != px(0.) {
+            let across = pane.across();
+            let slack = f32::from(across.max_offset().x).max(0.);
+            let to = (f32::from(across.offset().x) + f32::from(by.x)).clamp(-slack, 0.);
+            across.set_offset(point(px(to), across.offset().y));
+            cx.notify();
+        }
+        let by = by.y;
         let scroll = pane.scroll();
         let handle = scroll.0.borrow().base_handle.clone();
 
@@ -3281,31 +3303,39 @@ impl DeckView {
         let Some(pane) = self.panes.get(pane_ix).and_then(Sheet::code) else {
             return;
         };
-        let Some(target) = pane.focus_offset() else {
-            return;
-        };
         let scroll = pane.scroll();
         let from = scroll.0.borrow().base_handle.offset();
 
+        // A long jump takes longer than a short one, so every move reads at
+        // about the same speed. A fixed number of steps made a jump across a
+        // file a blur and a nudge down a paragraph a crawl.
+        let far = f32::from(target - from.y).abs();
+        let whole =
+            std::time::Duration::from_millis((AT_LEAST + far * PER_PIXEL).min(AT_MOST) as u64);
+
         self.gliding = cx.spawn(async move |view, cx| {
-            for step in 1..=STEPS {
-                // Ease out: most of the distance early, so it settles rather
-                // than stopping.
-                #[allow(clippy::cast_precision_loss)]
-                let t = step as f32 / STEPS as f32;
-                let eased = 1. - (1. - t).powi(3);
+            let started = std::time::Instant::now();
+            loop {
+                let along = (started.elapsed().as_secs_f32() / whole.as_secs_f32()).clamp(0., 1.);
+                // Eased at both ends. Reading is following a line of text, and
+                // a page that starts moving at full speed pulls the eye off it;
+                // one that arrives at full speed has to be found again.
+                let eased = if along < 0.5 {
+                    4. * along * along * along
+                } else {
+                    let back = -2. * along + 2.;
+                    1. - back * back * back / 2.
+                };
                 let y = from.y + (target - from.y) * eased;
 
                 let moved = view.update(cx, |_, cx| {
                     scroll.0.borrow().base_handle.set_offset(point(from.x, y));
                     cx.notify();
                 });
-                if moved.is_err() {
+                if moved.is_err() || along >= 1. {
                     return;
                 }
-                cx.background_executor()
-                    .timer(std::time::Duration::from_millis(12))
-                    .await;
+                cx.background_executor().timer(FRAME).await;
             }
         });
     }
@@ -3336,18 +3366,8 @@ impl DeckView {
                 .key_context("DeckComposer")
                 // Sized for whichever it is in. The panel can be two hundred
                 // points wide; window padding inside it leaves no room to type.
-                .map(|this| {
-                    if self.walking.is_some_and(|walking| !walking.going) {
-                        this.pt(px(9.)).pb(px(2.))
-                    } else {
-                        this.pl(px(16.))
-                            .pr(px(16.))
-                            .pt(px(13.))
-                            .pb(px(14.))
-                            .border_t_1()
-                            .border_color(paint(self.palette.edge))
-                    }
-                })
+                .pt(px(9.))
+                .pb(px(2.))
                 // The handlers live here, not only on the root. An action
                 // dispatches up the focus chain from the element that has the
                 // keyboard, and the composer is the nearest thing to it that
@@ -3374,15 +3394,12 @@ impl DeckView {
                 // it was set smaller than every other piece of prose in the
                 // window — which read as a footnote to the deck rather than as
                 // the half of it that is theirs.
-                .child(div().text_size(px(13.2)).line_height(px(20.)).child(
-                    Textarea::new(state).h(px(
-                        if self.walking.is_some_and(|walking| !walking.going) {
-                            56.
-                        } else {
-                            72.
-                        },
-                    )),
-                ))
+                .child(
+                    div()
+                        .text_size(px(13.2))
+                        .line_height(px(20.))
+                        .child(Textarea::new(state).h(px(56.))),
+                )
                 // Under the box, where a hint belongs: beside the location it
                 // competes with the one thing the reader needs to read.
                 .child(
@@ -3417,9 +3434,6 @@ impl DeckView {
     /// wakes the agent out of `deck wait` with this one question, which is the
     /// whole of the back-and-forth.
     fn render_urgency(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
-        if self.walking.is_none_or(|walking| walking.going) {
-            return None;
-        }
         let palette = &self.palette;
         let picked = self.composing_when;
 
@@ -3564,7 +3578,7 @@ impl DeckView {
                                 // may be one that arrived early and is being
                                 // held behind a gap.
                                 .child(if here < total {
-                                    format!("claude is writing group {}", here + 1)
+                                    format!("the agent is writing group {}", here + 1)
                                 } else {
                                     "still writing".to_string()
                                 }),
@@ -3629,56 +3643,46 @@ impl DeckView {
                     .text_color(paint(self.palette.muted))
                     .child("KEYS"),
             )
-            .children(KEYS.iter().map(|(key, _, says)| {
-                div()
-                    .h_flex()
-                    .items_center()
-                    .gap(px(9.))
-                    .py(px(2.5))
-                    .font_family(mono.clone())
-                    .text_size(px(11.))
-                    .text_color(paint(self.palette.fg.mix(self.palette.band, 0.28)))
-                    // A key is a thing you press, so it is drawn as one — a
-                    // cap with a thicker bottom edge, the way a key catches
-                    // light.
-                    .child(
-                        div()
-                            .min_w(px(19.))
-                            .flex_none()
-                            .px(px(4.))
-                            .py(px(3.))
-                            .text_center()
-                            .rounded(px(4.))
-                            .border_1()
-                            .border_b_2()
-                            .border_color(paint(self.palette.edge))
-                            .bg(paint(self.palette.wash))
-                            .text_size(px(10.5))
-                            .line_height(px(10.5))
-                            .text_color(paint(self.palette.fg))
-                            .child(*key),
-                    )
-                    .child(*says)
-            }))
+            // The walk is only offered to somebody who has set a voice up.
+            // Everything else here works out of the box; that one does not, and
+            // a key that does nothing is worse than a key that is not there.
+            .children(KEYS.iter().filter(|(key, _, _)| *key != "w" || ready).map(
+                |(key, _, says)| {
+                    div()
+                        .h_flex()
+                        .items_center()
+                        .gap(px(9.))
+                        .py(px(2.5))
+                        .font_family(mono.clone())
+                        .text_size(px(11.))
+                        .text_color(paint(self.palette.fg.mix(self.palette.band, 0.28)))
+                        // A key is a thing you press, so it is drawn as one — a
+                        // cap with a thicker bottom edge, the way a key catches
+                        // light.
+                        .child(
+                            div()
+                                .min_w(px(19.))
+                                .flex_none()
+                                .px(px(4.))
+                                .py(px(3.))
+                                .text_center()
+                                .rounded(px(4.))
+                                .border_1()
+                                .border_b_2()
+                                .border_color(paint(self.palette.edge))
+                                .bg(paint(self.palette.wash))
+                                .text_size(px(10.5))
+                                .line_height(px(10.5))
+                                .text_color(paint(self.palette.fg))
+                                .child(*key),
+                        )
+                        .child(*says)
+                },
+            ))
     }
 }
 
 impl DeckView {
-    /// How live the window currently is, nought to one.
-    ///
-    /// Also retires a transition that has finished leaving, so `walking` is
-    /// `None` again and the next `l` is an arrival rather than a reversal.
-    fn live_pace(&mut self) -> f32 {
-        match self.walking {
-            Some(walking) if walking.spent() => {
-                self.walking = None;
-                0.
-            }
-            Some(walking) => walking.pace(),
-            None => 0.,
-        }
-    }
-
     /// The rail: everything you have said, in the order you said it.
     ///
     /// Slides in rather than appearing, and carries its own width so the panes
@@ -3705,7 +3709,12 @@ impl DeckView {
         // given late and the conversation read backwards. The transcript is
         // already in order, so it *is* the rail; keeping a second list beside
         // it was what let the two disagree.
-        let lines: Vec<AnyElement> = self
+        //
+        // Drawn as a thread: one line down the left, and every turn hung on it.
+        // Turns used to be boxes you could click, which picked one to reply to;
+        // nobody replies to a turn, they reply to the walk, and a list that
+        // lit up under the pointer promised something it did not do.
+        let shown: Vec<(usize, &deck_core::Moment)> = self
             .conversation
             .transcript
             .iter()
@@ -4822,8 +4831,18 @@ impl Render for DeckView {
         // no flex context to ask — the panes came out with no size at all.
         let mut feed = panes.into_iter();
         let mut stacked: Vec<AnyElement> = Vec::with_capacity(row_count * 2);
+        // How much of a row is still open, by row: a row nobody is looking at
+        // any more has no seam above it either.
+        let open_in = |row: usize| -> f32 {
+            let first = row * cols;
+            let last = (first + cols).min(count);
+            (first..last)
+                .filter_map(|place| order.get(place))
+                .map(|ix| 1. - self.folds.get(*ix).map_or(0., crate::pane::Fade::level))
+                .fold(0., f32::max)
+        };
         for row_ix in 0..row_count {
-            if row_ix > 0 {
+            if row_ix > 0 && open_in(row_ix) > 0. && open_in(row_ix - 1) > 0. {
                 stacked.push(self.render_seam(Divide::Panes(row_ix - 1), cx));
             }
 
@@ -4868,7 +4887,14 @@ impl Render for DeckView {
                     // row's height: otherwise a row holding a longer file
                     // would start out taller for no reason the reader asked
                     // for.
-                    .flex_grow(self.shares.get(row_ix).copied().unwrap_or(1.))
+                    .flex_grow({
+                        let dragged = self.shares.get(row_ix).copied().unwrap_or(1.);
+                        let closing = (0..row_count)
+                            .filter(|row| *row != row_ix)
+                            .map(gone)
+                            .fold(0., f32::max);
+                        dragged.mul_add(1. - closing, closing) * held
+                    })
                     .flex_basis(px(0.))
                     .min_h_0()
                     .children(across)
@@ -4880,6 +4906,15 @@ impl Render for DeckView {
         div()
             .size_full()
             .v_flex()
+            // So the walking frame can be laid over the window rather than
+            // taking part in its layout.
+            .relative()
+            // Deck's own corner, on a window with a transparent background.
+            // Everything drawn along this edge shares the radius because they
+            // share the element, which is the only way two curves stay
+            // concentric without anybody knowing the platform's number.
+            .rounded(px(WINDOW_CORNER))
+            .overflow_hidden()
             .track_focus(&self.focus)
             // Only while nothing is being typed.
             //
@@ -4892,7 +4927,7 @@ impl Render for DeckView {
             .on_action(cx.listener(Self::on_next))
             .on_action(cx.listener(Self::on_prev))
             .on_action(cx.listener(Self::on_zen))
-            .on_action(cx.listener(Self::on_live))
+            .on_action(cx.listener(Self::on_walk))
             .on_action(cx.listener(Self::on_noted))
             .on_action(cx.listener(Self::on_asked))
             .on_action(cx.listener(Self::on_wrong))
@@ -5036,6 +5071,87 @@ mod tests {
     use core::prelude::v1::test;
 
     use super::*;
+
+    #[test]
+    fn a_dragged_share_is_ignored_once_it_is_the_only_pane_open() {
+        // The bug this exists for: drag the seam so one pane has a third of the
+        // row, fold the other, and the third stayed a third — the pane kept its
+        // share of a ratio that no longer had another side, and the rest of the
+        // window was empty.
+        let widths = [1.6_f32, 0.4];
+        let folds = {
+            let mut folds = vec![crate::pane::Fade::default(); 2];
+            folds[0].set(true);
+            folds
+        };
+        let open_in_row = folds.iter().filter(|fold| !fold.on()).count();
+
+        // The survivor's share travels with the fold beside it, rather than
+        // switching the moment it starts.
+        let travelled = |dragged: f32, closing: f32| dragged.mul_add(1. - closing, closing);
+
+        assert!(
+            (travelled(widths[1], 0.) - 0.4).abs() < f32::EPSILON,
+            "nothing folding, so the drag still means what it said"
+        );
+        assert!(
+            (travelled(widths[1], 1.) - 1.).abs() < f32::EPSILON,
+            "folded away, so the one open pane takes the row"
+        );
+        let midway = travelled(widths[1], 0.5);
+        assert!(
+            midway > 0.4 && midway < 1.,
+            "and halfway through it is halfway there: {midway}"
+        );
+        let _ = (folds, open_in_row);
+    }
+
+    #[test]
+    fn the_last_open_pane_cannot_be_folded_away() {
+        // Folding is giving your width to somebody else. With nothing else
+        // open there is nobody to give it to, and a window of nothing but
+        // spines shows no code at all — which is the one thing this window is
+        // for. Opening is never refused.
+        let mut folds = vec![crate::pane::Fade::default(); 2];
+        let open = |folds: &[crate::pane::Fade]| folds.iter().filter(|fold| !fold.on()).count();
+
+        folds[0].set(true);
+        assert_eq!(open(&folds), 1, "one of two folds away");
+
+        // The rule `fold_pane` applies, with the pane itself left out of the
+        // count: nothing else is open, so this one stays.
+        let others_open = folds
+            .iter()
+            .enumerate()
+            .filter(|(at, fold)| *at != 1 && !fold.on())
+            .count();
+        assert_eq!(others_open, 0, "so folding the second is refused");
+    }
+
+    #[test]
+    fn every_key_in_the_legend_is_a_key_that_is_bound() {
+        // The legend is built from KEYS and the bindings are written out
+        // beside it. `r` moved from turning the panes to reading them aloud,
+        // and a legend still offering `l` would be the first thing a reader
+        // tried.
+        let bound: Vec<String> = bindings()
+            .iter()
+            .filter_map(|binding| binding.keystrokes().first())
+            // Printed the way a keyboard is labelled — `N`, `⌘Q` — so the
+            // comparison is against the letter, not against the label.
+            .map(|stroke| stroke.to_string().to_lowercase())
+            .collect();
+        for (key, _, says) in KEYS {
+            assert!(
+                bound.iter().any(|stroke| stroke == key),
+                "the legend offers `{key}` for {says}, and nothing binds it"
+            );
+        }
+        assert!(
+            !bound.contains(&"l".to_string()),
+            "live is not a mode any more"
+        );
+    }
 
     #[test]
     fn a_live_rail_drag_uses_horizontal_motion_only() {
