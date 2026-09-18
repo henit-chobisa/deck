@@ -391,6 +391,19 @@ One before the consequence, one after a question, one where you want somebody to
 catch up. Three or four in a group, not one per sentence — a beat everywhere is
 the same as a beat nowhere.
 
+**Point as you talk.** `[point 106-110]` moves a light onto exactly those lines,
+and it moves when the words after it are said — not when you sent the command.
+Write the file's own line numbers, the ones printed down the gutter. The reader
+never sees the direction, only the light.
+
+> `[point 118-121]` The comparison is right here, and it is `!=`. `[pause]`
+> `[point 140]` Then the result is thrown away on this line.
+
+The spotlight is the stretch of file they should be looking at and it holds still
+while you explain it. The point is your finger inside it: on whatever you are
+naming **now**, not on the whole thing you are about to cover. How to talk while
+you point is its own section below, and it matters more than the syntax.
+
 **Punctuation is the only other control you have.** There is no way to ask for a
 tone: the voice reads what you wrote and takes its pacing from the sentence. So a
 long clause runs long. A short one lands. A full stop is a real stop, and a
@@ -433,7 +446,147 @@ The back-and-forth is the feature; a lecture in reply to a question is the thing
 it replaces.
 
 And move their eyes while you answer. `deck show` puts the spotlight on what you
-are talking about, which is the half of an answer that prose cannot carry.
+are talking about, which is the half of an answer that prose cannot carry, and
+`[point …]` inside what you say walks your finger down it as you speak.
+
+## Explaining while you point
+
+The light shows *where*. Your words have to carry *why*. The usual mistake is to
+use the words to say *where* a second time.
+
+**Do not read the code out.** They can see it. "This line splits the path at the
+slash" is a caption on something already in front of them, and five captions in a
+row is a tour: *and then, and then, and then*. Say what the code is for, or what
+goes wrong without it, and let the light show the line that does it.
+
+**Start with the problem, in their world.** The first sentence is what goes wrong
+without this code: something they would hear, see, or lose. Then the lines.
+
+**The idea and the code, together.** An idea with no code is a lecture they
+cannot check. Code with no idea is a caption. Every time you name a part of the
+idea, name the part of the code that *is* that part, and point at it: *the scenes
+are `pieces`, this list here*. The reader should leave able to find the idea in
+the file without you.
+
+**Every point has to earn itself.** A point puts a light on somebody's code. The
+words while it is lit have to say what is under it — by name — or the light is
+noise. Three things, in one breath:
+
+1. **Name the thing.** The function, the variable, the field. *"Here we have
+   `joined`, and this is `pieces`."* Not "this line", not "here".
+2. **Say where it comes from.** What made it, out of what. *"`pieces` is the
+   narration cut up — `said`, one stretch for each place I point."*
+3. **Say what it means for them.** Tie it to something they have seen, heard or
+   waited for. *"Those chunks are the gaps you were hearing."*
+
+That is the shape of every explanation over lit code:
+
+> So the way this works: here we have `joined`, and if you look — `[point
+> 696-708]` — we declare `pieces`, which is made out of the narration we cut up
+> as `said`. Each chunk is one stretch between two points. `[pause]` Those
+> chunks are the gaps you were complaining about, and they are gone because all
+> of them are recorded at once now, instead of one after another.
+
+Read that against a point that earns nothing:
+
+> `[point 696-708]` Now every piece of an answer is made at the same time.
+
+Same lines lit, and the reader learns nothing they could find again. No name, no
+origin, nothing they felt.
+
+**Two tests, before the light moves.** Cover the code and read your sentence back
+to yourself: if it still makes sense on its own, it was never about the code, and
+the light was decoration. Then look for a name in it — a real one, spelled the way
+the file spells it. No name, no point.
+
+**One point, one thing.** If you cannot name a single thing the range is about,
+the range is too big: split it, or stop pointing and just talk. And the light
+lands **as** you name the thing, never a sentence later. The eye goes where the
+light went, and then waits there to be told why it was sent.
+
+**If you cannot say what is under the light, do not move the light.**
+
+**Two or three points in an answer, not one for each sentence.** Hold each point
+while you make one claim about those lines. A finger that moves every sentence is
+a finger nobody can follow, and it turns the argument back into a list.
+
+**Never spell code aloud — say what it means to do.** No "slash", "underscore",
+"two colons", "dot r s". A listener cannot rebuild code from those in their head.
+But not spelling the code is not the same as not saying it. Every line you point at
+gets its intent said in plain words: not *"text dot rsplit slash next"* but *"keep
+only the file name, because the pane already shows the folder"*. Say names the way
+a person says them, and pick examples that sound like words.
+
+**"Again" means the way in was wrong, not the speed.** Do not say the same thing
+slower. Come in from a different side: what breaks without it, or one before and
+after they can hold in their head. If that misses too, ask one short question —
+which part?
+
+**One `deck say` for each answer.** It is heard as one breath, and the light moves
+inside it. Two calls are two breaths with a gap between them. Put a beat *before* a
+point, not after it: `[pause] [point 140]`.
+
+**When the answer is code, show the code.** An alternative described in
+sentences is homework: the reader has to hold your version in their head and
+compare it against the one on screen. `deck show --ref file:first-last --after
+'<the replacement>'` draws the lit lines as going and your version under them,
+live, as a diff they can read and comment on. The file on disk is never touched.
+Offering two or three alternatives? Show them one at a time, each with its own
+`--after`, and say what each one gives up.
+
+**When they ask about a file this deck never showed, bring it in.** You are not
+limited to the panes the group was written with. Think first about whether you
+need anything already on screen:
+
+- **You need one of the panes.** Fold the ones you do not, and bring the file in
+  beside what you kept: `deck bring <path> --ref "crates/core/src/protocol.rs:120-160
+  [protocol] the shape on the wire" --fold retry --fold batch`.
+- **You need none of them.** Fold the whole group behind one spine and give the
+  answer the room: the same command with `--fold-group`.
+
+A folded pane is not gone — its name is on a spine at the window's edge, one
+click from coming back, and pointing into it opens it by itself. What you bring
+in is temporary: it carries a cross, and turning to another group takes it away
+and gives the group back. `deck fold <path> --pane retry` and `--open` fold and
+unfold on their own when nothing is being brought.
+
+**Take your hand off the page when you are done.** The frame round the pane and the
+lit lines fade by themselves a few seconds after you stop talking. When you finish
+the walk, or move on to something with no code in it, `deck clear <path>` puts them
+out at once.
+
+Here is a real answer to *"explain the aloud function"*, done badly:
+
+> `[point 327-328]` It takes one code chip from what I write, the words inside
+> backticks, and turns it into what a person would say out loud. `[point 333]` A
+> path becomes its last part, so you hear the file name and not every slash.
+> `[point 336-339]` Empty quotes become the words empty string, and double colons
+> and underscores become spaces. `[point 343-350]` Then this loop puts a space
+> wherever a capital letter follows a lower case one…
+
+Five points, five captions, and no reason. The same answer, done well:
+
+> A voice that reads code as written is hard to follow. `base_url` comes out as
+> base underscore url, and `buildPayload` is one long word with the stress in the
+> wrong place. `[pause]` This function hears those names the way a person does.
+> `[point 339]` Underscores and double colons become gaps between words.
+> `[point 343-350]` And a capital in the middle of a name starts a new word.
+> `[pause long]` Everything else in it is small cleanup around those two ideas.
+
+An analogy is not an answer on its own either. Asked how a voice was made smooth,
+this lands the idea and leaves the code behind:
+
+> Think of an answer as a radio play, recorded in scenes. Before, each scene was
+> recorded after the last one finished playing. Now every scene is recorded at
+> once, and the scenes are cut together into one tape.
+
+The same analogy, tied to the code:
+
+> Think of an answer as a radio play, recorded in scenes. `[point 696-708]` The
+> scenes are `pieces`, and every one is recorded at once, each on its own thread.
+> `[pause]` `[point 712-716]` The tape is `pcm`. Before a scene goes onto it,
+> `starts` writes down how long the tape already is — and that is the moment the
+> light moves.
 
 ## When it is serious, send them to go and look
 
