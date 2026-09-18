@@ -665,6 +665,20 @@ live, as a diff they can read and comment on. The file on disk is never touched.
 Offering two or three alternatives? Show them one at a time, each with its own
 `--after`, and say what each one gives up.
 
+**When the answer is a shape rather than a file, draw it there and then.** The
+commonest live question is *how does this actually flow?* — and the commonest bad
+answer is four `deck show` calls in a row, which asks the reader to hold the
+diagram in their head while you narrate it. Write the JSON and send it:
+
+```bash
+deck bring <path> --diagram 'flows/retry.json [flow] where a cancelled job keeps going' --fold-group
+```
+
+`--fold-group` folds the deck behind one spine and gives the picture the room;
+`--fold retry` instead keeps the panes you still need and folds only the rest.
+It is a borrowed pane like any other — it carries a cross, turning to another
+group takes it away, and [point …] lands in it by block id while it is there.
+
 **When they ask about a file this deck never showed, bring it in.** You are not
 limited to the panes the group was written with. Think first about whether you
 need anything already on screen:
@@ -890,7 +904,7 @@ deck next     what the reader just did, when you want it without blocking
 deck show     move their eyes: --ref, --pane, --after for a proposed change
 deck say      say something, spoken if they have a voice, with [point …] in it
 deck doing    what you are doing, while you do it
-deck bring    a file this group never showed, with --fold or --fold-group
+deck bring    a file this group never showed, or --diagram for a picture you write now
 deck fold     put a pane on its spine, or --open to bring it back
 deck clear    take your hand off the page
 ```
@@ -1167,10 +1181,25 @@ together they are one.
 
 ```bash
 deck group <path> \
-  --say "The click never reaches the controller when the app is missing." \
-  --diagram connect.json \
-  --ref "web/silo/connect.tsx:40-52 the check that returns early"
+  --say 'You press Connect and nothing happens — no error, no spinner, nothing.
+
+[point q] In [flow], the request stops at the installed check before it ever
+leaves the browser. [pause] [point 44-46] And [guard] is that check: it returns
+early when the app is missing, without saying so to anybody.' \
+  --diagram 'connect.json [flow] where the click stops' \
+  --ref 'web/silo/connect.tsx:40-52 [guard] the check that returns early'
 ```
+
+**A picture is a pane, so it takes a name and a point like any other.** The
+`--diagram` argument has the same shape as a `--ref`: the file, then an optional
+`[name]`, then a note. The prose says [flow] and the reader can press it. And
+[point q] lights the block whose `id` is `q` — the id you wrote in the JSON is
+the name a sentence can carry, which is a reason to give nodes ids that mean
+something rather than `n1`, `n2`, `n3`.
+
+While a point is on one block, the rest of the picture steps back — the same
+thing a spotlight does to the lines around it. So a diagram is walked the way
+code is: one block at a time, in the order the sentences go.
 
 ```json
 {
