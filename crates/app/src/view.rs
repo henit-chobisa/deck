@@ -27,7 +27,7 @@ use crate::sheet::{Sheet, Slot};
 gpui_kit::actions!(
     deck,
     [
-        NextGroup, PrevGroup, Comment, Rotate, Zen, Live, Follow, Hide, Submit, Discard, Noted,
+        NextGroup, PrevGroup, Comment, Rotate, Zen, Walk, Follow, Hide, Submit, Discard, Noted,
         Asked, Wrong, ZoomIn, ZoomOut, ZoomReset, Close
     ]
 );
@@ -36,14 +36,20 @@ gpui_kit::actions!(
 ///
 /// One list, so a binding and its legend entry cannot drift apart. The legend
 /// is built from this at render time rather than written out beside it.
+///
+/// One word each. They were small sentences — *walk me through it*, *put it
+/// away* — which read as an explanation of the deck rather than as a list of
+/// things you can do, and a reader looking for the key to press had to read a
+/// phrase to find it. Ordered the way a walk goes: move, be walked through,
+/// say something, change the view, then leave.
 const KEYS: &[(&str, &str, &str)] = &[
-    ("n", "next", "next group"),
-    ("p", "prev", "previous group"),
+    ("n", "next", "next"),
+    ("p", "prev", "previous"),
+    ("w", "walk", "walk"),
     ("c", "comment", "comment"),
-    ("r", "rotate", "turn the panes"),
-    ("z", "zen", "lights off"),
-    ("l", "live", "live walkthrough"),
-    ("h", "hide", "put it away"),
+    ("t", "turn", "turn"),
+    ("z", "zen", "zen"),
+    ("h", "hide", "hide"),
     ("s", "submit", "submit"),
     ("q", "close", "close"),
 ];
@@ -55,9 +61,9 @@ pub fn bindings() -> Vec<KeyBinding> {
         KeyBinding::new("n", NextGroup, Some("Deck")),
         KeyBinding::new("p", PrevGroup, Some("Deck")),
         KeyBinding::new("c", Comment, Some("Deck")),
-        KeyBinding::new("r", Rotate, Some("Deck")),
+        KeyBinding::new("t", Rotate, Some("Deck")),
         KeyBinding::new("z", Zen, Some("Deck")),
-        KeyBinding::new("l", Live, Some("Deck")),
+        KeyBinding::new("w", Walk, Some("Deck")),
         KeyBinding::new("1", Noted, Some("Deck")),
         KeyBinding::new("2", Asked, Some("Deck")),
         KeyBinding::new("3", Wrong, Some("Deck")),
@@ -360,8 +366,7 @@ pub struct Session {
     band_offset: Point<Pixels>,
     rail_width: Option<f32>,
     rail_scroll: ScrollHandle,
-    picked_reply: Option<usize>,
-    walking: bool,
+    aloud: bool,
     draft: Option<(
         About,
         Entity<TextareaState>,
