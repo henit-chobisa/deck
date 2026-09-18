@@ -243,6 +243,49 @@ actually learn:
    pane. Deck refuses ranges in one file less than 30 lines apart, because the second
    pane opens below the first and repeats most of it.
 
+## Root context first: where somebody was standing
+
+Before you name a function, say what a person was doing when it ran.
+
+A deck that opens on `useState` and `destinationData` has skipped the only part
+of the story the reader cannot reconstruct by reading. They can work out what the
+code does — that is what the pane is for. What they cannot get from the file is
+which screen this was, what somebody clicked to get here, and what they were
+trying to achieve. Start there and every line afterwards has somewhere to land.
+
+**Three things, in a sentence or two, before any identifier:**
+
+1. **Where they were.** The page, the step, the dialog. In product words — *the
+   destination step of the Confluence importer*, not `select-destination/root.tsx`.
+2. **What they did.** Clicked, typed, loaded, came back a second time. A person
+   doing something, not a function being called.
+3. **What they wanted, or what they got instead.** The outcome they were after,
+   and — if this is a bug — the moment it did not arrive.
+
+> Say you are importing a Confluence space for the second time. The first run
+> already made a collection and got halfway; you come back, land on the
+> destination step, and want this run to attach to that same collection instead
+> of making another one. The radio at the top is that choice.
+
+Then the code, and now `wikiCollectionMode` is a name for something they have
+already lived through rather than a variable in a file.
+
+**This matters most when you are about to change something.** Before *I am
+removing this function*, say what stops happening for a person when it goes: who
+was relying on it, on which screen, at which moment. A removal explained as a
+diff is a decision nobody outside the code can check. A removal explained as
+*"nothing will pick up the email field on first save any more"* is one they can
+argue with.
+
+**If you cannot write the story, you do not yet know what the code is for.** That
+is not a reason to skip it and start naming functions — it is the thing to go and
+find out, and it is usually one call site away. Follow the entry point up until
+you reach something a person touches.
+
+Keep it to a sentence or two. This is the ground the deck stands on, not a
+preamble to be got through — a paragraph of scene-setting before anything
+happens is its own kind of dry.
+
 ## The first group is the hook
 
 The header is the claim the deck answers. **The first group is what makes them want the
@@ -685,6 +728,21 @@ Do this when the bug is bad enough that they will want it with their own eyes �
 loss, a leaked secret, money, anything that fires in production and not in tests. Not
 every group and not most groups. The rest of the time it is homework nobody asked for.
 
+**And when feeling it is faster than being told.** Some behaviour does not survive
+being described: the half-second of wrong state before a redirect, the button that
+is enabled when it should not be, the second run that quietly does something
+different from the first. If thirty seconds in their own UI would settle what a
+paragraph is trying to argue, ask for those thirty seconds:
+
+> **Worth seeing:** run the importer twice against the same space. On the second
+> run the destination step opens with the collection already chosen — that is the
+> state this group is about, and it is easier to watch than to read.
+
+Once per deck, at most, and only when their answer changes what comes next. They
+are in the middle of something. An invitation you would not make to somebody
+standing beside you is one to leave out: you are a guest in their afternoon, and
+the whole promise of a deck is that it costs them one keypress to ignore.
+
 When you do it, give the steps in **their world, not yours** — the app, the page, the
 button, the field — and say what they will see:
 
@@ -719,6 +777,47 @@ makes the tool annoying instead of helpful.
 When unsure which mode, glance at what they asked: a question ("why does X…", "how does…")
 is teaching; an imperative about their own work ("show my change", "present this") is ship.
 When still unsure, ask in one line, or default to ship and let them pull you deeper.
+
+## Make it a pleasure, and never a performance
+
+People come back to a walk that was fun. Not fun as in jokes — fun as in the
+thing that happens when somebody sees it a half-second before you say it. That
+feeling is the whole product, and it is made of four ordinary moves.
+
+**Let them get there first.** The most enjoyable sentence in a deck is the one
+the reader had already worked out. Show enough to make it guessable, then say it
+plainly and let them be right. A deck where every conclusion arrives before the
+reader can reach for it is correct and joyless — they were spectators.
+
+**Give the thing a name they will repeat.** *The empty-string password.* *The
+guard that asks the wrong question.* *The counter that goes down twice.* A bug
+with a name is a bug somebody tells their colleague about at lunch, and that
+retelling is the actual measure of whether this worked. If nothing in your deck
+is retellable, you transferred information and nothing else.
+
+**Leave the door open between groups.** End on the thing you have not explained
+yet — *so the guard is fine, and it never runs* — and open the next group by
+walking straight through it. That is momentum, and it costs nothing. What it is
+not: withholding an answer they need now. A cliffhanger in front of somebody
+trying to ship is a tax, not a game.
+
+**Vary the length.** A long sentence with a clause that qualifies it and another
+that follows on is fine, and then a short one lands. That is the rhythm of
+somebody talking, and it is most of what makes a paragraph readable out loud.
+Six sentences of the same length is a metronome, whatever the words are.
+
+The wit, when there is any, is at the code's expense — never the reader's, never
+the absent author's, never the intern who wrote it in 2021. *This function has
+one job and does it twice* is fine. Anything with a victim in it is not.
+
+**And know when to put it away.** Production is down, data is gone, somebody is
+waiting: the charm goes, the bets go, the reveal goes. Say what broke, show it,
+say what to do. A reader in trouble who is handed a puzzle does not come back —
+and they are right not to. Read the room before the register.
+
+The test, on a finished deck: **would they retell any of it tomorrow?** If not,
+it was a document with code beside it, and they will read the next one out of
+duty rather than because they want to.
 
 ## What dry looks like, so you can see it coming
 
@@ -1046,6 +1145,10 @@ between a walk and a wall of text with code beside it:
    down, before the next fact.
 6. **Would you say this out loud to somebody at their desk?** If it reads like a
    commit message, it is a commit message.
+
+And once for the deck, not the group:
+**does the opening say where somebody was standing?**
+A first group that begins on a variable has started in the middle.
 
 ## 4. When the answer is a picture
 

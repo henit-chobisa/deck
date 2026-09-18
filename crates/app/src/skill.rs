@@ -354,6 +354,45 @@ mod tests {
     }
 
     #[test]
+    fn the_skill_calibrates_the_tone_rather_than_asking_for_enthusiasm() {
+        // "Be engaging" produces exclamation marks and forced jokes. What makes
+        // a walk worth coming back to is mechanical: the reader arriving first,
+        // a name they repeat, momentum between groups, and knowing when to drop
+        // all of it because somebody is in trouble.
+        for said in [
+            "Make it a pleasure, and never a performance",
+            "Let them get there first",
+            "Give the thing a name they will repeat",
+            "Leave the door open between groups",
+            "Vary the length",
+            "And know when to put it away",
+            "would they retell any of it tomorrow",
+        ] {
+            assert!(SKILL.contains(said), "the skill never says `{said}`");
+        }
+    }
+
+    #[test]
+    fn the_skill_starts_a_deck_where_a_person_was_standing() {
+        // The failure this answers, from a real deck: an opening about
+        // `useState` and `destinationData` with nothing in it about the
+        // importer, the second run, or the screen somebody was looking at. The
+        // code is the part the reader can reconstruct; the story is not.
+        for said in [
+            "Root context first: where somebody was standing",
+            "Where they were",
+            "What they did",
+            "What they wanted, or what they got instead",
+            "This matters most when you are about to change something",
+            "If you cannot write the story, you do not yet know what the code is for",
+            "does the opening say where somebody was standing",
+            "And when feeling it is faster than being told",
+        ] {
+            assert!(SKILL.contains(said), "the skill never says `{said}`");
+        }
+    }
+
+    #[test]
     fn the_skill_says_the_waiter_is_not_optional() {
         // Seen in the wild with more than one agent: groups written, deck
         // sealed, turn ended. The reader walks it, comments, submits — and
