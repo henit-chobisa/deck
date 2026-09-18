@@ -266,6 +266,7 @@ impl ShowCommand {
             | RequestBody::Clear
             | RequestBody::Fold { .. }
             | RequestBody::Bring { .. }
+            | RequestBody::Draw { .. }
             | RequestBody::Status => None,
         }
     }
@@ -310,6 +311,12 @@ impl ShowCommand {
     #[must_use]
     pub fn bringing(&self) -> Option<&RequestBody> {
         matches!(self.request.body, RequestBody::Bring { .. }).then_some(&self.request.body)
+    }
+
+    /// Whether this asks for a picture the deck does not carry.
+    #[must_use]
+    pub fn drawing(&self) -> Option<&RequestBody> {
+        matches!(self.request.body, RequestBody::Draw { .. }).then_some(&self.request.body)
     }
 
     /// Whether this asks to stop pointing.
@@ -418,7 +425,8 @@ fn serve(owner: &Owner, control: &Control) {
             | RequestBody::Show { .. }
             | RequestBody::Clear
             | RequestBody::Fold { .. }
-            | RequestBody::Bring { .. } => {
+            | RequestBody::Bring { .. }
+            | RequestBody::Draw { .. } => {
                 let status = status_of(&control.state);
                 if status != ResponseStatus::Ready {
                     let mut response = Response::status(&request, owner.generation(), status);

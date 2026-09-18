@@ -123,6 +123,27 @@ pub enum RequestBody {
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         fold: Vec<String>,
     },
+    /// Draw a picture that no group in this deck carries.
+    ///
+    /// `Bring` for diagrams. A reader who asks how a request travels is asking
+    /// for something that is in no file — and answering it by naming four files
+    /// in turn is the failure a picture exists to prevent.
+    Draw {
+        /// The whole picture, as the agent wrote it.
+        diagram: deck_core::diagram::Diagram,
+        /// What the prose may call it.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        name: Option<String>,
+        /// A short label for the pane.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        note: Option<String>,
+        /// Fold the whole group behind one spine to make room for it.
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        fold_group: bool,
+        /// Or fold only these panes of it, by name.
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        fold: Vec<String>,
+    },
 }
 
 /// A request committed by a shell command for the native owner.
@@ -1117,6 +1138,33 @@ mod tests {
             kind: Some(deck_core::Kind::Question),
             when,
         }
+    }
+
+    #[test]
+    fn a_drawn_picture_says_what_it_displaces() {
+        // `Bring` for diagrams: the same folding, so the room moves once.
+        let asked = RequestBody::Draw {
+            diagram: deck_core::diagram::Diagram {
+                title: Some("how a re-import travels".into()),
+                flow: deck_core::diagram::Direction::default(),
+                nodes: Vec::new(),
+                edges: Vec::new(),
+                clusters: Vec::new(),
+                flows: Vec::new(),
+            },
+            name: Some("flow".into()),
+            note: None,
+            fold_group: true,
+            fold: Vec::new(),
+        };
+        let json = serde_json::to_value(&asked).unwrap();
+        assert_eq!(json["type"], "draw");
+        assert_eq!(json["fold_group"], true);
+        assert_eq!(json["name"], "flow");
+        assert!(json.get("note").is_none(), "an absent note is left out");
+
+        let back: RequestBody = serde_json::from_value(json).unwrap();
+        assert_eq!(back, asked, "and it reads back as what was sent");
     }
 
     #[test]

@@ -110,9 +110,11 @@ enum What {
         /// it changes. The file on disk is never touched.
         #[arg(long, value_name = "REPLACEMENT")]
         after: Vec<String>,
-        /// A picture, as a JSON file. See PROTOCOL.md for its shape.
-        #[arg(long, value_name = "FILE.json")]
-        diagram: Vec<PathBuf>,
+        /// A picture, as a JSON file, with the same optional `[name]` and
+        /// note a `--ref` takes: `flows/import.json [flow] how it travels`.
+        /// See PROTOCOL.md for the file's shape.
+        #[arg(long, value_name = "FILE.json [NAME] [NOTE]")]
+        diagram: Vec<String>,
     },
 
     /// Move the live spotlight to code already shown in an authored group.
@@ -222,8 +224,18 @@ enum What {
         deck: PathBuf,
         /// A file and one-based line range, with an optional `[name]` and note:
         /// `src/batch.ts:140-148 [retry] the loop that gives up`.
-        #[arg(long = "ref", value_name = "FILE:FIRST-LAST [NAME] [NOTE]")]
-        reference: String,
+        #[arg(
+            long = "ref",
+            value_name = "FILE:FIRST-LAST [NAME] [NOTE]",
+            conflicts_with = "diagram",
+            required_unless_present = "diagram"
+        )]
+        reference: Option<String>,
+        /// Or a picture, written now, for a question no file answers: how a
+        /// request travels, what calls what, the states a job moves through.
+        /// Same `[name]` and note as a ref: `flows/retry.json [flow] the path`.
+        #[arg(long, value_name = "FILE.json [NAME] [NOTE]")]
+        diagram: Option<String>,
         /// What the range should become, drawn as a change rather than a
         /// highlight. The file on disk is never touched.
         #[arg(long, value_name = "REPLACEMENT")]
@@ -454,11 +466,20 @@ impl Cli {
             What::Bring {
                 deck,
                 reference,
+                diagram,
                 after,
                 fold_group,
                 fold,
                 timeout,
-            } => Err(bring(&deck, &reference, after, fold_group, fold, timeout)),
+            } => Err(bring(
+                &deck,
+                reference.as_deref(),
+                diagram.as_deref(),
+                after,
+                fold_group,
+                fold,
+                timeout,
+            )),
             What::Seal { deck } => report(deck_cli::seal(&deck)),
             What::Next {
                 deck,
@@ -561,11 +582,7 @@ fn detach() -> bool {
 /// Refs first, then diagrams, in the order they were given. Ids are not minted
 /// here: they have to be unique across the deck, and only the crate that knows
 /// which group this is becoming can promise that.
-fn gather(
-    refs: &[String],
-    after: &[String],
-    diagrams: &[PathBuf],
-) -> anyhow::Result<Vec<Pointing>> {
+fn gather(refs: &[String], after: &[String], diagrams: &[String]) -> anyhow::Result<Vec<Pointing>> {
     let mut out = Vec::with_capacity(refs.len() + diagrams.len());
     let changes = paired(refs.len(), after)?;
 
@@ -575,12 +592,8 @@ fn gather(
         out.push(Pointing::Code(named));
     }
 
-    for path in diagrams {
-        let text = std::fs::read_to_string(path)
-            .map_err(|err| anyhow::anyhow!("cannot read {}: {err}", path.display()))?;
-        let diagram = serde_json::from_str(&text)
-            .map_err(|err| anyhow::anyhow!("{} is not a diagram: {err}", path.display()))?;
-        out.push(Pointing::Drawn(diagram));
+    for argument in diagrams {
+        out.push(Pointing::Drawn(deck_cli::refs::picture(argument)?));
     }
 
     Ok(out)
@@ -768,21 +781,47 @@ fn say(deck: &std::path::Path, text: &str, aloud: bool, timeout: u64) -> ExitCod
 /// Bring a file the group never showed into the room.
 fn bring(
     deck: &std::path::Path,
-    reference: &str,
+    reference: Option<&str>,
+    diagram: Option<&str>,
     after: Option<String>,
     fold_group: bool,
     fold: Vec<String>,
     timeout: u64,
 ) -> ExitCode {
+    // A picture and a file arrive the same way and displace the same panes. The
+    // only difference is what the window is handed.
+    let refused = |err: anyhow::Error| {
+        println!(
+            "{}",
+            serde_json::json!({ "status": "invalid-request", "reason": err.to_string() })
+        );
+        ExitCode::FAILURE
+    };
+
+    if let Some(argument) = diagram {
+        let picture = match deck_cli::refs::picture(argument) {
+            Ok(picture) => picture,
+            Err(err) => return refused(err),
+        };
+        return ask(
+            deck,
+            deck_cli::live::RequestBody::Draw {
+                diagram: picture.diagram,
+                name: picture.name,
+                note: picture.note,
+                fold_group,
+                fold,
+            },
+            timeout,
+        );
+    }
+
+    let Some(reference) = reference else {
+        return refused(anyhow::anyhow!("nothing to bring: pass --ref or --diagram"));
+    };
     let named = match deck_cli::refs::parse(reference) {
         Ok(named) => named,
-        Err(err) => {
-            println!(
-                "{}",
-                serde_json::json!({ "status": "invalid-request", "reason": err.to_string() })
-            );
-            return ExitCode::FAILURE;
-        }
+        Err(err) => return refused(err),
     };
     ask(
         deck,

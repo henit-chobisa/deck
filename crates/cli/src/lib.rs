@@ -27,7 +27,6 @@ use anyhow::Context as _;
 use std::io::Write as _;
 use std::path::{Path, PathBuf};
 
-use deck_core::diagram::Diagram;
 use deck_core::protocol::{DiagramRef, Group, Header, Ref, RefSpec, Review, VERSION};
 
 pub mod live;
@@ -100,8 +99,8 @@ pub fn new(
 pub enum Pointing {
     /// Lines of a file, as a `--ref` argument named them.
     Code(refs::Named),
-    /// A picture, read from a file.
-    Drawn(Diagram),
+    /// A picture, as a `--diagram` argument named it.
+    Drawn(refs::Picture),
 }
 
 /// Refuse narration with a code block typed into it.
@@ -264,7 +263,7 @@ fn one_pane_per_name(pointing: &[Pointing]) -> anyhow::Result<()> {
         .iter()
         .filter_map(|one| match one {
             Pointing::Code(named) => named.name.as_deref(),
-            Pointing::Drawn(_) => None,
+            Pointing::Drawn(picture) => picture.name.as_deref(),
         })
         .collect();
     for (ix, name) in names.iter().enumerate() {
@@ -297,11 +296,20 @@ pub fn what_will_not_light(say: &str, pointing: &[Pointing]) -> Vec<String> {
             Pointing::Drawn(_) => None,
         })
         .collect();
-    if code.is_empty() {
+    let drawn: Vec<&refs::Picture> = pointing
+        .iter()
+        .filter_map(|one| match one {
+            Pointing::Drawn(picture) => Some(picture),
+            Pointing::Code(_) => None,
+        })
+        .collect();
+    if code.is_empty() && drawn.is_empty() {
         return notes;
     }
 
-    if !say.contains("[point ") {
+    // A picture is pointed at by the name of a block, and a group that is only
+    // a picture may honestly have nothing to point at yet.
+    if !say.contains("[point ") && !code.is_empty() {
         notes.push(
             "no points in the say, so nothing moves while it is read: \
              write `[point 118-121]` on the lines each sentence is about"
@@ -309,8 +317,12 @@ pub fn what_will_not_light(say: &str, pointing: &[Pointing]) -> Vec<String> {
         );
     }
 
-    let named: Vec<&str> = code.iter().filter_map(|one| one.name.as_deref()).collect();
-    if named.is_empty() && code.len() > 1 {
+    let named: Vec<&str> = code
+        .iter()
+        .filter_map(|one| one.name.as_deref())
+        .chain(drawn.iter().filter_map(|one| one.name.as_deref()))
+        .collect();
+    if named.is_empty() && code.len() + drawn.len() > 1 {
         notes.push(
             "no pane is named, so the prose cannot say which one it means: \
              put `[a-name]` at the front of a ref's note and use it in the say"
@@ -369,10 +381,11 @@ pub fn group(root: &Path, say: &str, pointing: Vec<Pointing>) -> anyhow::Result<
                     name: named.name,
                     after: named.after,
                 }),
-                Pointing::Drawn(diagram) => Ref::Diagram(DiagramRef {
+                Pointing::Drawn(picture) => Ref::Diagram(DiagramRef {
                     id: format!("g{ord}d{nth}"),
-                    diagram,
-                    note: None,
+                    diagram: picture.diagram,
+                    note: picture.note,
+                    name: picture.name,
                 }),
             }
         })

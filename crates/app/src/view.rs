@@ -987,6 +987,26 @@ impl DeckView {
             cx.notify();
             return;
         }
+        if let Some(deck_cli::live::RequestBody::Draw {
+            diagram,
+            name,
+            note,
+            fold_group,
+            fold,
+        }) = command.drawing()
+        {
+            let answer = self.apply_draw(
+                diagram.clone(),
+                name.clone(),
+                note.clone(),
+                *fold_group,
+                fold.clone(),
+                cx,
+            );
+            command.finish(answer);
+            cx.notify();
+            return;
+        }
         if let Some(deck_cli::live::RequestBody::Bring {
             file,
             range,
@@ -1419,8 +1439,7 @@ impl DeckView {
                 .iter()
                 .filter_map(|name| {
                     self.panes.iter().position(|pane| {
-                        pane.code()
-                            .is_some_and(|code| code.name.as_deref() == Some(name.as_str()))
+                        pane.name().map(SharedString::as_ref) == Some(name.as_str())
                     })
                 })
                 .collect()
@@ -1469,6 +1488,43 @@ impl DeckView {
         // What it displaces folds in the same movement, so the room moves once.
         self.apply_fold(&fold, fold_group, false, cx);
         self.panes.push(Sheet::Code(pane));
+        self.folds.push(crate::pane::Fade::default());
+        self.temporary.insert(self.panes.len() - 1);
+        self.attend();
+        self.keep_talking(cx);
+        crate::live::ShowAnswer::said()
+    }
+
+    /// Draw a picture the deck never carried.
+    ///
+    /// [`Self::apply_bring`] for diagrams, and the same borrowing: it arrives
+    /// as a temporary pane, whatever it displaces folds in the same movement,
+    /// and turning to another group gives the room back. A question about how
+    /// a request travels is not answered by naming four files in turn.
+    fn apply_draw(
+        &mut self,
+        diagram: deck_core::diagram::Diagram,
+        name: Option<String>,
+        note: Option<String>,
+        fold_group: bool,
+        fold: Vec<String>,
+        cx: &mut Context<Self>,
+    ) -> crate::live::ShowAnswer {
+        if diagram.nodes.is_empty() {
+            return crate::live::ShowAnswer::refused(
+                deck_cli::live::ResponseStatus::NotFound,
+                "a picture with no blocks in it has nothing to draw",
+            );
+        }
+        let spec = deck_core::protocol::DiagramRef {
+            id: format!("drawn-{}", self.panes.len()),
+            diagram,
+            note,
+            name,
+        };
+        let chart = crate::chart::Chart::new(&spec);
+        self.apply_fold(&fold, fold_group, false, cx);
+        self.panes.push(Sheet::Drawn(chart));
         self.folds.push(crate::pane::Fade::default());
         self.temporary.insert(self.panes.len() - 1);
         self.attend();
@@ -1592,12 +1648,7 @@ impl DeckView {
             .name_hovered
             .as_ref()
             .or(self.name_pinned.as_ref())
-            .and_then(|name| {
-                self.panes.iter().position(|pane| {
-                    pane.code()
-                        .is_some_and(|code| code.name.as_ref() == Some(name))
-                })
-            });
+            .and_then(|name| self.panes.iter().position(|pane| pane.name() == Some(name)));
         let attending = self
             .attending
             .is_some_and(|until| std::time::Instant::now() < until);
@@ -1618,15 +1669,33 @@ impl DeckView {
     /// Lines no pane is showing light nothing. There is no honest place to put
     /// that finger, and guessing one means that moving the spotlight mid-walk
     /// leaves the old point burning somewhere it no longer belongs.
-    fn point_at(&mut self, at: Option<LineRange>, cx: &mut Context<Self>) -> bool {
-        let owner = at.and_then(|at| {
-            self.panes.iter().position(|pane| {
-                pane.code().is_some_and(|code| {
-                    let lit = code.spotlight_range();
-                    lit.first <= at.last && at.first <= lit.last
+    fn point_at(&mut self, at: Option<crate::prose::Spot>, cx: &mut Context<Self>) -> bool {
+        // A picture is addressed by the id of a block, because a diagram has no
+        // lines to name. Either way the pane is chosen by what it is already
+        // showing rather than by its place in the row.
+        let lines = match &at {
+            Some(crate::prose::Spot::Lines(lines)) => Some(*lines),
+            _ => None,
+        };
+        let block = match &at {
+            Some(crate::prose::Spot::Block(id)) => Some(id.clone()),
+            _ => None,
+        };
+        let owner = lines
+            .and_then(|at| {
+                self.panes.iter().position(|pane| {
+                    pane.code().is_some_and(|code| {
+                        let lit = code.spotlight_range();
+                        lit.first <= at.last && at.first <= lit.last
+                    })
                 })
             })
-        });
+            .or_else(|| {
+                let id = block.as_deref()?;
+                self.panes
+                    .iter()
+                    .position(|pane| pane.chart().is_some_and(|chart| chart.has_block(id)))
+            });
         // The light is about to land in a pane that is folded away, so the
         // pane comes back. Lighting lines nobody can see is the same as
         // lighting nothing, and a walk that points into a spine has stopped
@@ -1638,13 +1707,24 @@ impl DeckView {
         }
         let mut moved = false;
         for (ix, pane) in self.panes.iter_mut().enumerate() {
-            let Some(code) = pane.code_mut() else {
+            let mine = Some(ix) == owner;
+            if let Some(code) = pane.code_mut() {
+                let want = if mine { lines } else { None };
+                if code.pointed() != want {
+                    code.point_at(want);
+                    moved = true;
+                }
                 continue;
-            };
-            let want = if Some(ix) == owner { at } else { None };
-            if code.pointed() != want {
-                code.point_at(want);
-                moved = true;
+            }
+            if let Some(chart) = pane.chart_mut() {
+                let want: Vec<SharedString> = match (mine, block.as_deref()) {
+                    (true, Some(id)) => vec![SharedString::from(id.to_string())],
+                    _ => Vec::new(),
+                };
+                if chart.pointed != want {
+                    chart.pointed = want;
+                    moved = true;
+                }
             }
         }
         // Follow the finger down the file. A point on lines scrolled out of
@@ -2101,7 +2181,7 @@ impl DeckView {
     /// The narration is cut into pieces at its points, and every piece knows
     /// how many words of the page it is — so the word the reader touched falls
     /// inside exactly one of them, and that piece carries the lines.
-    fn point_of(&self, at: usize) -> Option<LineRange> {
+    fn point_of(&self, at: usize) -> Option<crate::prose::Spot> {
         let group = self.group()?;
         let mut seen = 0;
         // The pause only changes what a voice hears, and nothing here is
@@ -2797,7 +2877,7 @@ impl DeckView {
                                     names: self
                                         .panes
                                         .iter()
-                                        .filter_map(|pane| pane.code()?.name.clone())
+                                        .filter_map(|pane| pane.name().cloned())
                                         .collect(),
                                     named: self.name_hovered.clone().or(self.name_pinned.clone()),
                                     heard: self

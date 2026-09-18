@@ -92,6 +92,19 @@ impl Sheet {
         }
     }
 
+    /// What the prose calls this pane, when the deck named it.
+    ///
+    /// Both kinds answer to a name. A picture that could not be addressed by
+    /// one was a pane the narration had no way to refer to, which left
+    /// diagrams out of every sentence that named where it was pointing.
+    #[must_use]
+    pub fn name(&self) -> Option<&SharedString> {
+        match self {
+            Self::Code(code) => code.name.as_ref(),
+            Self::Drawn(chart) => chart.name.as_ref(),
+        }
+    }
+
     /// The code pane, if this is one.
     #[must_use]
     pub fn code(&self) -> Option<&Pane> {

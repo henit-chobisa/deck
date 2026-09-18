@@ -112,6 +112,14 @@ pub struct DiagramRef {
     /// A short label for the band, as a code ref's `note` is.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub note: Option<String>,
+    /// What the prose calls this picture, as a code pane has a name.
+    ///
+    /// A picture is a pane like any other: the narration has to be able to say
+    /// which one it means, and a point has to be able to land in it. Added
+    /// after names were given to code panes, which left diagrams as the one
+    /// kind of pane a sentence could not address.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
 }
 
 /// A pointer at code.

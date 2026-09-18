@@ -176,7 +176,7 @@ impl From<String> for Line {
 }
 
 /// One box.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Node {
     /// Referred to by edges and clusters.
     pub id: String,
@@ -201,7 +201,7 @@ pub struct Node {
 }
 
 /// One arrow.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Edge {
     /// The node it leaves, by id.
     pub from: String,
@@ -220,7 +220,7 @@ pub struct Edge {
 /// Containment, not layout: the nodes inside are still ranked by their edges.
 /// A cluster says "these belong together" — one crate, one layer, one side of a
 /// comparison.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Cluster {
     /// The name on the surrounding box.
     pub label: String,
@@ -239,7 +239,7 @@ pub struct Cluster {
 /// is what makes it read as travel rather than as boxes taking turns to blink,
 /// and it is why the steps are nodes and not edges — an agent describing a path
 /// names the places, and the arrows between them follow.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Flow {
     /// What this path is called. Shown on the button that plays it.
     pub name: String,
@@ -259,7 +259,7 @@ pub struct Flow {
 ///
 /// Written as a plain id, or as an object when that one node wants a colour of
 /// its own — the step where it goes wrong, in a flow that is otherwise calm.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum Step {
     /// Just the node.
@@ -295,7 +295,7 @@ impl Step {
 }
 
 /// A picture of how some things relate.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Diagram {
     /// A caption, shown where a code pane shows `file:range`.
     #[serde(skip_serializing_if = "Option::is_none")]

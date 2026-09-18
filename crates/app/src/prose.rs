@@ -271,18 +271,37 @@ pub fn unbeat(text: &str) -> String {
 /// can already name.
 pub const POINT: &str = "[point ";
 
-/// `106-110`, or `106` on its own.
+/// Where a point lands.
+///
+/// A deck's two kinds of pane answer to two kinds of address. Lines are the
+/// file's own, as the gutter prints them. A block is a node's id from the
+/// diagram the agent wrote, which is the only name it has that a sentence can
+/// carry.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Spot {
+    /// Lines of a file, lit in whichever pane is showing them.
+    Lines(LineRange),
+    /// One block of a picture, by the id the diagram gave it.
+    Block(String),
+}
+
+/// `106-110`, `106` on its own, or the id of a block in a picture.
 ///
 /// Anything else is not a point. An agent writing about pointing is writing
 /// prose, and prose is left exactly as it was rather than swallowed by a
-/// directive it never meant to give.
-fn lines(text: &str) -> Option<LineRange> {
+/// directive it never meant to give — so a payload with a space in it, or
+/// punctuation a node id could not have, stays on the page as words.
+fn spot(text: &str) -> Option<Spot> {
     let text = text.trim();
     let (first, last) = text.split_once('-').unwrap_or((text, text));
-    Some(LineRange::new(
-        first.trim().parse().ok()?,
-        last.trim().parse().ok()?,
-    ))
+    if let (Ok(first), Ok(last)) = (first.trim().parse(), last.trim().parse()) {
+        return Some(Spot::Lines(LineRange::new(first, last)));
+    }
+    let blocklike = !text.is_empty()
+        && text
+            .chars()
+            .all(|ch| ch.is_alphanumeric() || ch == '-' || ch == '_');
+    blocklike.then(|| Spot::Block(text.to_string()))
 }
 
 /// A point with the code chip an agent wrapped it in taken off.
@@ -303,7 +322,7 @@ pub fn unchipped(say: &str) -> String {
         };
         let wrapped = rest[..at].ends_with('`')
             && after[end + 1..].starts_with('`')
-            && lines(&after[..end]).is_some();
+            && spot(&after[..end]).is_some();
         if wrapped {
             out.push_str(&rest[..at - 1]);
             out.push_str(&rest[at..at + POINT.len() + end + 1]);
@@ -329,7 +348,7 @@ pub fn unpoint(text: &str) -> String {
         let Some(end) = after.find(']') else {
             break; // an opener with no closer is just text
         };
-        if lines(&after[..end]).is_none() {
+        if spot(&after[..end]).is_none() {
             out.push_str(&rest[..at + POINT.len()]);
             rest = after;
             continue;
@@ -348,8 +367,8 @@ pub fn unpoint(text: &str) -> String {
 /// One stretch of narration, and where it points while it is being said.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Said {
-    /// The lines to light inside the pane, for as long as this is said.
-    pub point: Option<LineRange>,
+    /// What to light inside a pane, for as long as this is said.
+    pub point: Option<Spot>,
     /// The words, ready for an engine.
     pub text: String,
     /// How many words of the band this piece is.
@@ -377,7 +396,7 @@ fn counted(text: &str) -> usize {
 #[must_use]
 pub fn pointed(say: &str, pause: u16) -> Vec<Said> {
     let mut out: Vec<Said> = Vec::new();
-    let mut point: Option<LineRange> = None;
+    let mut point: Option<Spot> = None;
     let mut piece = String::new();
     let say = unchipped(say);
     let mut rest = say.as_str();
@@ -387,7 +406,7 @@ pub fn pointed(say: &str, pause: u16) -> Vec<Said> {
         let Some(end) = after.find(']') else {
             break;
         };
-        let Some(next) = lines(&after[..end]) else {
+        let Some(next) = spot(&after[..end]) else {
             piece.push_str(&rest[..at + POINT.len()]);
             rest = after;
             continue;
@@ -1002,6 +1021,26 @@ mod tests {
     }
 
     #[test]
+    fn a_point_can_name_a_block_of_a_picture() {
+        // A diagram has no lines, so the only name a sentence can carry for a
+        // block is the id the agent gave it in the file.
+        let said = "first the call. [point checkout] then the write. [point 140] and done.";
+        let out = pointed(said, 420);
+        assert_eq!(out[1].point, Some(Spot::Block("checkout".into())));
+        assert_eq!(out[2].point, Some(Spot::Lines(LineRange::new(140, 140))));
+
+        // And prose about pointing is still prose: a payload with a space in it
+        // is a sentence somebody wrote, not a direction they gave.
+        let prose = pointed("the [point of view] here is the caller's.", 420);
+        assert_eq!(prose.len(), 1);
+        assert!(
+            prose[0].text.contains("[point of view]"),
+            "{}",
+            prose[0].text
+        );
+    }
+
+    #[test]
     fn the_narration_is_cut_where_the_pointing_changes() {
         let said = "first, the call. [point 106-110] then the guard. [point 140] \
                     and then nothing happens.";
@@ -1009,8 +1048,12 @@ mod tests {
 
         assert_eq!(out.len(), 3, "one piece per point, plus what came before");
         assert_eq!(out[0].point, None, "nothing was pointed at yet");
-        assert_eq!(out[1].point, Some(LineRange::new(106, 110)));
-        assert_eq!(out[2].point, Some(LineRange::new(140, 140)), "one line");
+        assert_eq!(out[1].point, Some(Spot::Lines(LineRange::new(106, 110))));
+        assert_eq!(
+            out[2].point,
+            Some(Spot::Lines(LineRange::new(140, 140))),
+            "one line"
+        );
         assert!(out[1].text.starts_with("then the guard"), "{}", out[1].text);
     }
 

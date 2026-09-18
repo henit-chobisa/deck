@@ -140,6 +140,15 @@ tables — a group is a claim, not a document.
 Emphasis means *look at this word*. A client is free to render it in its accent
 rather than in italics, which is what deck's own window does.
 
+Three bracketed directives may also appear in `say`, and a client that does not
+implement them must take them out rather than show them: `[pause]`, `[pause
+short]` and `[pause long]` are beats for a voice; `[point …]` says where to
+light while the words after it are read — file line numbers, `[point 106-110]`
+or `[point 140]`, or the id of a diagram block, `[point checkout]`; and
+`[a-name]` matching a ref's `name` is that pane, which a client may render as
+something the reader can press. A directive it cannot parse is prose and stays
+as written.
+
 ---
 
 ## Refs
@@ -189,6 +198,7 @@ deck. A client that does not render `after` shows the range and ignores it.
 ```json
 {
   "id": "g1d1",
+  "name": "flow",
   "note": "where the count is *lost*",
   "diagram": { "...": "see below" }
 }
@@ -199,6 +209,11 @@ deck. A client that does not render `after` shows the range and ignores it.
 | `id`      | string  | yes      | Identifies the ref within its deck. |
 | `diagram` | object  | yes      | The picture. |
 | `note`    | string  | no       | A short label, as a code ref's is. |
+| `name`    | string  | no       | What the narration calls this pane, as a code ref's `name` is. |
+
+A picture is a pane like any other, so the prose has to be able to say which one
+it means. Added after code panes got names, which had left a diagram as the one
+kind of pane a sentence could not address.
 
 ---
 

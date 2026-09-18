@@ -354,6 +354,22 @@ mod tests {
     }
 
     #[test]
+    fn the_skill_treats_a_picture_as_a_pane_like_any_other() {
+        // Diagrams fell out of use once panes got names and points, because
+        // every new rule was written about code and a picture could not be
+        // addressed by a sentence at all.
+        for said in [
+            "A picture is a pane, so it takes a name and a point like any other",
+            "[point q]",
+            "--diagram 'connect.json [flow] where the click stops'",
+            "When the answer is a shape rather than a file, draw it there and then",
+            "--diagram for a picture you write now",
+        ] {
+            assert!(SKILL.contains(said), "the skill never says `{said}`");
+        }
+    }
+
+    #[test]
     fn the_skill_calibrates_the_tone_rather_than_asking_for_enthusiasm() {
         // "Be engaging" produces exclamation marks and forced jokes. What makes
         // a walk worth coming back to is mechanical: the reader arriving first,
@@ -496,7 +512,7 @@ mod tests {
         // a worked example — which is what a model actually copies.
         assert!(SKILL.contains("Put the picture and the code in the same group"));
         assert!(
-            SKILL.contains("--diagram connect.json"),
+            SKILL.contains("--diagram 'connect.json"),
             "and an example that uses both flags at once"
         );
     }

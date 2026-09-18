@@ -35,7 +35,6 @@ use std::sync::atomic::{AtomicU64, Ordering as AtomicOrdering};
 use std::sync::mpsc::{Receiver, TryRecvError};
 use std::time::{Duration, Instant};
 
-use deck_core::LineRange;
 use deck_core::config::Speech;
 use gpui_kit::{App, Global};
 
@@ -101,7 +100,7 @@ pub struct Voice {
     ///
     /// Kept when the passage ends: an argument that finished on line 118 did
     /// not stop being about line 118 because the voice went quiet.
-    now: Option<LineRange>,
+    now: Option<crate::prose::Spot>,
 }
 
 impl Voice {
@@ -140,8 +139,10 @@ impl Voice {
 
     /// The lines the narration is pointing at, if it is pointing anywhere.
     #[must_use]
-    pub fn pointing(&self) -> Option<LineRange> {
-        self.playing.as_ref().map_or(self.now, Playing::pointing)
+    pub fn pointing(&self) -> Option<crate::prose::Spot> {
+        self.playing
+            .as_ref()
+            .map_or_else(|| self.now.clone(), Playing::pointing)
     }
 
     /// Whose words are being heard, and which word of them, counted as the
@@ -292,7 +293,7 @@ impl Drop for Voice {
 struct Ready {
     sound: Sound,
     /// When each piece begins, from the start of the sound, and where it points.
-    marks: Vec<(Duration, Option<LineRange>)>,
+    marks: Vec<(Duration, Option<crate::prose::Spot>)>,
     /// How long the whole passage lasts.
     length: Duration,
     /// How many words of the page each piece is, in the order of `marks`.
@@ -320,7 +321,7 @@ struct Playing {
     file: Option<PathBuf>,
     quiet: bool,
     since: Instant,
-    marks: Vec<(Duration, Option<LineRange>)>,
+    marks: Vec<(Duration, Option<crate::prose::Spot>)>,
     length: Duration,
     words: Vec<usize>,
     of: Option<Narration>,
@@ -361,13 +362,13 @@ impl Playing {
     }
 
     /// Where the passage points at this moment.
-    fn pointing(&self) -> Option<LineRange> {
+    fn pointing(&self) -> Option<crate::prose::Spot> {
         let heard = self.since.elapsed() + LEAD;
         self.marks
             .iter()
             .take_while(|(from, _)| *from <= heard)
             .last()
-            .and_then(|(_, point)| *point)
+            .and_then(|(_, point)| point.clone())
     }
 
     /// Which word of the page is being heard.
@@ -424,7 +425,7 @@ fn timed(said: &[Said], speech: &Speech) -> Ready {
     let mut marks = Vec::with_capacity(said.len());
     let mut length = Duration::ZERO;
     for piece in said {
-        marks.push((length, piece.point));
+        marks.push((length, piece.point.clone()));
         length += reading(&piece.text, speech.words_a_minute());
     }
     Ready {
@@ -597,7 +598,7 @@ fn ready(at: PathBuf, keep: bool, said: &[Said], starts: &[usize], bytes: usize)
         marks: said
             .iter()
             .zip(starts)
-            .map(|(piece, start)| (lasting(*start), piece.point))
+            .map(|(piece, start)| (lasting(*start), piece.point.clone()))
             .collect(),
         length: lasting(bytes),
         words: said.iter().map(|piece| piece.words).collect(),
@@ -1128,17 +1129,18 @@ mod tests {
             ..Speech::default()
         };
         let mut voice = Voice::default();
-        let (guard, thrown) = (LineRange::new(106, 110), LineRange::new(140, 140));
+        let guard = crate::prose::Spot::Lines(deck_core::LineRange::new(106, 110));
+        let thrown = crate::prose::Spot::Lines(deck_core::LineRange::new(140, 140));
 
         voice.say(
             vec![
                 Said {
-                    point: Some(guard),
+                    point: Some(guard.clone()),
                     text: "the guard is here and it asks whether anything changed".into(),
                     words: 10,
                 },
                 Said {
-                    point: Some(thrown),
+                    point: Some(thrown.clone()),
                     text: "and the answer is thrown away".into(),
                     words: 6,
                 },
@@ -1160,15 +1162,16 @@ mod tests {
         // The pieces of one passage are one sound. Each point arrives at the
         // moment its words start inside it — never at the moment a separate
         // utterance happened to be fetched.
-        let (guard, thrown) = (LineRange::new(106, 110), LineRange::new(140, 140));
+        let guard = crate::prose::Spot::Lines(deck_core::LineRange::new(106, 110));
+        let thrown = crate::prose::Spot::Lines(deck_core::LineRange::new(140, 140));
         let playing = Playing {
             child: None,
             file: None,
             quiet: true,
             since: Instant::now() - Duration::from_millis(2_000),
             marks: vec![
-                (Duration::ZERO, Some(guard)),
-                (Duration::from_millis(1_900), Some(thrown)),
+                (Duration::ZERO, Some(guard.clone())),
+                (Duration::from_millis(1_900), Some(thrown.clone())),
                 (Duration::from_millis(9_000), None),
             ],
             length: Duration::from_millis(12_000),
@@ -1199,7 +1202,7 @@ mod tests {
     fn a_point_rises_in_the_breath_before_its_words() {
         // The light takes a moment to come up, so it starts a little early.
         // Here the second piece is 100ms away and already pointed at.
-        let thrown = LineRange::new(140, 140);
+        let thrown = crate::prose::Spot::Lines(deck_core::LineRange::new(140, 140));
         let playing = Playing {
             child: None,
             file: None,
@@ -1207,7 +1210,7 @@ mod tests {
             since: Instant::now() - Duration::from_millis(1_000),
             marks: vec![
                 (Duration::ZERO, None),
-                (Duration::from_millis(1_100), Some(thrown)),
+                (Duration::from_millis(1_100), Some(thrown.clone())),
             ],
             length: Duration::from_millis(3_000),
             words: Vec::new(),
@@ -1229,7 +1232,7 @@ mod tests {
         let mut voice = Voice::default();
         voice.say(
             vec![Said {
-                point: Some(LineRange::new(12, 14)),
+                point: Some(crate::prose::Spot::Lines(deck_core::LineRange::new(12, 14))),
                 text: "done".into(),
                 words: 1,
             }],
@@ -1237,7 +1240,10 @@ mod tests {
             &speech,
         );
         voice.hush();
-        assert_eq!(voice.pointing(), Some(LineRange::new(12, 14)));
+        assert_eq!(
+            voice.pointing(),
+            Some(crate::prose::Spot::Lines(deck_core::LineRange::new(12, 14)))
+        );
         assert!(!voice.has_work(), "and the silent walk is over");
     }
 

@@ -289,6 +289,14 @@ pub struct Chart {
     note: Option<SharedString>,
     /// The ref this pane shows, so a remark can name it.
     pub ref_id: SharedString,
+    /// What the prose calls this picture, when the deck gave it a name.
+    pub name: Option<SharedString>,
+    /// The blocks a point in the narration is holding a light on.
+    ///
+    /// A picture's answer to a code pane's spotlight. The ids are the
+    /// diagram's own, so the agent points at `[point checkout]` with the same
+    /// word it wrote into the file.
+    pub pointed: Vec<SharedString>,
     /// The node the reader has picked, if any.
     ///
     /// A diagram has no lines, so a remark about one is pinned to a node
@@ -363,6 +371,8 @@ impl Chart {
                 .into(),
             note: spec.note.clone().map(SharedString::from),
             ref_id: spec.id.clone().into(),
+            name: spec.name.clone().map(SharedString::from),
+            pointed: Vec::new(),
             diagram: spec.diagram.clone(),
             plan,
             scroll: ScrollHandle::new(),
@@ -966,9 +976,28 @@ impl Chart {
 }
 
 impl Chart {
+    /// Whether this picture has a block by that id.
+    ///
+    /// How a point finds its pane: the same question a code pane answers with
+    /// the range it is showing.
+    #[must_use]
+    pub fn has_block(&self, id: &str) -> bool {
+        self.diagram.nodes.iter().any(|node| node.id == id)
+    }
+
     /// What the playing flow, if any, is doing to the node called `id`.
     #[must_use]
     pub fn lit(&self, id: &str) -> Lit {
+        // A point in the narration beats a flow: it is the agent's finger, put
+        // on this block for as long as the words about it are being said, and
+        // everything else in the picture steps back while it is there.
+        if !self.pointed.is_empty() {
+            return if self.pointed.iter().any(|lit| lit == id) {
+                Lit::On(1., None)
+            } else {
+                Lit::Aside
+            };
+        }
         let Some(playing) = self.playing else {
             return Lit::Resting;
         };
@@ -1532,6 +1561,7 @@ mod tests {
         Chart::new(&deck_core::DiagramRef {
             id: "d1".to_string(),
             note: None,
+            name: None,
             diagram: Diagram {
                 title: None,
                 flow: Direction::Down,
@@ -1574,6 +1604,22 @@ mod tests {
             f32::from(at.origin.x + at.size.width),
             f32::from(at.origin.y + at.size.height),
         )
+    }
+
+    #[test]
+    fn a_point_lights_one_block_and_steps_the_rest_back() {
+        // The picture's answer to a spotlight. Nothing is playing, so without a
+        // point every block is resting; with one, that block is lit and the
+        // others go aside — the same two states a flow puts them in, so the
+        // drawing did not have to learn anything new.
+        let mut chart = charted(&["fetch", "checkout", "persist"], &[("fetch", "checkout")]);
+        assert!(chart.has_block("checkout"));
+        assert!(!chart.has_block("nowhere"));
+        assert_eq!(chart.lit("checkout"), Lit::Resting);
+
+        chart.pointed = vec!["checkout".into()];
+        assert_eq!(chart.lit("checkout"), Lit::On(1., None));
+        assert_eq!(chart.lit("fetch"), Lit::Aside);
     }
 
     #[test]

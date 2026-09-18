@@ -21,6 +21,7 @@
 use std::path::PathBuf;
 
 use deck_core::LineRange;
+use deck_core::diagram::Diagram;
 
 /// What a `--ref` argument said.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -36,6 +37,51 @@ pub struct Named {
     /// What the range should become, when the ref is a proposed change rather
     /// than something to look at. Set by the caller, not by the syntax.
     pub after: Option<String>,
+}
+
+/// What a `--diagram` argument said.
+#[derive(Debug, Clone)]
+pub struct Picture {
+    /// What to draw, read from the file the argument named.
+    pub diagram: Diagram,
+    /// The note, if one was given.
+    pub note: Option<String>,
+    /// The pane's name, from a `[name]` at the front of the note.
+    pub name: Option<String>,
+}
+
+/// Read one `--diagram` argument: a path, then the same `[name] note` a ref takes.
+///
+/// ```text
+/// flows/import.json [flow] how a re-import reaches an existing collection
+/// ```
+///
+/// The path is everything up to the first space, because a diagram is a file
+/// this command wrote and a file this command wrote does not have a space in
+/// its name — where a ref has to parse from the right to survive `C:\src`, this
+/// only has to survive a note.
+///
+/// # Errors
+///
+/// When the file cannot be read, is not a diagram, or the name is not a name.
+pub fn picture(argument: &str) -> anyhow::Result<Picture> {
+    let (path, note) = match argument.split_once(' ') {
+        Some((path, note)) => (path, Some(note.trim().to_string())),
+        None => (argument, None),
+    };
+    anyhow::ensure!(!path.is_empty(), "no file in `{argument}`");
+
+    let text = std::fs::read_to_string(path)
+        .map_err(|err| anyhow::anyhow!("cannot read {path}: {err}"))?;
+    let diagram = serde_json::from_str(&text)
+        .map_err(|err| anyhow::anyhow!("{path} is not a diagram: {err}"))?;
+
+    let (name, note) = named(note)?;
+    Ok(Picture {
+        diagram,
+        name,
+        note: note.filter(|note| !note.is_empty()),
+    })
 }
 
 /// Read one `--ref` argument.
