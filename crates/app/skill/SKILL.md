@@ -736,9 +736,9 @@ Here is what I like about it: **a pane has no width.** Nowhere. Not in pixels, n
 any struct, not hiding in a layout pass. Two lists of plain `f32` and that is your lot.
 
 So before you scroll — if the drag is not setting a size, what is it doing? Have a
-guess. The answer is in the second pane and I think it is nicer than you expect." \
-  --ref "crates/app/src/view.rs:239-240 this is all the state there is" \
-  --ref "crates/app/src/view.rs:1324-1342 and this is the entire drag"
+guess. The answer is in [drag] and I think it is nicer than you expect." \
+  --ref "crates/app/src/view.rs:239-240 [state] this is all the state there is" \
+  --ref "crates/app/src/view.rs:1324-1342 [drag] and this is the entire drag"
 ```
 
 That is the length and the register to aim for. Read it against the four things above:
@@ -766,6 +766,15 @@ you never need to tell them to press anything.
   comment on it.
 - `--ref` is `file:first-last`, a space, then a short note. A bare number is one line.
   `*starred*` words in the note are accented. Give it once per pane.
+- A note may start with a **name** in brackets — `[retry]`, `[batch-2]` — one lowercase
+  word. Write the same `[retry]` in the `say` and it becomes a chip the reader can
+  point at to light that pane. `deck show --pane retry` takes the name too.
+
+**Name panes; never place them.** Not "the left pane", "the one on the right", "the
+second pane". Where a pane sits is decided by the window's width after you wrote the
+sentence, so a place you name is often wrong by the time it is read. A name is right
+at every width, and the reader can put the pointer on it to see which pane it means.
+Name every pane you mention in the prose.
 - `--after` turns the ref in front of it into a **proposed change**: the range
   is drawn as going, and this is spliced in underneath it, so the pane reads as
   a diff rather than a highlight. The file on disk is never touched.
