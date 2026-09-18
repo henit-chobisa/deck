@@ -2884,8 +2884,18 @@ impl DeckView {
                         div()
                             .flex_1()
                             .min_w_0()
-                            .text_size(if reacted { px(15.) } else { px(11.5) })
-                            .text_color(paint(if mine { palette.muted } else { palette.fg }))
+                            // A reaction was a face and wanted to be large. It
+                            // is a word now, and a word set larger than the
+                            // sentence beside it reads as shouting.
+                            .text_size(px(11.5))
+                            .when(reacted, |this| this.font_family(mono.clone()))
+                            .text_color(paint(if reacted {
+                                tone
+                            } else if mine {
+                                palette.muted
+                            } else {
+                                palette.fg
+                            }))
                             .child(SharedString::from(moment.text.clone())),
                     )
                     .id(("line", ix))
@@ -3033,41 +3043,47 @@ impl DeckView {
 
     /// The reactions, under a rule at the foot of the panel.
     ///
-    /// A rule rather than a box. A bordered pill full of faces reads as a
-    /// widget sitting on the panel; a divider reads as the bottom of the panel,
-    /// which is what it is.
+    /// Words, not faces. Every other surface in this window is one ink and one
+    /// accent; seven colour glyphs along the bottom fought all of it, and no
+    /// arrangement of them fixed that — the problem was never which emoji.
     ///
-    /// Seven, and they are the ones this work actually uses. The set matters
-    /// more than the count: a reader reviewing code wants to say *nice*,
-    /// *looking*, *I do not follow*, *careful*, *that is a bug*, *stop* — and a
-    /// generic set of smileys cannot carry any of it.
+    /// A word also says exactly what it means. `bug` is `bug`; a beetle is a
+    /// beetle until the reader decides what you meant by it.
     fn render_reactions(&self, cx: &mut Context<Self>) -> AnyElement {
         let palette = &self.palette;
+        let mono = cx.theme().mono_font_family.clone();
 
         div()
             .h_flex()
             .flex_wrap()
             .flex_none()
             .items_center()
-            .gap(px(1.))
+            .gap(px(2.))
             .mt(px(9.))
             .pt(px(8.))
             .border_t_1()
             .border_color(paint(palette.edge))
-            .children(FACES.iter().enumerate().map(|(ix, &(face, kind))| {
+            .children(FACES.iter().enumerate().map(|(ix, &(mark, kind))| {
+                let tone = match kind {
+                    deck_core::Kind::MustFix => palette.del,
+                    deck_core::Kind::Question => palette.accent,
+                    deck_core::Kind::Nit => palette.muted,
+                };
                 div()
                     .id(("react", ix))
                     .flex_none()
-                    .px(px(5.))
+                    .px(px(6.))
                     .py(px(3.))
                     .rounded(px(4.))
-                    .text_size(px(15.))
+                    .font_family(mono.clone())
+                    .text_size(px(10.5))
+                    .text_color(paint(tone))
                     .cursor_pointer()
                     .hover(|style| style.bg(paint(palette.wash)))
                     .on_click(cx.listener(move |deck, _, _window, cx| {
-                        deck.react(kind, deck_core::When::Queue, face, cx);
+                        deck.react(kind, deck_core::When::Queue, mark, cx);
                     }))
-                    .child(face)
+                    .child(mark)
             }))
             .into_any_element()
     }
@@ -3075,25 +3091,20 @@ impl DeckView {
 
 /// The reactions, and what each one asks the agent to do.
 ///
-/// In one place so the box and the rail cannot drift apart. Chosen for
-/// rendering as much as for meaning: each has a colour glyph everywhere deck
-/// runs. `\u{274C}` was tried and came out a flat monochrome cross between two
-/// colour faces, which looked like a mistake rather than a member of a set.
+/// In one place so the row and the transcript cannot drift apart: the mark is
+/// the remark's whole text, so what the reader pressed is what the agent reads.
+///
+/// Words rather than faces, and short ones. They sit in a panel that can be
+/// dragged narrow, they are coloured by what they ask for, and each says
+/// exactly one thing — which a picture of a beetle does not.
 const FACES: &[(&str, deck_core::Kind)] = &[
-    // ship it
-    ("\u{1F44D}", deck_core::Kind::Nit),
-    // nice
-    ("\u{1F525}", deck_core::Kind::Nit),
-    // looking
-    ("\u{1F440}", deck_core::Kind::Question),
-    // I do not follow
-    ("\u{1F914}", deck_core::Kind::Question),
-    // careful
-    ("\u{26A0}\u{FE0F}", deck_core::Kind::MustFix),
-    // that is a bug
-    ("\u{1F41B}", deck_core::Kind::MustFix),
-    // stop
-    ("\u{1F6D1}", deck_core::Kind::MustFix),
+    ("+1", deck_core::Kind::Nit),
+    ("nice", deck_core::Kind::Nit),
+    ("looking", deck_core::Kind::Question),
+    ("?", deck_core::Kind::Question),
+    ("careful", deck_core::Kind::MustFix),
+    ("bug", deck_core::Kind::MustFix),
+    ("stop", deck_core::Kind::MustFix),
 ];
 
 /// How long before silence stops being "thinking" and starts being "not
