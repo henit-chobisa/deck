@@ -290,15 +290,56 @@ mod tests {
 
     #[test]
     fn the_skill_names_every_command_it_needs() {
+        // Including the ones for while somebody is in front of the deck. An
+        // agent that never learns a verb exists writes walks that sit still,
+        // and `deck next` was missing from the file entirely.
         for verb in [
             "deck new",
             "deck group",
             "deck seal",
             "deck open",
             "deck wait",
+            "deck next",
+            "deck show",
+            "deck say",
+            "deck doing",
+            "deck bring",
+            "deck fold",
+            "deck clear",
         ] {
             assert!(SKILL.contains(verb), "the skill never mentions `{verb}`");
         }
+    }
+
+    #[test]
+    fn the_skill_ties_the_prose_to_the_panes_and_the_light() {
+        // The failure these answer, all seen in real decks: prose that names no
+        // pane, panes nothing in the prose refers to, points written inside
+        // backticks so an empty chip is left on the page, and a sentence that
+        // only parses while the direction is still in it.
+        for said in [
+            "Panes have names, and the names are how you work",
+            "Never place a pane",
+            "Name every pane you mention, and mention every pane you name",
+            "Keep a name across groups",
+            "Write it bare — never in backticks",
+            "the sentence has to read with the point gone",
+            "Points are not a voice feature",
+            "A change is not the subject",
+        ] {
+            assert!(SKILL.contains(said), "the skill never says `{said}`");
+        }
+    }
+
+    #[test]
+    fn the_skill_never_wraps_a_point_in_a_code_chip() {
+        // Thirteen of its own examples did, which is where agents learnt it.
+        // `[point …]` with an ellipsis is prose about the syntax, not a point.
+        let wrapped = SKILL
+            .match_indices("`[point ")
+            .filter(|(at, _)| !SKILL[*at..].starts_with("`[point …]`"))
+            .count();
+        assert_eq!(wrapped, 0, "an example still writes a point in backticks");
     }
 
     #[test]

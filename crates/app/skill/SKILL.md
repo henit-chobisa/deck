@@ -331,6 +331,47 @@ you are describing the system instead of following the thing through it. Rewrite
 sentence answers *where is it now* — in the payload, past the guard, at line 132, over the
 secret.
 
+## Panes have names, and the names are how you work
+
+A pane is not an illustration beside the prose. It is a thing in the room that
+both of you can point at, and its name is what makes that possible.
+
+You give it one in the ref, in brackets at the front of the note — one lowercase
+word:
+
+```
+--ref 'src/worker.ts:106-121 [retry] the loop that gives up'
+```
+
+Then you use that word in the `say` as a plain noun, the way you would use
+somebody's name: *in [retry], the guard runs before the sleep*. The reader sees a
+chip they can put a finger on, and the pane lights up. First mention says what it
+is; after that you can lean on it, exactly like the travelling thing above.
+
+**Never place a pane.** Not "the left one", not "the pane on the right", not "the
+second pane". Where a pane sits is decided by the window's width after you wrote
+the sentence — and by which panes are folded, which the reader controls. A name
+is right at every width. A place is a coin toss you will lose in front of them.
+
+**Name every pane you mention, and mention every pane you name.** A pane the
+prose never refers to is a file the reader has to work out the relevance of on
+their own, which is the thing this tool exists to stop. `deck group` says so as
+it writes when you forget one — it is not a refusal, it is the sentence you were
+going to wish somebody had said.
+
+**Keep a name across groups.** If `worker.ts` was [retry] in group two, it is
+[retry] in group five. The reader is following a cast, and a character who
+changes name between scenes is a character they lose.
+
+And the name is not only for the prose. It is the handle every live verb takes,
+which is why naming is the cheapest thing you will do all walk:
+
+```bash
+deck show <path> --pane retry --ref 'src/worker.ts:106-121'   # move their eyes there
+deck fold <path> --pane retry                                  # put it on its spine
+deck bring <path> --ref '…' --fold retry                       # take its room for something else
+```
+
 ## Give them somewhere to stand
 
 Every sentence in a dry paragraph adds a new fact. That is what "too fast" actually is —
@@ -405,7 +446,7 @@ never sees the direction, only the light.
 > [point 118-121] The comparison is right here, and it is `!=`. `[pause]`
 > [point 140] Then the result is thrown away on this line.
 
-**Write it bare — never in backticks.** `` `[point 106]` `` reads well in a file
+**Write it bare — never in backticks.** `` [point 106] `` reads well in a file
 and it is wrong here: the point comes out and the chip stays, which is an empty
 grey box mid-sentence. Deck strips those backticks now, but the habit is the
 thing to drop.
@@ -529,8 +570,7 @@ noise. Three things, in one breath:
 
 That is the shape of every explanation over lit code:
 
-> So the way this works: here we have `joined`, and if you look — `[point
-> 696-708]` — we declare `pieces`, which is made out of the narration we cut up
+> So the way this works: here we have `joined`, and if you look — [point 696-708] — we declare `pieces`, which is made out of the narration we cut up
 > as `said`. Each chunk is one stretch between two points. `[pause]` Those
 > chunks are the gaps you were complaining about, and they are gone because all
 > of them are recorded at once now, instead of one after another.
@@ -837,6 +877,43 @@ sentence to the lines it is about, so pressing that sentence in the rail lights 
 and the light follows the reader. Write points in every group you write, whether or not
 anybody has a voice set up.
 
+Here is a second one with every job labelled, because the register is easy to
+admire and hard to copy:
+
+```bash
+deck group <path> \
+  --say 'You cancelled the job and the log kept going for another ninety seconds.
+
+In [retry], the guard is the first thing in the loop. [point 106-110] It reads
+`cancelled` before it sleeps, which is why cancelling between two attempts works
+exactly the way you expect. [pause]
+
+So why the ninety seconds? [point 118-121] Because the attempt already in flight
+is never asked. `run` is awaited here, and nothing in this function can reach
+inside it. [test] proves the part that works and says nothing about this one —
+worth knowing before we trust it.
+
+The attempt you are waiting on is the attempt nobody is cancelling.' \
+  --ref 'src/worker.ts:100-125 [retry] the loop, and the guard at the top of it' \
+  --ref 'test/worker.test.ts:18-26 [test] what we actually check'
+```
+
+Read it by the job each part is doing:
+
+- **First line: their world, not the code.** What they saw, in the words they
+  would have used for it. No file is named yet.
+- **The pane arrives as a noun.** *In [retry]* — named, not placed, and one
+  sentence saying what it is before it is leaned on.
+- **The point lands on what the sentence names.** `cancelled`, by name, on the
+  lines that read it. Not "this bit here".
+- **A beat where they need to catch up**, once, before the turn.
+- **The bet, then the payoff.** A question they can answer from what is lit, and
+  the answer directly under it.
+- **The shaky part is named out loud.** [test] covers the working half; saying so
+  is what makes the rest of the deck worth believing.
+- **A landing sentence with no new nouns in it.** The thing they already have,
+  put down.
+
 A `say` of one sentence is almost always a group that has not been written yet.
 
 **One Bash call per group. Never batch them.** Putting two groups in the same call, or in
@@ -949,13 +1026,22 @@ have written a lecture. Find the spot where you can point at the code and ask th
 
 ### Read your own `say` back before you send it
 
-Three things, every group. They take a second each and they are the difference
+Six things, every group. They take a second each and they are the difference
 between a walk and a wall of text with code beside it:
 
-1. **Does it name a pane?** Every pane you talk about, by its `[name]`.
-2. **Does it point?** At least once, on the lines the sentence is about.
-3. **Does it name something in the code?** A function, a field, a variable — not
+1. **Does every pane get named?** Both ways: every pane you talk about carries a
+   `[name]`, and every name you gave a ref turns up in the prose.
+2. **Does it point?** At least once, on the lines the sentence is about — and
+   written bare, with no backticks round it.
+3. **Does each sentence still read with the points taken out?** That is what
+   reaches the eye and the ear. *[point 106] that returns early* is not a
+   sentence.
+4. **Does it name something in the code?** A function, a field, a variable — not
    "this line", not "here", not "the whole create path".
+5. **Is there one sentence that adds nothing?** Somewhere to put their weight
+   down, before the next fact.
+6. **Would you say this out loud to somebody at their desk?** If it reads like a
+   commit message, it is a commit message.
 
 ## 4. When the answer is a picture
 
