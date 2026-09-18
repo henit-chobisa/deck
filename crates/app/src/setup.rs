@@ -68,49 +68,7 @@ pub fn live() -> anyhow::Result<()> {
 
     println!();
     rule();
-    println!();
-    println!("  {}", bold("Whose voice"));
-    println!(
-        "  {}",
-        dim("Deck pipes the words to whatever you name, and plays nothing")
-    );
-    println!(
-        "  {}",
-        dim("itself — so the provider is yours, and so is what leaves the machine.")
-    );
-    println!();
-    println!("    {}  Google Cloud — the neural voices", accent("1"));
-    println!("    {}  this machine's own voice", accent("2"));
-    println!(
-        "    {}  a program I name (Kokoro, Piper, a script)",
-        accent("3")
-    );
-    println!();
-
-    match ask("Which?", "1")?.as_str() {
-        "2" => {
-            config.speech.engine = deck_core::config::Engine::System;
-            listen(&mut config)?;
-        }
-        "3" => {
-            config.speech.engine = deck_core::config::Engine::Command;
-            println!();
-            println!(
-                "  {}",
-                dim("It reads the words on stdin and plays them. No quotes needed.")
-            );
-            println!();
-            let said = ask("Command", "kokoro-cli --voice af_heart -")?;
-            config.speech.command = Some(if said.is_empty() {
-                "kokoro-cli --voice af_heart -".to_string()
-            } else {
-                said
-            });
-            chose(config.speech.command.as_deref().unwrap_or(""));
-        }
-        _ => google(&mut config)?,
-    }
-
+    google(&mut config)?;
     let path = crate::config::path()
         .ok_or_else(|| anyhow::anyhow!("no home directory to write a config into"))?;
     write(&path, &config)?;
@@ -128,7 +86,7 @@ pub fn run() -> anyhow::Result<()> {
 
     open();
     look(&mut config)?;
-    listen(&mut config)?;
+    aloud();
     let path = crate::config::path()
         .ok_or_else(|| anyhow::anyhow!("no home directory to write a config into"))?;
     write(&path, &config)?;
@@ -282,8 +240,6 @@ fn voice_called(name: &str) -> &str {
 /// reader is in a window with no terminal to read the error in. Finding out
 /// here costs one request.
 fn google(config: &mut Config) -> anyhow::Result<()> {
-    config.speech.engine = deck_core::config::Engine::Google;
-
     println!();
     println!(
         "  {}",
@@ -402,93 +358,31 @@ fn google(config: &mut Config) -> anyhow::Result<()> {
     Ok(())
 }
 
-/// Which voice reads a deck aloud.
+/// Say that a deck can be read aloud, and where that is set up.
 ///
-/// A deck can be walked live — `l` in the window — and that is worth one
-/// question here, because the answer is a download rather than a setting and
-/// nobody finds it by looking.
-///
-/// The gap between the voices a machine has by default and the neural ones is
-/// most of the difference between listening to a deck and switching it off after
-/// a paragraph. Deck would rather say that plainly than pick a compact voice,
-/// let it sound like 1998, and have the reader conclude the feature is bad.
-fn listen(config: &mut Config) -> anyhow::Result<()> {
-    if !cfg!(target_os = "macos") {
-        return Ok(());
-    }
-    let voices = crate::speech::voices();
-    if voices.is_empty() {
-        return Ok(());
-    }
-
+/// The voice is its own command because it asks for a key, and a reader who
+/// never hears about it here never finds it at all — `deck setup` is the one
+/// thing they are told to run.
+fn aloud() {
     println!();
     rule();
     println!();
     println!("  {}", bold("Reading aloud"));
     println!(
         "  {}",
-        dim("`l` goes live: the rail slides in, and the narration is read to you.")
+        dim("`w` in the window reads the deck to you in one of Google's neural")
     );
-    println!("  {}", dim("Spoken on this machine —"));
     println!(
         "  {}",
-        dim("nothing about your code is sent anywhere to be turned into sound.")
+        dim("voices, and the code lights up under the sentence being said.")
     );
     println!();
-
-    let natural: Vec<_> = voices.iter().filter(|voice| voice.natural()).collect();
-    if natural.is_empty() {
-        // The honest version. There is nothing to choose between here, and
-        // offering a list of compact voices would imply there was.
-        println!(
-            "  {}",
-            dim("Only the compact voices are installed, and they sound it.")
-        );
-        println!("  {}", dim("The good ones are a free download:"));
-        println!();
-        println!("    {}", accent(crate::speech::WHERE));
-        println!();
-        println!(
-            "  {}",
-            dim("Then `deck setup` again and it will be offered here.")
-        );
-        println!(
-            "  {}",
-            dim("Or point deck at any other voice in ~/.deck/config.toml:")
-        );
-        println!("    {}", accent("[speech]"));
-        println!("    {}", accent("engine  = \"command\""));
-        println!(
-            "    {}",
-            accent("command = \"kokoro-cli --voice af_heart -\"")
-        );
-        return Ok(());
-    }
-
-    let best = natural[0].name.clone();
-    println!("  {}", dim(&format!("Found {}.", list_voices(&natural))));
+    println!("    {}", accent("deck walk"));
     println!();
-    if ask_yes(&format!("Read decks with {best}?"))? {
-        config.speech.voice = Some(best.clone());
-        chose(&format!("{best}, at {} words a minute", config.speech.rate));
-    } else {
-        config.speech.voice = None;
-        chose("the system voice");
-    }
-    // Either way a voice has been chosen, which is what puts `w` in the
-    // window's legend.
-    config.speech.ready = true;
-    Ok(())
-}
-
-/// The voices found, as a sentence.
-fn list_voices(voices: &[&crate::speech::Installed]) -> String {
-    let named: Vec<&str> = voices.iter().take(3).map(|one| one.name.as_str()).collect();
-    match voices.len() {
-        0 => String::new(),
-        n if n > 3 => format!("{}, and {} more", named.join(", "), n - 3),
-        _ => named.join(", "),
-    }
+    println!(
+        "  {}",
+        dim("Sets the key and picks the voice, once. Everything else works without it.")
+    );
 }
 
 /// Offer to put the skill where each agent will read it.
