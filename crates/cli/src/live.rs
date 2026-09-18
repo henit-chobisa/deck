@@ -956,6 +956,11 @@ fn private_dir(path: &Path) -> Result<(), std::io::Error> {
 }
 
 fn private_file(path: &Path) -> Result<(), std::io::Error> {
+    // Nothing to set off unix, where the parameter would otherwise read as
+    // unused — which is an error under `-D warnings`, and so a red Windows run
+    // on a tree that builds here.
+    #[cfg(not(unix))]
+    let _ = path;
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt as _;
