@@ -489,6 +489,21 @@ never sees the direction, only the light.
 > [point 118-121] The comparison is right here, and it is `!=`. `[pause]`
 > [point 140] Then the result is thrown away on this line.
 
+**One point can hold a file and a picture at once.** `[point 106-110 checkout]`
+lights those lines *and* the block called `checkout`, in the same breath — the
+code, and where it sits in the flow. A space or a comma between them, either
+order. This is the thing a deck can do that neither a diff nor a diagram can,
+and a walk through a flow is mostly made of it:
+
+> [point q] The request stops at the installed check — [pause] [point 44-46 q]
+> and this is that check, returning early with nothing said to anybody.
+
+One file and one picture, never two files. A reader can hold a place in the code
+and a place in the flow at the same time; two files lit at once is a reader
+choosing which one to read, which is the choice you were supposed to make for
+them. Two line ranges in one point is refused outright and stays on the page as
+words.
+
 **Write it bare — never in backticks.** `` [point 106] `` reads well in a file
 and it is wrong here: the point comes out and the chip stays, which is an empty
 grey box mid-sentence. Deck strips those backticks now, but the habit is the

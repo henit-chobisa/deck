@@ -360,6 +360,9 @@ mod tests {
         // addressed by a sentence at all.
         for said in [
             "A picture is a pane, so it takes a name and a point like any other",
+            "One point can hold a file and a picture at once",
+            "[point 106-110 checkout]",
+            "One file and one picture, never two files",
             "[point q]",
             "--diagram 'connect.json [flow] where the click stops'",
             "When the answer is a shape rather than a file, draw it there and then",
@@ -448,11 +451,15 @@ mod tests {
     #[test]
     fn the_skill_never_wraps_a_point_in_a_code_chip() {
         // Thirteen of its own examples did, which is where agents learnt it.
-        // `[point …]` with an ellipsis is prose about the syntax, not a point.
-        let wrapped = SKILL
-            .match_indices("`[point ")
-            .filter(|(at, _)| !SKILL[*at..].starts_with("`[point …]`"))
-            .count();
+        // Only the examples are checked: the prose quotes the syntax to talk
+        // about it, and a chip there is typography rather than a direction
+        // anybody copies into a `say`.
+        let wrapped: usize = SKILL
+            .split("```bash")
+            .skip(1)
+            .filter_map(|block| block.split("```").next())
+            .map(|block| block.matches("`[point ").count())
+            .sum();
         assert_eq!(wrapped, 0, "an example still writes a point in backticks");
     }
 

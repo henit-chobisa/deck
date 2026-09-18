@@ -144,7 +144,8 @@ Three bracketed directives may also appear in `say`, and a client that does not
 implement them must take them out rather than show them: `[pause]`, `[pause
 short]` and `[pause long]` are beats for a voice; `[point …]` says where to
 light while the words after it are read — file line numbers, `[point 106-110]`
-or `[point 140]`, or the id of a diagram block, `[point checkout]`; and
+or `[point 140]`, the id of a diagram block, `[point checkout]`, or one of each
+to light a file and a picture together, `[point 106-110 checkout]`; and
 `[a-name]` matching a ref's `name` is that pane, which a client may render as
 something the reader can press. A directive it cannot parse is prose and stays
 as written.

@@ -273,35 +273,61 @@ pub const POINT: &str = "[point ";
 
 /// Where a point lands.
 ///
-/// A deck's two kinds of pane answer to two kinds of address. Lines are the
-/// file's own, as the gutter prints them. A block is a node's id from the
-/// diagram the agent wrote, which is the only name it has that a sentence can
-/// carry.
+/// A deck's two kinds of pane answer to two kinds of address, and one sentence
+/// may hold both: lines of a file, a block of a picture, or a file and a
+/// picture together — *this code, and where it sits in the flow*. That pairing
+/// is the thing a deck can do that neither a diff nor a diagram can, so it is
+/// one point rather than two that fight over the light.
+///
+/// Never more than one of each. A reader can hold one file and one picture at
+/// once; two files lit at the same time is a reader choosing which to read.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Spot {
+pub struct Spot {
     /// Lines of a file, lit in whichever pane is showing them.
-    Lines(LineRange),
+    pub lines: Option<LineRange>,
     /// One block of a picture, by the id the diagram gave it.
-    Block(String),
+    pub block: Option<String>,
 }
 
-/// `106-110`, `106` on its own, or the id of a block in a picture.
+/// `106-110`, `106` on its own, the id of a block, or one of each.
+///
+/// `[point 106-110 checkout]` lights the lines and the block together. The
+/// parts may be separated by a space or a comma, and either may come first.
 ///
 /// Anything else is not a point. An agent writing about pointing is writing
 /// prose, and prose is left exactly as it was rather than swallowed by a
-/// directive it never meant to give — so a payload with a space in it, or
-/// punctuation a node id could not have, stays on the page as words.
+/// directive it never meant to give — so a word that is not a block id, or a
+/// second file range, leaves the whole thing on the page as words.
 fn spot(text: &str) -> Option<Spot> {
-    let text = text.trim();
-    let (first, last) = text.split_once('-').unwrap_or((text, text));
-    if let (Ok(first), Ok(last)) = (first.trim().parse(), last.trim().parse()) {
-        return Some(Spot::Lines(LineRange::new(first, last)));
+    let mut found = Spot {
+        lines: None,
+        block: None,
+    };
+    let mut parts = 0;
+    for part in text
+        .split([',', ' '])
+        .filter(|part| !part.trim().is_empty())
+    {
+        let part = part.trim();
+        parts += 1;
+        let (first, last) = part.split_once('-').unwrap_or((part, part));
+        if let (Ok(first), Ok(last)) = (first.trim().parse(), last.trim().parse()) {
+            if found.lines.is_some() {
+                return None; // two files is two things to read
+            }
+            found.lines = Some(LineRange::new(first, last));
+            continue;
+        }
+        let blocklike = !part.is_empty()
+            && part
+                .chars()
+                .all(|ch| ch.is_alphanumeric() || ch == '-' || ch == '_');
+        if !blocklike || found.block.is_some() {
+            return None;
+        }
+        found.block = Some(part.to_string());
     }
-    let blocklike = !text.is_empty()
-        && text
-            .chars()
-            .all(|ch| ch.is_alphanumeric() || ch == '-' || ch == '_');
-    blocklike.then(|| Spot::Block(text.to_string()))
+    (parts > 0 && parts <= 2).then_some(found)
 }
 
 /// A point with the code chip an agent wrapped it in taken off.
@@ -1026,8 +1052,20 @@ mod tests {
         // block is the id the agent gave it in the file.
         let said = "first the call. [point checkout] then the write. [point 140] and done.";
         let out = pointed(said, 420);
-        assert_eq!(out[1].point, Some(Spot::Block("checkout".into())));
-        assert_eq!(out[2].point, Some(Spot::Lines(LineRange::new(140, 140))));
+        assert_eq!(
+            out[1].point,
+            Some(crate::prose::Spot {
+                lines: None,
+                block: Some("checkout".into())
+            })
+        );
+        assert_eq!(
+            out[2].point,
+            Some(crate::prose::Spot {
+                lines: Some(deck_core::LineRange::new(140, 140)),
+                block: None
+            })
+        );
 
         // And prose about pointing is still prose: a payload with a space in it
         // is a sentence somebody wrote, not a direction they gave.
@@ -1041,6 +1079,34 @@ mod tests {
     }
 
     #[test]
+    fn one_point_can_hold_a_file_and_a_picture_at_once() {
+        // The thing neither a diff nor a diagram can do on its own: these lines,
+        // and where they sit in the flow, lit in the same breath.
+        let out = pointed("so here. [point 106-110 checkout] both at once.", 420);
+        let both = out[1].point.clone().expect("a point");
+        assert_eq!(both.lines, Some(LineRange::new(106, 110)));
+        assert_eq!(both.block.as_deref(), Some("checkout"));
+
+        // Either order, and a comma is as good as a space.
+        let swapped = pointed("[point checkout, 106] a.", 420)[0]
+            .point
+            .clone()
+            .expect("a point");
+        assert_eq!(swapped.lines, Some(LineRange::new(106, 106)));
+        assert_eq!(swapped.block.as_deref(), Some("checkout"));
+
+        // Two files is two things to read, so it is not a point at all — the
+        // words stay on the page rather than half of them being obeyed.
+        let refused = pointed("the [point 106 140] thing.", 420);
+        assert_eq!(refused.len(), 1);
+        assert!(
+            refused[0].text.contains("[point 106 140]"),
+            "{}",
+            refused[0].text
+        );
+    }
+
+    #[test]
     fn the_narration_is_cut_where_the_pointing_changes() {
         let said = "first, the call. [point 106-110] then the guard. [point 140] \
                     and then nothing happens.";
@@ -1048,10 +1114,19 @@ mod tests {
 
         assert_eq!(out.len(), 3, "one piece per point, plus what came before");
         assert_eq!(out[0].point, None, "nothing was pointed at yet");
-        assert_eq!(out[1].point, Some(Spot::Lines(LineRange::new(106, 110))));
+        assert_eq!(
+            out[1].point,
+            Some(crate::prose::Spot {
+                lines: Some(deck_core::LineRange::new(106, 110)),
+                block: None
+            })
+        );
         assert_eq!(
             out[2].point,
-            Some(Spot::Lines(LineRange::new(140, 140))),
+            Some(crate::prose::Spot {
+                lines: Some(deck_core::LineRange::new(140, 140)),
+                block: None
+            }),
             "one line"
         );
         assert!(out[1].text.starts_with("then the guard"), "{}", out[1].text);

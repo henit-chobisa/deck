@@ -1673,43 +1673,38 @@ impl DeckView {
         // A picture is addressed by the id of a block, because a diagram has no
         // lines to name. Either way the pane is chosen by what it is already
         // showing rather than by its place in the row.
-        let lines = match &at {
-            Some(crate::prose::Spot::Lines(lines)) => Some(*lines),
-            _ => None,
-        };
-        let block = match &at {
-            Some(crate::prose::Spot::Block(id)) => Some(id.clone()),
-            _ => None,
-        };
-        let owner = lines
-            .and_then(|at| {
-                self.panes.iter().position(|pane| {
-                    pane.code().is_some_and(|code| {
-                        let lit = code.spotlight_range();
-                        lit.first <= at.last && at.first <= lit.last
-                    })
+        let lines = at.as_ref().and_then(|at| at.lines);
+        let block = at.as_ref().and_then(|at| at.block.clone());
+        // Two owners, because one point may hold a file and a picture at once:
+        // the code, and where it sits in the flow. Each half finds its own pane
+        // by what that pane is already showing.
+        let reading = lines.and_then(|at| {
+            self.panes.iter().position(|pane| {
+                pane.code().is_some_and(|code| {
+                    let lit = code.spotlight_range();
+                    lit.first <= at.last && at.first <= lit.last
                 })
             })
-            .or_else(|| {
-                let id = block.as_deref()?;
-                self.panes
-                    .iter()
-                    .position(|pane| pane.chart().is_some_and(|chart| chart.has_block(id)))
-            });
+        });
+        let drawing = block.as_deref().and_then(|id| {
+            self.panes
+                .iter()
+                .position(|pane| pane.chart().is_some_and(|chart| chart.has_block(id)))
+        });
+        let owner = reading.or(drawing);
         // The light is about to land in a pane that is folded away, so the
         // pane comes back. Lighting lines nobody can see is the same as
         // lighting nothing, and a walk that points into a spine has stopped
-        // being a walk.
-        if let Some(owner) = owner
-            && let Some(fold) = self.folds.get_mut(owner)
-        {
-            fold.set(false);
+        // being a walk. Both halves of a pair come back, not only the first.
+        for at in [reading, drawing].into_iter().flatten() {
+            if let Some(fold) = self.folds.get_mut(at) {
+                fold.set(false);
+            }
         }
         let mut moved = false;
         for (ix, pane) in self.panes.iter_mut().enumerate() {
-            let mine = Some(ix) == owner;
             if let Some(code) = pane.code_mut() {
-                let want = if mine { lines } else { None };
+                let want = if Some(ix) == reading { lines } else { None };
                 if code.pointed() != want {
                     code.point_at(want);
                     moved = true;
@@ -1717,7 +1712,7 @@ impl DeckView {
                 continue;
             }
             if let Some(chart) = pane.chart_mut() {
-                let want: Vec<SharedString> = match (mine, block.as_deref()) {
+                let want: Vec<SharedString> = match (Some(ix) == drawing, block.as_deref()) {
                     (true, Some(id)) => vec![SharedString::from(id.to_string())],
                     _ => Vec::new(),
                 };
