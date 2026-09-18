@@ -285,6 +285,38 @@ fn lines(text: &str) -> Option<LineRange> {
     ))
 }
 
+/// A point with the code chip an agent wrapped it in taken off.
+///
+/// `` `[point 106]` `` reads well in a file, so agents write it — and every
+/// example that showed one taught them to. What it leaves is an empty chip on
+/// the page and a stray backtick in the voice's copy, because the narration is
+/// cut into pieces at the point and the pair is split between two of them.
+///
+/// Done before anything else looks at the text, so neither side ever sees it.
+#[must_use]
+pub fn unchipped(say: &str) -> String {
+    let (mut out, mut rest) = (String::with_capacity(say.len()), say);
+    while let Some(at) = rest.find(POINT) {
+        let after = &rest[at + POINT.len()..];
+        let Some(end) = after.find(']') else {
+            break;
+        };
+        let wrapped = rest[..at].ends_with('`')
+            && after[end + 1..].starts_with('`')
+            && lines(&after[..end]).is_some();
+        if wrapped {
+            out.push_str(&rest[..at - 1]);
+            out.push_str(&rest[at..at + POINT.len() + end + 1]);
+            rest = &after[end + 2..];
+        } else {
+            out.push_str(&rest[..at + POINT.len()]);
+            rest = after;
+        }
+    }
+    out.push_str(rest);
+    out
+}
+
 /// The text with every point removed.
 ///
 /// A point is for the code pane. The eye gets the prose and the ear gets the
@@ -347,7 +379,8 @@ pub fn pointed(say: &str, pause: u16) -> Vec<Said> {
     let mut out: Vec<Said> = Vec::new();
     let mut point: Option<LineRange> = None;
     let mut piece = String::new();
-    let mut rest = say;
+    let say = unchipped(say);
+    let mut rest = say.as_str();
 
     while let Some(at) = rest.find(POINT) {
         let after = &rest[at + POINT.len()..];
@@ -777,7 +810,7 @@ fn paragraph(para: &str, keep_beats: bool, said: &mut usize, at: &mut usize) -> 
     // rather than only where the voice is fed, because the band renders from
     // this too and a reader who sees `[point 106]` mid-sentence has been given
     // the stage directions instead of the play.
-    let flowed = unpoint(&para.replace('\n', " "));
+    let flowed = unpoint(&unchipped(&para.replace('\n', " ")));
     // Beats are for the ear. Left in, they render as literal brackets in the
     // middle of a sentence; taken out of the spoken copy, the agent's pacing is
     // lost. So each side gets what it needs from the same source.
@@ -801,6 +834,12 @@ fn paragraph(para: &str, keep_beats: bool, said: &mut usize, at: &mut usize) -> 
             word.push(ch);
             if ch == ' ' {
                 let word = std::mem::take(&mut word);
+                // Whitespace on its own is not a word. It reaches the page as a
+                // token nothing can be seen in, and the voice as a word it
+                // never says.
+                if word.trim().is_empty() {
+                    continue;
+                }
                 let ended = ends_a_sentence(&word);
                 tokens.push(Token {
                     text: SharedString::from(word),
@@ -860,15 +899,31 @@ fn paragraph(para: &str, keep_beats: bool, said: &mut usize, at: &mut usize) -> 
                 continue; // an opener with no closer is just text
             };
 
-            flush(&mut plain, &mut tokens, said, at);
-            rest = &after_open[len + marker.len()..];
+            let body = &after_open[..len];
+            let tail = &after_open[len + marker.len()..];
 
             // Any space after the mark rides along on the token, so the tokens
             // can be laid out with nothing between them.
-            let spacing: String = rest.chars().take_while(|c| *c == ' ').collect();
-            rest = &rest[spacing.len()..];
+            let spacing: String = tail.chars().take_while(|c| *c == ' ').collect();
 
-            let text = format!("{}{spacing}", &after_open[..len]);
+            // A chip with nothing left in it. An agent that writes a point
+            // inside backticks — `[point 106]`, which reads well in a file —
+            // leaves the backticks behind when the point comes out. Rendered,
+            // that is an empty grey box mid-sentence; counted, it is worse: a
+            // word the page has and the voice does not, so the light falls a
+            // word further behind for every one of them.
+            if body.trim().is_empty() {
+                if !plain.ends_with(' ') {
+                    plain.push_str(&spacing);
+                }
+                rest = &tail[spacing.len()..];
+                continue 'outer;
+            }
+
+            flush(&mut plain, &mut tokens, said, at);
+            rest = &tail[spacing.len()..];
+
+            let text = format!("{body}{spacing}");
             let ended = ends_a_sentence(&text);
             tokens.push(Token {
                 text: SharedString::from(text),
@@ -918,6 +973,32 @@ mod tests {
             .map(|token| token.text.to_string())
             .collect();
         assert!(!seen.contains('['), "{seen}");
+    }
+
+    #[test]
+    fn a_point_written_inside_backticks_leaves_no_chip_behind() {
+        // The bug this exists for: the skill's own examples wrote `[point 106]`
+        // with backticks round it, so agents did too. The point came out and an
+        // empty code chip stayed — a grey box in the middle of a sentence, and
+        // a word the band counted that the voice never said, which is the light
+        // falling a word further behind for every one of them.
+        let said = "the guard is here. `[point 106-110]` and it waves it through.";
+        let paras = parse(said);
+        let tokens: Vec<&Token> = paras.iter().flat_map(|para| &para.tokens).collect();
+        assert!(
+            tokens.iter().all(|token| !token.text.trim().is_empty()),
+            "{:?}",
+            tokens.iter().map(|t| t.text.as_ref()).collect::<Vec<_>>()
+        );
+        assert!(
+            tokens.iter().all(|token| token.mark != Some(Mark::Code)),
+            "and no chip is left to draw"
+        );
+
+        // The band counts what the voice says, which is what keeps them level.
+        let heard = pointed(said, 420);
+        let words: usize = heard.iter().map(|piece| piece.words).sum();
+        assert_eq!(words, tokens.len(), "{heard:#?}");
     }
 
     #[test]
