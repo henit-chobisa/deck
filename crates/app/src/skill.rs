@@ -558,13 +558,107 @@ mod tests {
         assert!(SKILL.contains(r#"{"asked": …}"#));
         assert!(
             SKILL.contains("Answer fast"),
-            "somebody is watching a panel that says thinking"
+            "somebody is watching a panel with a bar filling up in it"
         );
         assert!(
             SKILL.contains("Two or three sentences"),
             "they are listening, and cannot skim"
         );
         assert!(SKILL.contains("subagent"), "hand off the slow part");
+        assert!(
+            SKILL.contains("Most remarks will not wake you"),
+            "a quiet waiter is a reader reading, not a reader with nothing to say"
+        );
+    }
+
+    #[test]
+    fn the_skill_tells_an_agent_to_say_what_it_is_doing() {
+        // The window has no way to know an agent is working, so a silence and
+        // a crash look the same to it and it eventually has to say so. An
+        // agent that has never heard of this verb is one whose reader watches
+        // `no answer yet` while it is halfway through the answer.
+        assert!(SKILL.contains("Say what you are doing while you do it"));
+        assert!(SKILL.contains("deck doing"));
+        assert!(
+            SKILL.contains("Every note restarts that clock"),
+            "why sending them is worth the tool call"
+        );
+        assert!(
+            SKILL.contains("Notes are not turns"),
+            "or the answer arrives as a status line nobody hears"
+        );
+    }
+
+    #[test]
+    fn the_skill_names_panes_instead_of_placing_them() {
+        // "The left pane" is decided by the window's width after the sentence
+        // was written, and was wrong often enough that a reader filed it.
+        assert!(SKILL.contains("Name panes; never place them"));
+        assert!(SKILL.contains("[retry]"));
+        assert!(
+            !SKILL.contains("in the second pane"),
+            "the skill's own example must not do the thing it forbids"
+        );
+    }
+
+    #[test]
+    fn the_skill_says_how_to_explain_while_pointing() {
+        // The first answers given with pointing read the code out a line at a
+        // time, moved the light every sentence, and answered "again" by saying
+        // the same thing slower. A reader called it garbage, and it was.
+        assert!(SKILL.contains("Do not read the code out"));
+        assert!(SKILL.contains("Start with the problem, in their world"));
+        assert!(
+            SKILL.contains("The idea and the code, together"),
+            "an analogy that never names the code leaves the reader nothing to find"
+        );
+        assert!(
+            SKILL.contains("Every point has to earn itself"),
+            "a light with nothing said under it is noise"
+        );
+        assert!(
+            SKILL.contains("If you cannot say what is under the light, do not move the light"),
+            "the rule needs the line that makes it a rule"
+        );
+        assert!(
+            SKILL.contains("Two tests, before the light moves"),
+            "a rule an agent cannot check while writing is a wish"
+        );
+        assert!(SKILL.contains("not one for each sentence"));
+        assert!(SKILL.contains("Never spell code aloud"));
+        assert!(
+            SKILL.contains("say what it means to do"),
+            "not spelling code must never become not explaining it"
+        );
+        assert!(
+            SKILL.contains("means the way in was wrong, not the speed"),
+            "a repeated question is a signal to change angle"
+        );
+        assert!(SKILL.contains("One `deck say` for each answer"));
+        assert!(
+            SKILL.contains("bring it in"),
+            "an agent that thinks it is stuck with the authored panes will refuse the question"
+        );
+        assert!(
+            SKILL.contains("When the answer is code, show the code"),
+            "an alternative described in sentences is homework"
+        );
+    }
+
+    #[test]
+    fn the_skill_teaches_the_agent_to_point_as_it_talks() {
+        // Without this an agent moves the whole spotlight for every sentence,
+        // which takes the code out from under the reader, or it moves nothing
+        // and narrates twenty lines with no way of saying which one it means.
+        assert!(SKILL.contains("[point 106-110]"));
+        assert!(
+            SKILL.contains("not when you sent the command"),
+            "or an agent will expect the light to follow its own pace"
+        );
+        assert!(
+            SKILL.contains("the file's own line numbers"),
+            "counting from the top of the shown range is the obvious wrong guess"
+        );
     }
 
     #[test]
