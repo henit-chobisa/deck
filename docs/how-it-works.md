@@ -51,6 +51,12 @@ request returns the recorded outcome, while different content is a conflict.
 A request file landing is never success. Later `say` and reader-event commands
 will use the same generation-scoped mailbox.
 
+`deck doing <deck> --text …` goes down that mailbox too, and is the only message
+in it that changes nothing durable: it replaces one line in the panel and is
+discarded when the next note or the answer arrives. It exists because the window
+has no other evidence that an agent is working — a busy agent and a dead one are
+the same silence from here — and so it is what the waiting label measures from.
+
 ## Four crates
 
 | crate | knows about |

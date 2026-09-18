@@ -279,15 +279,21 @@ tone from your prose.
 ### What the agent can do while you watch
 
 ```sh
-deck show <deck> --ref "src/view.rs:106-110"   # move my eyes here
-deck say  <deck> --text "…"                    # say something, spoken if you have a voice
-deck next <deck> --after <cursor>              # block until the reader does something
+deck show  <deck> --ref "src/view.rs:106-110"  # move my eyes here
+deck say   <deck> --text "…"                   # say something, spoken if you have a voice
+deck doing <deck> --text "reading the retry loop"  # what it is doing, while it does it
+deck next  <deck> --after <cursor>             # block until the reader does something
 ```
 
 All shell commands, so this works the same with Claude Code, Codex, Cursor and
 Amp — the same reason the other verbs do. `deck next` returns a cursor, so an
 agent that was busy or restarting reads from where it got to rather than losing
 what you pressed while it was away.
+
+The panel cannot tell a working agent from a dead one, so `deck doing` is how it
+finds out: the words go where the waiting label is, and each one restarts the
+two minutes of silence after which deck admits it has no idea. Notes are not
+turns — nothing is read aloud, and nothing reaches the review.
 
 Movement is yours the moment you take it. Scroll, select, or start typing and
 the agent stops moving you; the rail says **paused** while that holds. It lapses
