@@ -801,6 +801,11 @@ impl DeckView {
     /// or no voice at all, still gets the sentence in the rail and in the
     /// transcript, which is where the conversation actually lives.
     fn said_live(&mut self, text: &str, aloud: bool, cx: &mut Context<Self>) {
+        // The beats are for the ear. The agent writes one copy and the panel
+        // showed it verbatim, so the reader watched "[pause]" scroll past in
+        // the middle of a sentence — which is the one thing beats exist not to
+        // do.
+        let seen = crate::prose::unbeat(text);
         let anchor = self.pinned().map(|about| {
             Self::remark(
                 about,
@@ -814,7 +819,7 @@ impl DeckView {
                 deck_core::What::Said,
                 None,
                 deck_core::When::Queue,
-                text,
+                &seen,
                 anchor,
             );
         }
@@ -1651,6 +1656,10 @@ impl DeckView {
         }
         let remark = Self::remark(about, said, kind, self.composing_when);
         let said = remark.text.clone();
+        // Written words expect an answer, whichever way they waited for the
+        // floor. Without this the panel said nothing back and a reader who had
+        // just typed a question could not tell it had been sent.
+        self.asked_at = Some(std::time::Instant::now());
         self.note(
             deck_core::What::Wrote,
             Some(kind),
@@ -2466,12 +2475,20 @@ impl DeckView {
                 .v_flex()
                 .flex_none()
                 .key_context("DeckComposer")
-                .pl(px(16.))
-                .pr(px(16.))
-                .pt(px(13.))
-                .pb(px(14.))
-                .border_t_1()
-                .border_color(paint(self.palette.edge))
+                // Sized for whichever it is in. The panel can be two hundred
+                // points wide; window padding inside it leaves no room to type.
+                .map(|this| {
+                    if self.walking.is_some_and(|walking| !walking.going) {
+                        this.pt(px(9.)).pb(px(2.))
+                    } else {
+                        this.pl(px(16.))
+                            .pr(px(16.))
+                            .pt(px(13.))
+                            .pb(px(14.))
+                            .border_t_1()
+                            .border_color(paint(self.palette.edge))
+                    }
+                })
                 // The handlers live here, not only on the root. An action
                 // dispatches up the focus chain from the element that has the
                 // keyboard, and the composer is the nearest thing to it that
@@ -2484,10 +2501,11 @@ impl DeckView {
                 .child(
                     div()
                         .h_flex()
+                        .flex_wrap()
                         .justify_between()
-                        .gap(px(12.))
+                        .gap(px(8.))
                         .font_family(cx.theme().mono_font_family.clone())
-                        .text_size(px(11.5))
+                        .text_size(px(10.5))
                         .text_color(paint(self.palette.muted))
                         .child(where_at)
                         .children(ref_id),
@@ -2497,24 +2515,28 @@ impl DeckView {
                 // it was set smaller than every other piece of prose in the
                 // window — which read as a footnote to the deck rather than as
                 // the half of it that is theirs.
-                .child(
-                    div()
-                        .text_size(px(13.2))
-                        .line_height(px(20.))
-                        .child(Textarea::new(state).h(px(72.))),
-                )
+                .child(div().text_size(px(13.2)).line_height(px(20.)).child(
+                    Textarea::new(state).h(px(
+                        if self.walking.is_some_and(|walking| !walking.going) {
+                            56.
+                        } else {
+                            72.
+                        },
+                    )),
+                ))
                 // Under the box, where a hint belongs: beside the location it
                 // competes with the one thing the reader needs to read.
                 .child(
                     div()
                         .h_flex()
+                        .flex_wrap()
                         .items_center()
                         .justify_between()
-                        .gap(px(12.))
+                        .gap(px(8.))
                         .child(
                             div()
                                 .font_family(cx.theme().mono_font_family.clone())
-                                .text_size(px(11.))
+                                .text_size(px(10.))
                                 .text_color(paint(self.palette.muted))
                                 .h_flex()
                                 .gap(px(14.))
@@ -2895,6 +2917,12 @@ impl DeckView {
                             .children(lines),
                     )
                     .children(self.render_pending())
+                    // The composer belongs here while live, not floating over
+                    // the code. A reader writing a reply is talking to the
+                    // panel, and sending them to a box on top of the file they
+                    // are reading pulls their eye off the thing they are
+                    // replying about.
+                    .children(self.render_composer(cx))
                     .child(self.render_reactions(cx)),
             )
             .into_any_element()
@@ -2964,6 +2992,7 @@ impl DeckView {
 
         div()
             .h_flex()
+            .flex_wrap()
             .flex_none()
             .items_center()
             .gap(px(1.))
@@ -3324,7 +3353,9 @@ impl Render for DeckView {
                     })
                     .into_any_element()
             })
-            .children(self.render_composer(cx))
+            // Only when there is no panel to hold it. Live gives the
+            // composer a home beside the conversation it belongs to.
+            .when(live <= 0., |this| this.children(self.render_composer(cx)))
             .child(self.render_strip(cx))
     }
 }

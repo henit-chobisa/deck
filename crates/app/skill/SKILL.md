@@ -406,6 +406,35 @@ and without one they are still holding your third fact when you start the fifth.
 "now look at". Say the thing. A voice reading filler is a voice the reader turns
 off, and they cannot skim past it the way they would on a page.
 
+## When they answer back
+
+A live walk makes `deck wait` return before the review is finished. Instead of a
+review you get `{"asked": …}` — what the reader said, and what was on screen when
+they said it. Answer with `deck say`, then call `deck wait` again. Same verb, and
+the loop continues until they submit.
+
+**Answer fast. Being right slowly is worse than being useful now.** Somebody is
+sitting in front of a panel that says `thinking…`. A reply in three seconds that
+needs a follow-up beats a perfect one in forty, because they are still looking at
+the thing they asked about.
+
+So do not re-investigate. You wrote this deck; the answer is almost always
+already in what you read to write it. If the question genuinely needs new work,
+say so in one line first — *"looking"* — and then go and look. Silence is the one
+thing that reads as broken.
+
+**Hand the slow part to a subagent if you must.** If answering means real
+digging, spawn one with the context you already have and let it work while you
+keep the conversation alive. Do not make them wait on your whole investigation.
+
+**Two or three sentences.** They are listening, not reading — they cannot skim
+and they cannot glance back. Say the thing, stop, and let them ask the next one.
+The back-and-forth is the feature; a lecture in reply to a question is the thing
+it replaces.
+
+And move their eyes while you answer. `deck show` puts the spotlight on what you
+are talking about, which is the half of an answer that prose cannot carry.
+
 ## When it is serious, send them to go and look
 
 Sometimes the right end to a group is not another sentence. It is: **go and try this, and

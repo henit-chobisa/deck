@@ -550,6 +550,24 @@ mod tests {
     }
 
     #[test]
+    fn the_skill_tells_an_agent_how_to_answer_live() {
+        // The loop is `deck wait` returning a question rather than a review,
+        // and an agent that does not know that sits waiting for a submit that
+        // will not come until the conversation is over.
+        assert!(SKILL.contains("When they answer back"));
+        assert!(SKILL.contains(r#"{"asked": …}"#));
+        assert!(
+            SKILL.contains("Answer fast"),
+            "somebody is watching a panel that says thinking"
+        );
+        assert!(
+            SKILL.contains("Two or three sentences"),
+            "they are listening, and cannot skim"
+        );
+        assert!(SKILL.contains("subagent"), "hand off the slow part");
+    }
+
+    #[test]
     fn the_skill_teaches_the_beats_a_voice_understands() {
         // Written in the prose and never drawn: deck takes them out of the band
         // and hands them to the voice, which judges each length from context.
