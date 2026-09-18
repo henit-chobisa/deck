@@ -59,33 +59,27 @@ pub struct Speech {
     /// in their headphones, so this turns the sound off and leaves everything
     /// else.
     pub aloud: bool,
-    /// What turns text into sound.
+    /// Read and ignored: what used to choose between synthesisers.
     ///
-    /// `system` is whatever the machine already has and needs no setup.
-    /// `command` hands the text to a program of your choosing, which is the
-    /// whole answer to "which provider": deck never has to grow a backend for
-    /// Kokoro, Fish Audio, ElevenLabs or whatever ships next, because a shell
-    /// command reaches all of them and you decide what your code is worth
-    /// sending anywhere.
-    pub engine: Engine,
+    /// Deck speaks with Google's Chirp 3: HD and nothing else. The field stays
+    /// because this section refuses fields it does not know, and a config
+    /// written before that still says `engine = "system"` — dropping it would
+    /// fail the whole file and quietly take the reader's colours with it. It is
+    /// never written back, so it leaves on the next `deck walk`.
+    #[serde(default, skip_serializing)]
+    pub engine: Option<String>,
     /// The key for a cloud engine.
     ///
     /// `DECK_SPEECH_KEY` is read first and is the better place for it: this
     /// file is plain text, and a key in it is a key in every backup.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub key: Option<String>,
-    /// The program to pipe narration into, when `engine = "command"`.
-    ///
-    /// Reads the text on stdin and plays it. Split on spaces, so quote nothing:
-    /// `kokoro-cli --voice af_heart -`.
-    #[serde(skip_serializing_if = "Option::is_none")]
+    /// Read and ignored, like [`Speech::engine`]: the program narration used to
+    /// be piped into.
+    #[serde(default, skip_serializing)]
     pub command: Option<String>,
-    /// Which system voice to use. The system default when unset.
-    ///
-    /// Worth setting. The voices installed by default are the compact ones,
-    /// which are intelligible and plainly synthetic; the neural voices are a
-    /// free download and are the difference between listening to a deck and
-    /// enduring one.
+    /// Which Chirp 3: HD voice reads the deck, as Google names it —
+    /// `en-US-Chirp3-HD-Kore`. Chosen by `deck walk`, which lists them.
     pub voice: Option<String>,
     /// Words per minute.
     ///
@@ -107,7 +101,7 @@ impl Default for Speech {
         Self {
             ready: false,
             aloud: true,
-            engine: Engine::System,
+            engine: None,
             command: None,
             key: None,
             voice: None,
@@ -119,24 +113,6 @@ impl Default for Speech {
             pause: 420,
         }
     }
-}
-
-/// What turns narration into sound.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case")]
-pub enum Engine {
-    /// Whatever the machine already has. Works with nothing installed.
-    #[default]
-    System,
-    /// A program of the reader's choosing, fed on stdin.
-    Command,
-    /// Google Cloud Text-to-Speech.
-    ///
-    /// The neural voices, and the only tier that sounds like a person reading.
-    /// Chirp 3: HD carries a recurring free allowance that covers ordinary use,
-    /// and it is the same voice on every platform — which matters most on
-    /// Windows, where there is no system synthesiser at all.
-    Google,
 }
 
 impl Speech {
@@ -154,10 +130,11 @@ impl Speech {
     ///
     /// The flag is written by `deck walk`. A config from before it existed has
     /// no flag and still has a voice in it, and that reader has plainly set one
-    /// up — so a key or a voice counts as having answered the question.
+    /// up — so a key or a voice counts as having answered the question. The key
+    /// can also be in the environment, which is the better place for it.
     #[must_use]
     pub fn offered(&self) -> bool {
-        self.aloud && (self.ready || self.key.is_some() || self.voice.is_some())
+        self.aloud && (self.ready || self.secret().is_some() || self.voice.is_some())
     }
 
     /// The rate, held inside what a voice will actually do.

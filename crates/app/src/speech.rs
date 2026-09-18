@@ -6,18 +6,19 @@
 //! What a reader gets from this is two channels that do not compete: the code
 //! in front of their eyes, the argument in their ears.
 //!
-//! # Why the system voice and not a good one
+//! # Why one voice and not a choice of them
 //!
-//! The genuinely natural voices are all services, and a narration is a
-//! description of somebody's unreleased code. Turning it into a sound file
-//! means uploading it, and that is not a trade deck can make on a reader's
-//! behalf for a nicer timbre. So: whatever the machine already has.
+//! Deck used to speak with whatever the machine already had, and to offer a
+//! command to pipe the words into instead. Both are gone. The system voices are
+//! the reason people switch narration off after a paragraph, and an engine
+//! nobody picks is an engine nobody tests: three paths through this file, two of
+//! which could not be timed exactly, for one that could.
 //!
-//! That is not the compromise it sounds like. The neural voices Apple ships are
-//! a free download and are very good; the ones installed by default are the
-//! compact ones, and the difference between the two is most of the difference
-//! between listening to a deck and enduring one. Deck says so in setup rather
-//! than quietly sounding bad.
+//! So: Google's Chirp 3: HD, rendered ahead, timed from the sound itself. That
+//! is the trade and it is worth naming — the narration is sent to Google to be
+//! turned into sound. The narration, not the code: the prose the agent wrote
+//! about it. It happens only once a key is set up, and a deck with no key is a
+//! deck that still walks, in silence.
 //!
 //! # Why a process and not a library
 //!
@@ -29,13 +30,13 @@
 use std::collections::VecDeque;
 use std::io::{Seek as _, Write as _};
 use std::path::{Path, PathBuf};
-use std::process::{Child, Command, Stdio};
+use std::process::{Child, Command};
 use std::sync::atomic::{AtomicU64, Ordering as AtomicOrdering};
 use std::sync::mpsc::{Receiver, TryRecvError};
 use std::time::{Duration, Instant};
 
 use deck_core::LineRange;
-use deck_core::config::{Engine, Speech};
+use deck_core::config::Speech;
 use gpui_kit::{App, Global};
 
 use crate::prose::Said;
@@ -61,102 +62,6 @@ pub fn asked(cx: &App) -> Speech {
     cx.try_global::<Asked>()
         .map_or_else(Speech::default, |asked| asked.0.clone())
 }
-
-/// How good a voice is, which the system says in its name.
-///
-/// Three tiers and they are genuinely different models, not marketing. Compact
-/// is what ships by default and is what people mean when they say a computer
-/// voice. Enhanced is a real jump. Premium is a bigger model again, and is the
-/// one worth the download.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub enum Grade {
-    /// The best the system offers.
-    Premium,
-    /// Neural, and a long way past compact.
-    Enhanced,
-    /// Installed by default, and it sounds like it.
-    Compact,
-}
-
-/// A voice the machine has, and how good it is.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Installed {
-    /// Its name, as the synthesiser wants it back.
-    pub name: String,
-    /// Which model it is.
-    pub grade: Grade,
-}
-
-impl Installed {
-    /// Whether this is one of the neural voices.
-    ///
-    /// The line deck actually cares about: above it there is a voice worth
-    /// offering, below it there is only a reason to send somebody to the
-    /// download page.
-    #[must_use]
-    pub fn natural(&self) -> bool {
-        self.grade != Grade::Compact
-    }
-}
-
-/// Every English voice installed, best first.
-///
-/// English only, because that is the language the narration is in. A machine
-/// set up in another language still has its English voices; picking a voice by
-/// the system locale would read the prose with the wrong phonemes.
-#[must_use]
-pub fn voices() -> Vec<Installed> {
-    let Ok(out) = Command::new("say").arg("-v").arg("?").output() else {
-        return Vec::new();
-    };
-    listed(&String::from_utf8_lossy(&out.stdout))
-}
-
-/// [`voices`], against the text the synthesiser printed.
-///
-/// Split out because this is the part that can rot. The listing is a column
-/// layout meant for a person, its quality suffix is the only thing marking a
-/// voice as worth using, and both are Apple's to change — which they have.
-fn listed(out: &str) -> Vec<Installed> {
-    let mut found: Vec<Installed> = out
-        .lines()
-        .filter_map(|line| {
-            // `Ava (Enhanced)      en_US    # Hello! My name is Ava.`
-            let said = line.split('#').next()?.trim_end();
-            let (name, locale) = said.rsplit_once(char::is_whitespace)?;
-            locale.starts_with("en").then(|| Installed {
-                grade: if name.contains("(Premium)") {
-                    Grade::Premium
-                } else if name.contains("(Enhanced)") {
-                    Grade::Enhanced
-                } else {
-                    Grade::Compact
-                },
-                name: name.trim().to_string(),
-            })
-        })
-        .collect();
-
-    // Best model first, and within a tier the order the system gave them. Sorted
-    // by grade rather than by whether it is neural at all, because a machine
-    // with both an Enhanced and a Premium voice installed should be offered the
-    // Premium one — and alphabetical order would hand it Ava over Zoe.
-    found.sort_by_key(|voice| voice.grade);
-    found
-}
-
-/// Where a reader goes to get a voice worth listening to.
-///
-/// Worth printing in full. Nobody finds this by looking, and the difference it
-/// makes is the difference between the feature working and the feature being
-/// switched off after one paragraph.
-///
-/// Both names, because Apple moved it. macOS 26 calls the pane **Read & Speak**
-/// and files it under Vision; every earlier version calls it Spoken Content. A
-/// reader following a path that is not on their screen concludes the
-/// instructions are stale and stops, so both are named rather than the newer
-/// one guessed at.
-pub const WHERE: &str = "System Settings → Accessibility → Read & Speak\n    → System Voice → Manage Voices… → English → anything marked Premium\n\n    (macOS 15 and earlier call that pane Spoken Content)";
 
 /// Whose words a passage is, so they can be lit on the page as they are heard.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -403,9 +308,6 @@ enum Sound {
         /// Kept for next time, rather than removed once heard.
         keep: bool,
     },
-    /// Handed to a program that speaks as it reads. Deck cannot see inside
-    /// that, so the points are timed from the words.
-    Piped(String),
     /// Nothing is heard. The points still walk, at reading pace.
     Quiet,
 }
@@ -433,21 +335,9 @@ const LEAD: Duration = Duration::from_millis(220);
 
 impl Playing {
     /// Start a ready passage, or say that nothing here can.
-    fn start(ready: Ready, of: Option<Narration>, speech: &Speech) -> Option<Self> {
+    fn start(ready: Ready, of: Option<Narration>, _speech: &Speech) -> Option<Self> {
         let (child, file, quiet) = match ready.sound {
             Sound::File { at, keep } => (Some(play(&at)?), (!keep).then_some(at), false),
-            Sound::Piped(text) => {
-                let mut child = start(&text, speech)?;
-                // Written to stdin rather than passed as an argument, because a
-                // narration is prose: it has quotes and dashes in it, and it can
-                // be longer than a command line is allowed to be.
-                if let Some(stdin) = child.stdin.as_mut() {
-                    let _ = stdin.write_all(prepared(&text, speech).as_bytes());
-                }
-                // Dropped so the child sees the end of its input and starts.
-                drop(child.stdin.take());
-                (Some(child), None, false)
-            }
             Sound::Quiet => (None, None, true),
         };
         Some(Self {
@@ -523,11 +413,6 @@ impl Drop for Playing {
 /// has got to.
 fn renders(speech: &Speech) -> bool {
     speech.aloud
-        && match speech.engine {
-            Engine::Google => true,
-            Engine::System => cfg!(target_os = "macos"),
-            Engine::Command => false,
-        }
 }
 
 /// A passage timed from its words, for a sound deck cannot see inside.
@@ -542,14 +427,10 @@ fn timed(said: &[Said], speech: &Speech) -> Ready {
         marks.push((length, piece.point));
         length += reading(&piece.text, speech.words_a_minute());
     }
-    let sound = if speech.aloud {
-        let text: Vec<&str> = said.iter().map(|piece| piece.text.as_str()).collect();
-        Sound::Piped(text.join(" "))
-    } else {
-        Sound::Quiet
-    };
     Ready {
-        sound,
+        // Nothing renders except the voice, so a passage that got this far is
+        // one nobody is listening to: the points still walk, at reading pace.
+        sound: Sound::Quiet,
         marks,
         length,
         words: said.iter().map(|piece| piece.words).collect(),
@@ -763,10 +644,26 @@ fn forget_old(dir: &Path) {
 /// than all of them added up. Returns the sound, and the byte each piece starts
 /// at in it.
 fn joined(said: &[Said], speech: &Speech, into: &Path) -> anyhow::Result<(usize, Vec<usize>)> {
+    joined_from(said, into, |text| samples(&synthesised(text, speech)?))
+}
+
+/// [`joined`], with whatever renders a piece handed in.
+///
+/// Split out so the tape itself can be tested without a synthesiser. The part
+/// that breaks quietly is the header written twice over the same bytes, not
+/// where the sound came from — and a test that needs a key and a network is a
+/// test that does not run.
+fn joined_from<R>(said: &[Said], into: &Path, render: R) -> anyhow::Result<(usize, Vec<usize>)>
+where
+    R: Fn(&str) -> anyhow::Result<Vec<u8>> + Sync,
+{
     let pieces: Vec<anyhow::Result<Vec<u8>>> = std::thread::scope(|scope| {
         let working: Vec<_> = said
             .iter()
-            .map(|piece| scope.spawn(move || samples(&synthesised(&piece.text, speech)?)))
+            .map(|piece| {
+                let render = &render;
+                scope.spawn(move || render(&piece.text))
+            })
             .collect();
         working
             .into_iter()
@@ -803,12 +700,9 @@ fn joined(said: &[Said], speech: &Speech, into: &Path) -> anyhow::Result<(usize,
     Ok((length, starts))
 }
 
-/// One piece as a WAV file's bytes, from whichever engine renders.
+/// One piece as a WAV file's bytes.
 fn synthesised(text: &str, speech: &Speech) -> anyhow::Result<Vec<u8>> {
-    match speech.engine {
-        Engine::Google => fetch(text, speech),
-        _ => said_by_system(text, speech),
-    }
+    fetch(text, speech)
 }
 
 /// A piece with the engine's run-up silence taken off the front.
@@ -957,40 +851,6 @@ fn scratch(extension: &str) -> PathBuf {
     ))
 }
 
-/// The text as this platform's synthesiser wants it.
-///
-/// `[[slnc n]]` is macOS's own instruction for a pause and is what gives the
-/// paragraph gaps. Anywhere else it is four brackets and a number that would be
-/// read out, so it comes back off.
-fn prepared(text: &str, speech: &Speech) -> String {
-    // Beats are written in Google's spelling, because one of the engines has to
-    // win and that is the one that understands them natively.
-    //
-    // macOS `say` has its own instruction for silence and can be told exactly.
-    // Everything else would read the brackets out loud, so they come off — the
-    // gap is deck's to keep, not the engine's to understand.
-    if speech.engine == Engine::System && cfg!(target_os = "macos") {
-        let long = format!("[[slnc {}]]", speech.pause);
-        let short = format!("[[slnc {}]]", speech.pause / 2);
-        return text
-            .replace("[pause long]", &long)
-            .replace("[pause short]", &short)
-            .replace("[pause]", &short);
-    }
-    let text = crate::prose::unbeat(text);
-    let mut out = String::with_capacity(text.len());
-    let mut rest = text.as_str();
-    while let Some(at) = rest.find("[[") {
-        out.push_str(&rest[..at]);
-        match rest[at..].find("]]") {
-            Some(end) => rest = &rest[at + end + 2..],
-            None => return out,
-        }
-    }
-    out.push_str(rest);
-    out
-}
-
 /// Say one line now, and wait for it, so setup can prove a key works.
 ///
 /// Through the same path a deck uses, so a voice that passes here is a voice
@@ -1086,33 +946,6 @@ fn fetch(text: &str, speech: &Speech) -> anyhow::Result<Vec<u8>> {
         .map_err(|why| anyhow::anyhow!("google sent audio that will not decode: {why}"))
 }
 
-/// One piece, rendered by the system voice into a file instead of the speakers.
-///
-/// macOS only, where `say` can write the agreed shape of sound directly.
-fn said_by_system(text: &str, speech: &Speech) -> anyhow::Result<Vec<u8>> {
-    let at = scratch("wav");
-    let mut say = Command::new("say");
-    say.arg("-r")
-        .arg(speech.words_a_minute().to_string())
-        .arg("-o")
-        .arg(&at)
-        .arg("--file-format=WAVE")
-        .arg(format!("--data-format=LEI16@{RATE}"));
-    if let Some(voice) = speech.voice.as_deref().filter(|name| !name.is_empty()) {
-        say.arg("-v").arg(voice);
-    }
-    let mut child = say.stdin(Stdio::piped()).spawn()?;
-    if let Some(stdin) = child.stdin.as_mut() {
-        stdin.write_all(prepared(text, speech).as_bytes())?;
-    }
-    drop(child.stdin.take());
-    let finished = child.wait()?;
-    let audio = std::fs::read(&at);
-    let _ = std::fs::remove_file(&at);
-    anyhow::ensure!(finished.success(), "the system voice would not speak");
-    Ok(audio?)
-}
-
 /// The narration as SSML, with the beats turned into real silence.
 ///
 /// Escaped first and marked up second, so a narration full of `&&`, `<` and `>`
@@ -1154,73 +987,6 @@ fn play(at: &Path) -> Option<Child> {
     Command::new(program).args(args).arg(at).spawn().ok()
 }
 
-/// Start a synthesiser reading stdin, if there is one to start.
-///
-/// The reader's own command first. That is the whole provider story: deck pipes
-/// text to a program and plays nothing itself, so Kokoro, Piper, Fish Audio,
-/// ElevenLabs and whatever ships next are all reachable without deck learning
-/// any of them — and the reader decides what leaves their machine.
-fn start(_text: &str, speech: &Speech) -> Option<Child> {
-    if speech.engine == Engine::Command {
-        return spoken_by(speech.command.as_deref()?);
-    }
-    system(speech)
-}
-
-/// Run the reader's own program, reading text on stdin.
-///
-/// Split on whitespace rather than shelled out. A shell would mean quoting
-/// rules, an extra process, and a config field that can run arbitrary pipelines
-/// — and the thing on the other end only ever needs a program and its flags.
-fn spoken_by(command: &str) -> Option<Child> {
-    let mut words = command.split_whitespace();
-    let program = words.next()?;
-    Command::new(program)
-        .args(words)
-        .stdin(Stdio::piped())
-        .spawn()
-        .ok()
-}
-
-/// Whatever this machine already has.
-fn system(speech: &Speech) -> Option<Child> {
-    let rate = speech.words_a_minute();
-    let voice = speech.voice.as_deref().filter(|name| !name.is_empty());
-
-    #[cfg(target_os = "macos")]
-    {
-        let mut say = Command::new("say");
-        say.arg("-r").arg(rate.to_string());
-        if let Some(voice) = voice {
-            say.arg("-v").arg(voice);
-        }
-        say.stdin(Stdio::piped()).spawn().ok()
-    }
-
-    #[cfg(target_os = "linux")]
-    {
-        // speech-dispatcher takes a rate from -100 to 100 rather than words a
-        // minute, with 0 sitting around the 175 the other platforms default to.
-        let scaled = (i32::from(rate) - 175) / 2;
-        let mut spd = Command::new("spd-say");
-        spd.arg("-e")
-            .arg("-r")
-            .arg(scaled.clamp(-100, 100).to_string());
-        if let Some(voice) = voice {
-            spd.arg("-y").arg(voice);
-        }
-        spd.stdin(Stdio::piped()).spawn().ok()
-    }
-
-    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
-    {
-        // Windows has no system synthesiser deck can pipe into. `engine =
-        // "command"` is the answer there, and setup says so.
-        let _ = (rate, voice);
-        None
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1248,44 +1014,6 @@ mod tests {
         );
         voice.hush();
         assert!(!voice.has_work(), "interrupting also retires queued work");
-    }
-
-    #[test]
-    fn the_system_voice_keeps_the_pause_it_understands() {
-        // On macOS `say` reads `[[slnc n]]` as an instruction, which is the
-        // whole reason it is in the text.
-        let speech = Speech::default();
-        if cfg!(target_os = "macos") {
-            assert_eq!(
-                prepared("one [[slnc 400]] two", &speech),
-                "one [[slnc 400]] two"
-            );
-        }
-    }
-
-    #[test]
-    fn another_engine_never_hears_a_pause_marker() {
-        // Piped to Kokoro or an ElevenLabs script those brackets are four
-        // characters and a number a listener would hear. The gap is deck's to
-        // keep, not the engine's to understand.
-        let speech = Speech {
-            engine: Engine::Command,
-            command: Some("some-voice -".into()),
-            ..Speech::default()
-        };
-        assert_eq!(prepared("one [[slnc 400]] two", &speech), "one  two");
-    }
-
-    #[test]
-    fn a_command_engine_with_nothing_to_run_stays_quiet() {
-        // Rather than falling back to the system voice, which would be deck
-        // quietly ignoring what the reader configured.
-        let speech = Speech {
-            engine: Engine::Command,
-            command: None,
-            ..Speech::default()
-        };
-        assert!(start("anything", &speech).is_none());
     }
 
     #[test]
@@ -1346,20 +1074,23 @@ mod tests {
         // A reply is not an interruption of itself.
         let mut voice = Voice::default();
         let speech = Speech {
-            engine: Engine::Command,
-            // Nothing to run, so nothing is spawned and nothing is spoken —
-            // but the queue is the thing under test, not the sound.
-            command: None,
+            // Nothing is spoken — but the queue is the thing under test, not
+            // the sound.
+            aloud: false,
             ..Speech::default()
         };
         voice.say(one("first"), None, &speech);
         voice.say(one("second"), None, &speech);
         voice.say(one("third"), None, &speech);
 
-        // With no synthesiser the queue drains rather than stalling, which is
-        // the other half: a machine that cannot speak must not silently hold a
-        // backlog for ever.
-        assert!(voice.next.is_empty());
+        // The first is being walked; the other two wait their turn rather than
+        // replacing it.
+        let waiting: Vec<&str> = voice
+            .next
+            .iter()
+            .map(|(said, _)| said[0].text.as_str())
+            .collect();
+        assert_eq!(waiting, vec!["second", "third"]);
     }
 
     #[test]
@@ -1511,18 +1242,12 @@ mod tests {
     }
 
     #[test]
-    #[cfg(target_os = "macos")]
     fn a_tape_written_to_disk_reads_back_as_one_sound() {
-        // The whole path, with the voice this machine already has: two pieces
-        // rendered, trimmed, streamed into a file, and the header written twice
-        // over the same bytes. A seek off by one would leave a file no player
-        // opens, and nothing else here would notice.
-        let speech = Speech {
-            aloud: true,
-            engine: Engine::System,
-            voice: None,
-            ..Speech::default()
-        };
+        // The whole path: two pieces rendered, trimmed, streamed into a file,
+        // and the header written twice over the same bytes. A seek off by one
+        // would leave a file no player opens, and nothing else here would
+        // notice. The sound is made up, because none of that is about where it
+        // came from.
         let said = vec![
             Said {
                 point: None,
@@ -1537,7 +1262,9 @@ mod tests {
         ];
 
         let at = scratch("wav");
-        let (length, starts) = joined(&said, &speech, &at).expect("the system voice renders");
+        let piece = wav(&4_000i16.to_le_bytes().repeat(2_400), &[0]);
+        let (length, starts) =
+            joined_from(&said, &at, |_| samples(&piece)).expect("a tape is written");
         let bytes = std::fs::read(&at).expect("a tape on disk");
         let _ = std::fs::remove_file(&at);
 

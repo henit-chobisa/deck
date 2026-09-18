@@ -54,6 +54,33 @@ mod tests {
     // elsewhere, which exports a `test` attribute of its own.
     use core::prelude::v1::test;
 
+    #[test]
+    fn a_config_written_for_the_old_engines_still_parses() {
+        // `[speech]` refuses fields it does not know, which is how a typo in a
+        // voice name gets caught. The engines it used to choose between are
+        // gone, so those two fields are read and dropped — because failing the
+        // file would fail the whole config, and take the reader's colours down
+        // with a setting that no longer does anything.
+        let old = r#"
+            [speech]
+            aloud   = true
+            engine  = "command"
+            command = "kokoro-cli --voice af_heart -"
+            voice   = "en-US-Chirp3-HD-Charon"
+        "#;
+        let config: deck_core::config::Config =
+            toml::from_str(old).expect("an old config still reads");
+        assert_eq!(
+            config.speech.voice.as_deref(),
+            Some("en-US-Chirp3-HD-Charon")
+        );
+
+        // And it leaves on the next write rather than lingering in the file.
+        let back = toml::to_string(&config).expect("and writes back");
+        assert!(!back.contains("engine"), "{back}");
+        assert!(!back.contains("kokoro"), "{back}");
+    }
+
     use super::*;
 
     fn scratch(name: &str, text: &str) -> PathBuf {
