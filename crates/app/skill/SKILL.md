@@ -374,10 +374,16 @@ group — it is two groups glued together.** Split it. One claim, one group.
 
 ## Write it so it can be heard
 
-A deck can be walked live, and then the narration is read aloud while the reader
-looks at the code. Write for that as well as for the page — it costs nothing when
-nobody is listening, and it is the difference between being walked through
-something and being read at.
+A deck can walk the reader through itself — they press `w` and the narration is
+spoken while they look at the code. Write for that as well as for the page: it costs
+nothing when nobody is listening, and it is the difference between being walked
+through something and being read at.
+
+The same writing does a second job even in silence. A reader who clicks a
+sentence gets the code that sentence is about: the light lands on the lines, the
+pane it belongs to takes a frame, and the pane scrolls if they are off screen.
+Your points are what makes that work, so they are worth writing whether or not
+anybody ever turns the voice on.
 
 **Mark the beats.** `[pause]`, `[pause short]` and `[pause long]` go in the prose
 where a person explaining this would stop. The reader never sees them: deck takes
@@ -421,20 +427,45 @@ off, and they cannot skim past it the way they would on a page.
 
 ## When they answer back
 
-A live walk makes `deck wait` return before the review is finished. Instead of a
-review you get `{"asked": …}` — what the reader said, and what was on screen when
-they said it. Answer with `deck say`, then call `deck wait` again. Same verb, and
-the loop continues until they submit.
+`deck wait` returns before the review is finished whenever the reader says
+something. Instead of a review you get `{"asked": …}` — what they said, and what
+was on screen when they said it. Answer with `deck say`, then call `deck wait`
+again. Same verb, and the loop continues until they submit.
+
+The conversation is always there: it does not need a mode turned on, and neither
+do you. Assume somebody may talk to you at any point after `deck open`.
+
+**Most remarks will not wake you, and that is the default.** A comment is
+*deferred* unless the reader says otherwise: it goes into the review and you see
+it when they submit. `deck wait` returns `{"asked": …}` only when they chose to
+interrupt you or to wait for a gap — which means they want an answer *now*, in
+the walk. Treat one as exactly that, and do not go looking for the others: a
+quiet waiter is a reader reading, not a reader with nothing to say.
 
 **Answer fast. Being right slowly is worse than being useful now.** Somebody is
-sitting in front of a panel that says `thinking…`. A reply in three seconds that
-needs a follow-up beats a perfect one in forty, because they are still looking at
-the thing they asked about.
+sitting in front of a panel with nothing in it but a bar that is filling up. A
+reply in three seconds that needs a follow-up beats a perfect one in forty,
+because they are still looking at the thing they asked about.
 
 So do not re-investigate. You wrote this deck; the answer is almost always
 already in what you read to write it. If the question genuinely needs new work,
 say so in one line first — *"looking"* — and then go and look. Silence is the one
 thing that reads as broken.
+
+**Say what you are doing while you do it.** `deck doing <path> --text "reading
+the retry loop"` puts those words in the panel, and the next one replaces them.
+Send one before each step of anything that takes more than a moment — the file
+you are opening, the thing you are counting, the subagent you are waiting on.
+
+This is not politeness. The panel cannot tell a working agent from a dead one,
+so after two minutes of silence it stops guessing and says `no answer yet` in
+front of somebody who is still waiting on you. Every note restarts that clock.
+The reader gets *reading the retry loop*, then *counting the callers*, and a
+wait with a shape to it is a wait people sit through.
+
+Notes are not turns: they are not read aloud, they are not in the review, and
+they do not answer the question. Do not use one to say the thing — that is
+`deck say`.
 
 **Hand the slow part to a subagent if you must.** If answering means real
 digging, spawn one with the context you already have and let it work while you
