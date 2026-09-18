@@ -950,17 +950,45 @@ impl DeckView {
                 &seen,
                 anchor,
             );
+            // Its place in the rail, so the sentence being heard can be lit
+            // there — and so it can be said again later, with its pacing and
+            // its pointing, neither of which survives into the transcript.
+            let at = self.conversation.transcript.len().saturating_sub(1);
+            self.conversation.spoken.insert(at, text.to_string());
+            of = Some(crate::speech::Narration::Answer(at));
         }
-        // The author answered, so nothing is owed.
+        // The author answered, so nothing is owed — and whatever they were
+        // doing to arrive at the answer is over.
         self.conversation.asked_at = None;
+        self.conversation.doing = None;
         if aloud {
+            // Only while the reader has asked to be walked through it. An
+            // answer read out to somebody who never pressed `w` is a window
+            // that started talking on its own.
             let speech = crate::speech::asked(cx);
-            if speech.aloud {
-                let said = crate::prose::spoken(text, speech.pause);
-                self.voice.say(&said, &speech);
-                self.keep_talking(cx);
-            }
+            let speech = deck_core::config::Speech {
+                aloud: speech.aloud && self.aloud,
+                ..speech
+            };
+            self.narrate(text, of, &speech, cx);
         }
+        cx.notify();
+    }
+
+    /// Show what the agent is doing while it is doing it.
+    ///
+    /// The one honest thing a window can say about a silence it did not cause.
+    /// Deck still refuses to call this thinking — it is the agent's own words,
+    /// repeated — but hearing *reading the retry loop* for twenty seconds is a
+    /// different experience from watching a panel decide nobody answered, and
+    /// the second one is what readers were getting.
+    ///
+    /// A note is also proof the agent is there, so it restarts the wait. Every
+    /// note buys another [`PATIENCE`] before the panel says it has no idea.
+    fn doing_live(&mut self, text: String, cx: &mut Context<Self>) {
+        let at = std::time::Instant::now();
+        self.conversation.doing = Some((text, at));
+        self.watch_answer(at, cx);
         cx.notify();
     }
 
@@ -982,6 +1010,53 @@ impl DeckView {
             let text = text.to_string();
             self.said_live(&text, aloud, cx);
             command.finish(crate::live::ShowAnswer::said());
+            return;
+        }
+        // Neither does saying what you are doing. It replaces one line in the
+        // panel and nothing else moves.
+        if let Some(text) = command.doing() {
+            let text = text.to_string();
+            self.doing_live(text, cx);
+            command.finish(crate::live::ShowAnswer::said());
+            return;
+        }
+        if let Some((panes, group, open)) = command.folding() {
+            let (panes, group, open) = (panes.to_vec(), group, open);
+            self.apply_fold(&panes, group, open, cx);
+            command.finish(crate::live::ShowAnswer::said());
+            cx.notify();
+            return;
+        }
+        if let Some(deck_cli::live::RequestBody::Bring {
+            file,
+            range,
+            name,
+            note,
+            after,
+            fold_group,
+            fold,
+        }) = command.bringing()
+        {
+            let brought = Brought {
+                file: file.clone(),
+                range: *range,
+                name: name.clone(),
+                note: note.clone(),
+                after: after.clone(),
+                fold_group: *fold_group,
+                fold: fold.clone(),
+            };
+            let answer = self.apply_bring(brought, cx);
+            command.finish(answer);
+            cx.notify();
+            return;
+        }
+        // Taking the hand off the page is not a move either, so it is not
+        // paced or refused. It lands at once.
+        if command.clearing() {
+            self.rest(cx);
+            command.finish(crate::live::ShowAnswer::said());
+            cx.notify();
             return;
         }
         let resolved = match self.resolve_show(&command) {
@@ -2350,7 +2425,10 @@ impl DeckView {
         // thing and still not mean the same thing, so the one the reader
         // pressed travels with the remark rather than being flattened away.
         let remark = Self::remark(about, face.to_string(), kind, when);
-        if kind != deck_core::Kind::Nit {
+        // Nothing is owed for a remark nobody has been told about. A bar
+        // filling up beside a deferred note would be waiting for an answer
+        // that is not due until the review is submitted.
+        if kind != deck_core::Kind::Nit && when != deck_core::When::Defer {
             self.expect_answer(cx);
         }
         self.note(deck_core::What::Reacted, Some(kind), when, face, &remark);
@@ -2379,8 +2457,11 @@ impl DeckView {
         let said = remark.text.clone();
         // Written words expect an answer, whichever way they waited for the
         // floor. Without this the panel said nothing back and a reader who had
-        // just typed a question could not tell it had been sent.
-        self.expect_answer(cx);
+        // just typed a question could not tell it had been sent. Deferred
+        // words are owed nothing yet: they are handed over at submit.
+        if remark.when != deck_core::When::Defer {
+            self.expect_answer(cx);
+        }
         self.note(
             deck_core::What::Wrote,
             Some(kind),
@@ -3363,12 +3444,18 @@ impl DeckView {
                     [
                         (
                             0usize,
+                            deck_core::When::Defer,
+                            "with the review",
+                            palette.muted,
+                        ),
+                        (
+                            1usize,
                             deck_core::When::Queue,
                             "wait for a gap",
                             palette.muted,
                         ),
                         (
-                            1usize,
+                            2usize,
                             deck_core::When::Interrupt,
                             "interrupt",
                             palette.accent,
@@ -4651,20 +4738,55 @@ impl Render for DeckView {
         // Shares are held by *place*, not by pane: a seam moves width between
         // the two panes standing either side of it, and turning the page moves
         // panes between places without moving the places.
+        // How many are open, which is what decides whether any of them may be
+        // folded: the last one has nobody to give its width to.
+        let open_panes = (0..count)
+            .filter(|ix| self.folds.get(*ix).is_none_or(|fold| !fold.on()))
+            .count();
+        // A share is a ratio between two panes. As one of them folds away the
+        // ratio stops meaning anything, so the other travels from its dragged
+        // share to the whole row — *travels*, at exactly the pace of the fold.
+        // Switched at the moment folding began, the survivor jumped to full
+        // width and then waited for the other one to catch up, which is a jolt
+        // at the start of every fold.
+        let folding_at = |place: usize| -> f32 {
+            order
+                .get(place)
+                .and_then(|ix| self.folds.get(*ix))
+                .map_or(0., crate::pane::Fade::level)
+        };
+        let closing_beside = |place: usize| -> f32 {
+            let first = place / cols * cols;
+            let last = (first + cols).min(count);
+            (first..last)
+                .filter(|beside| *beside != place)
+                .map(folding_at)
+                .fold(0., f32::max)
+        };
+        // How far gone a row is: one when everything in it has folded.
+        let gone = |row: usize| -> f32 {
+            let first = row * cols;
+            let last = (first + cols).min(count);
+            1. - (first..last)
+                .map(|place| 1. - folding_at(place))
+                .fold(0., f32::max)
+        };
         let mut panes = Vec::with_capacity(count);
+        let mut left_spines: Vec<AnyElement> = Vec::new();
+        let mut right_spines: Vec<AnyElement> = Vec::new();
         for (place, &ix) in order.iter().enumerate() {
             // The remark's own index rides along, so a card can say which one
             // to drop when it is closed.
-            // While live, a remark lives in the panel and nowhere else. Drawn
-            // on the code as well it is the same sentence twice, and the copy
-            // over the file covers the very lines being discussed — which is
-            // the reason the composer moved out of there in the first place.
-            let marks: Vec<Mark> = if live > 0. {
-                Vec::new()
-            } else {
+            // A deferred remark is a note on the code, and it stays on the
+            // code: it is going back with the review, and a reader who cannot
+            // see which lines they wrote about has to open the panel and guess.
+            // What was said *to* the agent — queued, or an interruption — is a
+            // turn in the conversation, and lives in the thread only.
+            let marks: Vec<Mark> = {
                 self.remarks
                     .iter()
                     .enumerate()
+                    .filter(|(_, remark)| remark.when == deck_core::When::Defer)
                     .filter(|(_, remark)| remark.ref_id.as_ref() == Some(self.panes[ix].ref_id()))
                     .filter_map(|(remark_ix, remark)| {
                         Some(Mark {
