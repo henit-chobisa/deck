@@ -191,6 +191,12 @@ impl Voice {
         }
     }
 
+    /// Whether anything is queued or on its way.
+    #[must_use]
+    pub fn waiting(&self) -> bool {
+        !self.next.is_empty() || self.fetching.is_some()
+    }
+
     /// Say this after whatever is already being said.
     ///
     /// Queued rather than substituted. The reader hears a reply in the order it

@@ -102,9 +102,11 @@ impl Default for Speech {
             command: None,
             key: None,
             voice: None,
-            // Unhurried. The default on most systems is about 175, which is
-            // fine for a message and too fast for a mechanism.
-            rate: 158,
+            // A little above conversational. Prose about code is dense and is
+            // heard once, so it wants to be slower than a podcast — but 158 was
+            // slower than the reader wanted and made a short answer feel like a
+            // wait. Most systems call 175 normal.
+            rate: 182,
             pause: 420,
         }
     }

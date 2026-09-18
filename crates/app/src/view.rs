@@ -412,6 +412,8 @@ pub struct DeckView {
     composing_when: deck_core::When,
     /// Live mode, while it is on or on its way out.
     walking: Option<Walking>,
+    /// The timer that advances the voice, while there is anything to advance.
+    talking_task: Option<Task<()>>,
     /// What the reader said while the agent was still speaking.
     ///
     /// Held rather than sent, because queueing means *wait for a gap*. They go
@@ -672,6 +674,7 @@ impl DeckView {
             composing_kind: deck_core::Kind::default(),
             composing_when: deck_core::When::default(),
             walking: None,
+            talking_task: None,
             rail_width: None,
             held: Vec::new(),
             asked_at: None,
@@ -830,6 +833,7 @@ impl DeckView {
             if speech.aloud {
                 let said = crate::prose::spoken(text, speech.pause);
                 self.voice.say(&said, &speech);
+                self.keep_talking(cx);
             }
         }
         cx.notify();
@@ -1109,6 +1113,42 @@ impl DeckView {
     ///
     /// The group's prose only. The code is on screen, and a voice spelling out
     /// a line of it would be reading the one thing the reader can already see.
+    /// Keep the voice moving without repainting to do it.
+    ///
+    /// One utterance ends and the next begins; that is all this is watching
+    /// for, and it changes every few seconds rather than every frame. Driving
+    /// it from the paint meant redrawing every code pane sixty times a second
+    /// to ask whether a child process had exited yet.
+    fn keep_talking(&mut self, cx: &mut Context<Self>) {
+        const EVERY: std::time::Duration = std::time::Duration::from_millis(120);
+
+        if self.talking_task.is_some() {
+            return;
+        }
+        self.talking_task = Some(cx.spawn(async move |deck, cx| {
+            loop {
+                cx.background_executor().timer(EVERY).await;
+                let more = deck.update(cx, |deck, cx| {
+                    let speech = crate::speech::asked(cx);
+                    let was = deck.voice.talking();
+                    deck.voice.pump(&speech);
+                    let now = deck.voice.talking();
+                    if was != now {
+                        cx.notify();
+                    }
+                    now || !deck.voice.waiting()
+                });
+                match more {
+                    Ok(true) => {}
+                    _ => {
+                        let _ = deck.update(cx, |deck, _| deck.talking_task = None);
+                        return;
+                    }
+                }
+            }
+        }));
+    }
+
     fn speak(&mut self, cx: &mut Context<Self>) {
         let Some(group) = self.group() else {
             return;
@@ -1119,6 +1159,7 @@ impl DeckView {
         }
         let said = crate::prose::spoken(&group.say, speech.pause);
         self.voice.say(&said, &speech);
+        self.keep_talking(cx);
     }
 
     /// *Noted.* The cheapest thing a reader can say, and the most common.
@@ -2853,6 +2894,23 @@ impl DeckView {
             .collect();
 
         div()
+            .id("live-rail")
+            // Clicking into the panel lets the code go. A selection is the
+            // reader pointing at lines, and once they have turned to the
+            // conversation they are not pointing at them any more — leaving the
+            // highlight behind means the next reaction attaches to something
+            // they stopped looking at minutes ago.
+            .on_mouse_down(
+                MouseButton::Left,
+                cx.listener(|deck, _, _window, cx| {
+                    if deck.panes.iter().any(Sheet::reader_chose) {
+                        for pane in &mut deck.panes {
+                            pane.unpick();
+                        }
+                        cx.notify();
+                    }
+                }),
+            )
             .flex_none()
             .w(px(wide * pace))
             .min_w_0()
@@ -2938,10 +2996,6 @@ impl DeckView {
     /// admission once it has been too long: an author who has gone quiet should
     /// be reported as quiet rather than waited on forever.
     fn render_pending(&self) -> Option<AnyElement> {
-        /// How long before silence stops being "thinking" and starts being
-        /// "not answering".
-        const PATIENCE: std::time::Duration = std::time::Duration::from_secs(25);
-
         let since = self.asked_at?.elapsed();
         let palette = &self.palette;
         // Still held means the reader waited for a gap and the gap has not come.
@@ -3042,6 +3096,13 @@ const FACES: &[(&str, deck_core::Kind)] = &[
     ("\u{1F6D1}", deck_core::Kind::MustFix),
 ];
 
+/// How long before silence stops being "thinking" and starts being "not
+/// answering".
+///
+/// Also how long the dots are allowed to animate. Past this the indicator says
+/// something static, so there is nothing left to repaint for.
+const PATIENCE: std::time::Duration = std::time::Duration::from_secs(25);
+
 /// How wide the rail is once it has finished arriving./// How wide the rail is once it has finished arriving.
 const RAIL: f32 = 232.;
 
@@ -3059,8 +3120,6 @@ impl Render for DeckView {
         // because the pace is already a function of the clock: one place decides
         // how live the room is, and everything below reads it.
         let live = self.live_pace();
-        let speech = crate::speech::asked(cx);
-        self.voice.pump(&speech);
         let speaking = self.voice.talking();
         // The gap. Whoever waited their turn is heard now, in the order they
         // waited.
@@ -3069,10 +3128,17 @@ impl Render for DeckView {
                 self.live.publish(moment);
             }
         }
-        // Waiting on the author animates, so the window has to keep asking for
-        // frames — otherwise the dots freeze and it reads as hung, which is the
-        // exact impression the indicator exists to prevent.
-        if self.asked_at.is_some() || !self.held.is_empty() || speaking {
+        // Only while something is genuinely moving.
+        //
+        // This used to ask for a frame whenever an answer was owed or a voice
+        // was going — which meant the whole window, every code pane included,
+        // repainted sixty times a second for as long as the reader waited. It
+        // felt exactly as heavy as it was. The dots stop moving once the
+        // indicator gives up, and the voice is pumped by a timer instead.
+        if self
+            .asked_at
+            .is_some_and(|since| since.elapsed() < PATIENCE)
+        {
             window.request_animation_frame();
         }
         if self.walking.is_some() && (live > 0.) && (live < 1.) {
