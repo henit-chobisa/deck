@@ -199,6 +199,18 @@ enum Divide {
     Columns(usize),
 }
 
+impl Divide {
+    fn along(self, at: Point<Pixels>) -> Pixels {
+        // The rail is vertical too. Reading y made a leftward drag do
+        // nothing, then jump as soon as the pointer moved up or down.
+        if matches!(self, Self::Columns(_) | Self::Rail) {
+            at.x
+        } else {
+            at.y
+        }
+    }
+}
+
 /// The band's height before anyone drags it — enough for a title and a few
 /// lines of prose, which is what most groups carry.
 const BAND_NATURAL: f32 = 168.;
@@ -311,6 +323,12 @@ struct Remark {
     kind: deck_core::Kind,
 }
 
+struct ReadingPlace {
+    ref_id: SharedString,
+    selected: Option<LineRange>,
+    offset: Point<Pixels>,
+}
+
 /// Everything the deck is holding, so it survives being put away.
 ///
 /// Hiding the window has to be free — a reader who has written four remarks
@@ -336,6 +354,20 @@ pub struct Session {
     /// point is that it does not follow the file.
     snapshots: std::collections::HashMap<std::path::PathBuf, std::sync::Arc<str>>,
     remarks: Vec<Remark>,
+    conversation: crate::conversation::Conversation,
+    reading: Vec<ReadingPlace>,
+    picked_said: Option<(usize, usize)>,
+    band_offset: Point<Pixels>,
+    rail_width: Option<f32>,
+    rail_scroll: ScrollHandle,
+    picked_reply: Option<usize>,
+    walking: bool,
+    draft: Option<(
+        About,
+        Entity<TextareaState>,
+        deck_core::Kind,
+        deck_core::When,
+    )>,
     group_ix: usize,
     turn: Option<u8>,
     band_height: Option<f32>,
@@ -354,6 +386,15 @@ impl Session {
             layout: GridSpec::default(),
             snapshots: std::collections::HashMap::new(),
             remarks: Vec::new(),
+            conversation: crate::conversation::Conversation::default(),
+            reading: Vec::new(),
+            picked_said: None,
+            band_offset: point(px(0.), px(0.)),
+            rail_width: None,
+            rail_scroll: ScrollHandle::new(),
+            picked_reply: None,
+            walking: false,
+            draft: None,
             group_ix: 0,
             // Whatever the reader last turned a page to. `None` only for
             // somebody who has never turned one, and then the page arranges
@@ -414,33 +455,15 @@ pub struct DeckView {
     walking: Option<Walking>,
     /// The timer that advances the voice, while there is anything to advance.
     talking_task: Option<Task<()>>,
-    /// What the reader said while the agent was still speaking.
-    ///
-    /// Held rather than sent, because queueing means *wait for a gap*. They go
-    /// out in order the moment the voice stops, so the author hears them the
-    /// way somebody who waited their turn would be heard.
-    held: Vec<deck_core::Moment>,
-    /// When the reader last took the floor and is owed an answer.
-    ///
-    /// The thing that makes this a conversation rather than shouting into a
-    /// void: the moment you interrupt, the panel says the author has it. It is
-    /// cleared by the answer arriving, and after long enough it says the author
-    /// has not replied rather than spinning forever — a huddle where somebody
-    /// has gone quiet should say so.
-    asked_at: Option<std::time::Instant>,
+    conversation: crate::conversation::Conversation,
     /// How wide the reader has dragged the rail, if they have.
     ///
     /// Theirs once they touch it, and kept across hide and reopen with the
     /// other things they decided about this deck.
     rail_width: Option<f32>,
-    /// The walk, as it happened.
-    ///
-    /// Grown in place while the deck is open and handed to the review whole.
-    /// This is the part nothing else produces — not that a review happened, but
-    /// what the reader was shown and what they said about each part.
-    transcript: Vec<deck_core::Moment>,
-    /// When this walk began, for the transcript's clock.
-    began: std::time::Instant,
+    /// Replies must remain addressable after the agent has moved to another group.
+    picked_reply: Option<usize>,
+    rail_scroll: ScrollHandle,
     /// Whether the narration is the thing a comment would land on.
     /// Which sentence of the narration is picked, if any.
     ///
@@ -639,7 +662,7 @@ fn ease(along: f32) -> f32 {
 impl DeckView {
     /// Open a deck, where it was left — which for a deck nobody has opened
     /// yet is the beginning of it.
-    pub fn resume(session: Session, cx: &mut Context<Self>) -> Self {
+    pub fn resume(session: Session, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let dark = cx.theme().mode.is_dark();
         let palette = current(dark);
         // Before any pane is built: the editors read their ground and their
@@ -651,6 +674,15 @@ impl DeckView {
             layout,
             snapshots,
             remarks,
+            conversation,
+            reading,
+            picked_said,
+            band_offset,
+            rail_width,
+            rail_scroll,
+            picked_reply,
+            walking,
+            draft,
             group_ix,
             turn,
             band_height,
@@ -673,14 +705,13 @@ impl DeckView {
             composing: None,
             composing_kind: deck_core::Kind::default(),
             composing_when: deck_core::When::default(),
-            walking: None,
+            walking: walking.then(Walking::arriving),
             talking_task: None,
-            rail_width: None,
-            held: Vec::new(),
-            asked_at: None,
-            transcript: Vec::new(),
-            began: std::time::Instant::now(),
-            picked_said: None,
+            rail_width,
+            conversation,
+            picked_reply,
+            rail_scroll,
+            picked_said,
             said_from: None,
             said_over: None,
             said_dragged: false,
@@ -706,7 +737,45 @@ impl DeckView {
             spread: false,
             spreading: Task::ready(()),
         };
+        if let Some((about, state, kind, when)) = draft {
+            view.live.pause(PauseReason::Composer);
+            let listen = Self::listen_composer(&state, window, cx);
+            view.composing = Some((about, state, listen));
+            view.composing_kind = kind;
+            view.composing_when = when;
+        }
         view.build_panes(cx);
+        if let Some(stage) = view.live.stage()
+            && view.group().is_some_and(|group| group.id == stage.group)
+            && let Some(range) = stage.range
+        {
+            for pane in &mut view.panes {
+                if let Some(code) = pane.code_mut()
+                    && stage.ref_id.as_deref() == Some(code.ref_id.as_ref())
+                {
+                    code.spotlight(range);
+                    code.show_range();
+                }
+            }
+        }
+        view.picked_said = picked_said;
+        view.band_scroll.set_offset(band_offset);
+        for place in reading {
+            for pane in &mut view.panes {
+                if let Some(code) = pane.code_mut()
+                    && code.ref_id == place.ref_id
+                {
+                    code.selected = place.selected;
+                    let scroll = code.scroll();
+                    let mut scroll = scroll.0.borrow_mut();
+                    scroll.deferred_scroll_to_item = None;
+                    scroll.base_handle.set_offset(place.offset);
+                }
+            }
+        }
+        if let Some(asked) = view.conversation.asked_at {
+            view.watch_answer(asked, cx);
+        }
         view.tail(cx);
         view.control(cx);
         view.spread_later(cx);
@@ -783,11 +852,11 @@ impl DeckView {
     /// Sealing stops new group discovery but must not close the conversation,
     /// so this loop has its own lifetime and runs only while the view is open.
     fn control(&mut self, cx: &mut Context<Self>) {
-        const EVERY: std::time::Duration = std::time::Duration::from_millis(40);
+        use futures::StreamExt;
 
+        let mut commands = self.live.subscribe();
         self.controlling = cx.spawn(async move |view, cx| {
-            loop {
-                cx.background_executor().timer(EVERY).await;
+            while commands.next().await.is_some() {
                 if view
                     .update(cx, |deck, cx| deck.apply_live_show(cx))
                     .is_err()
@@ -827,7 +896,7 @@ impl DeckView {
             );
         }
         // The author answered, so nothing is owed.
-        self.asked_at = None;
+        self.conversation.asked_at = None;
         if aloud {
             let speech = crate::speech::asked(cx);
             if speech.aloud {
@@ -887,6 +956,15 @@ impl DeckView {
             }
         }
 
+        // The reader may have visited another group and rebuilt its panes
+        // since this stage was applied. Reducer equality alone cannot prove
+        // that the current view still contains the acknowledged evidence.
+        changed |= self.group_ix != resolved.group_ix
+            || self
+                .panes
+                .get(resolved.pane_ix)
+                .and_then(Sheet::code)
+                .is_none_or(|code| Some(code.spotlight_range()) != stage.range);
         if changed {
             if self.group_ix != resolved.group_ix {
                 self.group_ix = resolved.group_ix;
@@ -916,8 +994,9 @@ impl DeckView {
             // Kept out of the published stream on purpose. That stream is what
             // the *reader* did, and an agent being told about the move it just
             // asked for is an echo it would have to learn to ignore.
-            self.transcript.push(deck_core::Moment {
-                at_ms: u64::try_from(self.began.elapsed().as_millis()).unwrap_or(u64::MAX),
+            self.conversation.transcript.push(deck_core::Moment {
+                at_ms: u64::try_from(self.conversation.began.elapsed().as_millis())
+                    .unwrap_or(u64::MAX),
                 what: deck_core::What::Shown,
                 group: Some(stage.group.clone()),
                 ref_id: stage.ref_id.clone(),
@@ -1100,6 +1179,7 @@ impl DeckView {
             Some(_) => {
                 self.walking = Some(Walking::leaving());
                 self.voice.hush();
+                self.flush_held();
             }
             None => {
                 self.walking = Some(Walking::arriving());
@@ -1131,12 +1211,20 @@ impl DeckView {
                 let more = deck.update(cx, |deck, cx| {
                     let speech = crate::speech::asked(cx);
                     let was = deck.voice.talking();
+                    // A queued remark takes the gap before another utterance
+                    // starts, rather than depending on a lucky render between them.
+                    let delivered = !was && deck.conversation.queued();
+                    if !was {
+                        deck.flush_held();
+                    }
                     deck.voice.pump(&speech);
                     let now = deck.voice.talking();
-                    if was != now {
+                    if was != now || delivered {
                         cx.notify();
                     }
-                    now || !deck.voice.waiting()
+                    // The inverted queue check kept an idle task alive forever,
+                    // and could retire it precisely when more speech was queued.
+                    deck.voice.has_work()
                 });
                 match more {
                     Ok(true) => {}
@@ -1297,6 +1385,7 @@ impl DeckView {
 
     /// Select from the drag's anchor to `line`.
     pub fn pick(&mut self, pane_ix: usize, line: u32, cx: &mut Context<Self>) {
+        self.picked_reply = None;
         self.picked_said = None;
         self.said_from = None;
         let anchor = match self.drag_from {
@@ -1375,6 +1464,15 @@ impl DeckView {
 
     /// Capture the narration selection before a composer can outlive it.
     fn claim_about(&self) -> Option<About> {
+        if let Some(moment) = self
+            .picked_reply
+            .and_then(|ix| self.conversation.transcript.get(ix))
+        {
+            return Some(About::Claim {
+                group: moment.group.clone()?.into(),
+                quote: moment.text.clone(),
+            });
+        }
         let group = self.group()?;
         let quote = self.picked_said.map_or_else(
             || group.say.lines().next().unwrap_or_default().to_string(),
@@ -1396,6 +1494,7 @@ impl DeckView {
 
     /// The pointer went down on a word of the narration.
     fn start_say_pick(&mut self, at: usize, cx: &mut Context<Self>) {
+        self.picked_reply = None;
         self.live.pause(PauseReason::Selection);
         self.said_from = Some(at);
         self.said_dragged = false;
@@ -1469,12 +1568,13 @@ impl DeckView {
         if self.composing.is_some() {
             return;
         }
-        let about = if self.picked_said.is_some() || self.panes.is_empty() {
-            self.claim_about()
-        } else {
-            let pane = self.panes.iter().position(Sheet::is_picked).unwrap_or(0);
-            self.about(pane)
-        };
+        let about =
+            if self.picked_reply.is_some() || self.picked_said.is_some() || self.panes.is_empty() {
+                self.claim_about()
+            } else {
+                let pane = self.panes.iter().position(Sheet::is_picked).unwrap_or(0);
+                self.about(pane)
+            };
         if let Some(about) = about {
             self.open_composer(about, window, cx);
         }
@@ -1497,7 +1597,20 @@ impl DeckView {
         // bound over the top of that is bound to a key the input has already
         // taken. `shift` still inserts a newline, which is what makes a long
         // remark possible.
-        let listen = cx.subscribe_in(&state, window, |deck, _, event: &InputEvent, window, cx| {
+        let listen = Self::listen_composer(&state, window, cx);
+
+        self.composing = Some((about, state, listen));
+        self.composing_kind = deck_core::Kind::default();
+        self.composing_when = deck_core::When::Queue;
+        cx.notify();
+    }
+
+    fn listen_composer(
+        state: &Entity<TextareaState>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Subscription {
+        cx.subscribe_in(state, window, |deck, _, event: &InputEvent, window, cx| {
             if matches!(
                 event,
                 InputEvent::PressEnter {
@@ -1507,14 +1620,7 @@ impl DeckView {
             ) {
                 deck.save_remark(window, cx);
             }
-        });
-
-        self.composing = Some((about, state, listen));
-        self.composing_kind = deck_core::Kind::default();
-        // Waiting for a gap is the polite default, and cutting somebody off is
-        // the thing you should have to choose.
-        self.composing_when = deck_core::When::Queue;
-        cx.notify();
+        })
     }
 
     fn on_discard(&mut self, _: &Discard, window: &mut Window, cx: &mut Context<Self>) {
@@ -1619,7 +1725,7 @@ impl DeckView {
         of: &Remark,
     ) {
         let moment = deck_core::Moment {
-            at_ms: u64::try_from(self.began.elapsed().as_millis()).unwrap_or(u64::MAX),
+            at_ms: u64::try_from(self.conversation.began.elapsed().as_millis()).unwrap_or(u64::MAX),
             what,
             group: Some(of.group.to_string()),
             ref_id: of.ref_id.as_ref().map(ToString::to_string),
@@ -1632,13 +1738,42 @@ impl DeckView {
         // The review keeps it either way. What `when` decides is the floor: a
         // reader who took it is heard at once and the voice stops; a reader who
         // waited is heard in the next gap.
-        self.transcript.push(moment.clone());
+        // Follow new turns only while the reader is at the tail. Reading an
+        // older answer must not be interrupted by the next one arriving.
+        if -self.rail_scroll.offset().y >= self.rail_scroll.max_offset().y - px(24.) {
+            self.rail_scroll.scroll_to_bottom();
+        }
         if when == deck_core::When::Interrupt {
             self.voice.hush();
-            self.live.publish(moment);
-        } else if self.voice.talking() {
-            self.held.push(moment);
-        } else {
+        }
+        for ready in self.conversation.record(moment, self.voice.talking()) {
+            self.live.publish(ready);
+        }
+    }
+
+    fn expect_answer(&mut self, cx: &mut Context<Self>) {
+        let asked = std::time::Instant::now();
+        self.conversation.asked_at = Some(asked);
+        self.watch_answer(asked, cx);
+    }
+
+    fn watch_answer(&self, asked: std::time::Instant, cx: &mut Context<Self>) {
+        let remaining = PATIENCE.saturating_sub(asked.elapsed());
+        // A status label needs one deadline, not sixty full-window redraws a
+        // second. An older deadline cannot expire a newer question.
+        cx.spawn(async move |deck, cx| {
+            cx.background_executor().timer(remaining).await;
+            let _ = deck.update(cx, |deck, cx| {
+                if deck.conversation.asked_at == Some(asked) {
+                    cx.notify();
+                }
+            });
+        })
+        .detach();
+    }
+
+    fn flush_held(&mut self) {
+        for moment in self.conversation.release() {
             self.live.publish(moment);
         }
     }
@@ -1673,6 +1808,9 @@ impl DeckView {
         // thing and still not mean the same thing, so the one the reader
         // pressed travels with the remark rather than being flattened away.
         let remark = Self::remark(about, face.to_string(), kind, when);
+        if kind != deck_core::Kind::Nit {
+            self.expect_answer(cx);
+        }
         self.note(deck_core::What::Reacted, Some(kind), when, face, &remark);
         self.remarks.push(remark);
         cx.notify();
@@ -1700,7 +1838,7 @@ impl DeckView {
         // Written words expect an answer, whichever way they waited for the
         // floor. Without this the panel said nothing back and a reader who had
         // just typed a question could not tell it had been sent.
-        self.asked_at = Some(std::time::Instant::now());
+        self.expect_answer(cx);
         self.note(
             deck_core::What::Wrote,
             Some(kind),
@@ -1742,6 +1880,33 @@ impl DeckView {
             layout: self.grid,
             snapshots: self.snapshots.clone(),
             remarks: self.remarks.clone(),
+            // A hidden window is replaced, not retained. Omitting these reset
+            // the conversation and erased it from the eventual review too.
+            conversation: self.conversation.clone(),
+            reading: self
+                .panes
+                .iter()
+                .filter_map(Sheet::code)
+                .map(|code| ReadingPlace {
+                    ref_id: code.ref_id.clone(),
+                    selected: code.selected,
+                    offset: code.scroll().0.borrow().base_handle.offset(),
+                })
+                .collect(),
+            picked_said: self.picked_said,
+            band_offset: self.band_scroll.offset(),
+            rail_width: self.rail_width,
+            rail_scroll: self.rail_scroll.clone(),
+            picked_reply: self.picked_reply,
+            walking: self.walking.is_some_and(|walk| !walk.going),
+            draft: self.composing.as_ref().map(|(about, state, _)| {
+                (
+                    about.clone(),
+                    state.clone(),
+                    self.composing_kind,
+                    self.composing_when,
+                )
+            }),
             group_ix: self.group_ix,
             turn: self.turn,
             band_height: self.band_height,
@@ -1766,6 +1931,8 @@ impl DeckView {
         // window it was dimming for would be a near-black screen with nothing
         // on it to press.
         crate::shade::lights_on(cx);
+        self.voice.hush();
+        self.flush_held();
         self.live.hidden();
         // Back on the queue, and the bar comes up over it. The window goes
         // after, because closing the last one ends the command.
@@ -1811,7 +1978,8 @@ impl DeckView {
 
         let review = deck_core::Review {
             v: deck_core::VERSION,
-            transcript: std::mem::take(&mut self.transcript),
+            // A failed write must leave the conversation intact for retry.
+            transcript: self.conversation.transcript.clone(),
             deck: self.deck.header.id.clone(),
             comments,
         };
@@ -1851,6 +2019,8 @@ impl DeckView {
         // And stops talking, because what it is saying belongs to the group
         // that just left the screen.
         self.voice.hush();
+        self.flush_held();
+        self.picked_said = None;
 
         let base = self.deck.base();
         let Some(group) = self.deck.groups().get(self.group_ix) else {
@@ -2333,14 +2503,7 @@ impl DeckView {
             .on_mouse_down(
                 MouseButton::Left,
                 cx.listener(move |deck, event: &MouseDownEvent, _window, _cx| {
-                    deck.sizing = Some((
-                        what,
-                        if sideways {
-                            event.position.x
-                        } else {
-                            event.position.y
-                        },
-                    ));
+                    deck.sizing = Some((what, what.along(event.position)));
                 }),
             )
             .child(rule)
@@ -2848,16 +3011,43 @@ impl DeckView {
         // already in order, so it *is* the rail; keeping a second list beside
         // it was what let the two disagree.
         let lines: Vec<AnyElement> = self
+            .conversation
             .transcript
             .iter()
             .enumerate()
             .filter(|(_, moment)| {
                 matches!(
                     moment.what,
-                    deck_core::What::Said | deck_core::What::Reacted | deck_core::What::Wrote
+                    deck_core::What::Said
+                        | deck_core::What::Reacted
+                        | deck_core::What::Wrote
+                        | deck_core::What::Shown
                 )
             })
             .map(|(ix, moment)| {
+                if moment.what == deck_core::What::Shown {
+                    let target = moment.file.as_ref().map_or_else(
+                        || moment.group.clone().unwrap_or_default(),
+                        |file| {
+                            format!(
+                                "{}{}",
+                                file.display(),
+                                moment
+                                    .range
+                                    .map_or_else(String::new, |range| format!(":{range}"))
+                            )
+                        },
+                    );
+                    return div()
+                        .flex_none()
+                        .px(px(8.))
+                        .py(px(7.))
+                        .font_family(mono.clone())
+                        .text_size(px(9.5))
+                        .text_color(paint(palette.muted))
+                        .child(SharedString::from(format!("Showing {target}")))
+                        .into_any_element();
+                }
                 let mine = moment.what == deck_core::What::Said;
                 let reacted = moment.what == deck_core::What::Reacted;
                 let tone = match moment.kind {
@@ -2869,7 +3059,12 @@ impl DeckView {
                     .h_flex()
                     .items_start()
                     .gap(px(7.))
-                    .py(px(5.))
+                    .px(px(8.))
+                    .py(px(9.))
+                    .rounded(px(5.))
+                    .when(self.picked_reply == Some(ix), |this| {
+                        this.bg(paint(palette.wash))
+                    })
                     .child(
                         div()
                             .flex_none()
@@ -2887,18 +3082,44 @@ impl DeckView {
                             // A reaction was a face and wanted to be large. It
                             // is a word now, and a word set larger than the
                             // sentence beside it reads as shouting.
-                            .text_size(px(11.5))
+                            .v_flex()
+                            .gap(px(4.))
+                            .text_size(px(13.))
                             .when(reacted, |this| this.font_family(mono.clone()))
-                            .text_color(paint(if reacted {
-                                tone
-                            } else if mine {
-                                palette.muted
-                            } else {
-                                palette.fg
-                            }))
+                            .child(
+                                div()
+                                    .font_family(mono.clone())
+                                    .text_size(px(9.5))
+                                    .text_color(paint(palette.muted))
+                                    .child(SharedString::from(format!(
+                                        "{} · {}{}",
+                                        if mine { "agent" } else { "you" },
+                                        moment.group.as_deref().unwrap_or("walk"),
+                                        if moment.when == deck_core::When::Interrupt {
+                                            " · interrupted"
+                                        } else {
+                                            ""
+                                        },
+                                    ))),
+                            )
+                            .text_color(paint(if reacted { tone } else { palette.fg }))
                             .child(SharedString::from(moment.text.clone())),
                     )
                     .id(("line", ix))
+                    .cursor_pointer()
+                    .hover(|style| style.bg(paint(palette.wash)))
+                    .on_click(cx.listener(move |deck, _, _window, cx| {
+                        if deck.composing.is_some() {
+                            return;
+                        }
+                        deck.picked_reply = Some(ix);
+                        deck.picked_said = None;
+                        for pane in &mut deck.panes {
+                            pane.unpick();
+                        }
+                        deck.live.pause(PauseReason::Selection);
+                        cx.notify();
+                    }))
                     .into_any_element()
             })
             .collect();
@@ -2966,10 +3187,16 @@ impl DeckView {
                                     // The thing that was missing entirely: a
                                     // reader could pause movement by clicking
                                     // and had no way to know they had.
+                                    .id("resume-following")
+                                    .cursor_pointer()
+                                    .on_click(cx.listener(|deck, _, _window, cx| {
+                                        deck.live.follow();
+                                        cx.notify();
+                                    }))
                                     .child(if !following {
-                                        "paused — f"
+                                        "resume · f"
                                     } else if speaking {
-                                        "speaking"
+                                        "voice active"
                                     } else {
                                         "following"
                                     }),
@@ -2982,7 +3209,23 @@ impl DeckView {
                             .flex_1()
                             .min_h_0()
                             .overflow_y_scroll()
+                            .track_scroll(&self.rail_scroll)
                             .children(lines),
+                    )
+                    .child(
+                        div()
+                            .id("latest-reply")
+                            .flex_none()
+                            .py(px(5.))
+                            .text_size(px(10.))
+                            .text_color(paint(palette.muted))
+                            .cursor_pointer()
+                            .on_click(cx.listener(|deck, _, _window, cx| {
+                                deck.picked_reply = None;
+                                deck.rail_scroll.scroll_to_bottom();
+                                cx.notify();
+                            }))
+                            .child("Latest ↓ · select a turn to reply"),
                     )
                     .children(self.render_pending())
                     // The composer belongs here while live, not floating over
@@ -2998,36 +3241,22 @@ impl DeckView {
 }
 
 impl DeckView {
-    /// That the author has your question, before the answer exists.
-    ///
-    /// Without this the reader says something and the panel goes silent, which
-    /// is indistinguishable from the message never arriving — and that is
-    /// exactly what it felt like. Three dots while it is fresh, and an honest
-    /// admission once it has been too long: an author who has gone quiet should
-    /// be reported as quiet rather than waited on forever.
+    /// Distinguish feedback waiting behind speech from feedback awaiting an
+    /// answer. Neither state proves that an agent is connected or thinking.
     fn render_pending(&self) -> Option<AnyElement> {
-        let since = self.asked_at?.elapsed();
+        let since = self.conversation.asked_at?.elapsed();
         let palette = &self.palette;
         // Still held means the reader waited for a gap and the gap has not come.
         // Saying so is better than "thinking", which would be a lie about who
         // is holding things up.
-        let (dots, tone) = if !self.held.is_empty() {
+        let (dots, tone) = if self.conversation.queued() {
             ("waiting for a gap", palette.muted)
         } else if since >= PATIENCE {
             ("no answer yet", palette.muted)
         } else {
-            // Three dots, one at a time, so it reads as live rather than as a
-            // label somebody forgot to clear.
-            let step = (since.as_millis() / 400) % 4;
-            (
-                match step {
-                    0 => "thinking",
-                    1 => "thinking.",
-                    2 => "thinking..",
-                    _ => "thinking...",
-                },
-                palette.accent,
-            )
+            // Publication is not proof that an agent is thinking, or even
+            // connected. Do not turn transport uncertainty into fake presence.
+            ("sent · waiting for agent", palette.accent)
         };
 
         Some(
@@ -3081,7 +3310,12 @@ impl DeckView {
                     .cursor_pointer()
                     .hover(|style| style.bg(paint(palette.wash)))
                     .on_click(cx.listener(move |deck, _, _window, cx| {
-                        deck.react(kind, deck_core::When::Queue, mark, cx);
+                        let when = if mark == "stop" {
+                            deck_core::When::Interrupt
+                        } else {
+                            deck_core::When::Queue
+                        };
+                        deck.react(kind, when, mark, cx);
                     }))
                     .child(mark)
             }))
@@ -3107,15 +3341,11 @@ const FACES: &[(&str, deck_core::Kind)] = &[
     ("stop", deck_core::Kind::MustFix),
 ];
 
-/// How long before silence stops being "thinking" and starts being "not
-/// answering".
-///
-/// Also how long the dots are allowed to animate. Past this the indicator says
-/// something static, so there is nothing left to repaint for.
+/// Report a prolonged wait without pretending to know why the agent is quiet.
 const PATIENCE: std::time::Duration = std::time::Duration::from_secs(25);
 
-/// How wide the rail is once it has finished arriving./// How wide the rail is once it has finished arriving.
-const RAIL: f32 = 232.;
+/// Room for a readable reply without turning the evidence into a thumbnail.
+const RAIL: f32 = 304.;
 
 impl Render for DeckView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
@@ -3132,13 +3362,6 @@ impl Render for DeckView {
         // how live the room is, and everything below reads it.
         let live = self.live_pace();
         let speaking = self.voice.talking();
-        // The gap. Whoever waited their turn is heard now, in the order they
-        // waited.
-        if !speaking && !self.held.is_empty() {
-            for moment in std::mem::take(&mut self.held) {
-                self.live.publish(moment);
-            }
-        }
         // Only while something is genuinely moving.
         //
         // This used to ask for a frame whenever an answer was owed or a voice
@@ -3146,12 +3369,6 @@ impl Render for DeckView {
         // repainted sixty times a second for as long as the reader waited. It
         // felt exactly as heavy as it was. The dots stop moving once the
         // indicator gives up, and the voice is pumped by a timer instead.
-        if self
-            .asked_at
-            .is_some_and(|since| since.elapsed() < PATIENCE)
-        {
-            window.request_animation_frame();
-        }
         if self.walking.is_some() && (live > 0.) && (live < 1.) {
             window.request_animation_frame();
         }
@@ -3355,11 +3572,7 @@ impl Render for DeckView {
                 // A divider being dragged owns the pointer; the code under it
                 // must not also be selecting.
                 if let Some((what, from)) = deck.sizing {
-                    let along = if matches!(what, Divide::Columns(_)) {
-                        event.position.x
-                    } else {
-                        event.position.y
-                    };
+                    let along = what.along(event.position);
                     let by = along - from;
                     match what {
                         Divide::Band => deck.resize_band(by, cx),
@@ -3452,6 +3665,27 @@ mod tests {
     use core::prelude::v1::test;
 
     use super::*;
+
+    #[test]
+    fn a_live_rail_drag_uses_horizontal_motion_only() {
+        // The rail divides left from right, like a column seam, and the match
+        // that decided which axis to read only named columns. So a leftward
+        // drag moved nothing and the panel jumped the moment the pointer
+        // drifted up or down — which is exactly what it looked like.
+        let from = point(px(800.), px(300.));
+        let sideways = point(px(750.), px(300.));
+        let down = point(px(800.), px(450.));
+        assert_eq!(
+            Divide::Rail.along(sideways) - Divide::Rail.along(from),
+            px(-50.),
+            "a horizontal drag moves it"
+        );
+        assert_eq!(
+            Divide::Rail.along(down) - Divide::Rail.along(from),
+            px(0.),
+            "and a vertical one does not"
+        );
+    }
 
     fn snapshots(
         of: &[(&str, &str)],

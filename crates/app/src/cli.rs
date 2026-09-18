@@ -791,9 +791,9 @@ fn next(deck: &std::path::Path, status: bool, after: Option<&str>, timeout: u64)
 
 /// Wait for a review to land beside the deck, and print it.
 fn wait(deck: &std::path::Path, timeout: u64) -> ExitCode {
-    /// How often to look. A review lands once, and a second either way is
-    /// nothing next to how long a person takes to write one.
-    const EVERY: std::time::Duration = std::time::Duration::from_millis(400);
+    // This also carries interruptions now. Four hundred milliseconds was
+    // harmless for a final review, but added a visible pause to every reply.
+    const EVERY: std::time::Duration = std::time::Duration::from_millis(80);
 
     let until =
         (timeout > 0).then(|| std::time::Instant::now() + std::time::Duration::from_secs(timeout));
@@ -801,23 +801,11 @@ fn wait(deck: &std::path::Path, timeout: u64) -> ExitCode {
     // The author's side of the huddle. The agent is already blocked here, so
     // this is where a question has to reach it — a second verb it would have to
     // poll is a habit no agent has, and the author stayed asleep because of it.
-    let live = deck_core::home::deck()
-        .and_then(|runtime| deck_cli::live::Client::connect(&runtime, deck).ok());
+    let runtime = deck_core::home::deck();
 
     loop {
-        if let Some(client) = live.as_ref()
-            && let Ok(Some(asked)) = client.take_asked()
-        {
-            match serde_json::to_string(&serde_json::json!({ "asked": asked.moment })) {
-                Ok(json) => println!("{json}"),
-                Err(err) => {
-                    eprintln!("deck: the question will not print: {err}");
-                    return ExitCode::FAILURE;
-                }
-            }
-            return ExitCode::SUCCESS;
-        }
-
+        // Submit wins over queued nudges: the final review already contains
+        // them, and asking for another answer after submit is a dead end.
         match deck_cli::review(deck) {
             Ok(Some(review)) => {
                 match serde_json::to_string_pretty(&review) {
@@ -836,6 +824,43 @@ fn wait(deck: &std::path::Path, timeout: u64) -> ExitCode {
                     deck.display()
                 );
                 return ExitCode::FAILURE;
+            }
+        }
+
+        // A waiter may start before the owner, or outlive a replacement owner.
+        // Connecting once left it deaf for the rest of either session.
+        if let Some(runtime) = runtime.as_ref()
+            && let Ok(client) = deck_cli::live::Client::connect(runtime, deck)
+        {
+            match client.asked() {
+                Ok(Some(asked)) => {
+                    match serde_json::to_string(&serde_json::json!({ "asked": asked.moment })) {
+                        Ok(json) => {
+                            use std::io::Write as _;
+                            let mut stdout = std::io::stdout().lock();
+                            if let Err(err) =
+                                writeln!(stdout, "{json}").and_then(|()| stdout.flush())
+                            {
+                                eprintln!("deck: the question will not print: {err}");
+                                return ExitCode::FAILURE;
+                            }
+                            if let Err(err) = client.delivered(asked.seq) {
+                                eprintln!("deck: the event cursor could not be saved: {err}");
+                                return ExitCode::FAILURE;
+                            }
+                        }
+                        Err(err) => {
+                            eprintln!("deck: the question will not print: {err}");
+                            return ExitCode::FAILURE;
+                        }
+                    }
+                    return ExitCode::SUCCESS;
+                }
+                Ok(None) => {}
+                Err(err) => {
+                    eprintln!("deck: reader events could not be read: {err}");
+                    return ExitCode::FAILURE;
+                }
             }
         }
 

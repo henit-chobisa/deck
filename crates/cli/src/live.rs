@@ -631,6 +631,18 @@ impl Client {
     ///
     /// When the session directory cannot be read or the mark cannot be written.
     pub fn take_asked(&self) -> Result<Option<Event>, std::io::Error> {
+        let event = self.asked()?;
+        if let Some(event) = event.as_ref() {
+            self.delivered(event.seq)?;
+        }
+        Ok(event)
+    }
+
+    /// Read without consuming, so a failed stdout write can be retried.
+    ///
+    /// # Errors
+    /// When the session's event directory cannot be read.
+    pub fn asked(&self) -> Result<Option<Event>, std::io::Error> {
         let mark = self.session.join("delivered");
         let seen = std::fs::read_to_string(&mark)
             .ok()
@@ -664,10 +676,15 @@ impl Client {
             Err(error) => return Err(error),
         }
 
-        if let Some(event) = best.as_ref() {
-            std::fs::write(&mark, event.seq.to_string())?;
-        }
         Ok(best)
+    }
+
+    /// Advance only after the caller has successfully handed the event over.
+    ///
+    /// # Errors
+    /// When the durable cursor cannot be committed.
+    pub fn delivered(&self, seq: u64) -> Result<(), std::io::Error> {
+        write_json(&self.session.join("delivered"), &seq)
     }
 
     /// The first event after `after`, waiting up to `timeout` for one.
@@ -988,6 +1005,26 @@ mod tests {
             client.take_asked().unwrap().is_none(),
             "and then it waits again"
         );
+    }
+
+    #[test]
+    fn an_unprinted_question_is_available_to_the_next_waiter() {
+        let temp = tempfile::tempdir().unwrap();
+        let runtime = temp.path().join("runtime");
+        let deck = deck_dir(temp.path());
+        let owner = Owner::claim(&runtime, &deck).unwrap();
+        owner
+            .publish(moment("do not lose this", deck_core::When::Interrupt))
+            .unwrap();
+        let first = Client::connect(&runtime, &deck)
+            .unwrap()
+            .asked()
+            .unwrap()
+            .unwrap();
+        let retry = Client::connect(&runtime, &deck).unwrap();
+        assert_eq!(retry.asked().unwrap().unwrap().seq, first.seq);
+        retry.delivered(first.seq).unwrap();
+        assert!(retry.asked().unwrap().is_none());
     }
 
     #[test]

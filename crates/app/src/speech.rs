@@ -197,6 +197,14 @@ impl Voice {
         !self.next.is_empty() || self.fetching.is_some()
     }
 
+    /// Whether the speech pump still has work to do.
+    ///
+    /// Keeping this decision with the queue prevents a view from inverting
+    /// `waiting` and polling forever once the last utterance has finished.
+    pub fn has_work(&mut self) -> bool {
+        self.talking() || self.waiting()
+    }
+
     /// Say this after whatever is already being said.
     ///
     /// Queued rather than substituted. The reader hears a reply in the order it
@@ -543,6 +551,22 @@ fn system(speech: &Speech) -> Option<Child> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_speech_pump_retires_only_when_playback_and_the_queue_are_empty() {
+        let mut voice = Voice::default();
+        assert!(
+            !voice.has_work(),
+            "an idle voice must not keep waking the window"
+        );
+        voice.next.push_back("another turn".into());
+        assert!(
+            voice.has_work(),
+            "a gap before queued speech is not completion"
+        );
+        voice.hush();
+        assert!(!voice.has_work(), "interrupting also retires queued work");
+    }
 
     #[test]
     fn the_system_voice_keeps_the_pause_it_understands() {

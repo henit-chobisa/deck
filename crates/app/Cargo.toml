@@ -16,6 +16,7 @@ clap = { version = "4", features = ["derive", "wrap_help"] }
 deck-cli = { path = "../cli" }
 deck-core = { path = "../core" }
 deck-theme = { path = "../theme" }
+futures = "0.3"
 gpui-kit = { version = "0.6", features = [
     # Syntax highlighting is not on by default, and a grammar is only compiled
     # in if it is named. Every language deck can highlight is listed here, and

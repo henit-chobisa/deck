@@ -17,6 +17,7 @@
 mod chart;
 mod cli;
 mod config;
+mod conversation;
 mod hook;
 mod live;
 mod load;
@@ -413,7 +414,7 @@ pub fn open_deck(session: Session, cx: &mut App) {
     };
 
     let handle = match cx.open_window(options, |window, cx| {
-        let view = cx.new(|cx| DeckView::resume(session, cx));
+        let view = cx.new(|cx| DeckView::resume(session, window, cx));
         cx.new(|cx| Root::new(view, window, cx))
     }) {
         Ok(handle) => handle,

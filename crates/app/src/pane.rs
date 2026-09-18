@@ -755,16 +755,22 @@ pub fn chrome(
         .font_family(cx.theme().mono_font_family.clone())
         .text_size(px(10.5))
         .text_color(paint(palette.muted))
-        .child(label)
+        // Paths and notes can be arbitrarily long; they must give up width
+        // before the recovery control does. A single unbounded row pushed
+        // Focus beyond the pane's clip, precisely when it was needed.
         .child(
             div()
-                .h_flex()
-                .items_center()
-                .gap(px(10.))
+                .v_flex()
+                .flex_1()
                 .min_w_0()
-                .children(note.as_deref().map(|note| emphasise(note, palette)))
-                .children(focus_button),
+                .gap(px(3.))
+                .child(div().truncate().child(label))
+                .children(
+                    note.as_deref()
+                        .map(|note| div().overflow_hidden().child(emphasise(note, palette))),
+                ),
         )
+        .child(div().flex_none().children(focus_button))
 }
 
 /// A note, with its emphasised words picked out in the accent.

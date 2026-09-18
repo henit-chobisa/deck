@@ -19,13 +19,10 @@ use deck_core::{
 };
 
 struct Control {
-    /// The mailbox, shared so the view can publish while the worker receives.
-    ///
-    /// Both sides only ever take `&Owner`, and the owner does its own locking,
-    /// so there is nothing here for a second reference to race against.
-    owner: Arc<Owner>,
     state: Mutex<LiveState>,
     pending: Mutex<VecDeque<ShowCommand>>,
+    wake: Mutex<Option<futures::channel::mpsc::UnboundedSender<()>>>,
+    publishing: mpsc::Sender<deck_core::Moment>,
     started: Instant,
     stop: AtomicBool,
 }
@@ -61,10 +58,24 @@ impl Handle {
 
     fn start_at(runtime: &Path, deck: &Path) -> anyhow::Result<Self> {
         let owner = Arc::new(Owner::claim(runtime, deck)?);
+        // Publishing used to write and sync event files inside mouse handlers
+        // and render. A slow disk must never hold the reader's next frame.
+        let (publishing, events) = mpsc::channel();
+        let journal = Arc::clone(&owner);
+        std::thread::Builder::new()
+            .name("deck-live-journal".into())
+            .spawn(move || {
+                for moment in events {
+                    if let Err(error) = journal.publish(moment) {
+                        eprintln!("deck: reader event could not be published: {error}");
+                    }
+                }
+            })?;
         let control = Arc::new(Control {
             state: Mutex::new(LiveState::new(owner.generation())),
-            owner: Arc::clone(&owner),
             pending: Mutex::new(VecDeque::new()),
+            wake: Mutex::new(None),
+            publishing,
             started: Instant::now(),
             stop: AtomicBool::new(false),
         });
@@ -108,13 +119,19 @@ impl Handle {
     /// costs the reader nothing — and a full disk must not stop somebody
     /// reacting to a deck.
     pub fn publish(&self, moment: deck_core::Moment) {
-        let _ = self.control.owner.publish(moment);
+        let _ = self.control.publishing.send(moment);
     }
 
     /// Whether the agent may currently move the reader, for the indicator.
     #[must_use]
     pub fn following(&self) -> deck_core::Following {
         self.state().following
+    }
+
+    /// Rebuilding a window must restore the applied spotlight, or an unchanged
+    /// retry would acknowledge evidence the replacement pane is not showing.
+    pub fn stage(&self) -> Option<Stage> {
+        self.state().stage.clone()
     }
 
     fn now_ms(&self) -> u64 {
@@ -136,6 +153,25 @@ impl Handle {
     pub fn follow(&self) {
         let generation = self.generation();
         let _ = self.state().apply(LiveAction::Resume { generation });
+    }
+
+    /// Wake a visible view only when there is a command to apply.
+    ///
+    /// Replacing the subscription on reopen avoids retaining a hidden view.
+    /// The pending check covers a command arriving before the view subscribed.
+    pub fn subscribe(&self) -> futures::channel::mpsc::UnboundedReceiver<()> {
+        let (send, receive) = futures::channel::mpsc::unbounded();
+        *self.control.wake.lock().unwrap_or_else(|p| p.into_inner()) = Some(send.clone());
+        if !self
+            .control
+            .pending
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .is_empty()
+        {
+            let _ = send.unbounded_send(());
+        }
+        receive
     }
 
     /// Take the next show command for the visible GPUI view.
@@ -194,6 +230,7 @@ impl Drop for Handle {
 pub struct ShowCommand {
     request: Request,
     answer: mpsc::SyncSender<ShowAnswer>,
+    cancelled: Arc<AtomicBool>,
 }
 
 impl ShowCommand {
@@ -229,7 +266,7 @@ impl ShowCommand {
     /// Whether its caller has already withdrawn an unapplied movement.
     #[must_use]
     pub fn expired(&self) -> bool {
-        self.request.expired()
+        self.cancelled.load(Ordering::Acquire) || self.request.expired()
     }
 
     /// Return the applied or refused result to the mailbox worker.
@@ -335,6 +372,7 @@ fn serve(owner: &Owner, control: &Control) {
                 }
 
                 let (send, receive) = mpsc::sync_channel(1);
+                let cancelled = Arc::new(AtomicBool::new(false));
                 control
                     .pending
                     .lock()
@@ -342,12 +380,50 @@ fn serve(owner: &Owner, control: &Control) {
                     .push_back(ShowCommand {
                         request: request.clone(),
                         answer: send,
+                        cancelled: Arc::clone(&cancelled),
                     });
-                let Some(left) = request.remaining() else {
-                    continue;
-                };
-                let Ok(answer) = receive.recv_timeout(left) else {
-                    continue;
+                if let Some(wake) = control
+                    .wake
+                    .lock()
+                    .unwrap_or_else(|p| p.into_inner())
+                    .as_ref()
+                {
+                    let _ = wake.unbounded_send(());
+                }
+                // Hiding can destroy the view before it takes this command.
+                // Do not hold ownership until the caller's deadline, or let a
+                // refused command replay against a subsequently reopened view.
+                let answer = loop {
+                    // An applied result remains true even if the reader hides
+                    // immediately afterwards. Prefer that fact over lifecycle.
+                    if let Ok(answer) = receive.try_recv() {
+                        break answer;
+                    }
+                    let status = status_of(&control.state);
+                    if status != ResponseStatus::Ready || control.stop.load(Ordering::Acquire) {
+                        cancelled.store(true, Ordering::Release);
+                        break ShowAnswer::refused(
+                            ResponseStatus::Hidden,
+                            "the reader hid or closed the deck",
+                        );
+                    }
+                    let Some(left) = request.remaining() else {
+                        cancelled.store(true, Ordering::Release);
+                        break ShowAnswer::refused(
+                            ResponseStatus::NotFound,
+                            "the command expired before application",
+                        );
+                    };
+                    match receive.recv_timeout(left.min(Duration::from_millis(20))) {
+                        Ok(answer) => break answer,
+                        Err(mpsc::RecvTimeoutError::Timeout) => {}
+                        Err(mpsc::RecvTimeoutError::Disconnected) => {
+                            break ShowAnswer::refused(
+                                ResponseStatus::Hidden,
+                                "the view was closed",
+                            );
+                        }
+                    }
                 };
                 let response = Response {
                     request_id: request.id.clone(),
@@ -525,6 +601,73 @@ mod tests {
             assert_eq!(response.status, ResponseStatus::Applied);
             assert!(response.show.is_some_and(|show| show.applied));
         });
+    }
+
+    #[test]
+    fn hiding_with_a_command_in_flight_refuses_it_and_never_replays_it() {
+        let temp = tempfile::tempdir().unwrap();
+        let runtime = temp.path().join("runtime");
+        let deck = deck(temp.path());
+        let owner = Handle::start_at(&runtime, &deck).unwrap();
+        let client = Client::connect(&runtime, &deck).unwrap();
+        owner.ready();
+        let mut wake = owner.subscribe();
+        std::thread::scope(|scope| {
+            let caller = scope.spawn(|| {
+                client
+                    .request(
+                        RequestBody::Say {
+                            text: "do not replay me".into(),
+                            aloud: false,
+                        },
+                        Duration::from_secs(5),
+                    )
+                    .unwrap()
+            });
+            assert_eq!(
+                futures::executor::block_on(futures::StreamExt::next(&mut wake)),
+                Some(())
+            );
+            owner.hidden();
+            assert_eq!(caller.join().unwrap().status, ResponseStatus::Hidden);
+            owner.ready();
+            assert!(owner.next_show().unwrap().expired());
+        });
+    }
+
+    #[test]
+    fn reader_events_survive_hide_and_reopen_in_order() {
+        let temp = tempfile::tempdir().unwrap();
+        let runtime = temp.path().join("runtime");
+        let deck = deck(temp.path());
+        let owner = Handle::start_at(&runtime, &deck).unwrap();
+        let client = Client::connect(&runtime, &deck).unwrap();
+        owner.ready();
+        for text in ["before hiding", "after reopening"] {
+            owner.publish(deck_core::Moment {
+                at_ms: 1,
+                what: deck_core::What::Wrote,
+                group: Some("g1".into()),
+                ref_id: None,
+                file: None,
+                range: None,
+                text: text.into(),
+                kind: Some(deck_core::Kind::Question),
+                when: deck_core::When::Queue,
+            });
+            owner.hidden();
+            owner.ready();
+        }
+        let first = client
+            .events(None, Duration::from_secs(1))
+            .unwrap()
+            .unwrap();
+        let second = client
+            .events(Some(first.seq), Duration::from_secs(1))
+            .unwrap()
+            .unwrap();
+        assert_eq!(first.moment.text, "before hiding");
+        assert_eq!(second.moment.text, "after reopening");
     }
 
     #[test]
