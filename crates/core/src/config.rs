@@ -105,11 +105,14 @@ impl Default for Speech {
             command: None,
             key: None,
             voice: None,
-            // A little above conversational. Prose about code is dense and is
-            // heard once, so it wants to be slower than a podcast — but 158 was
-            // slower than the reader wanted and made a short answer feel like a
-            // wait. Most systems call 175 normal.
-            rate: 182,
+            // A shade under conversational. Google takes this as a multiple of
+            // its own normal speed — 175 — so 182 was reading *above* normal,
+            // and prose about code is the wrong thing to be brisk about: an
+            // identifier and a line number carry more per second than a
+            // sentence about anything else, the light is moving underneath it,
+            // and none of it can be glanced back at. 158 was tested and was too
+            // slow: a short answer felt like a wait. This is between them.
+            rate: 165,
             pause: 420,
         }
     }
