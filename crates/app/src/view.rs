@@ -3606,6 +3606,7 @@ impl DeckView {
     /// The legend, built from [`KEYS`] so a rebound key is never stale on it.
     fn render_legend(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let mono = cx.theme().mono_font_family.clone();
+        let ready = crate::speech::asked(cx).offered();
 
         div()
             .v_flex()
