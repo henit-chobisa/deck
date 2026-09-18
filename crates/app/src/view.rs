@@ -248,54 +248,15 @@ enum About {
 
 /// Live mode, and how far through its transition it is.
 ///
-/// Time-based rather than a GPUI animation list, for a reason paid for once
-/// already: a `with_animation` list whose length changes between frames is a
-/// bounds-check panic, and the number of things moving here depends on how many
-/// panes the group has. A start instant and a direction cannot go out of step
-/// with the tree.
-#[derive(Debug, Clone, Copy)]
-struct Walking {
-    since: std::time::Instant,
-    /// True while sliding back out.
-    going: bool,
-}
-
-/// How long the room takes to rearrange, each way.
-///
-/// Out is quicker than in. Arriving somewhere should feel like it settles;
-/// leaving should feel like it gets out of your way.
-const ARRIVE: std::time::Duration = std::time::Duration::from_millis(420);
-const LEAVE: std::time::Duration = std::time::Duration::from_millis(260);
-
-impl Walking {
-    fn arriving() -> Self {
-        Self {
-            since: std::time::Instant::now(),
-            going: false,
-        }
-    }
-
-    fn leaving() -> Self {
-        Self {
-            since: std::time::Instant::now(),
-            going: true,
-        }
-    }
-
-    /// Nought to one, eased, where one is fully live.
-    fn pace(self) -> f32 {
-        let whole = if self.going { LEAVE } else { ARRIVE };
-        let raw = (self.since.elapsed().as_secs_f32() / whole.as_secs_f32()).clamp(0., 1.);
-        // Ease out cubic. Fast to start so it answers the key immediately, slow
-        // to finish so nothing lands with a snap.
-        let eased = 1. - (1. - raw).powi(3);
-        if self.going { 1. - eased } else { eased }
-    }
-
-    /// Whether this transition has finished leaving and can be forgotten.
-    fn spent(self) -> bool {
-        self.going && self.since.elapsed() >= LEAVE
-    }
+/// A file being brought into the room, and what it displaces.
+struct Brought {
+    file: std::path::PathBuf,
+    range: LineRange,
+    name: Option<String>,
+    note: Option<String>,
+    after: Option<String>,
+    fold_group: bool,
+    fold: Vec<String>,
 }
 
 /// A show request resolved entirely against authored groups and snapshots.
@@ -1115,8 +1076,35 @@ impl DeckView {
             let Some(range) = stage.range else {
                 return;
             };
+            // A proposal changes the rows themselves, so the pane is built
+            // again rather than lit again. Only when it actually changes: a
+            // rebuild loses where the reader had scrolled to and what they
+            // had selected, which is too much to spend on a repeat.
+            let wants = command.proposing().map(ToString::to_string);
+            let proposing = code.proposal().map(ToString::to_string) != wants;
+            let arriving = proposing && wants.is_some();
+            if proposing {
+                self.propose(resolved.pane_ix, range, wants, cx);
+            }
+            let Some(code) = self
+                .panes
+                .get_mut(resolved.pane_ix)
+                .and_then(Sheet::code_mut)
+            else {
+                return;
+            };
             code.spotlight(range);
-            code.show_range();
+            // The answer is the new lines, and they are spliced in under the
+            // range they replace — often below the fold. Showing the top of the
+            // range would put the old code on screen and the point of the
+            // answer somewhere past the bottom edge.
+            if arriving {
+                code.show_change();
+            } else {
+                code.show_range();
+            }
+            self.attend();
+            self.keep_talking(cx);
             // What the reader was shown is the claim the transcript makes, and
             // it was the one thing the transcript did not record: it held what
             // the agent said and what the reader pressed, and nothing about
