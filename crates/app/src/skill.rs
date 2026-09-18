@@ -312,6 +312,23 @@ mod tests {
     }
 
     #[test]
+    fn the_skill_says_the_waiter_is_not_optional() {
+        // Seen in the wild with more than one agent: groups written, deck
+        // sealed, turn ended. The reader walks it, comments, submits — and
+        // nothing is listening, so nothing ever comes back.
+        for said in [
+            "Sealing is not delivering",
+            "This step is not optional, and it is the one that gets skipped",
+            "Never announce the deck instead of waiting for it",
+            "One waiter, and only one",
+            "Re-arm after every live answer",
+            "Every line of that is required, and the last one most of all",
+        ] {
+            assert!(SKILL.contains(said), "the skill never says `{said}`");
+        }
+    }
+
+    #[test]
     fn the_skill_ties_the_prose_to_the_panes_and_the_light() {
         // The failure these answer, all seen in real decks: prose that names no
         // pane, panes nothing in the prose refers to, points written inside

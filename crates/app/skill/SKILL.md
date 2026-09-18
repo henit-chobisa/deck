@@ -772,6 +772,10 @@ your writing time overlap, which is the whole point.
 You do not poll and you do not ask them to tell you when they're done. `deck wait`
 exiting re-invokes you on its own.
 
+**Every line of that is required, and the last one most of all.** A turn that
+ends after `deck seal` looks finished from your side and is a dead end from
+theirs: they submit a review nobody is listening for. §6 is not a formality.
+
 **Every verb, so you know what you have.** Six of these build the deck and six
 are for while somebody is in front of it. Reach for the second six: a walk where
 the agent never moves anything is a document with a bar under it.
@@ -1138,17 +1142,46 @@ deck seal <path>
 Until this lands, deck tells them groups are still coming and warns them if they try to
 submit. Forget it and they get warned about groups that were never going to arrive.
 
+**Sealing is not delivering.** All it says is that no more groups are coming. It
+does not listen for the reader, and a turn that ends here has handed somebody a
+deck with nobody on the other end of it.
+
 ## 6. Arm the waiter, then stop
 
 ```bash
 deck wait <path>          # run this as a background command
 ```
 
+**This step is not optional, and it is the one that gets skipped.** The sequence
+is `deck new` → `deck open` → groups → `deck seal` → **`deck wait`**. A deck
+without a waiter is the whole tool failing in the way that is hardest to see:
+they walk it, they write three comments, they press submit — and nothing ever
+comes back. From where they are sitting your side simply stopped caring halfway
+through. They will not use it again, and they will be right not to.
+
 Run it with `run_in_background: true`. Then **end your turn** and say nothing further —
 they are reading, not waiting on you.
 
+**Never announce the deck instead of waiting for it.** "The deck is ready" with
+no waiter armed is the failure above with a sentence painted over it. If you have
+said anything about the deck at all, the waiter is already running.
+
+**One waiter, and only one.** If one is already armed for this deck, keep it
+rather than starting a second. Two consumers race for the same review and one of
+them gets nothing.
+
+**Re-arm after every live answer.** Answering a question through `deck say` ends
+that waiter — it exited to hand you the question. The reader is still in the
+deck, still reading, still going to submit. Arm it again before your turn ends,
+every time, for as long as they are in there.
+
 **Do not run `deck wait` in the foreground.** A review takes minutes, a foreground command
 has a timeout, and a reader cannot be hurried.
+
+If your environment genuinely cannot hold a background process, say that plainly
+to the reader — that you cannot be woken, and they should tell you when they have
+submitted. That is a worse tool, honestly described. It is not the same as
+leaving and hoping.
 
 ### The waiter can end without a review, and you must be able to tell
 
