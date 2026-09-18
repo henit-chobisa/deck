@@ -1821,17 +1821,17 @@ impl DeckView {
 
     /// *Noted.* The cheapest thing a reader can say, and the most common.
     fn on_noted(&mut self, _: &Noted, _window: &mut Window, cx: &mut Context<Self>) {
-        self.react(FACES[0].1, deck_core::When::default(), FACES[0].0, cx);
+        self.react(FACES[0].1, face_when(FACES[0].0), FACES[0].0, cx);
     }
 
     /// *Wait, what?* — the one that should make an agent stop and explain.
     fn on_asked(&mut self, _: &Asked, _window: &mut Window, cx: &mut Context<Self>) {
-        self.react(FACES[3].1, deck_core::When::default(), FACES[3].0, cx);
+        self.react(FACES[3].1, face_when(FACES[3].0), FACES[3].0, cx);
     }
 
     /// *That's wrong.* Blocking, and it should read as blocking.
     fn on_wrong(&mut self, _: &Wrong, _window: &mut Window, cx: &mut Context<Self>) {
-        self.react(FACES[4].1, deck_core::When::default(), FACES[4].0, cx);
+        self.react(FACES[4].1, face_when(FACES[4].0), FACES[4].0, cx);
     }
 
     /// Turn the rest of the screen down, or back up.
@@ -3429,8 +3429,9 @@ impl DeckView {
 
     /// Whether this remark can wait, offered only when it can matter.
     ///
-    /// Queued is the default and the common case: the author reads it when the
-    /// review comes back. Interrupting is the reader taking the floor — it
+    /// Deferring is the default and the common case: the author reads it when
+    /// the review comes back. Queueing hands it over in the next gap, while the
+    /// walk is still on. Interrupting is the reader taking the floor — it
     /// wakes the agent out of `deck wait` with this one question, which is the
     /// whole of the back-and-forth.
     fn render_urgency(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
@@ -4502,12 +4503,12 @@ impl DeckView {
                     .cursor_pointer()
                     .hover(|style| style.bg(paint(palette.wash)))
                     .on_click(cx.listener(move |deck, _, _window, cx| {
-                        let when = if mark == "stop" {
-                            deck_core::When::Interrupt
-                        } else {
-                            deck_core::When::Queue
-                        };
-                        deck.react(kind, when, mark, cx);
+                        // Pressed or clicked, a face means the same thing.
+                        // This read `Queue` while the keys read the default, so
+                        // the rail woke the agent out of `deck wait` with a
+                        // reaction the reader believed they were keeping until
+                        // they submitted.
+                        deck.react(kind, face_when(mark), mark, cx);
                     }))
                     .child(mark)
             }))
@@ -4523,6 +4524,19 @@ impl DeckView {
 /// Words rather than faces, and short ones. They sit in a panel that can be
 /// dragged narrow, they are coloured by what they ask for, and each says
 /// exactly one thing — which a picture of a beetle does not.
+/// When a face is owed to the agent.
+///
+/// A reaction means the same thing however it was left, so this is the only
+/// place that decides. Everything waits for the review, as every remark does,
+/// except `stop` — the one face whose whole point is to take the floor.
+fn face_when(mark: &str) -> deck_core::When {
+    if mark == "stop" {
+        deck_core::When::Interrupt
+    } else {
+        deck_core::When::default()
+    }
+}
+
 const FACES: &[(&str, deck_core::Kind)] = &[
     ("+1", deck_core::Kind::Nit),
     ("nice", deck_core::Kind::Nit),
@@ -5071,6 +5085,25 @@ mod tests {
     use core::prelude::v1::test;
 
     use super::*;
+
+    #[test]
+    fn a_face_waits_for_the_review_however_it_was_left() {
+        // The bug this exists for: the rail's faces read `Queue` while the keys
+        // read the default, so clicking one woke the agent out of `deck wait`
+        // with a reaction the reader thought they were keeping until submit.
+        for &(mark, _) in FACES {
+            let when = face_when(mark);
+            if mark == "stop" {
+                assert_eq!(when, deck_core::When::Interrupt, "{mark} takes the floor");
+            } else {
+                assert_eq!(
+                    when,
+                    deck_core::When::default(),
+                    "{mark} is owed nothing until the review goes back"
+                );
+            }
+        }
+    }
 
     #[test]
     fn a_dragged_share_is_ignored_once_it_is_the_only_pane_open() {
