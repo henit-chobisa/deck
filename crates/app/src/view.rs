@@ -4788,11 +4788,31 @@ impl Render for DeckView {
             };
             let slot = Slot {
                 pace: self.pace,
+                fold: self.folds.get(ix).map_or(0., crate::pane::Fade::level),
+                fold_left: (place % cols) * 2 < cols,
+                foldable: open_panes > 1,
+                temporary: self.temporary.contains(&ix),
                 ix,
-                share: self.widths.get(place).copied().unwrap_or(1.),
+                share: {
+                    let dragged = self.widths.get(place).copied().unwrap_or(1.);
+                    let closing = closing_beside(place);
+                    dragged.mul_add(1. - closing, closing)
+                },
                 palette: &self.palette,
                 view: &me,
             };
+            if slot.fold > 0. {
+                // A folded pane leaves the grid and becomes a spine at the
+                // window's edge. Left in the row it kept the row's height, so
+                // folding one of two stacked panes left a strip of nothing
+                // where the file had been.
+                let side = if slot.fold_left {
+                    &mut left_spines
+                } else {
+                    &mut right_spines
+                };
+                side.push(self.panes[ix].render_folded(&slot, cx));
+            }
             panes.push(self.panes[ix].render(&slot, &marks, self.render_focus_button(ix, cx), cx));
         }
 
@@ -4810,14 +4830,36 @@ impl Render for DeckView {
             let last = (first + cols).min(count);
             let mut across: Vec<AnyElement> = Vec::with_capacity((last - first) * 2);
             for ix in first..last {
-                if ix > first {
-                    across.push(self.render_seam(Divide::Columns(ix - 1), cx));
+                // The handle between two panes narrows as one of them folds,
+                // rather than disappearing the instant the fold begins. Taken
+                // away in one step it moved everything beside it by its own
+                // width, which is a jolt at the start of the fold and another
+                // at the end of the opening.
+                let beside = folding_at(ix).max(folding_at(ix - 1));
+                if ix > first && beside < 1. {
+                    across.push(
+                        div()
+                            .flex_none()
+                            .overflow_hidden()
+                            .h_full()
+                            .w(px(SEAM * (1. - beside)))
+                            .child(self.render_seam(Divide::Columns(ix - 1), cx))
+                            .into_any_element(),
+                    );
                 }
                 if let Some(pane) = feed.next() {
                     across.push(pane);
                 }
             }
 
+            // A row keeps its height while anything in it is still open. Once
+            // the last pane in it folds, the row gives its height up as the
+            // fold rises, so the pane above takes the window smoothly rather
+            // than jumping into the space.
+            let held: f32 = (first..last)
+                .filter_map(|place| order.get(place))
+                .map(|ix| 1. - self.folds.get(*ix).map_or(0., crate::pane::Fade::level))
+                .fold(0., f32::max);
             stacked.push(
                 div()
                     .h_flex()
@@ -4931,6 +4973,7 @@ impl Render for DeckView {
                     .h_flex()
                     .flex_1()
                     .min_h_0()
+                    .children(left_spines)
                     .child(
                         // `h_full` is not decoration. Beside the rail these
                         // panes sit in a row, and a column in a row takes its
