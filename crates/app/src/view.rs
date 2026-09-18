@@ -2116,6 +2116,9 @@ impl DeckView {
 
     fn open_composer(&mut self, about: About, window: &mut Window, cx: &mut Context<Self>) {
         self.live.pause(PauseReason::Composer);
+        // The composer lives in the rail. Writing into a folded one would be
+        // typing into a box nobody can see.
+        self.rail_open.set(true);
         let asking = match about {
             About::Lines { .. } => "what you want to say about these lines",
             About::Drawn { .. } => "what you want to say about this",
@@ -3840,131 +3843,506 @@ impl DeckView {
                 }),
             )
             .flex_none()
-            .w(px(wide * pace))
+            .relative()
+            .w(px(SPINE + (wide - SPINE) * open))
             .min_w_0()
             .h_full()
             .overflow_hidden()
             .border_l_1()
             .border_color(paint(palette.edge))
             .bg(paint(palette.band))
-            // Fades a little behind the slide, so it reads as arriving rather
-            // than as the panes merely getting narrower.
-            .opacity(pace.powi(2))
-            .child(
-                div()
-                    .v_flex()
-                    .w(px(wide))
-                    .h_full()
-                    .px(px(14.))
-                    .pt(px(13.))
-                    .pb(px(10.))
-                    .gap(px(2.))
-                    .child(
-                        div()
-                            .h_flex()
-                            .justify_between()
-                            .items_center()
-                            .pb(px(9.))
-                            .child(
-                                div()
-                                    .font_family(mono.clone())
-                                    .text_size(px(9.5))
-                                    .text_color(paint(palette.muted))
-                                    .child("LIVE"),
-                            )
-                            .child(
-                                div()
-                                    .font_family(mono)
-                                    .text_size(px(9.5))
-                                    .text_color(paint(if following {
-                                        palette.muted
-                                    } else {
-                                        palette.accent
-                                    }))
-                                    // The thing that was missing entirely: a
-                                    // reader could pause movement by clicking
-                                    // and had no way to know they had.
-                                    .id("resume-following")
-                                    .cursor_pointer()
-                                    .on_click(cx.listener(|deck, _, _window, cx| {
-                                        deck.live.follow();
-                                        cx.notify();
-                                    }))
-                                    .child(if !following {
-                                        "resume · f"
-                                    } else if speaking {
-                                        "voice active"
-                                    } else {
-                                        "following"
-                                    }),
-                            ),
-                    )
-                    .child(
-                        div()
-                            .v_flex()
-                            .id("said-rail")
-                            .flex_1()
-                            .min_h_0()
-                            .overflow_y_scroll()
-                            .track_scroll(&self.rail_scroll)
-                            .children(lines),
-                    )
-                    .child(
-                        div()
-                            .id("latest-reply")
-                            .flex_none()
-                            .py(px(5.))
-                            .text_size(px(10.))
-                            .text_color(paint(palette.muted))
-                            .cursor_pointer()
-                            .on_click(cx.listener(|deck, _, _window, cx| {
-                                deck.picked_reply = None;
-                                deck.rail_scroll.scroll_to_bottom();
-                                cx.notify();
-                            }))
-                            .child("Latest ↓ · select a turn to reply"),
-                    )
-                    .children(self.render_pending())
-                    // The composer belongs here while live, not floating over
-                    // the code. A reader writing a reply is talking to the
-                    // panel, and sending them to a box on top of the file they
-                    // are reading pulls their eye off the thing they are
-                    // replying about.
-                    .children(self.render_composer(cx))
-                    .child(self.render_reactions(cx)),
-            )
+            .when(open > 0., |this| {
+                this.child(
+                    div()
+                        .opacity(open)
+                        .v_flex()
+                        .w(px(wide))
+                        .h_full()
+                        .px(px(14.))
+                        .pt(px(13.))
+                        .pb(px(10.))
+                        .gap(px(2.))
+                        .child(
+                            div()
+                                .h_flex()
+                                .justify_between()
+                                .items_center()
+                                .pb(px(9.))
+                                .child(
+                                    div()
+                                        .h_flex()
+                                        .items_center()
+                                        .gap(px(8.))
+                                        .child(
+                                            // Fold it back to the spine. Pointing
+                                            // right, the way it goes.
+                                            div()
+                                                .id("fold-rail")
+                                                .size(px(20.))
+                                                .rounded(px(5.))
+                                                .flex()
+                                                .items_center()
+                                                .justify_center()
+                                                .cursor_pointer()
+                                                .text_size(px(13.))
+                                                .text_color(paint(palette.muted))
+                                                .hover(|style| style.bg(paint(palette.wash)))
+                                                .on_click(cx.listener(|deck, _, _window, cx| {
+                                                    // Not while something is
+                                                    // being written in it. A
+                                                    // composer folded away is
+                                                    // an invisible box holding
+                                                    // the keyboard, and every
+                                                    // key pressed after that
+                                                    // looks like a key that has
+                                                    // stopped working.
+                                                    if deck.composing.is_none() {
+                                                        deck.rail_open.set(false);
+                                                        cx.notify();
+                                                    }
+                                                }))
+                                                .child("›"),
+                                        )
+                                        .child(
+                                            div()
+                                                .font_family(mono.clone())
+                                                .text_size(px(9.5))
+                                                .text_color(paint(palette.fg))
+                                                .child("CHAT"),
+                                        )
+                                        // How much of this is going back with
+                                        // the review, beside the word for it.
+                                        .when(said > 0, |this| {
+                                            this.child(
+                                                div()
+                                                    .font_family(mono.clone())
+                                                    .text_size(px(9.5))
+                                                    .text_color(paint(palette.muted))
+                                                    .child(SharedString::from(format!(
+                                                        "· {said} to send"
+                                                    ))),
+                                            )
+                                        }),
+                                )
+                                .child(
+                                    div()
+                                        .font_family(mono)
+                                        .text_size(px(9.5))
+                                        .text_color(paint(if following {
+                                            palette.muted
+                                        } else {
+                                            palette.accent
+                                        }))
+                                        // The thing that was missing entirely: a
+                                        // reader could pause movement by clicking
+                                        // and had no way to know they had.
+                                        .id("resume-following")
+                                        .cursor_pointer()
+                                        .on_click(cx.listener(|deck, _, _window, cx| {
+                                            deck.live.follow();
+                                            cx.notify();
+                                        }))
+                                        .child(if !following {
+                                            "resume · f"
+                                        } else if speaking {
+                                            "reading"
+                                        } else {
+                                            "listening"
+                                        }),
+                                ),
+                        )
+                        .child(
+                            div()
+                                .v_flex()
+                                .id("said-rail")
+                                .flex_1()
+                                .min_h_0()
+                                .overflow_y_scroll()
+                                .track_scroll(&self.rail_scroll)
+                                .children(lines),
+                        )
+                        .child(
+                            div()
+                                .id("latest-reply")
+                                .flex_none()
+                                .py(px(5.))
+                                .text_size(px(10.))
+                                .text_color(paint(palette.muted))
+                                .cursor_pointer()
+                                .on_click(cx.listener(|deck, _, _window, cx| {
+                                    deck.rail_scroll.scroll_to_bottom();
+                                    cx.notify();
+                                }))
+                                .child("Latest ↓"),
+                        )
+                        .children(self.render_invite(cx))
+                        .children(self.render_making())
+                        .children(self.render_pending())
+                        // The composer belongs here while live, not floating over
+                        // the code. A reader writing a reply is talking to the
+                        // panel, and sending them to a box on top of the file they
+                        // are reading pulls their eye off the thing they are
+                        // replying about.
+                        .children(self.render_composer(cx))
+                        .child(self.render_reactions(cx)),
+                )
+            })
+            .when(open < 1., |this| {
+                this.child(self.render_spine(1. - open, speaking, cx))
+            })
             .into_any_element()
     }
 }
 
 impl DeckView {
-    /// Distinguish feedback waiting behind speech from feedback awaiting an
-    /// answer. Neither state proves that an agent is connected or thinking.
-    fn render_pending(&self) -> Option<AnyElement> {
-        let since = self.conversation.asked_at?.elapsed();
-        let palette = &self.palette;
-        // Still held means the reader waited for a gap and the gap has not come.
-        // Saying so is better than "thinking", which would be a lie about who
-        // is holding things up.
-        let (dots, tone) = if self.conversation.queued() {
-            ("waiting for a gap", palette.muted)
-        } else if since >= PATIENCE {
-            ("no answer yet", palette.muted)
-        } else {
-            // Publication is not proof that an agent is thinking, or even
-            // connected. Do not turn transport uncertainty into fake presence.
-            ("sent · waiting for agent", palette.accent)
+    /// Say one of the agent's turns again.
+    ///
+    /// The words as they were written, so the beats and the pointing come back
+    /// with them. Whatever is being said now stops: a reader who asked for
+    /// this one is not asking to hear both.
+    fn say_again(&mut self, ix: usize, cx: &mut Context<Self>) {
+        let Some(text) = self.conversation.spoken.get(&ix).cloned() else {
+            return;
         };
+        self.voice.hush();
+        let speech = crate::speech::asked(cx);
+        self.narrate(
+            &text,
+            Some(crate::speech::Narration::Answer(ix)),
+            &speech,
+            cx,
+        );
+        cx.notify();
+    }
 
+    /// The rail folded down to its spine.
+    ///
+    /// A book on a shelf: the title runs down the spine, and the spine is
+    /// enough to know what is inside and to pull it out. Live opens this way,
+    /// so the code gets the room and the conversation is one click away rather
+    /// than a third of the window.
+    ///
+    /// The letters are stacked, not turned. Nothing here can rotate text, and
+    /// letters stood one above the other read as a spine just as well.
+    fn render_spine(&self, shown: f32, speaking: bool, cx: &mut Context<Self>) -> AnyElement {
+        let palette = self.palette;
+        let mono = cx.theme().mono_font_family.clone();
+        // What is going back with the review, which is what the word under it
+        // says. Counting every turn made the number grow while the agent
+        // talked, which is not a thing the reader owns.
+        let turns = self.remarks.len();
+        // Something is happening in there: the voice is going, or the reader
+        // is waiting on an answer. The spine is the only thing on screen that
+        // can say so while the rail is folded.
+        let busy = speaking || self.conversation.latest_sign().is_some();
+
+        div()
+            .id("live-spine")
+            .absolute()
+            .top_0()
+            .left_0()
+            .bottom_0()
+            .w(px(SPINE))
+            .opacity(shown)
+            .bg(paint(palette.band))
+            .v_flex()
+            .items_center()
+            .pt(px(12.))
+            .pb(px(14.))
+            .cursor_pointer()
+            .hover(|style| style.bg(paint(palette.band.mix(palette.wash, 0.5))))
+            .on_click(cx.listener(|deck, _, _window, cx| {
+                deck.rail_open.set(true);
+                cx.notify();
+            }))
+            .child(
+                div()
+                    .size(px(20.))
+                    .rounded(px(5.))
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .border_1()
+                    .border_color(paint(palette.edge))
+                    .text_size(px(12.))
+                    .text_color(paint(palette.muted))
+                    .child("‹"),
+            )
+            .child(
+                div()
+                    .mt(px(14.))
+                    .size(px(6.))
+                    .rounded_full()
+                    .bg(paint(if busy { palette.accent } else { palette.edge })),
+            )
+            // Its name, turned on its side. The chat spine sits on the right,
+            // so it reads downwards the way a right-hand tab does.
+            .child(div().mt(px(10.)).flex_none().flex().justify_center().child(
+                crate::pane::sideways("CHAT", &mono, 11., 600, palette.fg, false),
+            ))
+            .when(turns > 0, |spine| {
+                spine.child(
+                    div()
+                        .mt(px(8.))
+                        .min_w(px(18.))
+                        .h(px(16.))
+                        .px(px(5.))
+                        .rounded(px(999.))
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .bg(paint(palette.accent))
+                        .font_family(mono.clone())
+                        .text_size(px(9.5))
+                        .text_color(paint(palette.on_accent))
+                        .child(SharedString::from(format!("{turns}"))),
+                )
+            })
+            // The spine itself: a line down the rest of it.
+            .child(div().mt(px(12.)).w(px(1.)).flex_1().bg(paint(palette.edge)))
+            // The mark deck wears on the bar and in the terminal: a page with
+            // one line lit on it, drawn from the palette so it follows the theme.
+            .child(
+                div()
+                    .size(px(22.))
+                    .rounded(px(6.))
+                    .border_1()
+                    .border_color(paint(palette.edge))
+                    .bg(paint(palette.wash))
+                    .v_flex()
+                    .items_center()
+                    .justify_center()
+                    .gap(px(4.))
+                    .child(
+                        div()
+                            .w(px(10.))
+                            .h(px(2.5))
+                            .rounded(px(2.))
+                            .bg(paint(palette.muted)),
+                    )
+                    .child(
+                        div()
+                            .w(px(10.))
+                            .h(px(2.5))
+                            .rounded(px(2.))
+                            .bg(paint(palette.accent)),
+                    ),
+            )
+            .into_any_element()
+    }
+
+    /// The way in to the composer, while there is not one open.
+    ///
+    /// The keyboard has always been able to open it. Nothing on screen said so,
+    /// so the panel read as a transcript you could not answer — a conversation
+    /// with no line for you to write on.
+    fn render_invite(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
+        if self.composing.is_some() {
+            return None;
+        }
+        let palette = &self.palette;
+        Some(
+            div()
+                .id("write-a-comment")
+                .flex_none()
+                .mt(px(8.))
+                .px(px(10.))
+                .py(px(7.))
+                .rounded(px(6.))
+                .border_1()
+                .border_color(paint(palette.edge))
+                .cursor_pointer()
+                .text_size(px(11.))
+                .text_color(paint(palette.muted))
+                .hover(|style| style.bg(paint(palette.wash)))
+                .on_click(cx.listener(|deck, _, window, cx| {
+                    deck.on_comment(&Comment, window, cx);
+                }))
+                .child("Write a comment · c")
+                .into_any_element(),
+        )
+    }
+
+    /// Say that a voice is being made, while it is being made.
+    ///
+    /// A cloud voice takes a second or two, and the reader who hears nothing in
+    /// that gap concludes the answer never arrived — one of them pressed replay
+    /// on a turn that was already on its way.
+    fn render_making(&self) -> Option<AnyElement> {
+        if !self.voice.making() {
+            return None;
+        }
         Some(
             div()
                 .flex_none()
-                .pt(px(7.))
+                .pt(px(8.))
                 .text_size(px(10.5))
-                .text_color(paint(tone))
-                .child(SharedString::from(dots))
+                .text_color(paint(self.palette.accent))
+                .child("making the voice…")
                 .into_any_element(),
         )
+    }
+
+    /// Distinguish feedback waiting behind speech from feedback awaiting an
+    /// answer, and say what the agent has reported doing about it.
+    fn render_pending(&self) -> Option<AnyElement> {
+        let palette = &self.palette;
+        let doing = self.conversation.doing.as_ref();
+        // Measured from the last sign of life, not from the question. An agent
+        // that reports what it is doing has answered the only question this
+        // panel can actually ask — *is anybody there* — so its note restarts
+        // the clock exactly as an answer would.
+        let since = self.conversation.latest_sign()?.elapsed();
+        let quiet = since >= PATIENCE;
+
+        // Still held means the reader waited for a gap and the gap has not
+        // come. Saying so is better than "thinking", which would be a lie
+        // about who is holding things up.
+        //
+        // Publication is also not proof that an agent is thinking, or even
+        // connected, so the words never claim it is. What moves is a bar, and a
+        // bar only says *time is passing* — which is the one thing deck knows.
+        //
+        // The one exception is a note, and it is not an exception to the rule:
+        // those are the agent's own words about its own work, quoted, not
+        // deck's guess at what the silence means.
+        let held = self.conversation.queued();
+        // A note only speaks for itself while it is the freshest thing there
+        // is. Behind a gap the honest subject is the gap, and after two minutes
+        // of silence it is the silence.
+        let note = (!held && !quiet)
+            .then_some(doing)
+            .flatten()
+            .map(|(what, _)| what.as_str());
+        let (label, tone) = if held {
+            ("waiting for a gap", palette.muted)
+        } else if quiet {
+            ("no answer yet", palette.muted)
+        } else {
+            ("sent", palette.accent)
+        };
+        let run = held || !quiet;
+
+        // What it last said it was doing, once that has stopped being news.
+        // Kept, because *it was reading the retry loop and then went quiet* is
+        // worth more to somebody deciding whether to wait than a bare silence
+        // — and kept in the past tense, because deck has no idea whether it
+        // still is. Not capitalised here: after `last said:` it is the rest of
+        // a sentence rather than a line of its own.
+        let last = quiet
+            .then_some(doing)
+            .flatten()
+            .map(|(what, _)| format!("last said: {what}"));
+
+        // Nought to one across the time deck is willing to wait. Not a guess at
+        // how far along the agent is — nobody knows that — but an honest
+        // picture of how much patience is left before it says so.
+        let run_for = (since.as_secs_f32() / PATIENCE.as_secs_f32()).clamp(0., 1.);
+
+        Some(
+            div()
+                .v_flex()
+                .flex_none()
+                .gap(px(5.))
+                .pt(px(8.))
+                .child(match note {
+                    Some(what) => self.render_doing(what),
+                    None => div()
+                        .text_size(px(10.5))
+                        .text_color(paint(tone))
+                        .child(SharedString::from(label))
+                        .into_any_element(),
+                })
+                .when_some(last, |this, last| {
+                    this.child(
+                        div()
+                            .text_size(px(10.))
+                            .text_color(paint(palette.muted))
+                            .child(SharedString::from(last)),
+                    )
+                })
+                .when(run, |this| {
+                    this.child(
+                        div()
+                            .w_full()
+                            .h(px(2.))
+                            .rounded(px(999.))
+                            .bg(paint(palette.edge))
+                            .child(
+                                div()
+                                    .h_full()
+                                    .w(relative(run_for))
+                                    .rounded(px(999.))
+                                    .bg(paint(palette.accent)),
+                            ),
+                    )
+                })
+                .into_any_element(),
+        )
+    }
+
+    /// The agent's own words about its own work, with a light going through
+    /// them.
+    ///
+    /// The shimmer is not decoration. A static line of grey text is the same
+    /// thing a crashed agent leaves behind, and the reader cannot tell the two
+    /// apart by looking — which is the exact confusion the note exists to end.
+    /// A light that is still travelling says *this is live* in the only
+    /// language a panel has, and it costs the reader no reading.
+    ///
+    /// It is also the only continuously animated thing in the panel, and it
+    /// exists solely while a fresh note does: a wait with no note, or one that
+    /// has gone quiet, asks for no frames at all.
+    fn render_doing(&self, what: &str) -> AnyElement {
+        /// How long the light takes to cross the line and come round again.
+        const SWEEP: std::time::Duration = std::time::Duration::from_millis(1700);
+
+        let palette = self.palette;
+        // Bright enough to read on its own, because for most of the loop this
+        // is the colour the words actually are. The accent is the peak, not the
+        // resting state.
+        let dim = palette.accent.mix(palette.band, 0.5);
+        let shown = capitalised(what);
+        // Where each word starts, in characters, so the light crosses a long
+        // word at the same speed it crosses a short one. Phasing by word index
+        // instead makes short words flash past and long ones hang, and it reads
+        // as words taking turns rather than as one light moving.
+        let letters = shown.chars().count().max(1) as f32;
+        let mut at = 0.;
+
+        div()
+            .h_flex()
+            .flex_wrap()
+            // Standing in for the spaces the words were split on: they are
+            // separate elements now, and a flex row does not keep the gap a
+            // single run of text would have had.
+            .gap(px(3.2))
+            .text_size(px(10.5))
+            .children(
+                shown
+                    .split_whitespace()
+                    .enumerate()
+                    .map(|(ix, word)| {
+                        let phase = at / letters;
+                        at += word.chars().count() as f32 + 1.;
+                        div()
+                            .text_color(paint(dim))
+                            .child(SharedString::from(word.to_string()))
+                            .with_animation(
+                                ("doing-word", ix),
+                                Animation::new(SWEEP).repeat().with_easing(shimmer(phase)),
+                                move |this, lit| {
+                                    this.text_color(paint(dim.mix(palette.accent, lit)))
+                                },
+                            )
+                            .into_any_element()
+                    })
+                    // Collected because the accumulator is borrowed by the
+                    // closure: the row cannot still be holding it when the
+                    // element is handed on.
+                    .collect::<Vec<_>>(),
+            )
+            .into_any_element()
     }
 
     /// The reactions, under a rule at the foot of the panel.
@@ -4039,10 +4417,84 @@ const FACES: &[(&str, deck_core::Kind)] = &[
 ];
 
 /// Report a prolonged wait without pretending to know why the agent is quiet.
-const PATIENCE: std::time::Duration = std::time::Duration::from_secs(25);
+///
+/// Two minutes, and it used to be twenty-five seconds. That was chosen for the
+/// answer an agent gives out of what it already read, and it is wrong for the
+/// ordinary case: a question whose answer needs a handful of tool calls is a
+/// minute of real work, and the panel was calling that no answer while the
+/// agent was still typing. A label that cries off before the thing it is
+/// waiting for is normally done teaches the reader to ignore it.
+///
+/// It is a deadline on *silence*, not on the answer. A `deck doing` note
+/// restarts it, so an agent that says what it is doing never trips this at all
+/// — which is the behaviour the length is chosen to make cheap.
+const PATIENCE: std::time::Duration = std::time::Duration::from_secs(120);
+
+/// How brightly a word sitting `phase` along the line is lit, through the loop.
+///
+/// One narrow peak with a long dark stretch after it. A sine — the shape the
+/// pulsing dot uses — lights the whole line at once and only varies how much,
+/// which reads as breathing rather than as something travelling.
+fn shimmer(phase: f32) -> impl Fn(f32) -> f32 {
+    /// How much of the loop a word spends lit. Wide enough that two or three
+    /// words are bright together, so it is a light with a width and not a
+    /// cursor running along the line.
+    const BAND: f32 = 0.34;
+
+    move |turn| {
+        // How far round the loop the light is past this word. Words behind it
+        // are still fading; words ahead wait for it to come round.
+        let since = (turn - phase).rem_euclid(1.);
+        let lit = (1. - since / BAND).clamp(0., 1.);
+        // Squared, so the fall-off is fast at the bright end. Linear leaves a
+        // long grey smear that looks like a rendering fault.
+        lit * lit
+    }
+}
+
+/// A note as a line rather than as a fragment: first letter up.
+///
+/// The agent writes these as present-tense fragments — `reading the retry
+/// loop` — because that is what reads well in a command. In the panel it is a
+/// line on its own next to capitalised furniture, and lower case there looks
+/// like a leaked internal string.
+///
+/// It leaves a word that is already carrying case alone, so `iOS` and `gRPC`
+/// survive being the first word.
+fn capitalised(what: &str) -> String {
+    let mut letters = what.chars();
+    let Some(first) = letters.next() else {
+        return String::new();
+    };
+    let rest = letters.as_str();
+    if !first.is_lowercase() || rest.starts_with(char::is_uppercase) {
+        return what.to_string();
+    }
+    first.to_uppercase().collect::<String>() + rest
+}
 
 /// Room for a readable reply without turning the evidence into a thumbnail.
 const RAIL: f32 = 304.;
+
+/// How much of the page a seam claims.
+///
+/// Wider than the rule it draws, because a one-pixel target is not a target.
+const SEAM: f32 = 7.;
+
+/// The radius of the deck's own corner.
+///
+/// Near enough to what macOS gives a window of this kind that the two agree,
+/// and the window is transparent behind it so a disagreement shows as a
+/// slightly rounder corner rather than as a square one.
+const WINDOW_CORNER: f32 = 14.;
+
+/// How wide the rail is folded down to its spine.
+///
+/// Narrow enough to be a margin rather than a column: it holds a stack of
+/// letters and a mark, and everything else waits until it is opened. Shared
+/// with a folded pane, so a window with one of each has a matching margin down
+/// both edges.
+use crate::pane::SPINE;
 
 impl Render for DeckView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
@@ -4053,20 +4505,33 @@ impl Render for DeckView {
         // a closure that outlives this frame is allowed to hold.
         let me = cx.entity().downgrade();
 
-        // Live is a time-based transition, so the window has to keep asking for
-        // frames until it settles. Driven here rather than from a spawned timer
-        // because the pace is already a function of the clock: one place decides
-        // how live the room is, and everything below reads it.
-        let live = self.live_pace();
         let speaking = self.voice.talking();
-        // Only while something is genuinely moving.
+        // How far through a turn the page is, and how far down the panes have
+        // dipped for it. A half sine: down to meet the new arrangement, back up
+        // once it is there.
+        // A quarter turn lands at once, with no animation at all.
         //
-        // This used to ask for a frame whenever an answer was owed or a voice
-        // was going — which meant the whole window, every code pane included,
-        // repainted sixty times a second for as long as the reader waited. It
-        // felt exactly as heavy as it was. The dots stop moving once the
-        // indicator gives up, and the voice is pumped by a timer instead.
-        if self.walking.is_some() && (live > 0.) && (live < 1.) {
+        // It has been tried twice. A dip reads as the window blinking, and
+        // folding the panes away and back reads as two movements that happen to
+        // share a key — because a turn is not a fold: nothing is going away.
+        // What is left is the honest thing, which is also the quickest: the
+        // panes are simply somewhere else the next time the window paints.
+        self.heed();
+        self.look_ahead(cx);
+        // A light coming up or going out is a few hundred milliseconds of
+        // frames, and then none.
+        let hearing = [self.heard_now, self.heard_was]
+            .into_iter()
+            .flatten()
+            .any(|(_, _, light)| light.moving());
+        if hearing
+            || self.rail_open.moving()
+            || self.folds.iter().any(crate::pane::Fade::moving)
+            || self
+                .panes
+                .iter()
+                .any(|pane| pane.code().is_some_and(Pane::fading))
+        {
             window.request_animation_frame();
         }
 
@@ -4341,16 +4806,39 @@ impl Render for DeckView {
                             .min_h_0()
                             .children(rows),
                     )
-                    .when(live > 0., |this| {
+                    .children(right_spines)
+                    // No seam on a folded rail: there is nothing to drag, and
+                    // a handle beside the spine would be a second thing to
+                    // click that does something else.
+                    .when(self.rail_open.on(), |this| {
                         this.child(self.render_seam(Divide::Rail, cx))
-                            .child(self.render_rail(live, speaking, cx))
                     })
+                    .child(self.render_rail(speaking, cx))
                     .into_any_element()
             })
-            // Only when there is no panel to hold it. Live gives the
-            // composer a home beside the conversation it belongs to.
-            .when(live <= 0., |this| this.children(self.render_composer(cx)))
             .child(self.render_strip(cx))
+            // The window wears an accent frame while it is walking you through
+            // the deck — the thing a screen share does, and for the same
+            // reason: the state belongs to the whole surface, not to a label in
+            // one corner of it. Drawn over the window rather than as its
+            // border, so it can be two points thick without moving anything.
+            .when(self.aloud, |this| {
+                this.child(
+                    div()
+                        .absolute()
+                        // Inside the platform's own edge, and rounded to sit
+                        // concentric with it. Square corners over a rounded
+                        // window cut across the curve, which is the one place
+                        // on this screen where a straight line is wrong.
+                        .top(px(1.))
+                        .left(px(1.))
+                        .right(px(1.))
+                        .bottom(px(1.))
+                        .rounded(px(WINDOW_CORNER - 1.))
+                        .border_2()
+                        .border_color(paint(self.palette.accent)),
+                )
+            })
     }
 }
 
