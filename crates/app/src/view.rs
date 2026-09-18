@@ -3167,20 +3167,27 @@ impl Render for DeckView {
         for (place, &ix) in order.iter().enumerate() {
             // The remark's own index rides along, so a card can say which one
             // to drop when it is closed.
-            let marks: Vec<Mark> = self
-                .remarks
-                .iter()
-                .enumerate()
-                .filter(|(_, remark)| remark.ref_id.as_ref() == Some(self.panes[ix].ref_id()))
-                .filter_map(|(remark_ix, remark)| {
-                    Some(Mark {
-                        range: remark.range?,
-                        text: SharedString::from(remark.text.clone()),
-                        remark_ix,
-                        folded: self.folded.contains(&remark_ix),
+            // While live, a remark lives in the panel and nowhere else. Drawn
+            // on the code as well it is the same sentence twice, and the copy
+            // over the file covers the very lines being discussed — which is
+            // the reason the composer moved out of there in the first place.
+            let marks: Vec<Mark> = if live > 0. {
+                Vec::new()
+            } else {
+                self.remarks
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, remark)| remark.ref_id.as_ref() == Some(self.panes[ix].ref_id()))
+                    .filter_map(|(remark_ix, remark)| {
+                        Some(Mark {
+                            range: remark.range?,
+                            text: SharedString::from(remark.text.clone()),
+                            remark_ix,
+                            folded: self.folded.contains(&remark_ix),
+                        })
                     })
-                })
-                .collect();
+                    .collect()
+            };
             let slot = Slot {
                 pace: self.pace,
                 ix,
