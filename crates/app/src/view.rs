@@ -3408,6 +3408,10 @@ impl DeckView {
         // What the deck says it will be, never less than what it already is: a
         // count that a group can arrive and make a lie of is worse than none.
         let writing = !self.deck.sealed();
+        // Being walked through a deck is the best thing this window does, and
+        // it says so with the frame round the whole window rather than here. A
+        // strip that also changed colour was two answers to one question.
+        let walking = self.aloud;
         div()
             .h_flex()
             .flex_none()
@@ -3433,6 +3437,29 @@ impl DeckView {
                     // group is about; the strip says where you are in the deck
                     // and what you have said so far, and those belong together.
                     .child(format!("group {}/{}", self.group_ix + 1, total))
+                    .when(walking, |this| {
+                        this.child(
+                            div()
+                                .h_flex()
+                                .items_center()
+                                .gap(px(6.))
+                                .text_color(paint(self.palette.accent))
+                                .child(
+                                    div()
+                                        .size(px(5.))
+                                        .rounded_full()
+                                        .bg(paint(self.palette.accent))
+                                        .with_animation(
+                                            "walking",
+                                            Animation::new(std::time::Duration::from_millis(1900))
+                                                .repeat()
+                                                .with_easing(pulsating_between(0.3, 1.0)),
+                                            |this, breath| this.opacity(breath),
+                                        ),
+                                )
+                                .child("walking you through it"),
+                        )
+                    })
                     .when(writing, |this| {
                         this.child(
                             div()
