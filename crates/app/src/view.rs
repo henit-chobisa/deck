@@ -4869,7 +4869,15 @@ impl Render for DeckView {
                 // away in one step it moved everything beside it by its own
                 // width, which is a jolt at the start of the fold and another
                 // at the end of the opening.
-                let beside = folding_at(ix).max(folding_at(ix - 1));
+                //
+                // Asked for inside the guard, because the first pane of a row
+                // has nothing to its left: `ix - 1` there is an underflow, and
+                // in a debug build that is an abort in the middle of a click.
+                let beside = if ix > first {
+                    folding_at(ix).max(folding_at(ix - 1))
+                } else {
+                    1.
+                };
                 if ix > first && beside < 1. {
                     across.push(
                         div()
