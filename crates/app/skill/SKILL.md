@@ -397,13 +397,23 @@ One before the consequence, one after a question, one where you want somebody to
 catch up. Three or four in a group, not one per sentence — a beat everywhere is
 the same as a beat nowhere.
 
-**Point as you talk.** `[point 106-110]` moves a light onto exactly those lines,
+**Point as you talk.** [point 106-110] moves a light onto exactly those lines,
 and it moves when the words after it are said — not when you sent the command.
 Write the file's own line numbers, the ones printed down the gutter. The reader
 never sees the direction, only the light.
 
-> `[point 118-121]` The comparison is right here, and it is `!=`. `[pause]`
-> `[point 140]` Then the result is thrown away on this line.
+> [point 118-121] The comparison is right here, and it is `!=`. `[pause]`
+> [point 140] Then the result is thrown away on this line.
+
+**Write it bare — never in backticks.** `` `[point 106]` `` reads well in a file
+and it is wrong here: the point comes out and the chip stays, which is an empty
+grey box mid-sentence. Deck strips those backticks now, but the habit is the
+thing to drop.
+
+**And the sentence has to read with the point gone**, because that is what the
+reader sees and hears. *[point 1046] that returns SUCCESS* becomes *that returns
+SUCCESS* — a sentence with no subject. Write *[point 1046] the call returns
+SUCCESS*, and read the line back to yourself without the direction in it.
 
 The spotlight is the stretch of file they should be looking at and it holds still
 while you explain it. The point is your finger inside it: on whatever you are
@@ -527,7 +537,7 @@ That is the shape of every explanation over lit code:
 
 Read that against a point that earns nothing:
 
-> `[point 696-708]` Now every piece of an answer is made at the same time.
+> [point 696-708] Now every piece of an answer is made at the same time.
 
 Same lines lit, and the reader learns nothing they could find again. No name, no
 origin, nothing they felt.
@@ -595,11 +605,11 @@ out at once.
 
 Here is a real answer to *"explain the aloud function"*, done badly:
 
-> `[point 327-328]` It takes one code chip from what I write, the words inside
-> backticks, and turns it into what a person would say out loud. `[point 333]` A
+> [point 327-328] It takes one code chip from what I write, the words inside
+> backticks, and turns it into what a person would say out loud. [point 333] A
 > path becomes its last part, so you hear the file name and not every slash.
-> `[point 336-339]` Empty quotes become the words empty string, and double colons
-> and underscores become spaces. `[point 343-350]` Then this loop puts a space
+> [point 336-339] Empty quotes become the words empty string, and double colons
+> and underscores become spaces. [point 343-350] Then this loop puts a space
 > wherever a capital letter follows a lower case one…
 
 Five points, five captions, and no reason. The same answer, done well:
@@ -607,8 +617,8 @@ Five points, five captions, and no reason. The same answer, done well:
 > A voice that reads code as written is hard to follow. `base_url` comes out as
 > base underscore url, and `buildPayload` is one long word with the stress in the
 > wrong place. `[pause]` This function hears those names the way a person does.
-> `[point 339]` Underscores and double colons become gaps between words.
-> `[point 343-350]` And a capital in the middle of a name starts a new word.
+> [point 339] Underscores and double colons become gaps between words.
+> [point 343-350] And a capital in the middle of a name starts a new word.
 > `[pause long]` Everything else in it is small cleanup around those two ideas.
 
 An analogy is not an answer on its own either. Asked how a voice was made smooth,
@@ -620,9 +630,9 @@ this lands the idea and leaves the code behind:
 
 The same analogy, tied to the code:
 
-> Think of an answer as a radio play, recorded in scenes. `[point 696-708]` The
+> Think of an answer as a radio play, recorded in scenes. [point 696-708] The
 > scenes are `pieces`, and every one is recorded at once, each on its own thread.
-> `[pause]` `[point 712-716]` The tape is `pcm`. Before a scene goes onto it,
+> `[pause]` [point 712-716] The tape is `pcm`. Before a scene goes onto it,
 > `starts` writes down how long the tape already is — and that is the moment the
 > light moves.
 
@@ -722,6 +732,30 @@ your writing time overlap, which is the whole point.
 You do not poll and you do not ask them to tell you when they're done. `deck wait`
 exiting re-invokes you on its own.
 
+**Every verb, so you know what you have.** Six of these build the deck and six
+are for while somebody is in front of it. Reach for the second six: a walk where
+the agent never moves anything is a document with a bar under it.
+
+```
+deck new      the header, and the bar
+deck open     the window, in the background, straight away
+deck group    one group, one call
+deck seal     no more coming
+deck wait     in the background, then end the turn
+deck next     what the reader just did, when you want it without blocking
+
+deck show     move their eyes: --ref, --pane, --after for a proposed change
+deck say      say something, spoken if they have a voice, with [point …] in it
+deck doing    what you are doing, while you do it
+deck bring    a file this group never showed, with --fold or --fold-group
+deck fold     put a pane on its spine, or --open to bring it back
+deck clear    take your hand off the page
+```
+
+Check `deck <verb> --help` rather than inventing a flag. This file describes the
+deck the reader has installed, and it is older than their copy by however long
+it has been since they upgraded.
+
 **Do the reading first.** The bar goes up before the research; the groups go in after it,
 back to back. Researching in silence and then writing four groups before showing anything
 is two minutes of nothing from the other side of the screen. Opening and *then* going
@@ -765,19 +799,26 @@ in front of somebody.
 
 ## 3. Write one group per tool call
 
+**Quote the `say` with single quotes.** Narration is full of `` `code` `` chips,
+and backticks inside double quotes are a command substitution: the shell runs
+what is between them and puts the output in your narration. It is silent when it
+works — the group is written, with holes where the words were — so nothing tells
+you it happened. If the prose has an apostrophe in it, use a quoted heredoc
+rather than escaping your way out.
+
 ```bash
 deck group <path> \
-  --say "Okay, drag the line between two panes. Left one grows, right one gives way,
+  --say 'Okay, drag the line between two panes. Left one grows, right one gives way,
 nothing else on the page twitches. Feels like the most ordinary thing in the world.
 
 Here is what I like about it: **a pane has no width.** Nowhere. Not in pixels, not in
-any struct, not hiding in a layout pass. `[point 239-240]` That is [state] — two lists
+any struct, not hiding in a layout pass. [point 239-240] That is [state] — two lists
 of plain `f32`, `shares` and `widths`, and that is your lot.
 
 So before you scroll — if the drag is not setting a size, what is it doing? Have a
-guess. The answer is in [drag] and I think it is nicer than you expect." \
-  --ref "crates/app/src/view.rs:239-240 [state] this is all the state there is" \
-  --ref "crates/app/src/view.rs:1324-1342 [drag] and this is the entire drag"
+guess. The answer is in [drag] and I think it is nicer than you expect.' \
+  --ref 'crates/app/src/view.rs:239-240 [state] this is all the state there is' \
+  --ref 'crates/app/src/view.rs:1324-1342 [drag] and this is the entire drag'
 ```
 
 That is the length and the register to aim for. Read it against the four things above:
@@ -1031,12 +1072,20 @@ apart:
 
 | exit | means |
 | ---- | ----- |
-| 0 | they submitted; the review is on stdout |
+| 0 | something came back: read it before you believe it |
 | 4 | they closed the deck without answering |
 | 3 | no review yet — only from `--timeout`, which you should not need |
 | 1 | something was wrong; the message on stderr says what |
 
-- Exit 0 with JSON on stdout → a real review. Proceed.
+**Zero is not the same as approval, and this is the one that will catch you.**
+The waiter also comes back at zero when somebody asks you something mid-walk,
+because a question they cannot get an answer to is a reader stuck. So look at
+what it printed:
+
+- `{"asked": …}` → **a question, not a review and not consent.** Answer it with
+  `deck say`, move their eyes with `deck show`, and then **arm the waiter again**
+  — you are back where you were, and nothing has been submitted.
+- A review payload — the object with `comments` in it — → they submitted. Proceed.
 - **Anything else is NOT a review.** Nothing was submitted. They may not have seen the
   deck at all.
 
