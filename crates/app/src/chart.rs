@@ -988,17 +988,22 @@ impl Chart {
     /// What the playing flow, if any, is doing to the node called `id`.
     #[must_use]
     pub fn lit(&self, id: &str) -> Lit {
-        // A point in the narration beats a flow: it is the agent's finger, put
-        // on this block for as long as the words about it are being said, and
-        // everything else in the picture steps back while it is there.
-        if !self.pointed.is_empty() {
-            return if self.pointed.iter().any(|lit| lit == id) {
-                Lit::On(1., None)
-            } else {
-                Lit::Aside
-            };
-        }
         let Some(playing) = self.playing else {
+            // A point in the narration is the agent's finger: on this block for
+            // as long as the words about it are being said, with the rest of
+            // the picture stepped back.
+            //
+            // It yields to a flow, because a flow is the reader pressing a
+            // button. Their path wins over the agent's finger for as long as it
+            // runs, and the finger is still there when it finishes — the same
+            // rule as a reader who scrolls a pane the agent was moving.
+            if !self.pointed.is_empty() {
+                return if self.pointed.iter().any(|lit| lit == id) {
+                    Lit::On(1., None)
+                } else {
+                    Lit::Aside
+                };
+            }
             return Lit::Resting;
         };
         let Some(flow) = self.diagram.flows.get(playing.flow) else {
@@ -1620,6 +1625,17 @@ mod tests {
         chart.pointed = vec!["checkout".into()];
         assert_eq!(chart.lit("checkout"), Lit::On(1., None));
         assert_eq!(chart.lit("fetch"), Lit::Aside);
+
+        // And a flow the reader pressed play on wins while it runs: their path
+        // is theirs, and the finger is still there when it ends.
+        chart.playing = Some(Playing { flow: 0, front: 0. });
+        assert_ne!(
+            chart.lit("checkout"),
+            Lit::On(1., None),
+            "the flow decides the light while it is playing"
+        );
+        chart.playing = None;
+        assert_eq!(chart.lit("checkout"), Lit::On(1., None));
     }
 
     #[test]

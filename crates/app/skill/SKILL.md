@@ -1261,6 +1261,12 @@ Only `nodes` is required.
   light one stop differently from the rest — the place it goes wrong, in a path
   that is otherwise calm.
 
+  Flows and points share the picture and do not fight over it. A point is your
+  finger while you talk; a flow is the reader pressing play, and theirs wins for
+  as long as it runs. Write both: the flows let them retrace it on their own
+  after you have stopped talking, which is when most of the understanding
+  happens.
+
 ```json
 "flows": [
   { "name": "cancel check", "steps": ["run", "worker", "cache"] },
