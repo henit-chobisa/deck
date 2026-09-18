@@ -277,6 +277,57 @@ fn one_pane_per_name(pointing: &[Pointing]) -> anyhow::Result<()> {
     Ok(())
 }
 
+/// What this group writes that will never light up.
+///
+/// Not a refusal. A group with no points is a legal group and sometimes the
+/// right one — a single short claim over a single ref does not need a finger.
+/// But the common failure is not a judgement call: the agent writes the prose
+/// it would have written in chat, sends it with two refs beside it, and the
+/// reader gets a paragraph about a change with nothing moving under it. The
+/// light is the reason this is not a message.
+///
+/// Said on the way past, where whoever wrote the group is still listening.
+#[must_use]
+pub fn what_will_not_light(say: &str, pointing: &[Pointing]) -> Vec<String> {
+    let mut notes = Vec::new();
+    let code: Vec<&refs::Named> = pointing
+        .iter()
+        .filter_map(|one| match one {
+            Pointing::Code(named) => Some(named),
+            Pointing::Drawn(_) => None,
+        })
+        .collect();
+    if code.is_empty() {
+        return notes;
+    }
+
+    if !say.contains("[point ") {
+        notes.push(
+            "no points in the say, so nothing moves while it is read: \
+             write `[point 118-121]` on the lines each sentence is about"
+                .to_string(),
+        );
+    }
+
+    let named: Vec<&str> = code.iter().filter_map(|one| one.name.as_deref()).collect();
+    if named.is_empty() && code.len() > 1 {
+        notes.push(
+            "no pane is named, so the prose cannot say which one it means: \
+             put `[a-name]` at the front of a ref's note and use it in the say"
+                .to_string(),
+        );
+    }
+    for name in named {
+        if !say.contains(&format!("[{name}]")) {
+            notes.push(format!(
+                "the pane named [{name}] is never mentioned in the say, so the \
+                 reader has no way to know which pane it is"
+            ));
+        }
+    }
+    notes
+}
+
 /// Add a group to the deck at `root`.
 ///
 /// `ord` is worked out from what is already there, so groups can be written one
@@ -630,6 +681,35 @@ mod tests {
             serde_json::from_str(&std::fs::read_to_string(root.join("g2.json")).unwrap()).unwrap();
         assert_eq!(second.ord, Some(2));
         assert_eq!(second.id, "g2");
+    }
+
+    #[test]
+    fn a_group_that_will_not_light_says_so_without_refusing() {
+        let named = |arg: &str| Pointing::Code(crate::refs::parse(arg).expect("a ref that parses"));
+        let panes = vec![
+            named("a.rs:1-2 [retry] the loop"),
+            named("b.rs:1-2 [write]"),
+        ];
+
+        // The failure this exists for: prose written as though it were a chat
+        // message, with panes beside it that nothing in the words points at.
+        let quiet = what_will_not_light("I changed the retry loop and the write.", &panes);
+        assert_eq!(quiet.len(), 3, "{quiet:#?}");
+        assert!(quiet[0].contains("no points"), "{quiet:#?}");
+        assert!(quiet[1].contains("[retry]"), "{quiet:#?}");
+        assert!(quiet[2].contains("[write]"), "{quiet:#?}");
+
+        let walked = what_will_not_light(
+            "[point 1] The loop in [retry] gives up early, and [write] never runs.",
+            &panes,
+        );
+        assert!(walked.is_empty(), "{walked:#?}");
+
+        // One pane and one claim is allowed to be quiet: a finger pointing at
+        // the only thing on screen is not telling anybody anything.
+        let alone = what_will_not_light("It returns before the write.", &[named("a.rs:1-2")]);
+        assert_eq!(alone.len(), 1, "{alone:#?}");
+        assert!(alone[0].contains("no points"), "{alone:#?}");
     }
 
     #[test]

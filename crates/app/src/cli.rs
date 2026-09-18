@@ -396,6 +396,11 @@ impl Cli {
                 after,
                 diagram,
             } => report(gather(&refs, &after, &diagram).and_then(|refs| {
+                // Said before the path, because an agent that reads one line of
+                // output reads the last one.
+                for note in deck_cli::what_will_not_light(&say, &refs) {
+                    eprintln!("deck: {note}");
+                }
                 deck_cli::group(&deck, &say, refs).map(|path| {
                     println!("{}", path.display());
                 })
