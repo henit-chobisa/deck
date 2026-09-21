@@ -17,8 +17,7 @@ A presentation surface for agents, written in Rust.
 
 </div>
 
-<img width="1379" height="1027" alt="image" src="https://github.com/user-attachments/assets/a5340bfc-50b8-4ecd-a7c9-930b9af8ad96" />
-
+<img width="1292" height="1346" alt="file-91edb215334a29711dd9a11712a287e7" src="https://github.com/user-attachments/assets/108158d4-5486-4a3d-a8d3-562d315fcc5c" />
 
 <!--
   The hero goes here, and it is the most important thing on this page: a reader
@@ -101,25 +100,13 @@ you going back to the chat window.
 
 ![the whole loop](https://github.com/henit-chobisa/deck/releases/download/v0.1.1/interaction.gif)
 
-<!--
-  WHERE THE MEDIA LIVES
-  =====================
-  These are release assets, not committed files — attached to a release with
 
-      gh release upload v0.1.1 <file> --repo henit-chobisa/deck
+<img width="1200" height="696" alt="3 02 50" src="https://github.com/user-attachments/assets/4006a562-8776-4ca8-a276-44c7b4f21df0" />
 
-  which gives a permanent direct URL and keeps the clips out of the repo's
-  history. Uploading through the web editor works too and mints a
-  `user-attachments` URL; either renders.
+<img width="1200" height="962" alt="interaction" src="https://github.com/user-attachments/assets/a0d04c83-ba72-4a16-b016-6fd0a8c923c0" />
 
-  A GIF plays inline and loops, which is what a README wants. The .mp4 beside
-  each one is the same cut at a tenth the size and better quality, but needs a
-  click. Both cap at 10 MB free, 100 MB paid.
+<img width="1200" height="696" alt="3 00 40" src="https://github.com/user-attachments/assets/39e23543-f605-4022-a6a8-1e2a8e9ea9b8" />
 
-  Every clip gets one sentence above it saying what is on screen. A silent loop
-  with no caption makes the reader work out what they are watching, which is the
-  thing this whole tool is against.
--->
 
 ## Install
 
