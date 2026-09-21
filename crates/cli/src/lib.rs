@@ -101,6 +101,8 @@ pub enum Pointing {
     Code(refs::Named),
     /// A picture, as a `--diagram` argument named it.
     Drawn(refs::Picture),
+    /// A page, as a `--page` argument named it.
+    Written(refs::Written),
 }
 
 /// Refuse narration with a code block typed into it.
@@ -223,7 +225,7 @@ fn one_pane_per_block(pointing: &[Pointing]) -> anyhow::Result<()> {
         .iter()
         .filter_map(|one| match one {
             Pointing::Code(named) => Some(named),
-            Pointing::Drawn(_) => None,
+            Pointing::Drawn(_) | Pointing::Written(_) => None,
         })
         .collect();
 
@@ -264,6 +266,7 @@ fn one_pane_per_name(pointing: &[Pointing]) -> anyhow::Result<()> {
         .filter_map(|one| match one {
             Pointing::Code(named) => named.name.as_deref(),
             Pointing::Drawn(picture) => picture.name.as_deref(),
+            Pointing::Written(page) => page.name.as_deref(),
         })
         .collect();
     for (ix, name) in names.iter().enumerate() {
@@ -293,17 +296,24 @@ pub fn what_will_not_light(say: &str, pointing: &[Pointing]) -> Vec<String> {
         .iter()
         .filter_map(|one| match one {
             Pointing::Code(named) => Some(named),
-            Pointing::Drawn(_) => None,
+            Pointing::Drawn(_) | Pointing::Written(_) => None,
+        })
+        .collect();
+    let written: Vec<&refs::Written> = pointing
+        .iter()
+        .filter_map(|one| match one {
+            Pointing::Written(page) => Some(page),
+            Pointing::Code(_) | Pointing::Drawn(_) => None,
         })
         .collect();
     let drawn: Vec<&refs::Picture> = pointing
         .iter()
         .filter_map(|one| match one {
             Pointing::Drawn(picture) => Some(picture),
-            Pointing::Code(_) => None,
+            Pointing::Code(_) | Pointing::Written(_) => None,
         })
         .collect();
-    if code.is_empty() && drawn.is_empty() {
+    if code.is_empty() && drawn.is_empty() && written.is_empty() {
         return notes;
     }
 
@@ -315,6 +325,30 @@ pub fn what_will_not_light(say: &str, pointing: &[Pointing]) -> Vec<String> {
              write `[point 118-121]` on the lines each sentence is about"
                 .to_string(),
         );
+    }
+
+    // A point that names something no pane answers to. The failure this caught
+    // the first time: a page whose states were `make`, `link` and `attach`, and
+    // an `id` scan that only knew about elements — so the code lit up beside a
+    // picture that never moved, in silence.
+    let mut answers: Vec<String> = Vec::new();
+    for picture in &drawn {
+        answers.extend(picture.diagram.nodes.iter().map(|node| node.id.clone()));
+    }
+    for page in &written {
+        answers.extend(answered_by(&page.html));
+    }
+    for block in blocks(say) {
+        // `106` and `106-110` are lines, not blocks, and belong to a file.
+        let lines = block.split('-').all(|part| part.parse::<u32>().is_ok());
+        if lines || answers.contains(&block) {
+            continue;
+        }
+        notes.push(format!(
+            "`[point {block}]` names nothing in this group: no diagram has a \
+             block by that name, and no page declares it. A page says what it \
+             answers to with `<meta name=\"deck-points\" content=\"...\">`"
+        ));
     }
 
     let named: Vec<&str> = code
@@ -338,6 +372,116 @@ pub fn what_will_not_light(say: &str, pointing: &[Pointing]) -> Vec<String> {
         }
     }
     notes
+}
+
+/// Every payload a `[point ...]` in `say` carries, block names and all.
+fn blocks(say: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut rest = say;
+    while let Some(at) = rest.find("[point ") {
+        rest = &rest[at + 7..];
+        let Some(end) = rest.find(']') else {
+            break;
+        };
+        for part in rest[..end].split([',', ' ']) {
+            let part = part.trim();
+            if !part.is_empty() {
+                out.push(part.to_string());
+            }
+        }
+        rest = &rest[end + 1..];
+    }
+    out
+}
+
+/// The names a page answers to: its ids, and whatever it declares.
+fn answered_by(html: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    if let Some(at) = html.find("name=\"deck-points\"")
+        && let Some(from) = html[at..].find("content=\"")
+        && let Some(end) = html[at + from + 9..].find('"')
+    {
+        let start = at + from + 9;
+        out.extend(
+            html[start..start + end]
+                .split_whitespace()
+                .map(str::to_string),
+        );
+    }
+    let mut rest = html;
+    while let Some(at) = rest.find("id=\"") {
+        rest = &rest[at + 4..];
+        let Some(end) = rest.find('"') else {
+            break;
+        };
+        out.push(rest[..end].to_string());
+        rest = &rest[end + 1..];
+    }
+    out
+}
+
+/// The words a page shows, which is the only thing it is rationed on.
+///
+/// Markup, so this is a scan and not a parse: tags come out, the contents of
+/// `script` and `style` come out with them, and what is left is what a reader
+/// would see. Text a script writes at run time gets past it, and that is
+/// accepted — the rule is here to stop a page being written as a document, not
+/// to police one.
+#[must_use]
+pub fn shown_words(html: &str) -> usize {
+    let mut text = String::with_capacity(html.len());
+    let mut rest = html;
+    while let Some(at) = rest.find('<') {
+        text.push_str(&rest[..at]);
+        rest = &rest[at..];
+        let closes = |rest: &str, tag: &str| -> Option<usize> {
+            rest.to_ascii_lowercase().find(&format!("</{tag}"))
+        };
+        let lower = rest.to_ascii_lowercase();
+        if lower.starts_with("<script") || lower.starts_with("<style") {
+            let tag = if lower.starts_with("<script") {
+                "script"
+            } else {
+                "style"
+            };
+            match closes(rest, tag) {
+                Some(end) => rest = &rest[end..],
+                None => return text.split_whitespace().count(),
+            }
+        }
+        match rest.find('>') {
+            Some(end) => rest = &rest[end + 1..],
+            None => break,
+        }
+    }
+    text.push_str(rest);
+    text.split_whitespace().count()
+}
+
+/// How many words a page may show before it has become a document.
+///
+/// The prose carries the argument. A page is for the thing that only makes
+/// sense moving, and one with paragraphs in it is a second narration competing
+/// with the band — which is the failure this whole pane is one bad decision
+/// away from.
+pub const WORDS: usize = 40;
+
+/// Refuse a page that has been written as a document.
+fn a_page_is_not_a_document(pointing: &[Pointing]) -> anyhow::Result<()> {
+    for one in pointing {
+        let Pointing::Written(page) = one else {
+            continue;
+        };
+        let words = shown_words(&page.html);
+        anyhow::ensure!(
+            words <= WORDS,
+            "this page shows {words} words, and {WORDS} is the limit. A page is \
+             for the one idea in a deck that only makes sense moving — the prose \
+             carries the argument, and words on the page are a second narration \
+             competing with it. Labels, numbers and a field name, not sentences."
+        );
+    }
+    Ok(())
 }
 
 /// Add a group to the deck at `root`.
@@ -365,6 +509,7 @@ pub fn group(root: &Path, say: &str, pointing: Vec<Pointing>) -> anyhow::Result<
     one_pane_per_block(&pointing)?;
     one_pane_per_name(&pointing)?;
     point_at_code_that_exists(root, &pointing)?;
+    a_page_is_not_a_document(&pointing)?;
 
     let ord = next_ord(root);
     let refs = pointing
@@ -380,6 +525,12 @@ pub fn group(root: &Path, say: &str, pointing: Vec<Pointing>) -> anyhow::Result<
                     note: named.note,
                     name: named.name,
                     after: named.after,
+                }),
+                Pointing::Written(page) => Ref::Page(deck_core::protocol::PageRef {
+                    id: format!("g{ord}p{nth}"),
+                    page: page.html,
+                    note: page.note,
+                    name: page.name,
                 }),
                 Pointing::Drawn(picture) => Ref::Diagram(DiagramRef {
                     id: format!("g{ord}d{nth}"),

@@ -84,6 +84,43 @@ pub fn picture(argument: &str) -> anyhow::Result<Picture> {
     })
 }
 
+/// What a `--page` argument said.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Written {
+    /// The markup, read from the file the argument named.
+    pub html: String,
+    /// The note, if one was given.
+    pub note: Option<String>,
+    /// The pane's name, from a `[name]` at the front of the note.
+    pub name: Option<String>,
+}
+
+/// Read one `--page` argument: a path, then the same `[name] note` a ref takes.
+///
+/// ```text
+/// merge.html [rows] two rows meeting, and which field survives
+/// ```
+///
+/// # Errors
+///
+/// When the file cannot be read, or the name is not a name.
+pub fn written(argument: &str) -> anyhow::Result<Written> {
+    let (path, note) = match argument.split_once(' ') {
+        Some((path, note)) => (path, Some(note.trim().to_string())),
+        None => (argument, None),
+    };
+    anyhow::ensure!(!path.is_empty(), "no file in `{argument}`");
+
+    let html = std::fs::read_to_string(path)
+        .map_err(|err| anyhow::anyhow!("cannot read {path}: {err}"))?;
+    let (name, note) = named(note)?;
+    Ok(Written {
+        html,
+        name,
+        note: note.filter(|note| !note.is_empty()),
+    })
+}
+
 /// Read one `--ref` argument.
 ///
 /// # Errors

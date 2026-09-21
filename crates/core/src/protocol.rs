@@ -81,7 +81,8 @@ pub struct Group {
 /// enum says that, and leaves no shape for a ref that is somehow both.
 ///
 /// On the wire they are told apart by what they carry: an entry with a `file`
-/// is code, one with a `diagram` is a picture.
+/// is code, one with a `diagram` is a picture, one with a `page` is HTML the
+/// agent wrote for the one idea in a deck that only moves.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum Ref {
@@ -89,6 +90,8 @@ pub enum Ref {
     Code(RefSpec),
     /// A picture of something that is not in any one file.
     Diagram(DiagramRef),
+    /// A page: markup with a script in it, for what neither can show.
+    Page(PageRef),
 }
 
 impl Ref {
@@ -98,6 +101,7 @@ impl Ref {
         match self {
             Self::Code(code) => &code.id,
             Self::Diagram(diagram) => &diagram.id,
+            Self::Page(page) => &page.id,
         }
     }
 }
@@ -118,6 +122,28 @@ pub struct DiagramRef {
     /// which one it means, and a point has to be able to land in it. Added
     /// after names were given to code panes, which left diagrams as the one
     /// kind of pane a sentence could not address.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+}
+
+/// A page of the agent's own markup.
+///
+/// The third kind of pane, and the narrowest. A picture says what is connected
+/// to what; a page is for the thing that only makes sense moving — two rows
+/// merging, a queue draining, a value crossing a boundary. It is not a document:
+/// the prose carries the argument, and a page with paragraphs in it has become a
+/// second narration competing with the band.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PageRef {
+    /// Identifies the ref within its deck, as `g1p1`.
+    pub id: String,
+    /// The whole document, as written. Nothing is fetched: a client renders
+    /// this markup with no network of any kind behind it.
+    pub page: String,
+    /// A short label for the band, as a code ref's `note` is.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub note: Option<String>,
+    /// What the narration calls this pane, as the other two kinds have.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
 }
