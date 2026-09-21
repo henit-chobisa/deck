@@ -98,14 +98,12 @@ The whole loop in one take: the agent writes a deck while you watch, you walk it
 comment where you disagree — and it answers you inside the deck, without either of
 you going back to the chat window.
 
+
+<img width="1200" height="696" alt="3 00 40" src="https://github.com/user-attachments/assets/26043479-32bc-4dc6-8e52-a433c3059379" />
+
+<img width="1200" height="696" alt="3 02 50" src="https://github.com/user-attachments/assets/3a203e8a-9ad3-411c-a730-4facdd5bc943" />
+
 ![the whole loop](https://github.com/henit-chobisa/deck/releases/download/v0.1.1/interaction.gif)
-
-
-<img width="1200" height="696" alt="3 02 50" src="https://github.com/user-attachments/assets/4006a562-8776-4ca8-a276-44c7b4f21df0" />
-
-<img width="1200" height="962" alt="interaction" src="https://github.com/user-attachments/assets/a0d04c83-ba72-4a16-b016-6fd0a8c923c0" />
-
-<img width="1200" height="696" alt="3 00 40" src="https://github.com/user-attachments/assets/39e23543-f605-4022-a6a8-1e2a8e9ea9b8" />
 
 
 ## Install
