@@ -27,8 +27,8 @@ use crate::sheet::{Sheet, Slot};
 gpui_kit::actions!(
     deck,
     [
-        NextGroup, PrevGroup, Comment, Rotate, Zen, Walk, Follow, Hide, Submit, Discard, Noted,
-        Asked, Wrong, ZoomIn, ZoomOut, ZoomReset, Close
+        NextGroup, PrevGroup, Comment, Rotate, Walk, Follow, Hide, Submit, Discard, Noted, Asked,
+        Wrong, ZoomIn, ZoomOut, ZoomReset, Close
     ]
 );
 
@@ -48,7 +48,6 @@ const KEYS: &[(&str, &str, &str)] = &[
     ("w", "walk", "walk"),
     ("c", "comment", "comment"),
     ("t", "turn", "turn"),
-    ("z", "zen", "zen"),
     ("h", "hide", "hide"),
     ("s", "submit", "submit"),
     ("q", "close", "close"),
@@ -62,7 +61,6 @@ pub fn bindings() -> Vec<KeyBinding> {
         KeyBinding::new("p", PrevGroup, Some("Deck")),
         KeyBinding::new("c", Comment, Some("Deck")),
         KeyBinding::new("t", Rotate, Some("Deck")),
-        KeyBinding::new("z", Zen, Some("Deck")),
         KeyBinding::new("w", Walk, Some("Deck")),
         KeyBinding::new("1", Noted, Some("Deck")),
         KeyBinding::new("2", Asked, Some("Deck")),
@@ -987,6 +985,26 @@ impl DeckView {
             cx.notify();
             return;
         }
+        if let Some(deck_cli::live::RequestBody::Render {
+            html,
+            name,
+            note,
+            fold_group,
+            fold,
+        }) = command.rendering()
+        {
+            let answer = self.apply_render(
+                html.clone(),
+                name.clone(),
+                note.clone(),
+                *fold_group,
+                fold.clone(),
+                cx,
+            );
+            command.finish(answer);
+            cx.notify();
+            return;
+        }
         if let Some(deck_cli::live::RequestBody::Draw {
             diagram,
             name,
@@ -1532,6 +1550,43 @@ impl DeckView {
         crate::live::ShowAnswer::said()
     }
 
+    /// Put a page in the room that the deck never carried.
+    ///
+    /// [`Self::apply_draw`] for markup, and the reason the pane exists at all:
+    /// a reader asks what happens when you take a node *out* of the chain, and
+    /// the answer is a thing that moves. Written now, shown now, and gone when
+    /// they turn the page.
+    fn apply_render(
+        &mut self,
+        html: String,
+        name: Option<String>,
+        note: Option<String>,
+        fold_group: bool,
+        fold: Vec<String>,
+        cx: &mut Context<Self>,
+    ) -> crate::live::ShowAnswer {
+        if html.trim().is_empty() {
+            return crate::live::ShowAnswer::refused(
+                deck_cli::live::ResponseStatus::NotFound,
+                "a page with nothing in it has nothing to show",
+            );
+        }
+        let spec = deck_core::protocol::PageRef {
+            id: format!("rendered-{}", self.panes.len()),
+            page: html,
+            note,
+            name,
+        };
+        let paper = crate::page::Paper::new(&spec);
+        self.apply_fold(&fold, fold_group, false, cx);
+        self.panes.push(Sheet::Page(paper));
+        self.folds.push(crate::pane::Fade::default());
+        self.temporary.insert(self.panes.len() - 1);
+        self.attend();
+        self.keep_talking(cx);
+        crate::live::ShowAnswer::said()
+    }
+
     /// Close a pane that was brought in to answer a question.
     ///
     /// The group comes back with it: whatever was folded to make the room is
@@ -1686,17 +1741,21 @@ impl DeckView {
                 })
             })
         });
-        let drawing = block.as_deref().and_then(|id| {
-            self.panes
-                .iter()
-                .position(|pane| pane.chart().is_some_and(|chart| chart.has_block(id)))
-        });
-        let owner = reading.or(drawing);
+        let drawing = block
+            .as_deref()
+            .and_then(|id| self.claiming(|pane| pane.chart().is_some_and(|c| c.has_block(id))));
+        // A page answers the same question a picture does — *do you have an
+        // element by this name* — so one word in the narration reaches whichever
+        // of them is showing it, and neither needed a syntax of its own.
+        let paging = block
+            .as_deref()
+            .and_then(|id| self.claiming(|pane| pane.paper().is_some_and(|p| p.has_block(id))));
+        let owner = reading.or(drawing).or(paging);
         // The light is about to land in a pane that is folded away, so the
         // pane comes back. Lighting lines nobody can see is the same as
         // lighting nothing, and a walk that points into a spine has stopped
         // being a walk. Both halves of a pair come back, not only the first.
-        for at in [reading, drawing].into_iter().flatten() {
+        for at in [reading, drawing, paging].into_iter().flatten() {
             if let Some(fold) = self.folds.get_mut(at) {
                 fold.set(false);
             }
@@ -1720,6 +1779,17 @@ impl DeckView {
                     chart.pointed = want;
                     moved = true;
                 }
+                continue;
+            }
+            if let Some(paper) = pane.paper_mut() {
+                let want: Vec<SharedString> = match (Some(ix) == paging, block.as_deref()) {
+                    (true, Some(id)) => vec![SharedString::from(id.to_string())],
+                    _ => Vec::new(),
+                };
+                if paper.pointed != want {
+                    paper.point_at(want);
+                    moved = true;
+                }
             }
         }
         // Follow the finger down the file. A point on lines scrolled out of
@@ -1734,6 +1804,25 @@ impl DeckView {
             self.glide(owner, target, cx);
         }
         moved
+    }
+
+    /// The pane that answers to this, borrowed panes first.
+    ///
+    /// Two panes can honestly claim the same name: a page about putting a node
+    /// in and a page about taking one out both have a `rest` state, and neither
+    /// is wrong. What decides it is which one the agent is talking about — and
+    /// if it has just carried one in to answer a question, that is the one.
+    ///
+    /// The bug this fixes: an answer's points landed in the group's own page,
+    /// which also pulled it back out of the spine it had just been folded into.
+    /// The reader got two pages, one of them ignoring every word being said.
+    fn claiming(&self, mine: impl Fn(&Sheet) -> bool) -> Option<usize> {
+        self.panes
+            .iter()
+            .enumerate()
+            .find(|(ix, pane)| self.temporary.contains(ix) && mine(pane))
+            .or_else(|| self.panes.iter().enumerate().find(|(_, pane)| mine(pane)))
+            .map(|(ix, _)| ix)
     }
 
     /// Keep the voice moving without repainting to do it.
@@ -1919,22 +2008,6 @@ impl DeckView {
         cx.notify();
     }
 
-    fn on_zen(&mut self, _: &Zen, window: &mut Window, cx: &mut Context<Self>) {
-        // The deck's own handle, so it can be put back in front afterwards.
-        //
-        // The shade sits at the same window level as the deck — both are
-        // popups — and within a level the last window ordered front is on top.
-        // The shade is opened second, so without this it would cover the very
-        // thing it is there to light.
-        let deck = window.window_handle();
-        cx.defer(move |cx| {
-            if crate::shade::toggle(deck, cx) {
-                let _ = deck.update(cx, |_, window, _| window.activate_window());
-            }
-        });
-        cx.notify();
-    }
-
     fn on_close(&mut self, _: &Close, window: &mut Window, cx: &mut Context<Self>) {
         // The platform's should-close hook does not run when the window is
         // taken away from inside, so the shape is written here.
@@ -2027,6 +2100,40 @@ impl DeckView {
         }
     }
 
+    /// Put a page's native view where the pane's hole was just painted.
+    ///
+    /// Called from inside the page pane's own drawing, because that is the only
+    /// moment the rectangle is known. Everything else deck draws is its own
+    /// pixels and needs no such arrangement; a webview is a stranger in the
+    /// window and has to be told where to stand on every frame.
+    /// Play a page from the top again.
+    pub fn play_page_again(&mut self, ix: usize, cx: &mut Context<Self>) {
+        if let Some(paper) = self.panes.get_mut(ix).and_then(Sheet::paper_mut) {
+            paper.again();
+        }
+        cx.notify();
+    }
+
+    fn settle_pages(&mut self, window: &Window) {
+        let spread = self.spread;
+        let palette = self.palette;
+        for ix in 0..self.panes.len() {
+            // Shaded or mid-turn: a native view cannot join in with either, so
+            // it steps out rather than sitting on top of the movement. Whether
+            // it is folded is not asked here — the pane's own rectangle says
+            // that, and it is the one thing that cannot be out of date.
+            let still = !spread;
+            let Some(paper) = self.panes.get_mut(ix).and_then(Sheet::paper_mut) else {
+                continue;
+            };
+            if still {
+                paper.settle(window, &palette);
+            } else {
+                paper.hide();
+            }
+        }
+    }
+
     /// Select from the drag's anchor to `line`.
     pub fn pick(&mut self, pane_ix: usize, line: u32, cx: &mut Context<Self>) {
         self.picked_said = None;
@@ -2043,6 +2150,7 @@ impl DeckView {
                 }
                 // One selection in the window, whatever kind of pane it is in.
                 Sheet::Drawn(chart) => chart.selected = None,
+                Sheet::Page(paper) => paper.selected = None,
             }
         }
         cx.notify();
@@ -2074,6 +2182,7 @@ impl DeckView {
                 Sheet::Drawn(chart) => {
                     chart.selected = (ix == pane_ix && !already).then_some(node_ix);
                 }
+                Sheet::Page(paper) => paper.selected = None,
             }
         }
         cx.notify();
@@ -2101,6 +2210,14 @@ impl DeckView {
                 group,
                 ref_id: chart.ref_id.clone(),
                 quote: chart.quote(),
+            }),
+            // A page is in no file either, so a remark about one is pinned the
+            // same way a remark about a picture is: to the pane, and to
+            // whatever region the page said the reader had chosen.
+            Sheet::Page(paper) => Some(About::Drawn {
+                group,
+                ref_id: paper.ref_id.clone(),
+                quote: paper.quote(),
             }),
         }
     }
@@ -2438,6 +2555,26 @@ impl DeckView {
         }
     }
 
+    /// Tell a page that a remark was left on it.
+    ///
+    /// The other half of the to-and-fro. A page can watch the reader's own
+    /// words arrive — *this row*, with a question attached — and move with the
+    /// conversation rather than only with the narration. An artifact has no way
+    /// to know a conversation is happening at all.
+    fn told_page(&self, remark: &Remark) {
+        let Some(ref_id) = remark.ref_id.as_ref() else {
+            return;
+        };
+        if let Some(paper) = self
+            .panes
+            .iter()
+            .find(|pane| pane.ref_id().as_ref() == ref_id.as_ref())
+            .and_then(Sheet::paper)
+        {
+            paper.remarked(&remark.text);
+        }
+    }
+
     fn expect_answer(&mut self, cx: &mut Context<Self>) {
         let asked = std::time::Instant::now();
         self.conversation.asked_at = Some(asked);
@@ -2504,6 +2641,7 @@ impl DeckView {
             self.expect_answer(cx);
         }
         self.note(deck_core::What::Reacted, Some(kind), when, face, &remark);
+        self.told_page(&remark);
         self.remarks.push(remark);
         cx.notify();
     }
@@ -2541,6 +2679,7 @@ impl DeckView {
             &said,
             &remark,
         );
+        self.told_page(&remark);
         self.remarks.push(remark);
         cx.notify();
     }
@@ -2620,11 +2759,6 @@ impl DeckView {
         if let WindowBounds::Windowed(bounds) = window.window_bounds() {
             crate::state::remember_bounds(bounds);
         }
-        // The lights come up first. A shade is drawn over every display and
-        // the deck is the only thing above it, so a shade that outlived the
-        // window it was dimming for would be a near-black screen with nothing
-        // on it to press.
-        crate::shade::lights_on(cx);
         self.voice.hush();
         self.flush_held();
         self.live.hidden();
@@ -2641,7 +2775,6 @@ impl DeckView {
     /// half-written one would be indistinguishable from a finished review.
     /// Leave, and let whatever is still waiting take the screen.
     fn stand_down(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        crate::shade::lights_on(cx);
         if crate::queue::len(cx) > 0 {
             crate::open_pill_over(Vec::new(), cx);
         }
@@ -2742,6 +2875,7 @@ impl DeckView {
                     Sheet::Code(Pane::new(code, &source, cx))
                 }
                 Ref::Diagram(drawn) => Sheet::Drawn(Chart::new(drawn)),
+                Ref::Page(page) => Sheet::Page(crate::page::Paper::new(page)),
             })
             .collect();
         // Every pane of a new group arrives open. A fold belongs to the group
@@ -4704,6 +4838,10 @@ use crate::pane::SPINE;
 
 impl Render for DeckView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        // A page's own view is not deck's to paint, so it is moved here, before
+        // anything is drawn: to where the last frame measured its hole, or off
+        // the screen if the room is in the middle of moving.
+        self.settle_pages(window);
         // Built up front rather than inside `.children()`: rendering a pane
         // needs the context, and a closure holding it cannot also be handed to
         // the element it is building.
@@ -5023,7 +5161,6 @@ impl Render for DeckView {
             .when(self.composing.is_none(), |this| this.key_context("Deck"))
             .on_action(cx.listener(Self::on_next))
             .on_action(cx.listener(Self::on_prev))
-            .on_action(cx.listener(Self::on_zen))
             .on_action(cx.listener(Self::on_walk))
             .on_action(cx.listener(Self::on_noted))
             .on_action(cx.listener(Self::on_asked))

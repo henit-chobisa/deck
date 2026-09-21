@@ -267,6 +267,7 @@ impl ShowCommand {
             | RequestBody::Fold { .. }
             | RequestBody::Bring { .. }
             | RequestBody::Draw { .. }
+            | RequestBody::Render { .. }
             | RequestBody::Status => None,
         }
     }
@@ -317,6 +318,12 @@ impl ShowCommand {
     #[must_use]
     pub fn drawing(&self) -> Option<&RequestBody> {
         matches!(self.request.body, RequestBody::Draw { .. }).then_some(&self.request.body)
+    }
+
+    /// Whether this asks for a page the deck does not carry.
+    #[must_use]
+    pub fn rendering(&self) -> Option<&RequestBody> {
+        matches!(self.request.body, RequestBody::Render { .. }).then_some(&self.request.body)
     }
 
     /// Whether this asks to stop pointing.
@@ -426,7 +433,8 @@ fn serve(owner: &Owner, control: &Control) {
             | RequestBody::Clear
             | RequestBody::Fold { .. }
             | RequestBody::Bring { .. }
-            | RequestBody::Draw { .. } => {
+            | RequestBody::Draw { .. }
+            | RequestBody::Render { .. } => {
                 let status = status_of(&control.state);
                 if status != ResponseStatus::Ready {
                     let mut response = Response::status(&request, owner.generation(), status);

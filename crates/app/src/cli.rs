@@ -47,6 +47,12 @@ enum What {
         /// Which neutrals to paint on. Overrides `~/.deck/config.toml`.
         #[arg(long, value_enum)]
         paper: Option<Paper>,
+        /// Light or dark, whatever the machine is set to. Overrides the file.
+        ///
+        /// For trying one on, and for a screenshot that has to look the same
+        /// on somebody else's machine.
+        #[arg(long, value_enum)]
+        mode: Option<deck_core::theme::Mode>,
         /// Borrow the colours from an editor you already use.
         ///
         /// The page, the text, an accent, and whatever syntax colours it has.
@@ -115,6 +121,11 @@ enum What {
         /// See PROTOCOL.md for the file's shape.
         #[arg(long, value_name = "FILE.json [NAME] [NOTE]")]
         diagram: Vec<String>,
+        /// A page, as an HTML file, for the one idea that only makes sense
+        /// moving. Same `[name]` and note: `merge.html [rows] which field wins`.
+        /// Nothing is fetched, and at most forty words may show.
+        #[arg(long, value_name = "FILE.html [NAME] [NOTE]")]
+        page: Vec<String>,
     },
 
     /// Move the live spotlight to code already shown in an authored group.
@@ -227,8 +238,8 @@ enum What {
         #[arg(
             long = "ref",
             value_name = "FILE:FIRST-LAST [NAME] [NOTE]",
-            conflicts_with = "diagram",
-            required_unless_present = "diagram"
+            conflicts_with_all = ["diagram", "page"],
+            required_unless_present_any = ["diagram", "page"]
         )]
         reference: Option<String>,
         /// Or a picture, written now, for a question no file answers: how a
@@ -236,6 +247,10 @@ enum What {
         /// Same `[name]` and note as a ref: `flows/retry.json [flow] the path`.
         #[arg(long, value_name = "FILE.json [NAME] [NOTE]")]
         diagram: Option<String>,
+        /// Or a page, written now, for a question that only makes sense
+        /// moving: `unlink.html [unlink] what deleting costs`.
+        #[arg(long, value_name = "FILE.html [NAME] [NOTE]")]
+        page: Option<String>,
         /// What the range should become, drawn as a change rather than a
         /// highlight. The file on disk is never touched.
         #[arg(long, value_name = "REPLACEMENT")]
@@ -340,6 +355,7 @@ impl Cli {
                 deck,
                 wait,
                 paper,
+                mode,
                 theme,
             } => {
                 // The file, then the flag over it. A flag is somebody trying
@@ -382,11 +398,10 @@ impl Cli {
                     wait,
                     editor,
                     named,
-                    zen: config.zen.clone(),
                     speech: config.speech.clone(),
                     paper: paper.unwrap_or(config.theme.paper),
                     colors: config.theme.colors,
-                    dark: config.theme.mode,
+                    dark: mode.unwrap_or(config.theme.mode),
                     layout: config.layout,
                 }))
             }
@@ -407,7 +422,8 @@ impl Cli {
                 refs,
                 after,
                 diagram,
-            } => report(gather(&refs, &after, &diagram).and_then(|refs| {
+                page,
+            } => report(gather(&refs, &after, &diagram, &page).and_then(|refs| {
                 // Said before the path, because an agent that reads one line of
                 // output reads the last one.
                 for note in deck_cli::what_will_not_light(&say, &refs) {
@@ -467,15 +483,19 @@ impl Cli {
                 deck,
                 reference,
                 diagram,
+                page,
                 after,
                 fold_group,
                 fold,
                 timeout,
             } => Err(bring(
                 &deck,
-                reference.as_deref(),
-                diagram.as_deref(),
-                after,
+                Bringing {
+                    reference: reference.as_deref(),
+                    diagram: diagram.as_deref(),
+                    page: page.as_deref(),
+                    after,
+                },
                 fold_group,
                 fold,
                 timeout,
@@ -511,8 +531,6 @@ pub struct Opening {
     pub dark: Mode,
     /// How panes are arranged.
     pub layout: Layout,
-    /// How far the screen goes down when the reader asks for quiet.
-    pub zen: deck_core::config::Zen,
     /// How the narration sounds when it is read aloud.
     pub speech: deck_core::config::Speech,
 }
@@ -582,8 +600,13 @@ fn detach() -> bool {
 /// Refs first, then diagrams, in the order they were given. Ids are not minted
 /// here: they have to be unique across the deck, and only the crate that knows
 /// which group this is becoming can promise that.
-fn gather(refs: &[String], after: &[String], diagrams: &[String]) -> anyhow::Result<Vec<Pointing>> {
-    let mut out = Vec::with_capacity(refs.len() + diagrams.len());
+fn gather(
+    refs: &[String],
+    after: &[String],
+    diagrams: &[String],
+    pages: &[String],
+) -> anyhow::Result<Vec<Pointing>> {
+    let mut out = Vec::with_capacity(refs.len() + diagrams.len() + pages.len());
     let changes = paired(refs.len(), after)?;
 
     for (ix, argument) in refs.iter().enumerate() {
@@ -594,6 +617,10 @@ fn gather(refs: &[String], after: &[String], diagrams: &[String]) -> anyhow::Res
 
     for argument in diagrams {
         out.push(Pointing::Drawn(deck_cli::refs::picture(argument)?));
+    }
+
+    for argument in pages {
+        out.push(Pointing::Written(deck_cli::refs::written(argument)?));
     }
 
     Ok(out)
@@ -778,16 +805,36 @@ fn say(deck: &std::path::Path, text: &str, aloud: bool, timeout: u64) -> ExitCod
     )
 }
 
+/// What `deck bring` was asked to put in the room.
+///
+/// Three ways to say it and one of them is set: lines of a file, a picture, or
+/// a page. They travel together because the rest of the command — what to fold,
+/// how long to wait — is the same whichever it is.
+struct Bringing<'a> {
+    /// A file and a range, as `--ref` named them.
+    reference: Option<&'a str>,
+    /// A picture, as `--diagram` named it.
+    diagram: Option<&'a str>,
+    /// A page, as `--page` named it.
+    page: Option<&'a str>,
+    /// What the range should become, when the ref is a proposed change.
+    after: Option<String>,
+}
+
 /// Bring a file the group never showed into the room.
 fn bring(
     deck: &std::path::Path,
-    reference: Option<&str>,
-    diagram: Option<&str>,
-    after: Option<String>,
+    bringing: Bringing<'_>,
     fold_group: bool,
     fold: Vec<String>,
     timeout: u64,
 ) -> ExitCode {
+    let Bringing {
+        reference,
+        diagram,
+        page,
+        after,
+    } = bringing;
     // A picture and a file arrive the same way and displace the same panes. The
     // only difference is what the window is handed.
     let refused = |err: anyhow::Error| {
@@ -816,8 +863,36 @@ fn bring(
         );
     }
 
+    if let Some(argument) = page {
+        let written = match deck_cli::refs::written(argument) {
+            Ok(written) => written,
+            Err(err) => return refused(err),
+        };
+        let words = deck_cli::shown_words(&written.html);
+        if words > deck_cli::WORDS {
+            return refused(anyhow::anyhow!(
+                "this page shows {words} words, and {} is the limit. The prose \
+                 carries the argument; a page carries the movement.",
+                deck_cli::WORDS
+            ));
+        }
+        return ask(
+            deck,
+            deck_cli::live::RequestBody::Render {
+                html: written.html,
+                name: written.name,
+                note: written.note,
+                fold_group,
+                fold,
+            },
+            timeout,
+        );
+    }
+
     let Some(reference) = reference else {
-        return refused(anyhow::anyhow!("nothing to bring: pass --ref or --diagram"));
+        return refused(anyhow::anyhow!(
+            "nothing to bring: pass --ref, --diagram or --page"
+        ));
     };
     let named = match deck_cli::refs::parse(reference) {
         Ok(named) => named,

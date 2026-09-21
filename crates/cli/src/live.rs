@@ -123,6 +123,27 @@ pub enum RequestBody {
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         fold: Vec<String>,
     },
+    /// Put a page in the room that no group in this deck carries.
+    ///
+    /// `Bring` for markup. The reader asks about something that only makes
+    /// sense moving — *and what happens when you delete one?* — and the answer
+    /// is written there and then rather than described.
+    Render {
+        /// The whole document, as the agent wrote it.
+        html: String,
+        /// What the prose may call it.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        name: Option<String>,
+        /// A short label for the pane.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        note: Option<String>,
+        /// Fold the whole group behind one spine to make room for it.
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        fold_group: bool,
+        /// Or fold only these panes of it, by name.
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        fold: Vec<String>,
+    },
     /// Draw a picture that no group in this deck carries.
     ///
     /// `Bring` for diagrams. A reader who asks how a request travels is asking
