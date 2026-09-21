@@ -99,32 +99,26 @@ The whole loop in one take: the agent writes a deck while you watch, you walk it
 comment where you disagree — and it answers you inside the deck, without either of
 you going back to the chat window.
 
-<!-- MEDIA 1 of 5 · interaction.gif (6.2 MB) or disagree.gif — see the note below. -->
-
-https://github.com/user-attachments/assets/ea4f8fe3-50b2-4412-917c-882b536a538a
+![the whole loop](https://github.com/henit-chobisa/deck/releases/download/v0.1.1/interaction.gif)
 
 <!--
-  PUTTING MEDIA ON THIS PAGE
-  ==========================
-  Two ways, and they behave differently.
+  WHERE THE MEDIA LIVES
+  =====================
+  These are release assets, not committed files — attached to a release with
 
-  A GIF plays inline, loops, and needs no click — best for a README, and the
-  only thing that works where video is not allowed. Drag it into the web editor
-  and GitHub gives you a `user-attachments` URL; reference it as an image:
+      gh release upload v0.1.1 <file> --repo henit-chobisa/deck
 
-      ![walking a deck](https://github.com/user-attachments/assets/<id>)
+  which gives a permanent direct URL and keeps the clips out of the repo's
+  history. Uploading through the web editor works too and mints a
+  `user-attachments` URL; either renders.
 
-  An MP4 is about a tenth the size at better quality, but needs a click and
-  only plays from a `user-attachments` URL — a bare URL on its own line, as
-  above, renders as a player.
+  A GIF plays inline and loops, which is what a README wants. The .mp4 beside
+  each one is the same cut at a tenth the size and better quality, but needs a
+  click. Both cap at 10 MB free, 100 MB paid.
 
-  Both cap at 10 MB on a free plan, 100 MB on a paid one. Every GIF in
-  ~/Desktop/deck-demos is already under 10 MB; the .mp4 beside each one is the
-  same cut, smaller and sharper, if the surface allows video.
-
-  Every clip here gets one sentence above it saying what is on screen. A silent
-  loop with no caption makes the reader work out what they are watching, which
-  is the thing this whole tool is against.
+  Every clip gets one sentence above it saying what is on screen. A silent loop
+  with no caption makes the reader work out what they are watching, which is the
+  thing this whole tool is against.
 -->
 
 ## Install
@@ -202,7 +196,7 @@ The light moves with the sentence being read, not with your scrolling: press a
 line of the narration and the code it is about lights up, in whichever pane is
 showing it.
 
-<!-- MEDIA 2 of 5 · 3.00.40.gif (3.3 MB, 19s) — drag it here and delete this line. -->
+![walking a deck](https://github.com/henit-chobisa/deck/releases/download/v0.1.1/3.00.40.gif)
 
 ### Comment where you disagree
 
@@ -331,7 +325,7 @@ moved while they are writing about it.
 Asked something mid-walk, it can answer with a pane rather than a paragraph —
 written there and then, folded in beside what you were already looking at.
 
-<!-- MEDIA 3 of 5 · 3.56.56.gif (7.7 MB, 30s) — drag it here and delete this line. -->
+![answering mid-walk](https://github.com/henit-chobisa/deck/releases/download/v0.1.1/3.56.56.gif)
 
 ### What comes back
 
@@ -409,7 +403,7 @@ stops at the installed check. [pause] [point 44-46 q] And [guard] is that check.
   --ref 'web/connect.tsx:40-52 [guard] the check that returns early'
 ```
 
-<!-- MEDIA 4 of 5 · 3.16.53.gif (8.1 MB, 55s — worth cutting to 25s first). -->
+<!-- MEDIA · a flow playing. 3.16.53.gif is 55s and wants cutting to ~25s first. -->
 
 There are no colours, sizes or positions in the format, on purpose. A node says
 what it *is* and how much it matters, and deck owns every pixel — so two decks
@@ -446,7 +440,7 @@ What it gets in return is the thing an artifact cannot have: it is told where th
 reader is. `[point rows]` reaches the page as an event, so the animation is bound
 to the sentence being read rather than to a clock.
 
-MEDIA 5 of 5 · 4.26.13.gif (8.1 MB, 37s, portrait) — rows shifting under a paged query.
+MEDIA · 4.26.13.gif — rows shifting under a paged query. Upload it when pages ship.
 -->
 
 ## Theming
