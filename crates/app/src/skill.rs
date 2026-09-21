@@ -373,6 +373,30 @@ mod tests {
     }
 
     #[test]
+    fn the_skill_treats_a_page_as_a_pane_like_any_other() {
+        // The same failure as diagrams, one release later: pages shipped and the
+        // skill said nothing, so no agent would ever have written one. Every
+        // rule a page needs is one an agent gets wrong by default — a document
+        // instead of a diagram, an animation on its own clock, a hard-coded
+        // colour beside a themed window.
+        for said in [
+            "## 5. When the answer only makes sense moving",
+            "--page 'merge.html [rows] two rows meeting'",
+            "Forty words, and that is the whole rule",
+            "It starts at rest, and moves when you point",
+            "deck:point",
+            "deck:remark",
+            "deck-points",
+            "--deck-accent",
+            "Never write a literal colour",
+            "Nothing loads from anywhere",
+            "--page for markup that moves",
+        ] {
+            assert!(SKILL.contains(said), "the skill never says `{said}`");
+        }
+    }
+
+    #[test]
     fn the_skill_calibrates_the_tone_rather_than_asking_for_enthusiasm() {
         // "Be engaging" produces exclamation marks and forced jokes. What makes
         // a walk worth coming back to is mechanical: the reader arriving first,

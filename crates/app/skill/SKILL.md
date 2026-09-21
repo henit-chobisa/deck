@@ -902,7 +902,7 @@ exiting re-invokes you on its own.
 
 **Every line of that is required, and the last one most of all.** A turn that
 ends after `deck seal` looks finished from your side and is a dead end from
-theirs: they submit a review nobody is listening for. §6 is not a formality.
+theirs: they submit a review nobody is listening for. §7 is not a formality.
 
 **Every verb, so you know what you have.** Six of these build the deck and six
 are for while somebody is in front of it. Reach for the second six: a walk where
@@ -919,7 +919,8 @@ deck next     what the reader just did, when you want it without blocking
 deck show     move their eyes: --ref, --pane, --after for a proposed change
 deck say      say something, spoken if they have a voice, with [point …] in it
 deck doing    what you are doing, while you do it
-deck bring    a file this group never showed, or --diagram for a picture you write now
+deck bring    a file this group never showed, or --diagram for a picture you write now,
+              or --page for markup that moves
 deck fold     put a pane on its spine, or --open to bring it back
 deck clear    take your hand off the page
 ```
@@ -1078,6 +1079,8 @@ Name every pane you mention in the prose.
   is drawn as going, and this is spliced in underneath it, so the pane reads as
   a diff rather than a highlight. The file on disk is never touched.
 - `--diagram <file.json>` adds a picture. See §4.
+- `--page <file.html>` adds a page: markup you write, for the thing that only
+  makes sense moving. See §5.
 
 **Use `--after` whenever you are proposing rather than pointing.** A highlight
 says *look at this*. A change says *this should become that*, and if that is
@@ -1286,7 +1289,166 @@ earns its place: cut the ones that only pass a value along.
 Code refs are always laid out before diagrams whatever order you typed them. If the
 picture has to be read first, it needs a group of its own.
 
-## 5. Seal it
+## 5. When the answer only makes sense moving
+
+Some things are neither a file nor a picture. Two rows merging on the same key, a queue
+filling up until the producer is told to stop, a node coming out of the middle of a chain
+— the argument **is** the movement, and a diagram of it draws the start and the end with
+the interesting part missing.
+
+That is what a page is for: HTML you write, rendered in a pane of the deck, wearing the
+deck's own colours and hearing the same points the code does.
+
+```bash
+deck group <path> \
+  --say 'Two rows arrive with the same key. [point 24-26 hop] The later one lands
+on top of the earlier — [hop] is the line that picks the winner, and [rows] shows
+which field actually survives it.' \
+  --page 'merge.html [rows] two rows meeting' \
+  --ref 'src/merge.ts:24-26 [hop] the line that decides'
+```
+
+`--page` takes the same shape `--ref` and `--diagram` do: the file, then an optional
+`[name]`, then a note. It is a pane like any other — it takes a name the prose can say,
+it folds, and a point can land in it.
+
+**Reach for a picture first.** A diagram costs you eight lines of JSON, deck draws every
+pixel of it, and it folds and animates for free. A page is markup you own end to end and
+a native view composited above everything deck paints, which is why it hides itself while
+the room is moving. If boxes and arrows can say the thing, say it with boxes and arrows.
+A page is for what a still picture genuinely cannot hold.
+
+### Forty words, and that is the whole rule
+
+`deck group` counts the words a page shows and refuses it over forty. Not a style note —
+the command fails and you write it again.
+
+The prose carries the argument. Words on the page are a second narration competing with
+the band, read at a different speed by the same reader, and that is the one bad decision
+this pane is always one step away from. **Labels, numbers, a field name.** Not sentences,
+not a heading and three bullets, not an explanation of what they are looking at. If the
+page needs a paragraph to make sense, the paragraph belongs in the `say`.
+
+### It starts at rest, and moves when you point
+
+This is the rule that is most often got wrong, and getting it wrong ruins the pane.
+
+A page must come up still. No autoplay, no timer, no `setTimeout` chain that starts on
+load. The reader is listening to a sentence; if the animation is running on its own clock
+it is already three steps past the words, and they are watching one thing while hearing
+another.
+
+What moves it is a point:
+
+```js
+window.deck = window.deck || { at: null }   // deck installs this before your script runs
+
+addEventListener('deck:point', (e) => {
+  render(e.detail)        // e.detail is the id you pointed at, or null
+})
+
+addEventListener('deck:remark', (e) => {
+  // e.detail is the text of the comment the reader just pressed in the rail
+})
+```
+
+`window.deck.at` holds the point the reader is on right now, and `deck:point` fires every
+time it changes — including once more when the document finishes loading, so a page
+brought in halfway through a walk comes up on the step the narration is actually on rather
+than its first frame.
+
+So write the page as a **function of the point**, not as a sequence that plays. Given
+`hop`, draw the state at `hop`. Given `null`, go back to rest. A page written that way can
+be walked forwards, walked backwards, and re-entered in the middle, which is what the
+reader will actually do to it.
+
+`deck:remark` is the other half: the reader pressing a comment in the rail, saying *this
+part*, about something that moves. Nothing else they could have written it against can
+hear them.
+
+### Say what you answer to
+
+A point finds its pane by name, and a page answers to two things: the `id` of any element
+in it, and whatever it declares here.
+
+```html
+<meta name="deck-points" content="rest merge hop settle">
+```
+
+Declare them whenever the interesting names are arrangements rather than things on screen
+— states, steps, moments. Most good pages are like this: `hop` is not an element, it is
+what the page looks like at a moment.
+
+Without that, `[point hop]` names nothing, and `deck group` says so while you are still
+running and can fix it. The failure it was added for is worth knowing, because it is
+silent from the reader's side: the code lit up beside a page that never moved.
+
+### Wear the deck's colours
+
+Deck hands every page its palette as CSS variables, before your markup:
+
+```
+--deck-bg  --deck-fg  --deck-accent  --deck-on-accent  --deck-muted
+--deck-edge  --deck-wash  --deck-add  --deck-del  --deck-comment
+```
+
+Use them and nothing else. **Never write a literal colour.** The reader chose their
+editor's theme and the rest of the window is honouring it; one page with `#1e1e1e` hard
+coded in it is the pane that looks like it came from somewhere else — which is exactly how
+it feels to read.
+
+The background is transparent and the font is already set to the window's mono. Build on
+that rather than reasserting it.
+
+### Nothing loads from anywhere
+
+There is no network behind a page. No CDN, no Google Fonts, no `fetch`, no image URL.
+Every script and style is inline in the file you write.
+
+This is deliberate and not a limitation to work around: a surface for reading your own
+code should not be making requests while you read it. Write SVG and CSS transitions by
+hand. Forty words of content does not need a framework.
+
+### What a good page looks like
+
+```html
+<meta name="deck-points" content="rest arrive hop settle">
+<style>
+  body { margin: 0; display: grid; place-items: center; height: 100vh }
+  .row { transition: transform .45s ease, opacity .45s ease }
+  .row.gone { opacity: .25 }
+  .win { fill: var(--deck-accent) }
+</style>
+<svg viewBox="0 0 240 120" width="100%">
+  <g id="old" class="row"><rect width="200" height="34" fill="var(--deck-wash)"/>
+    <text x="8" y="22" fill="var(--deck-fg)">qty 3</text></g>
+  <g id="new" class="row"><rect width="200" height="34" class="win"/>
+    <text x="8" y="22" fill="var(--deck-on-accent)">qty 7</text></g>
+</svg>
+<script>
+  const at = { rest: 0, arrive: 1, hop: 2, settle: 3 }
+  addEventListener('deck:point', (e) => draw(at[e.detail] ?? 0))
+  function draw(step) { /* position the two rows for that step */ }
+</script>
+```
+
+Two shapes, four states, one transition, and every colour borrowed. That is the size of
+thing that works. A page with a legend, a title and six controls is a small web app, and
+the reader did not open deck to use a small web app.
+
+### Bringing one mid-walk
+
+When they ask about something that only makes sense moving, write it there and then:
+
+```bash
+deck bring <path> --page 'live/evict.html [evict] what happens to the third entry' --fold-group
+```
+
+Borrowed like any other pane — it carries a cross, turning to another group takes it away,
+and `[point …]` lands in it while it is there. If a group already has a page and the
+borrowed one answers to the same name, the borrowed one wins for as long as it is up.
+
+## 6. Seal it
 
 ```bash
 deck seal <path>
@@ -1299,7 +1461,7 @@ submit. Forget it and they get warned about groups that were never going to arri
 does not listen for the reader, and a turn that ends here has handed somebody a
 deck with nobody on the other end of it.
 
-## 6. Arm the waiter, then stop
+## 7. Arm the waiter, then stop
 
 ```bash
 deck wait <path>          # run this as a background command
@@ -1369,7 +1531,7 @@ comments", do not record verdicts, do not treat silence as sign-off, and do not 
 the next stage. An interrupted waiter means they were doing something else, not that they
 agreed with you.
 
-## 7. When you are woken
+## 8. When you are woken
 
 The payload is the review:
 
