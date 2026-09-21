@@ -423,7 +423,7 @@ to the sentence being read rather than to a clock.
 
 <p align="center">
   <img width="420" alt="rows shifting under a paged query, bound to the narration"
-       src="https://github.com/henit-chobisa/deck/releases/download/v0.1.2/4.26.13.gif">
+       src="https://github.com/henit-chobisa/deck/releases/download/v0.1.2/pages-demo.gif">
 </p>
 
 ## Theming
