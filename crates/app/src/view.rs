@@ -2100,12 +2100,6 @@ impl DeckView {
         }
     }
 
-    /// Put a page's native view where the pane's hole was just painted.
-    ///
-    /// Called from inside the page pane's own drawing, because that is the only
-    /// moment the rectangle is known. Everything else deck draws is its own
-    /// pixels and needs no such arrangement; a webview is a stranger in the
-    /// window and has to be told where to stand on every frame.
     /// Play a page from the top again.
     pub fn play_page_again(&mut self, ix: usize, cx: &mut Context<Self>) {
         if let Some(paper) = self.panes.get_mut(ix).and_then(Sheet::paper_mut) {
@@ -2114,6 +2108,12 @@ impl DeckView {
         cx.notify();
     }
 
+    /// Put each page's native view where that pane's hole was just painted.
+    ///
+    /// Read from the cell the pane wrote while drawing, because that is the
+    /// only moment the rectangle is known. Everything else deck draws is its
+    /// own pixels and needs no such arrangement; a webview is a stranger in
+    /// the window and has to be told where to stand on every frame.
     fn settle_pages(&mut self, window: &Window) {
         let spread = self.spread;
         let palette = self.palette;
