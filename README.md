@@ -33,7 +33,7 @@ A presentation surface for agents, written in Rust.
 
 <div align="center">
 
-[Why](#why) • [How it works](#how-it-works) • [Demo](#demo) • [Install](#install) • [In the window](#in-the-window) • [The walk](#the-walk) • [Diagrams](#diagrams) • [Theming](#theming)
+[Why](#why) • [How it works](#how-it-works) • [Demo](#demo) • [Install](#install) • [In the window](#in-the-window) • [The walk](#the-walk) • [Diagrams](#diagrams) • [Pages](#pages-for-the-idea-that-only-moves) • [Theming](#theming)
 
 </div>
 
@@ -394,11 +394,6 @@ There are no colours, sizes or positions in the format, on purpose. A node says
 what it *is* and how much it matters, and deck owns every pixel — so two decks
 drawing the same idea come out looking the same.
 
-<!--
-  NOT SHIPPED YET. Uncomment this section in the release that carries pages —
-  today the binary on brew is 0.1.1, which has diagrams and no pages, and a
-  README that describes a pane nobody can make is a README that lies.
-
 ## Pages, for the idea that only moves
 
 Some things are neither a file nor a picture. Two rows merging, a queue filling
@@ -410,10 +405,11 @@ wearing the deck's own colours and hearing the same points the code does.
 
 ```bash
 deck group <path> \
-  --say 'Two rows, same key. [point 24-26 hop] The later one lands on the
-earlier, and [merge] shows which field survives.' \
-  --page 'merge.html [merge] two rows meeting' \
-  --ref 'src/merge.ts:24-26 [code] the line that decides'
+  --say 'Two rows arrive with the same key. [point 24-26 hop] The later one
+lands on top of the earlier — [hop] is the line that picks the winner, and
+[rows] shows which field actually survives it.' \
+  --page 'merge.html [rows] two rows meeting' \
+  --ref 'src/merge.ts:24-26 [hop] the line that decides'
 ```
 
 It is deliberately narrow. At most forty words may show — the prose carries the
@@ -425,8 +421,10 @@ What it gets in return is the thing an artifact cannot have: it is told where th
 reader is. `[point rows]` reaches the page as an event, so the animation is bound
 to the sentence being read rather than to a clock.
 
-MEDIA · 4.26.13.gif — rows shifting under a paged query. Upload it when pages ship.
--->
+<p align="center">
+  <img width="420" alt="rows shifting under a paged query, bound to the narration"
+       src="https://github.com/henit-chobisa/deck/releases/download/v0.1.2/4.26.13.gif">
+</p>
 
 ## Theming
 
