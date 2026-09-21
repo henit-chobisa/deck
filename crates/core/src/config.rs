@@ -25,8 +25,16 @@ pub struct Config {
     pub layout: Layout,
     /// What the deck is painted in.
     pub theme: Theme,
-    /// How much of the screen goes away when the reader asks for quiet.
-    pub zen: Zen,
+    /// Read and ignored: what the dimming of the rest of the screen was set to.
+    ///
+    /// Zen was a shade over every display with the deck on top of it, and it
+    /// was not good enough to keep. The field stays because this file refuses
+    /// what it does not know, and a config written while it existed still has
+    /// `[zen]` in it — dropping it outright would fail the whole file and take
+    /// the reader's colours down with a setting nothing reads. Never written
+    /// back, so it leaves on the next `deck setup`.
+    #[serde(default, skip_serializing)]
+    pub zen: Option<serde::de::IgnoredAny>,
     /// How the narration sounds when it is read aloud.
     pub speech: Speech,
 }
@@ -150,53 +158,6 @@ impl Speech {
     }
 }
 
-/// The `[zen]` section.
-///
-/// Zen is a shade drawn over every display with the deck left sitting on top of
-/// it, so the only lit thing on screen is the thing being read. It is a reading
-/// posture rather than a mode: nothing about the deck changes, the rest of the
-/// screen simply stops competing.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(default, deny_unknown_fields)]
-pub struct Zen {
-    /// How far the rest of the screen goes down, from 0 to 1.
-    ///
-    /// Not all the way, by default. A shade at 1 is a black rectangle, and the
-    /// point is to put the rest of the screen *behind* the deck rather than to
-    /// delete it — a person glancing at a terminal that is still running should
-    /// see that it is still running.
-    pub dim: f32,
-    /// Whether what is behind the shade is blurred as well as darkened.
-    ///
-    /// Darkening alone leaves every window's shape legible, and a shape is
-    /// enough to read as a thing waiting for you. Blur is what turns them back
-    /// into wallpaper. It costs a compositor pass, so it can be turned off.
-    pub blur: bool,
-}
-
-impl Default for Zen {
-    fn default() -> Self {
-        Self {
-            // Dark enough that the deck is plainly the lit thing, light enough
-            // that the screen behind it is still a screen.
-            dim: 0.72,
-            blur: true,
-        }
-    }
-}
-
-impl Zen {
-    /// The shade's opacity, held to something that can be undone.
-    ///
-    /// A shade at 1 covering every display, with a deck that has somehow not
-    /// drawn, is a black screen with no way out. The ceiling is what makes that
-    /// unreachable however the file is written.
-    #[must_use]
-    pub fn opacity(&self) -> f32 {
-        self.dim.clamp(0., 0.92)
-    }
-}
-
 /// The `[theme]` section.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
@@ -252,36 +213,31 @@ mod tests {
     }
 
     #[test]
-    fn a_shade_can_always_be_seen_past() {
-        // Zen covers every display and only the deck is drawn on top of it. A
-        // shade at full opacity, with a deck that had somehow not drawn, would
-        // be a black screen with nothing on it — so the ceiling is not a
-        // preference, it is what keeps that unreachable however the file is
-        // written.
-        let blackout = Zen {
-            dim: 1.0,
-            blur: true,
-        };
-        assert!(blackout.opacity() < 1.0);
-
-        let nonsense = Zen {
-            dim: -4.0,
-            blur: false,
-        };
-        assert_eq!(nonsense.opacity(), 0.0, "and below zero is not brighter");
-    }
-
-    #[test]
     fn an_empty_file_is_a_configured_deck() {
         // Every section has the design's own answer behind it, so a file that
         // says one word changes one thing and says nothing about the rest.
         let config: Config = serde_json::from_str("{}").expect("an empty file parses");
-        assert!(config.zen.blur);
-        assert!(config.zen.opacity() > 0.5, "dark enough to be worth doing");
+        assert!(config.speech.aloud);
+        assert_eq!(config.theme.paper, crate::theme::Paper::default());
 
-        let one: Config = serde_json::from_str(r#"{ "zen": { "dim": 0.4 } }"#).expect("one word");
-        assert_eq!(one.zen.opacity(), 0.4);
-        assert!(one.zen.blur, "and the rest is still the default");
+        let one: Config =
+            serde_json::from_str(r#"{ "speech": { "rate": 120 } }"#).expect("one word");
+        assert_eq!(one.speech.words_a_minute(), 120);
+        assert!(one.speech.aloud, "and the rest is still the default");
+    }
+
+    #[test]
+    fn a_config_written_while_zen_existed_still_parses() {
+        // Zen was a shade over every display, and it was not good enough to
+        // keep. This section refuses fields it does not know, so the setting
+        // is read and dropped rather than failing the whole file — which would
+        // take the reader's colours with it, for a mode that no longer exists.
+        let old = r#"{ "zen": { "dim": 0.72, "blur": true }, "speech": { "rate": 165 } }"#;
+        let config: Config = serde_json::from_str(old).expect("an old config still reads");
+        assert_eq!(config.speech.words_a_minute(), 165);
+
+        let back = serde_json::to_string(&config).expect("and writes back");
+        assert!(!back.contains("zen"), "{back}");
     }
     use crate::layout::Arrange;
     use crate::theme::Rgb;
