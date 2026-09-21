@@ -71,6 +71,8 @@ pub enum Sheet {
     Code(Pane),
     /// A picture of something that is in no file.
     Drawn(Chart),
+    /// A page, for the one idea in a deck that only makes sense moving.
+    Page(crate::page::Paper),
 }
 
 impl Sheet {
@@ -79,7 +81,7 @@ impl Sheet {
     pub fn reader_chose(&self) -> bool {
         match self {
             Self::Code(code) => code.reader_chose(),
-            Self::Drawn(_) => false,
+            Self::Drawn(_) | Self::Page(_) => false,
         }
     }
 
@@ -89,6 +91,7 @@ impl Sheet {
         match self {
             Self::Code(code) => &code.ref_id,
             Self::Drawn(chart) => &chart.ref_id,
+            Self::Page(paper) => &paper.ref_id,
         }
     }
 
@@ -102,6 +105,7 @@ impl Sheet {
         match self {
             Self::Code(code) => code.name.as_ref(),
             Self::Drawn(chart) => chart.name.as_ref(),
+            Self::Page(paper) => paper.name.as_ref(),
         }
     }
 
@@ -110,7 +114,7 @@ impl Sheet {
     pub fn code(&self) -> Option<&Pane> {
         match self {
             Self::Code(code) => Some(code),
-            Self::Drawn(_) => None,
+            Self::Drawn(_) | Self::Page(_) => None,
         }
     }
 
@@ -119,7 +123,7 @@ impl Sheet {
     pub fn code_mut(&mut self) -> Option<&mut Pane> {
         match self {
             Self::Code(code) => Some(code),
-            Self::Drawn(_) => None,
+            Self::Drawn(_) | Self::Page(_) => None,
         }
     }
 
@@ -128,7 +132,7 @@ impl Sheet {
     pub fn chart(&self) -> Option<&Chart> {
         match self {
             Self::Drawn(chart) => Some(chart),
-            Self::Code(_) => None,
+            Self::Code(_) | Self::Page(_) => None,
         }
     }
 
@@ -137,7 +141,25 @@ impl Sheet {
     pub fn chart_mut(&mut self) -> Option<&mut Chart> {
         match self {
             Self::Drawn(chart) => Some(chart),
-            Self::Code(_) => None,
+            Self::Code(_) | Self::Page(_) => None,
+        }
+    }
+
+    /// The page pane, if this is one.
+    #[must_use]
+    pub fn paper(&self) -> Option<&crate::page::Paper> {
+        match self {
+            Self::Page(paper) => Some(paper),
+            Self::Code(_) | Self::Drawn(_) => None,
+        }
+    }
+
+    /// The page pane, to move it or put it away.
+    #[must_use]
+    pub fn paper_mut(&mut self) -> Option<&mut crate::page::Paper> {
+        match self {
+            Self::Page(paper) => Some(paper),
+            Self::Code(_) | Self::Drawn(_) => None,
         }
     }
 
@@ -150,6 +172,7 @@ impl Sheet {
         match self {
             Self::Code(code) => code.selected.is_some(),
             Self::Drawn(chart) => chart.selected.is_some(),
+            Self::Page(paper) => paper.selected.is_some(),
         }
     }
 
@@ -158,6 +181,7 @@ impl Sheet {
         match self {
             Self::Code(code) => code.selected = None,
             Self::Drawn(chart) => chart.selected = None,
+            Self::Page(paper) => paper.selected = None,
         }
     }
 
@@ -181,7 +205,7 @@ impl Sheet {
     pub fn range_away(&self) -> Option<Away> {
         match self {
             Self::Code(code) => code.range_away(),
-            Self::Drawn(_) => None,
+            Self::Drawn(_) | Self::Page(_) => None,
         }
     }
 
@@ -191,7 +215,9 @@ impl Sheet {
             Self::Code(code) => code.render_folded(slot, cx),
             // A picture has no name to put on a spine and nothing to read down
             // the side of it, so it folds away to nothing at all.
-            Self::Drawn(_) => gpui_kit::div().into_any_element(),
+            // A page folds away to nothing for the same reason, and its view
+            // goes with it: a native surface cannot be drawn on a spine.
+            Self::Drawn(_) | Self::Page(_) => gpui_kit::div().into_any_element(),
         }
     }
 
@@ -208,6 +234,7 @@ impl Sheet {
                 .render(slot, marks, focus_button, cx)
                 .into_any_element(),
             Self::Drawn(chart) => chart.render(slot, cx).into_any_element(),
+            Self::Page(paper) => paper.render(slot, cx).into_any_element(),
         }
     }
 }

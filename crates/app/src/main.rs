@@ -21,13 +21,13 @@ mod conversation;
 mod hook;
 mod live;
 mod load;
+mod page;
 mod palette;
 mod pane;
 mod pill;
 mod prose;
 mod queue;
 mod setup;
-mod shade;
 mod sheet;
 mod skill;
 mod speech;
@@ -117,7 +117,6 @@ fn main() -> ExitCode {
 /// Blocks: this is the whole of the process's life while a deck is on screen.
 fn show(decks: Vec<Deck>, opening: &cli::Opening) {
     let (dark, layout) = (opening.dark, opening.layout);
-    let zen = opening.zen.clone();
     let speech = opening.speech.clone();
     let (editor, paper, colors) = (opening.editor, opening.paper, opening.colors);
     let named = opening.named.clone();
@@ -139,12 +138,6 @@ fn show(decks: Vec<Deck>, opening: &cli::Opening) {
             cx.on_window_closed(|cx, _| {
                 // A shade is not a window worth staying open for. Every path
                 // that takes the deck away brings the lights up first, and this
-                // is the one that does not have to be remembered: if the only
-                // thing left on screen is the dark, the deck it was dimming for
-                // has gone, and the dark goes with it.
-                if shade::only_shades_left(cx) {
-                    shade::lights_on(cx);
-                }
                 if cx.windows().is_empty() {
                     cx.quit();
                 }
@@ -205,7 +198,6 @@ fn show(decks: Vec<Deck>, opening: &cli::Opening) {
             // Claim live ownership before a session reaches the queue. The
             // canonical path, rather than the copyable header id, is what keeps
             // a second `deck open` from putting another window over this one.
-            crate::shade::remember(zen, cx);
             crate::speech::remember(speech, cx);
 
             let waiting: Vec<Session> = decks
@@ -436,13 +428,10 @@ pub fn open_deck(session: Session, cx: &mut App) {
     // way out — see `DeckView::on_close` — because that path quits the
     // application without closing the window first.
     let _ = handle.update(cx, |_, window, cx| {
-        window.on_window_should_close(cx, |window, cx| {
+        window.on_window_should_close(cx, |window, _cx| {
             if let WindowBounds::Windowed(bounds) = window.window_bounds() {
                 state::remember_bounds(bounds);
             }
-            // The red button does not go through the view, so the lights have
-            // to be brought up here as well as there.
-            shade::lights_on(cx);
             true
         });
     });
