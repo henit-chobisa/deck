@@ -95,23 +95,36 @@ your agents and they reach for it on their own.
 
 ## Demo
 
+The whole loop in one take: the agent writes a deck while you watch, you walk it,
+comment where you disagree — and it answers you inside the deck, without either of
+you going back to the chat window.
 
+<!-- MEDIA 1 of 5 · interaction.gif (6.2 MB) or disagree.gif — see the note below. -->
 
 https://github.com/user-attachments/assets/ea4f8fe3-50b2-4412-917c-882b536a538a
 
-
-
 <!--
-  Drop the video in here.
+  PUTTING MEDIA ON THIS PAGE
+  ==========================
+  Two ways, and they behave differently.
 
-  GitHub will not play a video committed to the repo. The way that works is to
-  open this file in the web editor, drag the file into the text area, and let
-  GitHub upload it — it inserts a user-attachments URL that renders as a player.
-  MP4 or MOV, under 10 MB.
+  A GIF plays inline, loops, and needs no click — best for a README, and the
+  only thing that works where video is not allowed. Drag it into the web editor
+  and GitHub gives you a `user-attachments` URL; reference it as an image:
 
-  Then delete this comment and write a sentence under it saying what is on
-  screen. A silent video with no caption makes the reader work out what they
-  are watching, which is the thing this whole page is against.
+      ![walking a deck](https://github.com/user-attachments/assets/<id>)
+
+  An MP4 is about a tenth the size at better quality, but needs a click and
+  only plays from a `user-attachments` URL — a bare URL on its own line, as
+  above, renders as a player.
+
+  Both cap at 10 MB on a free plan, 100 MB on a paid one. Every GIF in
+  ~/Desktop/deck-demos is already under 10 MB; the .mp4 beside each one is the
+  same cut, smaller and sharper, if the surface allows video.
+
+  Every clip here gets one sentence above it saying what is on screen. A silent
+  loop with no caption makes the reader work out what they are watching, which
+  is the thing this whole tool is against.
 -->
 
 ## Install
@@ -185,11 +198,11 @@ evidence for that one claim — an enum and the column that stores it, a writer 
 the reader that consumes it — so the relationship is on screen rather than in
 your head.
 
-<!--
-  A screenshot here: a group open, both panes lit, the narration above them.
-  Caption it with what the two panes have to do with each other — that is the
-  thing a still picture cannot say on its own.
--->
+The light moves with the sentence being read, not with your scrolling: press a
+line of the narration and the code it is about lights up, in whichever pane is
+showing it.
+
+<!-- MEDIA 2 of 5 · 3.00.40.gif (3.3 MB, 19s) — drag it here and delete this line. -->
 
 ### Comment where you disagree
 
@@ -206,19 +219,14 @@ middle of your work. Open it when you are ready; press `h` and it goes back to
 the bar with your comments still in it. The agent cannot open the deck itself,
 and there is no flag that lets it.
 
-### Read with the lights off
+### Let it read itself to you
 
-`z` puts a shade over every display and leaves the deck on top of it, blurred
-and dimmed, so the only lit thing on screen is the thing you are reading. Press
-it again, or click the dark, to bring the lights up. It goes by itself when the
-deck does.
+With a voice set up, `w` reads the deck aloud and the light walks the code in
+time with the words — timed from the sound itself, not from a guess at how long
+a sentence takes. Press a sentence and the code it is about lights up, whether
+or not anybody is listening.
 
-```toml
-# ~/.deck/config.toml
-[zen]
-dim = 0.72   # how far the rest of the screen goes down
-blur = true  # and whether it is blurred as well as darkened
-```
+<!-- MEDIA · no clip for the voice yet: none of the five shows `w` being pressed. -->
 
 ### Arrange it the way you read
 
@@ -230,7 +238,6 @@ remembered for next time.
 | `n` `p` | next / previous group |
 | `c` | comment on the selection, or on the group |
 | `r` | turn the panes |
-| `z` | lights off |
 | `h` | put the deck away |
 | `s` | submit the review |
 | `q` | close without answering |
@@ -301,6 +308,7 @@ deck doing <deck> --text "reading the retry loop"  # what it is doing, while it 
 deck next  <deck> --after <cursor>             # block until the reader does something
 deck fold  <deck> --pane protocol              # fold that pane away to its spine
 deck bring <deck> --ref "src/live.rs:40-60"    # borrow a file the group does not carry
+deck bring <deck> --diagram "flow.json [flow] the path"  # or a picture, written now
 deck clear <deck>                              # put the borrowed panes back
 ```
 
@@ -319,6 +327,11 @@ the agent stops moving you; the rail says **paused** while that holds. It lapses
 on its own after a few seconds of stillness, and `f` takes it back immediately.
 A composer holds it until you close it, because nobody should have the ground
 moved while they are writing about it.
+
+Asked something mid-walk, it can answer with a pane rather than a paragraph —
+written there and then, folded in beside what you were already looking at.
+
+<!-- MEDIA 3 of 5 · 3.56.56.gif (7.7 MB, 30s) — drag it here and delete this line. -->
 
 ### What comes back
 
@@ -379,15 +392,62 @@ the route while the rest of the diagram recedes — several to a picture, so the
 happy path and the one that stalls can share the same seven boxes. Drag the
 drawing anywhere; hold `⌘` or `ctrl` and scroll, or pinch, to zoom.
 
-<!--
-  A GIF still wanted here: a flow playing, with the rest of the diagram receding. This one
-  has to move — the travelling is the whole point and a still frame of it is
-  just a diagram with some boxes a different colour.
--->
+Pressing a flow sends a current down the route while everything off it recedes;
+a second flow over the same boxes shows the path that stalls.
+
+A picture is a pane like any other: it takes a `[name]` the prose can say, and a
+point can land in it. `[point checkout]` lights the block whose `id` is
+`checkout` and steps the rest of the picture back — and `[point 44-46 checkout]`
+lights those lines **and** that block from one sentence, which is the thing
+neither a diff nor a diagram can do alone.
+
+```sh
+deck group <path> \
+  --say 'You press Connect and nothing happens. [point q] In [flow] the request
+stops at the installed check. [pause] [point 44-46 q] And [guard] is that check.' \
+  --diagram 'connect.json [flow] where the click stops' \
+  --ref 'web/connect.tsx:40-52 [guard] the check that returns early'
+```
+
+<!-- MEDIA 4 of 5 · 3.16.53.gif (8.1 MB, 55s — worth cutting to 25s first). -->
 
 There are no colours, sizes or positions in the format, on purpose. A node says
 what it *is* and how much it matters, and deck owns every pixel — so two decks
 drawing the same idea come out looking the same.
+
+<!--
+  NOT SHIPPED YET. Uncomment this section in the release that carries pages —
+  today the binary on brew is 0.1.1, which has diagrams and no pages, and a
+  README that describes a pane nobody can make is a README that lies.
+
+## Pages, for the idea that only moves
+
+Some things are neither a file nor a picture. Two rows merging, a queue filling
+up, a node coming out of a chain — the argument *is* the movement, and a diagram
+of it is a diagram of the start and the end with the interesting part missing.
+
+A group can carry a page: HTML the agent writes, rendered in a pane of the deck,
+wearing the deck's own colours and hearing the same points the code does.
+
+```bash
+deck group <path> \
+  --say 'Two rows, same key. [point 24-26 hop] The later one lands on the
+earlier, and [merge] shows which field survives.' \
+  --page 'merge.html [merge] two rows meeting' \
+  --ref 'src/merge.ts:24-26 [code] the line that decides'
+```
+
+It is deliberately narrow. At most forty words may show — the prose carries the
+argument and a page with paragraphs in it is a second narration competing with
+the band — nothing is fetched from anywhere, and the page is handed deck's
+palette as CSS variables rather than choosing its own.
+
+What it gets in return is the thing an artifact cannot have: it is told where the
+reader is. `[point rows]` reaches the page as an event, so the animation is bound
+to the sentence being read rather than to a clock.
+
+MEDIA 5 of 5 · 4.26.13.gif (8.1 MB, 37s, portrait) — rows shifting under a paged query.
+-->
 
 ## Theming
 
@@ -413,6 +473,14 @@ your editor:
 
 ```sh
 deck open <path> --theme "vscode:Solarized Dark"
+```
+
+Light or dark follows the machine unless you say otherwise. Worth pinning for a
+screenshot or a recording, which would otherwise change colour depending on what
+time of day somebody plays it back:
+
+```sh
+deck open <path> --mode dark --paper warm
 ```
 
 ## A deck is a directory
