@@ -353,18 +353,25 @@ impl Pane {
                 row.change = Some(Change::New);
             }
 
-            let went: Vec<&str> = before.lines().collect();
-            let mut gone = highlight(before, &went, &code.file, cx);
-            for row in &mut gone {
-                row.number = None;
-                row.change = Some(Change::Gone);
+            // Empty means it replaced nothing, so there is nothing to splice
+            // and the marked range is the whole answer. Going through the rest
+            // of this with no text was the crash: the highlighter reports a run
+            // even for an empty document, and the line table it is indexed
+            // against has no lines in it.
+            if !before.is_empty() {
+                let went: Vec<&str> = before.lines().collect();
+                let mut gone = highlight(before, &went, &code.file, cx);
+                for row in &mut gone {
+                    row.number = None;
+                    row.change = Some(Change::Gone);
+                }
+                added = gone.len();
+                // Over the range, not under it: a diff reads downwards, and
+                // the half that is going goes first.
+                added_at = authored.first - 1;
+                let at = (authored.first as usize) - 1;
+                rows.splice(at..at, gone);
             }
-            added = gone.len();
-            // Over the range, not under it: a diff reads downwards, and the
-            // half that is going goes first.
-            added_at = authored.first - 1;
-            let at = (authored.first as usize) - 1;
-            rows.splice(at..at, gone);
         }
 
         // Open on the range, a couple of lines above it so it does not start
@@ -1341,6 +1348,13 @@ fn highlight(source: &str, lines: &[&str], file: &std::path::Path, cx: &App) -> 
     let mut highlighter = SyntaxHighlighter::new(language_of(file));
     highlighter.update(None, &Rope::from(source), None);
     let styles = highlighter.styles(&(0..source.len()), &*cx.theme().highlight_theme);
+
+    // Nothing to lay runs against. The highlighter answers for an empty
+    // document with a run all the same, and every index below is into a line
+    // table that has no lines in it.
+    if lines.is_empty() {
+        return rows;
+    }
 
     // Where each line begins, so a byte offset can be turned into a line.
     let mut starts = Vec::with_capacity(lines.len());
