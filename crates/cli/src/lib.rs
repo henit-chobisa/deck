@@ -525,6 +525,7 @@ pub fn group(root: &Path, say: &str, pointing: Vec<Pointing>) -> anyhow::Result<
                     note: named.note,
                     name: named.name,
                     after: named.after,
+                    before: named.before,
                 }),
                 Pointing::Written(page) => Ref::Page(deck_core::protocol::PageRef {
                     id: format!("g{ord}p{nth}"),

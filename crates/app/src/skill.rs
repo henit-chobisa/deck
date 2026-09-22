@@ -682,11 +682,12 @@ mod tests {
             "--after",
             "A code pane is a highlight or a diff, and you need both",
             "**A highlight** is `--ref` on its own",
-            "**A diff** is `--ref` with `--after` behind it",
+            "**A diff** is `--ref` with `--after` or `--before` behind it",
             "The test is whether you are pointing or proposing",
             "A diff is a proposal, so draw it before you make the edit",
-            "Build the deck first, and edit\nafter",
-            "Do not put the old code in `--after` to force a diff",
+            "Never show it as a highlight",
+            "reach for `--before`",
+            "Putting the old code in `--after`",
         ] {
             assert!(SKILL.contains(said), "the skill never says `{said}`");
         }

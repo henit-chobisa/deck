@@ -116,6 +116,13 @@ enum What {
         /// it changes. The file on disk is never touched.
         #[arg(long, value_name = "REPLACEMENT")]
         after: Vec<String>,
+        /// What the range replaced, for a change you have already made: this
+        /// drawn as going, the lines themselves as what arrived.
+        ///
+        /// The mirror of `--after`, for the case where the edit is on disk
+        /// before the deck is written. Applies to the `--ref` it follows.
+        #[arg(long, value_name = "WHAT_IT_REPLACED")]
+        before: Vec<String>,
         /// A picture, as a JSON file, with the same optional `[name]` and
         /// note a `--ref` takes: `flows/import.json [flow] how it travels`.
         /// See PROTOCOL.md for the file's shape.
@@ -421,18 +428,21 @@ impl Cli {
                 say,
                 refs,
                 after,
+                before,
                 diagram,
                 page,
-            } => report(gather(&refs, &after, &diagram, &page).and_then(|refs| {
-                // Said before the path, because an agent that reads one line of
-                // output reads the last one.
-                for note in deck_cli::what_will_not_light(&say, &refs) {
-                    eprintln!("deck: {note}");
-                }
-                deck_cli::group(&deck, &say, refs).map(|path| {
-                    println!("{}", path.display());
-                })
-            })),
+            } => report(
+                gather(&refs, &after, &before, &diagram, &page).and_then(|refs| {
+                    // Said before the path, because an agent that reads one line of
+                    // output reads the last one.
+                    for note in deck_cli::what_will_not_light(&say, &refs) {
+                        eprintln!("deck: {note}");
+                    }
+                    deck_cli::group(&deck, &say, refs).map(|path| {
+                        println!("{}", path.display());
+                    })
+                }),
+            ),
             What::Walk => report(crate::setup::live()),
             What::Setup => report(crate::setup::run()),
             What::Hook => report(crate::hook::run()),
@@ -603,15 +613,26 @@ fn detach() -> bool {
 fn gather(
     refs: &[String],
     after: &[String],
+    before: &[String],
     diagrams: &[String],
     pages: &[String],
 ) -> anyhow::Result<Vec<Pointing>> {
     let mut out = Vec::with_capacity(refs.len() + diagrams.len() + pages.len());
-    let changes = paired(refs.len(), after)?;
+    let changes = paired(refs.len(), after, "--after")?;
+    let replaced = paired(refs.len(), before, "--before")?;
 
     for (ix, argument) in refs.iter().enumerate() {
+        anyhow::ensure!(
+            changes[ix].is_none() || replaced[ix].is_none(),
+            "`{}` has both a `--after` and a `--before` on it. A range is what \
+             is going or what arrived, and it cannot be drawn as both: use \
+             `--after` for a change you have not made, `--before` for one you \
+             have.",
+            argument.split_whitespace().next().unwrap_or(argument)
+        );
         let mut named = deck_cli::refs::parse(argument)?;
         named.after.clone_from(&changes[ix]);
+        named.before.clone_from(&replaced[ix]);
         out.push(Pointing::Code(named));
     }
 
@@ -626,19 +647,19 @@ fn gather(
     Ok(out)
 }
 
-/// Which `--ref` each `--after` belongs to.
+/// Which `--ref` each `--after`, or each `--before`, belongs to.
 ///
 /// Clap hands back the two lists separately, and the pairing an agent writing
-/// the command would assume — that an `--after` changes the `--ref` in front of
-/// it — is in neither of them. So the ordering is read back off the command
+/// the command would assume — that the change belongs to the `--ref` in front
+/// of it — is in neither of them. So the ordering is read back off the command
 /// line, which is the one place it survives.
 ///
 /// # Errors
 ///
-/// When an `--after` has no `--ref` before it to belong to.
-fn paired(refs: usize, after: &[String]) -> anyhow::Result<Vec<Option<String>>> {
+/// When one of them has no `--ref` before it to belong to.
+fn paired(refs: usize, said: &[String], which: &str) -> anyhow::Result<Vec<Option<String>>> {
     let mut changes = vec![None; refs];
-    if after.is_empty() {
+    if said.is_empty() {
         return Ok(changes);
     }
 
@@ -657,14 +678,14 @@ fn paired(refs: usize, after: &[String]) -> anyhow::Result<Vec<Option<String>>> 
                     args.next();
                 }
             }
-            "--after" => {
+            other if other == which => {
                 anyhow::ensure!(
                     seen > 0,
-                    "`--after` has no `--ref` in front of it: it changes the lines of the ref \
+                    "`{which}` has no `--ref` in front of it: it changes the lines of the ref \
                      it follows, so it goes straight after one"
                 );
-                if let Some(said) = after.get(taken) {
-                    changes[seen - 1] = Some(said.clone());
+                if let Some(text) = said.get(taken) {
+                    changes[seen - 1] = Some(text.clone());
                 }
                 taken += 1;
                 if !inline {

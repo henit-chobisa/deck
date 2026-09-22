@@ -190,6 +190,20 @@ pub struct RefSpec {
     /// touched.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub after: Option<String>,
+    /// What the range replaced, for a change that has already been made.
+    ///
+    /// The mirror of [`after`](Self::after), and it exists because the two
+    /// halves of a change are never both on disk. An agent asked to make an
+    /// edit and then show it has a file that is already the new version, so a
+    /// ref on those lines is a highlight of the result — the answer to a
+    /// question nobody asked. The old text is the one thing only the agent
+    /// still has, so it is the one thing it has to hand over.
+    ///
+    /// When set, this text reads as the deletion and the range itself as the
+    /// arrival. Never both this and `after`: a range cannot be what is going
+    /// and what is coming at once.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub before: Option<String>,
 }
 
 /// Whether `name` can name a pane.

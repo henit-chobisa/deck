@@ -1501,6 +1501,10 @@ impl DeckView {
             note,
             name,
             after,
+            // A brought pane answers a question asked live, which is always
+            // about code as it stands. Showing what it replaced is a thing an
+            // authored group does, where the agent still has the old text.
+            before: None,
         };
         let pane = Pane::new(&spec, &source, cx);
         // What it displaces folds in the same movement, so the room moves once.

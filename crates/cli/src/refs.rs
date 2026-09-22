@@ -37,6 +37,8 @@ pub struct Named {
     /// What the range should become, when the ref is a proposed change rather
     /// than something to look at. Set by the caller, not by the syntax.
     pub after: Option<String>,
+    /// What the range replaced, when the change has already been made.
+    pub before: Option<String>,
 }
 
 /// What a `--diagram` argument said.
@@ -159,9 +161,11 @@ pub fn parse(argument: &str) -> anyhow::Result<Named> {
         range: LineRange::new(number(first, "first")?, number(last, "last")?),
         name,
         note: note.filter(|note| !note.is_empty()),
-        // The syntax carries no replacement — `--after` is a flag of its own,
-        // because a replacement is several lines and a ref is one.
+        // The syntax carries no replacement — `--after` and `--before` are
+        // flags of their own, because a replacement is several lines and a ref
+        // is one.
         after: None,
+        before: None,
     })
 }
 

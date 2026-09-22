@@ -1090,10 +1090,19 @@ says **look at this**. Use it for code that exists and is staying: the caller
 that has to keep working, the field the bug is about, the function you are
 teaching.
 
-**A diff** is `--ref` with `--after` behind it. The range reads as going and the
-`--after` text as arriving, so the pane reads as a change rather than a
-highlight. It says **this should become that**. The file on disk is never
-touched.
+**A diff** is `--ref` with `--after` or `--before` behind it. The pane reads as
+a change rather than a highlight. It says **this became that**, and which flag
+you want depends on one thing only: whether the edit is on disk yet.
+
+- **`--after`** — you have *not* made the change. The range reads as going and
+  the `--after` text as arriving. The file is never touched, so the reader can
+  say no while saying no is still free.
+- **`--before`** — you have *already* made it. The range is the new code, lit as
+  what arrived, and the `--before` text is what it replaced, drawn above it with
+  no line numbers, because the file does not contain those lines any more.
+
+Never both on one ref. A range is what is going or what arrived, and deck
+refuses a group that claims it is both.
 
 ```bash
 deck group <path> \
@@ -1120,22 +1129,32 @@ a plan wants and the reason to reach for it early: the code that exists plus
 what you would do to it is cheaper to argue with than a change already on disk,
 and the answer comes back while changing your mind still costs nothing.
 
-**Asked to change something and then show it? Build the deck first, and edit
-after.** This is the order that gets got wrong, every time: the edit goes in,
-and then the deck shows the new lines lit, which is a highlight of the result
-and answers a question nobody asked. What they wanted was the change. So write
-the group as a diff while the old code is still the code — `--ref` on the lines
-as they are, `--after` with what you are about to write — and make the edit
-once the deck is sealed. You lose nothing by that order and they get to argue
-before it lands, which is the entire point of handing it to them.
+**Asked to change something and then show it? Never show it as a highlight.**
+This is the one that gets got wrong every time: the edit goes in, the deck comes
+up with the new lines lit, and that is a highlight of the result — the answer to
+a question nobody asked. They wanted to see the change. Both flags exist so that
+you always have one.
 
-If the edit is already on disk when they ask, say so rather than faking it.
-There is nothing left to diff against: the file *is* the new version, so a
-`--ref` on those lines is a highlight of the result, and that is the honest
-pane. Do not put the old code in `--after` to force a diff — that draws a
-revert, and it reads as one. Point at the lines and let the prose carry the
-before: *it used to return early here — [point 140-148] now it falls through to
-the retry.*
+If you have not edited yet, prefer `--after`: write the group against the code
+as it stands, seal it, and make the edit afterwards. You lose nothing by that
+order and they get to argue before it lands, which is the whole point of handing
+it over.
+
+If the edit is already written — and it usually is, because *make this change*
+came before *show me* — reach for `--before`. You still have the old text; you
+replaced it a moment ago, and it exists nowhere else now. That is exactly why
+the flag is there.
+
+```bash
+deck group <path> \
+  --say 'It allocated on every pass. [point 140-148] [batch] reuses one buffer now.' \
+  --ref "src/batch.ts:140-148 [batch] what it became" \
+  --before "  for (const row of rows) {
+    const buf = Buffer.alloc(row.size);"
+```
+
+Do not reach for the other one to fake it. Putting the old code in `--after`
+draws a revert — *this should become what it used to be* — and reads as one.
 
 Rules:
 

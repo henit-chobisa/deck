@@ -177,6 +177,7 @@ picture. There is no `kind` field, and no entry is both.
 | `range` | `[first, last]`   | yes      | Lines to light up. |
 | `note`  | string            | no       | A short label. Inline `*emphasis*` only. |
 | `after` | string            | no       | A proposed replacement for the range. |
+| `before`| string            | no       | What the range replaced, for a change already made. |
 
 **`range` is one-based and inclusive**, written as a two-element array.
 `[140, 140]` is a single line. A client corrects a backwards or zero range
@@ -193,6 +194,15 @@ Far-apart ranges in one file are a different thing and are allowed.
 **`after` is a change that has not been made.** The range reads as what would
 go, and `after` as what would replace it. The file on disk is never touched by
 deck. A client that does not render `after` shows the range and ignores it.
+
+**`before` is a change that already has been.** It is the mirror, and it exists
+because the two halves of a change are never both on disk: once the edit is
+written, a ref on those lines is a highlight of the result. So the range reads
+as what arrived and `before` as what it replaced, drawn above it. The old text
+has no line numbers, because the file does not contain those lines any more.
+
+**Never both on one ref.** A range is what is going or what arrived and cannot
+be drawn as both; a client writing a deck is expected to refuse it.
 
 ### A diagram ref
 

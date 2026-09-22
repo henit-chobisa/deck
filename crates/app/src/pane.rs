@@ -121,17 +121,21 @@ struct Row {
     change: Option<Change>,
 }
 
-/// What a ref carrying an `after` is proposing about a line.
+/// What a ref carrying an `after` or a `before` is saying about a line.
 ///
-/// A change that has not been made: the lit range is what would go, and the
-/// replacement is what would come. Deck never writes to the file — this is the
-/// agent showing its work before doing it, which is the only way a reader gets
-/// to say *no* before it happens rather than after.
+/// Two directions, and only one of them is a proposal. With `after`, the change
+/// has not been made: the lit range is what would go, the replacement is what
+/// would come, and deck never writes to the file — the agent showing its work
+/// before doing it, which is the only way a reader gets to say *no* before it
+/// happens rather than after. With `before`, the change is already on disk: the
+/// lit range is what arrived and the spliced rows are what it replaced.
+///
+/// Either way the row without a number is the one that is not in the file.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Change {
-    /// A line the ref proposes to remove.
+    /// A line that is going, or has already gone.
     Gone,
-    /// A line the ref proposes to add. Has no number: it is not in the file.
+    /// A line that is arriving, or has already arrived.
     New,
 }
 
@@ -251,11 +255,18 @@ pub struct Pane {
     heeded: Fade,
     /// Number of source lines, excluding proposed replacement rows.
     source_lines: u32,
-    /// How many rows a proposed replacement added under the authored range.
+    /// How many rows a change spliced into the file's own.
     ///
     /// Kept because everything else here counts in file lines, and a spliced
     /// row has no line to count. See [`Pane::row_of`].
     added: usize,
+    /// The last file line that sits *above* those spliced rows.
+    ///
+    /// An `after` splices under the range and a `before` splices over it, so
+    /// which lines are pushed down differs by which one was written. Without
+    /// this the two cases share arithmetic that is only right for one of them,
+    /// and the failure is a comment card landing a few lines off.
+    added_at: u32,
     scroll: UniformListScrollHandle,
     /// The same rows, sideways.
     ///
@@ -313,6 +324,7 @@ impl Pane {
         // replacement spliced in under it. Every row below then sits one lower
         // per line added, which is why nothing may look a row up by its line
         // number afterwards — see `row_of`.
+        let mut added_at = authored.last;
         if let Some(after) = code.after.as_deref() {
             for row in &mut rows[(authored.first as usize - 1)..(authored.last as usize)] {
                 row.change = Some(Change::Gone);
@@ -326,6 +338,28 @@ impl Pane {
             }
             added = fresh.len();
             rows.splice((authored.last as usize)..(authored.last as usize), fresh);
+        } else if let Some(before) = code.before.as_deref() {
+            // The other direction, and the one that reads oddly until you see
+            // why: here the *range* is the new code. It is on disk, so it keeps
+            // its numbers, and what it replaced has none — the file does not
+            // contain those lines any more, and pretending otherwise would put
+            // numbers on the pane that nothing in the repository answers to.
+            for row in &mut rows[(authored.first as usize - 1)..(authored.last as usize)] {
+                row.change = Some(Change::New);
+            }
+
+            let went: Vec<&str> = before.lines().collect();
+            let mut gone = highlight(before, &went, &code.file, cx);
+            for row in &mut gone {
+                row.number = None;
+                row.change = Some(Change::Gone);
+            }
+            added = gone.len();
+            // Over the range, not under it: a diff reads downwards, and the
+            // half that is going goes first.
+            added_at = authored.first - 1;
+            let at = (authored.first as usize) - 1;
+            rows.splice(at..at, gone);
         }
 
         // Open on the range, a couple of lines above it so it does not start
@@ -346,6 +380,7 @@ impl Pane {
             spotlight: authored,
             source_lines: total,
             added,
+            added_at,
             scroll,
             across: ScrollHandle::new(),
             widest,
@@ -376,7 +411,7 @@ impl Pane {
     /// have to come through here, or they land somewhere the reader did not
     /// point at.
     fn row_of(&self, number: u32) -> usize {
-        row_of(number, self.authored.last, self.added)
+        row_of(number, self.added_at, self.added)
     }
 
     /// Move only the live spotlight, leaving authored diff rows where they are.
@@ -1448,13 +1483,9 @@ fn emphasise(note: &str, palette: &Palette) -> impl IntoElement {
 /// matters more here than usual: it is off-by-one arithmetic that fails
 /// silently, by putting a comment card or a scroll target a couple of lines
 /// from where the reader pointed.
-fn row_of(number: u32, authored_last: u32, added: usize) -> usize {
+fn row_of(number: u32, added_at: u32, added: usize) -> usize {
     let ix = (number.max(1) - 1) as usize;
-    if number > authored_last {
-        ix + added
-    } else {
-        ix
-    }
+    if number > added_at { ix + added } else { ix }
 }
 
 /// The highlighter's name for the language in `file`.
@@ -1513,6 +1544,22 @@ mod tests {
         assert_eq!(row(5), 4, "the last line of the range has not moved");
         assert_eq!(row(6), 7, "the line after it is past the two new ones");
         assert_eq!(row(7), 8);
+    }
+
+    #[test]
+    fn what_a_change_replaced_pushes_down_the_range_itself() {
+        // The other direction, and the one the shared arithmetic used to get
+        // wrong. With `before`, the rows go in *above* the range, so the range
+        // moves down too — where an `after` leaves it exactly where it was.
+        // Lines 3..=5 are what arrived, and the two lines they replaced sit
+        // over them, so the splice happens after line 2.
+        let row = |line| row_of(line, 2, 2);
+
+        assert_eq!(row(1), 0);
+        assert_eq!(row(2), 1, "the line above the splice has not moved");
+        assert_eq!(row(3), 4, "the range itself is past the two old lines");
+        assert_eq!(row(5), 6);
+        assert_eq!(row(6), 7);
     }
 
     #[test]
