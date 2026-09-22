@@ -28,6 +28,7 @@ mod pill;
 mod prose;
 mod queue;
 mod setup;
+mod shade;
 mod sheet;
 mod skill;
 mod speech;

@@ -28,7 +28,7 @@ gpui_kit::actions!(
     deck,
     [
         NextGroup, PrevGroup, Comment, Rotate, Walk, Follow, Hide, Submit, Discard, Noted, Asked,
-        Wrong, ZoomIn, ZoomOut, ZoomReset, Close
+        Wrong, ZoomIn, ZoomOut, ZoomReset, Zen, Close
     ]
 );
 
@@ -48,6 +48,7 @@ const KEYS: &[(&str, &str, &str)] = &[
     ("w", "walk", "walk"),
     ("c", "comment", "comment"),
     ("t", "turn", "turn"),
+    ("z", "zen", "lights"),
     ("h", "hide", "hide"),
     ("s", "submit", "submit"),
     ("q", "close", "close"),
@@ -66,6 +67,7 @@ pub fn bindings() -> Vec<KeyBinding> {
         KeyBinding::new("2", Asked, Some("Deck")),
         KeyBinding::new("3", Wrong, Some("Deck")),
         KeyBinding::new("f", Follow, Some("Deck")),
+        KeyBinding::new("z", Zen, Some("Deck")),
         KeyBinding::new("h", Hide, Some("Deck")),
         KeyBinding::new("s", Submit, Some("Deck")),
         KeyBinding::new("q", Close, Some("Deck")),
@@ -2759,7 +2761,57 @@ impl DeckView {
     /// whatever review was submitted; this keeps everything and gives the
     /// reader their screen back, which is what they actually wanted when they
     /// reached for the corner of the window.
+    /// Turn the rest of the screen down, or bring it back.
+    ///
+    /// Zen is a posture rather than a setting: it is for while you are reading,
+    /// and the way somebody stops reading is by looking at something else. So
+    /// the lights come up on their own when the deck stops being the window
+    /// you are in.
+    fn on_zen(&mut self, _: &Zen, window: &mut Window, cx: &mut Context<Self>) {
+        let zen = crate::config::read().unwrap_or_default().zen;
+        if crate::shade::toggle(zen.opacity(), zen.blur, cx) {
+            self.watch_the_lights(window.window_handle(), cx);
+        }
+        cx.notify();
+    }
+
+    /// Bring the lights up when the reader looks away.
+    ///
+    /// Asked rather than waited for, because the platform offers no hook: there
+    /// is `is_window_active` and nothing to subscribe to. The cost is one
+    /// question every fifth of a second, and only while the lights are down.
+    fn watch_the_lights(&self, deck: AnyWindowHandle, cx: &mut Context<Self>) {
+        cx.spawn(async move |_, cx| {
+            loop {
+                cx.background_executor()
+                    .timer(std::time::Duration::from_millis(200))
+                    .await;
+                let carry_on = cx.update(|cx| {
+                    if !crate::shade::on() {
+                        return false;
+                    }
+                    // A window that has gone is not one to keep watching, and
+                    // neither is one nobody is looking at.
+                    match deck.update(cx, |_, window, _| window.is_window_active()) {
+                        Ok(true) => true,
+                        Ok(false) | Err(_) => {
+                            crate::shade::lights_on(cx);
+                            false
+                        }
+                    }
+                });
+                if !carry_on {
+                    return;
+                }
+            }
+        })
+        .detach();
+    }
+
     fn on_hide(&mut self, _: &Hide, window: &mut Window, cx: &mut Context<Self>) {
+        // The lights come up with the deck. A shade left over a screen whose
+        // deck has gone is a dimmed desktop with nothing to press.
+        crate::shade::lights_on(cx);
         if let WindowBounds::Windowed(bounds) = window.window_bounds() {
             crate::state::remember_bounds(bounds);
         }
@@ -2779,6 +2831,10 @@ impl DeckView {
     /// half-written one would be indistinguishable from a finished review.
     /// Leave, and let whatever is still waiting take the screen.
     fn stand_down(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        // Whatever took the deck away, the screen comes back with it. A shade
+        // is the one thing here that outlives its window, and one left behind
+        // is a dimmed desktop with nothing on it to press.
+        crate::shade::lights_on(cx);
         if crate::queue::len(cx) > 0 {
             crate::open_pill_over(Vec::new(), cx);
         }
@@ -5173,6 +5229,7 @@ impl Render for DeckView {
             .on_action(cx.listener(Self::on_close))
             .on_action(cx.listener(Self::on_comment))
             .on_action(cx.listener(Self::on_rotate))
+            .on_action(cx.listener(Self::on_zen))
             .on_action(cx.listener(Self::on_hide))
             .on_action(cx.listener(Self::on_submit))
             .on_action(cx.listener(Self::on_discard))

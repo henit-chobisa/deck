@@ -60,11 +60,10 @@ raw-window-handle = "0.6.2"
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
 
-# Only to take the menu bar away while the lights are off. AppKit will not put
-# a window over the menu bar however it is asked, so the only way to cover it
-# is to ask the application to hide it — which is one message to the shared
-# application and nothing that GPUI exposes. Both crates are already in the
-# tree underneath GPUI, so this costs a line rather than a build.
+# For the one window gpui cannot make: a borderless, click-through panel that
+# sits above the menu bar. gpui only builds titled windows, and titled is
+# exactly what a dimmer must not be — see `shade`. All three crates are already
+# in the tree underneath gpui, so this costs a line rather than a build.
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.6"
 objc2-app-kit = "0.3"
