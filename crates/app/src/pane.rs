@@ -234,8 +234,6 @@ pub fn sideways(
 /// One code pane.
 pub struct Pane {
     rows: Vec<Row>,
-    /// The range authored in the group, which fixes proposed-diff geometry.
-    authored: LineRange,
     /// The independently movable range the live walk asks the reader to see.
     spotlight: LineRange,
     /// The narrower range the narration is pointing at, inside the spotlight.
@@ -383,7 +381,6 @@ impl Pane {
 
         let mut pane = Self {
             rows,
-            authored,
             spotlight: authored,
             source_lines: total,
             added,
