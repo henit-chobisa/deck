@@ -1075,18 +1075,25 @@ second pane". Where a pane sits is decided by the window's width after you wrote
 sentence, so a place you name is often wrong by the time it is read. A name is right
 at every width, and the reader can put the pointer on it to see which pane it means.
 Name every pane you mention in the prose.
-- `--after` turns the ref in front of it into a **proposed change**: the range
-  is drawn as going, and this is spliced in underneath it, so the pane reads as
-  a diff rather than a highlight. The file on disk is never touched.
 - `--diagram <file.json>` adds a picture. See §4.
 - `--page <file.html>` adds a page: markup you write, for the thing that only
   makes sense moving. See §5.
 
-**Use `--after` whenever you are proposing rather than pointing.** A highlight
-says *look at this*. A change says *this should become that*, and if that is
-what you mean, saying it in the `say` while the pane shows an untouched
-highlight makes the reader hold the diff in their head — which is the work this
-tool exists to take off them.
+### A code pane is a highlight or a diff, and you need both
+
+Every pane of code you show is one of two things. Reaching for the wrong one is
+the commonest way a group lands flat, and the reader feels it as *you told me
+instead of showing me*.
+
+**A highlight** is `--ref` on its own. The lines as they are on disk, lit. It
+says **look at this**. Use it for code that exists and is staying: the caller
+that has to keep working, the field the bug is about, the function you are
+teaching.
+
+**A diff** is `--ref` with `--after` behind it. The range reads as going and the
+`--after` text as arriving, so the pane reads as a change rather than a
+highlight. It says **this should become that**. The file on disk is never
+touched.
 
 ```bash
 deck group <path> \
@@ -1098,13 +1105,37 @@ deck group <path> \
     }"
 ```
 
-It goes straight after the `--ref` it changes, because that is what it attaches
-to. A group can mix them: one pane a change, another pane the caller that has
-to keep working.
+`--after` goes straight after the `--ref` it changes, because that is what it
+attaches to. A group can mix the two: one pane a change, the next the caller
+that has to keep working either way.
 
-This is also the right shape for **a plan**. The code that exists now, plus
-what you would do to it, is cheaper to argue with than a diff — and the review
-comes back before the edit is made rather than after.
+**The test is whether you are pointing or proposing.** If the sentence you are
+about to write has *should*, *would*, *instead of*, *replace* or *the fix is* in
+it, you mean a change — and showing an untouched highlight while you say it
+makes the reader assemble the diff in their own head, which is the work this
+tool exists to take off them.
+
+**A diff is a proposal, so draw it before you make the edit.** This is the shape
+a plan wants and the reason to reach for it early: the code that exists plus
+what you would do to it is cheaper to argue with than a change already on disk,
+and the answer comes back while changing your mind still costs nothing.
+
+**Asked to change something and then show it? Build the deck first, and edit
+after.** This is the order that gets got wrong, every time: the edit goes in,
+and then the deck shows the new lines lit, which is a highlight of the result
+and answers a question nobody asked. What they wanted was the change. So write
+the group as a diff while the old code is still the code — `--ref` on the lines
+as they are, `--after` with what you are about to write — and make the edit
+once the deck is sealed. You lose nothing by that order and they get to argue
+before it lands, which is the entire point of handing it to them.
+
+If the edit is already on disk when they ask, say so rather than faking it.
+There is nothing left to diff against: the file *is* the new version, so a
+`--ref` on those lines is a highlight of the result, and that is the honest
+pane. Do not put the old code in `--after` to force a diff — that draws a
+revert, and it reads as one. Point at the lines and let the prose carry the
+before: *it used to return early here — [point 140-148] now it falls through to
+the retry.*
 
 Rules:
 

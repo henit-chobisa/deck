@@ -673,11 +673,23 @@ mod tests {
         // the diff described in the prose, and the reader held it in their
         // head. The flag exists now, and a flag no skill mentions is a flag
         // nothing uses.
-        assert!(SKILL.contains("--after"));
-        assert!(
-            SKILL.contains("proposing rather than pointing"),
-            "and when to reach for it"
-        );
+        //
+        // Then a second failure on top of the first: the flag existed, the
+        // skill mentioned it once inside a bullet list, and an agent asked to
+        // show what it had changed reached for a highlight every time. Naming
+        // the two tools as two tools is the fix.
+        for said in [
+            "--after",
+            "A code pane is a highlight or a diff, and you need both",
+            "**A highlight** is `--ref` on its own",
+            "**A diff** is `--ref` with `--after` behind it",
+            "The test is whether you are pointing or proposing",
+            "A diff is a proposal, so draw it before you make the edit",
+            "Build the deck first, and edit\nafter",
+            "Do not put the old code in `--after` to force a diff",
+        ] {
+            assert!(SKILL.contains(said), "the skill never says `{said}`");
+        }
     }
 
     #[test]
