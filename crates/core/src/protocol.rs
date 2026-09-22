@@ -202,6 +202,13 @@ pub struct RefSpec {
     /// When set, this text reads as the deletion and the range itself as the
     /// arrival. Never both this and `after`: a range cannot be what is going
     /// and what is coming at once.
+    ///
+    /// Empty is meaningful, and is not the same as absent. `""` says the range
+    /// replaced nothing — it is purely new — so the lines are marked as having
+    /// arrived with no deletion drawn over them. Absent says the ref is not
+    /// about a change at all. Added code is the commonest thing an agent has
+    /// to show and the one a plain highlight cannot say: a highlight of new
+    /// lines looks exactly like a highlight of old ones.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub before: Option<String>,
 }

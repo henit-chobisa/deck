@@ -121,7 +121,11 @@ enum What {
         ///
         /// The mirror of `--after`, for the case where the edit is on disk
         /// before the deck is written. Applies to the `--ref` it follows.
-        #[arg(long, value_name = "WHAT_IT_REPLACED")]
+        ///
+        /// Pass it empty — `--before ""` — when the range replaced nothing and
+        /// is purely new. The lines are marked as arrived with nothing drawn
+        /// above them, which is what says *these are the ones I added*.
+        #[arg(long, value_name = "WHAT_IT_REPLACED", allow_hyphen_values = true)]
         before: Vec<String>,
         /// A picture, as a JSON file, with the same optional `[name]` and
         /// note a `--ref` takes: `flows/import.json [flow] how it travels`.

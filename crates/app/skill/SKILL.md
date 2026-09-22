@@ -1100,6 +1100,9 @@ you want depends on one thing only: whether the edit is on disk yet.
 - **`--before`** — you have *already* made it. The range is the new code, lit as
   what arrived, and the `--before` text is what it replaced, drawn above it with
   no line numbers, because the file does not contain those lines any more.
+- **`--before ""`** — you *added* it, and it replaced nothing. The range is
+  marked as having arrived, with nothing drawn over it. This is the one people
+  forget, and it is the commonest case of all.
 
 Never both on one ref. A range is what is going or what arrived, and deck
 refuses a group that claims it is both.
@@ -1155,6 +1158,29 @@ deck group <path> \
 
 Do not reach for the other one to fake it. Putting the old code in `--after`
 draws a revert — *this should become what it used to be* — and reads as one.
+
+**New code is still a change, and this is the one that gets missed.** When you
+have added something — a new endpoint, a new route, a whole function that was
+not there — there is nothing it replaced, and the reflex is to reach for a plain
+highlight. Do not. A highlight of lines you just wrote looks exactly like a
+highlight of lines that have been there for two years, so the reader has to take
+*I added these* on your word and then work out which ones you mean:
+
+```bash
+deck group <path> \
+  --say 'Three new routes. [point 35-48] [urls] hangs them off the path the
+existing one already lives under.' \
+  --ref "apps/api/urls/asset.py:35-48 [urls] the three new ones" \
+  --before ""
+```
+
+Empty is the whole trick: *what did this replace? nothing.* The range comes up
+marked as arrived, and the lines around it stay ordinary, so which ones are
+yours is a thing the reader can see rather than a thing you asserted.
+
+**And keep the range to what is actually new.** A range that opens a few lines
+early to give context quietly claims those lines too. Context is what the rest
+of the pane is for — it is all on screen anyway.
 
 Rules:
 

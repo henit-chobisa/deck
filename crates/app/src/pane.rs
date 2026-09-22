@@ -344,6 +344,13 @@ impl Pane {
             // its numbers, and what it replaced has none — the file does not
             // contain those lines any more, and pretending otherwise would put
             // numbers on the pane that nothing in the repository answers to.
+            //
+            // Empty falls out of this correctly and on purpose: the range is
+            // marked as arrived and nothing is spliced over it, which is the
+            // pane for code that replaced nothing. That is the commonest thing
+            // an agent has to show — *here is what I added* — and the one a
+            // highlight cannot say, because a highlight of new lines looks the
+            // same as a highlight of lines that were always there.
             for row in &mut rows[(authored.first as usize - 1)..(authored.last as usize)] {
                 row.change = Some(Change::New);
             }

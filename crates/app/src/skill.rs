@@ -687,6 +687,9 @@ mod tests {
             "A diff is a proposal, so draw it before you make the edit",
             "Never show it as a highlight",
             "reach for `--before`",
+            "New code is still a change, and this is the one that gets missed",
+            "Empty is the whole trick",
+            "keep the range to what is actually new",
             "Putting the old code in `--after`",
         ] {
             assert!(SKILL.contains(said), "the skill never says `{said}`");
