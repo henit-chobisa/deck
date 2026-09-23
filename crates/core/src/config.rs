@@ -25,8 +25,6 @@ pub struct Config {
     pub layout: Layout,
     /// What the deck is painted in.
     pub theme: Theme,
-    /// Read and ignored: what the dimming of the rest of the screen was set to.
-    ///
     /// How far the rest of the screen goes down while you are reading.
     pub zen: Zen,
     /// How the narration sounds when it is read aloud.
@@ -268,6 +266,23 @@ mod tests {
             serde_json::from_str(r#"{ "speech": { "rate": 120 } }"#).expect("one word");
         assert_eq!(one.speech.words_a_minute(), 120);
         assert!(one.speech.aloud, "and the rest is still the default");
+    }
+
+    #[test]
+    fn a_config_from_before_speech_and_zen_still_reads() {
+        // 0.0.8 knew two sections, and somebody upgrading from it has a file
+        // with only those in it. Every section here refuses fields it does not
+        // know, so what matters on the way forward is the opposite: the
+        // sections the file has *not* got are filled in rather than missed.
+        let old = r#"{ "theme": { "editor": "zed" } }"#;
+        let config: Config = serde_json::from_str(old).expect("a 0.0.8 config still reads");
+
+        assert_eq!(config.theme.editor.as_deref(), Some("zed"));
+        assert!(
+            !config.speech.ready,
+            "and stays silent: `ready` is the gate, and nobody has run `deck walk`"
+        );
+        assert!(config.zen.blur, "while the rest arrives at its defaults");
     }
 
     #[test]

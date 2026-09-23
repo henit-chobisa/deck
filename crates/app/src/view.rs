@@ -1548,12 +1548,33 @@ impl DeckView {
         };
         let chart = crate::chart::Chart::new(&spec);
         self.apply_fold(&fold, fold_group, false, cx);
-        self.panes.push(Sheet::Drawn(chart));
-        self.folds.push(crate::pane::Fade::default());
-        self.temporary.insert(self.panes.len() - 1);
+        // Same name, same place: a picture drawn again is the same picture.
+        if let Some(ix) = self.borrowed_as(spec.name.as_deref()) {
+            self.panes[ix] = Sheet::Drawn(chart);
+        } else {
+            self.panes.push(Sheet::Drawn(chart));
+            self.folds.push(crate::pane::Fade::default());
+            self.temporary.insert(self.panes.len() - 1);
+        }
         self.attend();
         self.keep_talking(cx);
         crate::live::ShowAnswer::said()
+    }
+
+    /// A borrowed pane already answering to `name`, if there is one.
+    ///
+    /// What makes *do it better* possible. Without this the only thing `bring`
+    /// could do was add, so a reader who asked for a clearer picture got a
+    /// second picture beside the first one and had to work out which was the
+    /// answer. A drawing revised is a drawing in the same place.
+    fn borrowed_as(&self, name: Option<&str>) -> Option<usize> {
+        let name = name?;
+        self.temporary.iter().copied().find(|&ix| {
+            self.panes
+                .get(ix)
+                .and_then(Sheet::name)
+                .is_some_and(|had| had == name)
+        })
     }
 
     /// Put a page in the room that the deck never carried.
@@ -1585,9 +1606,16 @@ impl DeckView {
         };
         let paper = crate::page::Paper::new(&spec);
         self.apply_fold(&fold, fold_group, false, cx);
-        self.panes.push(Sheet::Page(paper));
-        self.folds.push(crate::pane::Fade::default());
-        self.temporary.insert(self.panes.len() - 1);
+        // Asked again for the same name, so this is a revision rather than a
+        // second opinion. In place, which also keeps the fold it already had
+        // and the room it was already given.
+        if let Some(ix) = self.borrowed_as(spec.name.as_deref()) {
+            self.panes[ix] = Sheet::Page(paper);
+        } else {
+            self.panes.push(Sheet::Page(paper));
+            self.folds.push(crate::pane::Fade::default());
+            self.temporary.insert(self.panes.len() - 1);
+        }
         self.attend();
         self.keep_talking(cx);
         crate::live::ShowAnswer::said()

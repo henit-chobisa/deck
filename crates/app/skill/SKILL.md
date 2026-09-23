@@ -1362,6 +1362,13 @@ There are no colours, sizes or positions, on purpose. A node says what it is and
 it matters; deck owns every pixel. **Six to ten nodes** — twenty is a wall. Every node
 earns its place: cut the ones that only pass a value along.
 
+**Every node needs an edge.** A box with nothing joined to it is the reader
+stopping mid-sentence to work out what it is doing there. If something belongs in
+the story but not in the flow, say it in the prose and leave it out of the
+picture. And a picture brought again under a name already borrowed replaces the
+one that was there, so *draw it better* is a revision rather than a second
+drawing beside the first.
+
 Code refs are always laid out before diagrams whatever order you typed them. If the
 picture has to be read first, it needs a group of its own.
 
@@ -1484,6 +1491,51 @@ Every script and style is inline in the file you write.
 This is deliberate and not a limitation to work around: a surface for reading your own
 code should not be making requests while you read it. Write SVG and CSS transitions by
 hand. Forty words of content does not need a framework.
+
+### Fill the room you were given
+
+A page gets a whole pane, and a pane is whatever shape the window's width left
+it — often tall and narrow, sometimes wide and short. The drawing has to answer
+that shape, and this is the rule that gets missed, because a page written against
+a browser looks fine in a browser and lost in a pane.
+
+```html
+<style>
+  body { margin: 0; display: grid; place-items: center; height: 100vh }
+  svg  { width: 100%; height: auto }
+</style>
+<svg viewBox="0 0 240 120">
+```
+
+`100vh` and `place-items: center` put it in the middle of whatever it is given;
+a `viewBox` with no fixed width lets it grow to the room instead of sitting at
+whatever size you happened to type. **A drawing a quarter of the way up a tall
+pane with empty space under it reads as something that failed to load**, and no
+amount of correctness in the part that did draw makes up for it.
+
+### Everything you name gets an edge
+
+If the prose says four actors, the picture joins four actors. A box sitting to
+one side with no line into it is the reader stopping to work out what it is doing
+there — and they stop *while you are still talking*, so they lose the next
+sentence too.
+
+That applies hardest to the thing you mention last. It is the one most likely to
+have been added to the drawing after the layout was settled, and the one most
+likely to be floating.
+
+### Do it again, in the same place
+
+Asked for a clearer one? **Bring it again under the same `[name]`.**
+
+```bash
+deck bring <path> --page 'flow.html [flow] the whole path, one screen'   # and again, revised
+```
+
+A page or a picture brought under a name that is already borrowed replaces what
+was there, keeping its place in the room and the fold it already had. Two
+drawings of one idea side by side is the reader deciding which one you meant,
+which is worse than the first drawing was.
 
 ### What a good page looks like
 

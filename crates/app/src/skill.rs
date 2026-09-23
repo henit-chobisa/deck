@@ -391,6 +391,10 @@ mod tests {
             "Never write a literal colour",
             "Nothing loads from anywhere",
             "--page for markup that moves",
+            "Fill the room you were given",
+            "Everything you name gets an edge",
+            "Do it again, in the same place",
+            "Every node needs an edge",
         ] {
             assert!(SKILL.contains(said), "the skill never says `{said}`");
         }
