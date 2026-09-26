@@ -403,13 +403,27 @@ impl Cli {
                     None => (deck_theme::Editor::default(), None),
                 };
 
-                // Held here unless they asked not to be. The other way round
-                // for most of this thing's life, and it cost every agent the
-                // same mistake: `open` returned, the deck was written and
-                // sealed, and nothing ever listened — because listening was a
-                // second command, and a second command is a thing to forget.
+                // Detached outright, and that is the end of it.
                 if detached && detach() {
                     return Ok(None);
+                }
+
+                // Otherwise: hand the window to a process of its own, and stay
+                // here as the thing that listens.
+                //
+                // Two processes rather than one, and the reason is the whole
+                // design. A process wakes an agent by *ending* — not by
+                // printing, not by a file appearing — so whatever must wake it
+                // has to be something that can afford to die. A window cannot:
+                // a reader asking a question mid-walk still wants the deck in
+                // front of them. So the window lives over there, and the thing
+                // that dies lives here.
+                //
+                // Which means this one command covers every way a reader can
+                // reach an agent: a question, an interruption, a review, a
+                // close. Run it again after answering and it listens again.
+                if std::env::var_os(HOLDING).is_none() && detach() {
+                    return Err(wait(&deck[0], 0));
                 }
 
                 // The reading itself waits for a window. An editor with no
@@ -418,7 +432,10 @@ impl Cli {
                 // can say, and only once it is up.
                 Ok(Some(Opening {
                     deck,
-                    wait: !detached,
+                    // Whoever reaches here is the window, and the window never
+                    // reports: the process that spawned it is listening, and
+                    // this one's output goes nowhere.
+                    wait: false,
                     editor,
                     named,
                     speech: config.speech.clone(),

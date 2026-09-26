@@ -449,8 +449,9 @@ mod tests {
             "This step is not optional, and it is the one that gets skipped",
             "Never announce the deck instead of leaving it alone",
             "One listener, and only one",
-            "The one case that still needs `deck wait`",
-            "after every live answer",
+            "Every way they can reach you comes back the same way",
+            "a process wakes you by ending",
+            "Answered a question? Run `deck open` again",
             "This is also how you hear back",
             "Every line of that is required, and the last one most of all",
         ] {

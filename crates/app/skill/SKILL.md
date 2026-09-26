@@ -913,7 +913,7 @@ deck new      the header, and the bar
 deck open     the bar, in the background — and what wakes you at the end
 deck group    one group, one call
 deck seal     no more coming
-deck wait     only during a walk, to be woken by a question
+deck wait     only with -d, when you detached the window yourself
 deck next     what the reader just did, when you want it without blocking
 
 deck show     move their eyes: --ref, --pane, --after for a proposed change
@@ -1613,30 +1613,40 @@ let me know what you think" is a turn spent asking somebody to do the thing they
 were already doing, and it arrives as a notification while they read.
 
 **One listener, and only one.** `deck open` is already it. Do not add a
-`deck wait` beside it for the same deck — two consumers race for one review and
-one of them gets nothing.
+`deck wait` beside it for the same deck — both would wake you with the same
+review, and you would answer it twice.
 
-### The one case that still needs `deck wait`
+### Every way they can reach you comes back the same way
 
-A process wakes you by **ending**, and that is the only thing that does. So the
-question is always which process can afford to die.
+`deck open` ends, and hands you whatever happened, for **all** of these:
 
-When they submit or close, the window is going anyway, so `deck open` dies and
-wakes you. That covers every ordinary deck.
+- they submitted — you get the review, exit 0
+- they asked something mid-walk — you get the question, exit 0
+- they interrupted — same, straight away rather than at the next gap
+- they closed it without answering — exit 4
+- nothing, for as long as your timeout allows — exit 3
 
-A question asked *mid-walk* is the other case, and there the window must stay —
-so the thing that dies has to be something else:
+The reason it can do that is worth knowing, because it is the rule the whole
+design turns on: **a process wakes you by ending.** Not by printing, not by a
+file appearing. So whatever wakes you has to be a thing that can afford to die —
+and a window cannot, because somebody asking a question still wants the deck in
+front of them. So the window is a process of its own and the listener is this
+one.
+
+**Answered a question? Run `deck open` again.** It finds the window already
+there, leaves it alone, and goes back to listening. That is the loop for a live
+walk: open, get woken, answer with `deck say`, open again. Every time, for as
+long as they are in there.
 
 ```bash
-deck wait <path>          # only while you are walking them through it
+deck say <path> --text "…"   # answer them
+deck open <path>             # and listen again, in the background
 ```
 
-Arm one **after every live answer**, for as long as the walk is going. It exits
-the moment they ask something, hands you the question, and is gone — which is
-why it has to be started again each time. Outside a walk you do not want one at
-all.
+`deck wait` is for one case only: you passed `-d` and are doing the listening
+yourself. Otherwise you never need it.
 
-**Do not run either in the foreground.** A review takes minutes, a foreground
+**Neither in the foreground, ever.** A review takes minutes, a foreground
 command has a timeout, and a reader cannot be hurried.
 
 If your environment genuinely cannot hold a background process, say that plainly

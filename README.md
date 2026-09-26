@@ -89,11 +89,16 @@ deck group <path> \
 deck seal <path>
 ```
 
-`deck open` is the listener as well as the window: it holds until you answer and
-then prints the review, so there is no second command for an agent to forget.
-`-d` detaches it if you would rather do the listening yourself, and `deck wait`
-is still there for that — and for being woken by a question asked mid-walk,
-which the window cannot deliver without closing.
+`deck open` is the listener as well as the window, and it ends — handing the
+agent what happened — on every way you can reach it: a review, a question asked
+mid-walk, an interruption, or closing it without answering. So there is no
+second command for an agent to forget. `-d` detaches it if you would rather do
+the listening yourself, and `deck wait` is there for that case.
+
+The rule underneath is that **a process wakes an agent by ending**, so whatever
+wakes it has to be something that can afford to die. A window cannot — somebody
+asking a question still wants the deck in front of them — so the window is a
+process of its own and the listener is the one you ran.
 
 Most of the time you will not run any of this. `deck setup` installs a skill into
 your agents and they reach for it on their own.
