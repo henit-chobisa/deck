@@ -39,11 +39,20 @@ enum What {
         /// is for.
         #[arg(required = true)]
         deck: Vec<PathBuf>,
-        /// Wait for the window to close, then print the review as JSON.
+        /// Hand the window to a process of its own and return straight away.
         ///
-        /// Exits non-zero if the reader closed the deck without submitting.
-        #[arg(long)]
-        wait: bool,
+        /// Off by default, and the default is the one to want: `deck open`
+        /// holds until the reader answers, then prints the review as JSON and
+        /// exits — so opening a deck and hearing back are one command, and
+        /// there is no second one to forget. Exits 4 if they closed it without
+        /// submitting, 3 on a timeout.
+        ///
+        /// Run it in the background, or it blocks the agent that ran it.
+        ///
+        /// `-d` is for the case where somebody else is doing the listening:
+        /// a `deck wait` of its own, or nobody, on purpose.
+        #[arg(short = 'd', long = "detach")]
+        detached: bool,
         /// Which neutrals to paint on. Overrides `~/.deck/config.toml`.
         #[arg(long, value_enum)]
         paper: Option<Paper>,
@@ -364,7 +373,7 @@ impl Cli {
         match self.what {
             What::Open {
                 deck,
-                wait,
+                detached,
                 paper,
                 mode,
                 theme,
@@ -394,9 +403,12 @@ impl Cli {
                     None => (deck_theme::Editor::default(), None),
                 };
 
-                // Hand the window to a process of its own, unless somebody
-                // asked to be held here.
-                if !wait && detach() {
+                // Held here unless they asked not to be. The other way round
+                // for most of this thing's life, and it cost every agent the
+                // same mistake: `open` returned, the deck was written and
+                // sealed, and nothing ever listened — because listening was a
+                // second command, and a second command is a thing to forget.
+                if detached && detach() {
                     return Ok(None);
                 }
 
@@ -406,7 +418,7 @@ impl Cli {
                 // can say, and only once it is up.
                 Ok(Some(Opening {
                     deck,
-                    wait,
+                    wait: !detached,
                     editor,
                     named,
                     speech: config.speech.clone(),
@@ -530,8 +542,8 @@ impl Cli {
 pub struct Opening {
     /// The directories to show, in the order they were named.
     pub deck: Vec<PathBuf>,
-    /// Whether to skip the bar.
-    /// Whether to print the review once the window has gone.
+    /// Whether to hold the process and print the review once the window has
+    /// gone. True unless `--detach` was asked for.
     pub wait: bool,
     /// Which editor to borrow colours from, if any.
     pub editor: deck_theme::Editor,

@@ -910,10 +910,10 @@ the agent never moves anything is a document with a bar under it.
 
 ```
 deck new      the header, and the bar
-deck open     the window, in the background, straight away
+deck open     the bar, in the background — and what wakes you at the end
 deck group    one group, one call
 deck seal     no more coming
-deck wait     in the background, then end the turn
+deck wait     only during a walk, to be woken by a question
 deck next     what the reader just did, when you want it without blocking
 
 deck show     move their eyes: --ref, --pane, --after for a proposed change
@@ -958,6 +958,15 @@ It prints the deck's path. Everything after this takes it.
 ```bash
 deck open <path>          # run this as a background command
 ```
+
+**This is also how you hear back.** `deck open` holds until the reader answers,
+then prints the review as JSON and exits — so the background command you start
+here is the one that wakes you at the end. There is no second command to
+remember, which is the whole reason it works this way now: arming a listener
+used to be a separate step, and a separate step is a step to forget.
+
+Background, always. In the foreground it blocks you for as long as somebody is
+reading, which is minutes, and a foreground command has a timeout.
 
 Run it **second**, right after `deck new`, before the research — and then never again for
 that deck. A bar appears at the bottom of the screen showing the title and `writing group
@@ -1589,37 +1598,46 @@ submit. Forget it and they get warned about groups that were never going to arri
 does not listen for the reader, and a turn that ends here has handed somebody a
 deck with nobody on the other end of it.
 
-## 7. Arm the waiter, then stop
+## 7. Stop, and let the open command wake you
+
+The sequence is `deck new` → `deck open` → groups → `deck seal` → **stop**.
+
+There is nothing to arm. The `deck open` you started in step 2 is still running,
+and it ends when the reader answers — printing the review, waking you with it.
+**This step is not optional, and it is the one that gets skipped**: not the
+waiting any more, but the stopping. End your turn and say nothing further. They
+are reading, not waiting on you.
+
+**Never announce the deck instead of leaving it alone.** "The deck is ready,
+let me know what you think" is a turn spent asking somebody to do the thing they
+were already doing, and it arrives as a notification while they read.
+
+**One listener, and only one.** `deck open` is already it. Do not add a
+`deck wait` beside it for the same deck — two consumers race for one review and
+one of them gets nothing.
+
+### The one case that still needs `deck wait`
+
+A process wakes you by **ending**, and that is the only thing that does. So the
+question is always which process can afford to die.
+
+When they submit or close, the window is going anyway, so `deck open` dies and
+wakes you. That covers every ordinary deck.
+
+A question asked *mid-walk* is the other case, and there the window must stay —
+so the thing that dies has to be something else:
 
 ```bash
-deck wait <path>          # run this as a background command
+deck wait <path>          # only while you are walking them through it
 ```
 
-**This step is not optional, and it is the one that gets skipped.** The sequence
-is `deck new` → `deck open` → groups → `deck seal` → **`deck wait`**. A deck
-without a waiter is the whole tool failing in the way that is hardest to see:
-they walk it, they write three comments, they press submit — and nothing ever
-comes back. From where they are sitting your side simply stopped caring halfway
-through. They will not use it again, and they will be right not to.
+Arm one **after every live answer**, for as long as the walk is going. It exits
+the moment they ask something, hands you the question, and is gone — which is
+why it has to be started again each time. Outside a walk you do not want one at
+all.
 
-Run it with `run_in_background: true`. Then **end your turn** and say nothing further —
-they are reading, not waiting on you.
-
-**Never announce the deck instead of waiting for it.** "The deck is ready" with
-no waiter armed is the failure above with a sentence painted over it. If you have
-said anything about the deck at all, the waiter is already running.
-
-**One waiter, and only one.** If one is already armed for this deck, keep it
-rather than starting a second. Two consumers race for the same review and one of
-them gets nothing.
-
-**Re-arm after every live answer.** Answering a question through `deck say` ends
-that waiter — it exited to hand you the question. The reader is still in the
-deck, still reading, still going to submit. Arm it again before your turn ends,
-every time, for as long as they are in there.
-
-**Do not run `deck wait` in the foreground.** A review takes minutes, a foreground command
-has a timeout, and a reader cannot be hurried.
+**Do not run either in the foreground.** A review takes minutes, a foreground
+command has a timeout, and a reader cannot be hurried.
 
 If your environment genuinely cannot hold a background process, say that plainly
 to the reader — that you cannot be woken, and they should tell you when they have

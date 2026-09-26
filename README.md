@@ -78,7 +78,8 @@ explanation — whatever an agent would otherwise have written as prose.
 deck new --title "The batch counter stalls at 63" --total 2
 # prints the deck's path
 
-deck open <path>          # a bar appears; you open it when you are ready
+deck open <path>          # a bar appears; you open it when you are ready.
+                          # holds until you answer, then prints the review
 
 deck group <path> \
   --say "The counter is decremented on the **error path** too." \
@@ -86,8 +87,13 @@ deck group <path> \
   --ref "src/queue.ts:88 the only caller"
 
 deck seal <path>
-deck wait <path>          # blocks until you submit, prints the review as JSON
 ```
+
+`deck open` is the listener as well as the window: it holds until you answer and
+then prints the review, so there is no second command for an agent to forget.
+`-d` detaches it if you would rather do the listening yourself, and `deck wait`
+is still there for that — and for being woken by a question asked mid-walk,
+which the window cannot deliver without closing.
 
 Most of the time you will not run any of this. `deck setup` installs a skill into
 your agents and they reach for it on their own.

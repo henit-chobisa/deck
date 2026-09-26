@@ -447,9 +447,11 @@ mod tests {
         for said in [
             "Sealing is not delivering",
             "This step is not optional, and it is the one that gets skipped",
-            "Never announce the deck instead of waiting for it",
-            "One waiter, and only one",
-            "Re-arm after every live answer",
+            "Never announce the deck instead of leaving it alone",
+            "One listener, and only one",
+            "The one case that still needs `deck wait`",
+            "after every live answer",
+            "This is also how you hear back",
             "Every line of that is required, and the last one most of all",
         ] {
             assert!(SKILL.contains(said), "the skill never says `{said}`");
