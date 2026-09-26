@@ -387,6 +387,9 @@ impl Session {
 }
 
 /// The window.
+/// Beats of silence before the strip says nobody is listening.
+const UNHEARD_FOR: u8 = 4;
+
 pub struct DeckView {
     deck: Deck,
     /// The session owner whose status follows this view through hide/reopen.
@@ -418,6 +421,13 @@ pub struct DeckView {
     composing_when: deck_core::When,
     /// Whether a voice is reading the deck aloud.
     aloud: bool,
+    /// How many beats the deck has been finished with nobody waiting.
+    ///
+    /// Counted rather than asked once, because the right order is open, write,
+    /// seal, *then* wait — so every deck is briefly unheard on the way past,
+    /// and a panel that said so immediately would say so about all of them.
+    /// Four seconds of nothing is a fact; one is a race.
+    unheard: u8,
     /// The timer that advances the voice, while there is anything to advance.
     talking_task: Option<Task<()>>,
     /// When the view last carried a pane back to the lit lines.
@@ -712,6 +722,7 @@ impl DeckView {
             composing_kind: deck_core::Kind::default(),
             composing_when: deck_core::When::default(),
             aloud,
+            unheard: 0,
             talking_task: None,
             followed: None,
             ahead: 0,
@@ -794,6 +805,7 @@ impl DeckView {
         view.tail(cx);
         view.control(cx);
         view.spread_later(cx);
+        view.watch_for_a_listener(cx);
         view
     }
 
@@ -2048,7 +2060,7 @@ impl DeckView {
         if let WindowBounds::Windowed(bounds) = window.window_bounds() {
             crate::state::remember_bounds(bounds);
         }
-        self.stand_down(window, cx);
+        self.stand_down(false, window, cx);
     }
 
     /// Make the code bigger or smaller.
@@ -2803,6 +2815,35 @@ impl DeckView {
         cx.notify();
     }
 
+    /// Notice whether anybody is waiting for what they are about to write.
+    ///
+    /// A deck whose agent never armed a waiter takes comments, takes a submit,
+    /// and drops the review into a file nobody opens. The reader finds out by
+    /// nothing happening, which is the worst way to find out anything.
+    fn watch_for_a_listener(&self, cx: &mut Context<Self>) {
+        const BEAT: std::time::Duration = std::time::Duration::from_secs(1);
+
+        cx.spawn(async move |view, cx| {
+            loop {
+                cx.background_executor().timer(BEAT).await;
+                let carry_on = view.update(cx, |deck, cx| {
+                    let quiet = deck.deck.sealed() && !deck_cli::is_heard(&deck.deck.root);
+                    let was = deck.unheard;
+                    deck.unheard = if quiet { deck.unheard.saturating_add(1) } else { 0 };
+                    // Only when it crosses, so this is not a repaint a second
+                    // for as long as the deck is open.
+                    if (was >= UNHEARD_FOR) != (deck.unheard >= UNHEARD_FOR) {
+                        cx.notify();
+                    }
+                });
+                if carry_on.is_err() {
+                    return;
+                }
+            }
+        })
+        .detach();
+    }
+
     /// Bring the lights up when the reader looks away.
     ///
     /// Asked rather than waited for, because the platform offers no hook: there
@@ -2858,15 +2899,19 @@ impl DeckView {
     /// temporary name first: the far side only tests that the file exists, so a
     /// half-written one would be indistinguishable from a finished review.
     /// Leave, and let whatever is still waiting take the screen.
-    fn stand_down(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    fn stand_down(&mut self, answered: bool, window: &mut Window, cx: &mut Context<Self>) {
         // Told, rather than left to be inferred. A waiter has no other way to
         // learn this: it polls for a review and for a question, and a deck that
         // was closed produces neither, so without a word here it sits until its
         // timeout — or for ever, which is the default.
         //
-        // Not in `on_hide`. Hiding is coming back later, and the waiter should
-        // still be there when they do.
-        if let Err(err) = deck_cli::shut(&self.deck.root) {
+        // Not when it was answered: a review is a better ending than a close
+        // and the deck should not be left claiming both. Not in `on_hide`
+        // either — hiding is coming back later, and the waiter should still be
+        // there when they do.
+        if !answered
+            && let Err(err) = deck_cli::shut(&self.deck.root)
+        {
             eprintln!("deck: could not say the deck was closed: {err}");
         }
 
@@ -2927,7 +2972,7 @@ impl DeckView {
             // Answered, so it does not come back. Whatever else is waiting
             // does: the bar returns, and the command only ends once the queue
             // is empty.
-            Ok(()) => self.stand_down(window, cx),
+            Ok(()) => self.stand_down(true, window, cx),
             Err(err) => eprintln!("deck: could not write {}: {err}", path.display()),
         }
     }
@@ -3806,6 +3851,7 @@ impl DeckView {
         // What the deck says it will be, never less than what it already is: a
         // count that a group can arrive and make a lie of is worse than none.
         let writing = !self.deck.sealed();
+        let unheard = self.unheard >= UNHEARD_FOR;
         // Being walked through a deck is the best thing this window does, and
         // it says so with the frame round the whole window rather than here. A
         // strip that also changed colour was two answers to one question.
@@ -3856,6 +3902,22 @@ impl DeckView {
                                         ),
                                 )
                                 .child("walking you through it"),
+                        )
+                    })
+                    // Said quietly, and only once it is true for four beats
+                    // running. Muted rather than accent: this is a fact about
+                    // the room, not a thing asking to be pressed.
+                    .when(unheard, |this| {
+                        this.child(
+                            div()
+                                .h_flex()
+                                .items_center()
+                                .gap(px(6.))
+                                .text_color(paint(self.palette.muted))
+                                .child(div().size(px(5.)).rounded_full().bg(paint(
+                                    self.palette.muted,
+                                )))
+                                .child("nobody is listening"),
                         )
                     })
                     .when(writing, |this| {

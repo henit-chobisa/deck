@@ -35,6 +35,22 @@ pub mod refs;
 /// The file that says a deck is finished.
 const SEAL: &str = "done";
 
+/// The file a waiter keeps warm while it is listening.
+///
+/// In the deck rather than the live runtime, which is where the owner's own
+/// marker lives: the deck directory is already the surface these two processes
+/// share — `done`, `closed`, the review — and it needs no key derived from a
+/// path to find.
+const HEARD: &str = "listening";
+
+/// How stale that file may be before nobody is on the other end.
+///
+/// Four seconds against a beat of one. Generous on purpose: the cost of
+/// believing a waiter has gone when it has not is telling somebody their work
+/// is going nowhere while it is in fact going somewhere, and that is a worse
+/// lie than the silence it replaces.
+const STILL_THERE: std::time::Duration = std::time::Duration::from_secs(4);
+
 /// The file that says the reader shut the deck without answering.
 ///
 /// Inside the deck rather than beside it, unlike the review: a review is the
@@ -577,6 +593,31 @@ pub fn seal(root: &Path) -> anyhow::Result<()> {
     Ok(())
 }
 
+/// Say a waiter is on the other end of this deck, and still is.
+///
+/// Called on a beat while `wait` polls. A file's modification time is the
+/// whole signal — there is nothing to read out of it.
+pub fn listening(root: &Path) {
+    let _ = std::fs::write(root.join(HEARD), b"");
+}
+
+/// Stop saying it.
+pub fn stopped_listening(root: &Path) {
+    let _ = std::fs::remove_file(root.join(HEARD));
+}
+
+/// Whether anybody is waiting for this deck's review right now.
+///
+/// By how fresh the mark is rather than whether it exists, because a waiter
+/// that was killed never got to tidy up — and a file left behind by one that
+/// died an hour ago must not read as somebody listening.
+#[must_use]
+pub fn is_heard(root: &Path) -> bool {
+    std::fs::metadata(root.join(HEARD))
+        .and_then(|marked| marked.modified())
+        .is_ok_and(|at| at.elapsed().is_ok_and(|since| since < STILL_THERE))
+}
+
 /// Say the reader closed the deck without answering.
 ///
 /// The other end of `wait`. Without this a waiter had exactly two ways to
@@ -684,6 +725,33 @@ fn write_atomically(path: &Path, bytes: &[u8]) -> anyhow::Result<()> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_waiter_that_died_is_not_one_that_is_listening() {
+        // The mark is read by its age, not its existence, because the common
+        // way a waiter ends is being killed — and `Drop` does not run for that.
+        // A file left behind by one that died an hour ago must not read as
+        // somebody sitting on the other end.
+        let room = tempfile::tempdir().expect("a directory");
+        let deck = room.path();
+
+        assert!(!is_heard(deck), "nothing said yet");
+
+        listening(deck);
+        assert!(is_heard(deck), "and now something has");
+
+        // Aged past the window, the way a killed waiter leaves it.
+        let stale = std::time::SystemTime::now() - (STILL_THERE + std::time::Duration::from_secs(1));
+        let file = std::fs::File::options()
+            .write(true)
+            .open(deck.join(HEARD))
+            .expect("the mark is there");
+        file.set_modified(stale).expect("and can be aged");
+        assert!(!is_heard(deck), "a cold mark is nobody");
+
+        stopped_listening(deck);
+        assert!(!is_heard(deck));
+    }
+
     // Placed first because it is the rule most likely to be loosened by
     // somebody who has just been refused by it.
 

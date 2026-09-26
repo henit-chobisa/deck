@@ -1131,6 +1131,25 @@ fn wait(deck: &std::path::Path, timeout: u64) -> ExitCode {
     // poll is a habit no agent has, and the author stayed asleep because of it.
     let runtime = deck_core::home::deck();
 
+    // Say so, on a beat, for as long as this runs. Without it the window has no
+    // way to tell an armed waiter from no waiter at all, and a reader spends
+    // ten minutes on comments that nobody has asked for.
+    const BEAT: std::time::Duration = std::time::Duration::from_secs(1);
+
+    /// Stops the beat however this function leaves — and there are a dozen
+    /// ways it can. Killed outright it never runs, which is why the window
+    /// reads the mark's age rather than whether it is there.
+    struct Listening<'a>(&'a std::path::Path);
+    impl Drop for Listening<'_> {
+        fn drop(&mut self) {
+            deck_cli::stopped_listening(self.0);
+        }
+    }
+
+    let _beat = Listening(deck);
+    let mut last_said = std::time::Instant::now();
+    deck_cli::listening(deck);
+
     loop {
         // Submit wins over queued nudges: the final review already contains
         // them, and asking for another answer after submit is a dead end.
@@ -1203,6 +1222,10 @@ fn wait(deck: &std::path::Path, timeout: u64) -> ExitCode {
         if until.is_some_and(|until| std::time::Instant::now() >= until) {
             eprintln!("deck: no review after {timeout}s");
             return ExitCode::from(3);
+        }
+        if last_said.elapsed() >= BEAT {
+            deck_cli::listening(deck);
+            last_said = std::time::Instant::now();
         }
         std::thread::sleep(EVERY);
     }
