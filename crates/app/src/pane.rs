@@ -1516,7 +1516,11 @@ fn language_of(file: &std::path::Path) -> &'static str {
         Some("ts" | "mts" | "cts") => "typescript",
         Some("tsx") => "tsx",
         Some("js" | "mjs" | "cjs") => "javascript",
-        Some("jsx") => "jsx",
+        // Not "jsx", which is nobody's grammar. The highlighter answers for a
+        // name it does not know with `Plain` rather than an error, so every
+        // `.jsx` file came up as unpainted text and nothing anywhere said why.
+        // Tsx is the grammar that parses JSX tags; plain javascript does not.
+        Some("jsx") => "tsx",
         Some("py") => "python",
         Some("go") => "go",
         Some("rb") => "ruby",
@@ -1562,6 +1566,31 @@ mod tests {
         assert_eq!(row(5), 4, "the last line of the range has not moved");
         assert_eq!(row(6), 7, "the line after it is past the two new ones");
         assert_eq!(row(7), 8);
+    }
+
+    #[test]
+    fn every_language_we_name_is_one_the_highlighter_knows() {
+        // The failure this catches is silent by construction: an unknown name
+        // comes back as `Plain`, so the file renders, reads fine, and is simply
+        // never painted. `.jsx` did that from the first release to this test.
+        use gpui_kit::component::highlighter::Language;
+
+        for file in [
+            "a.rs", "a.ts", "a.mts", "a.cts", "a.tsx", "a.js", "a.mjs", "a.cjs", "a.jsx", "a.py",
+            "a.go", "a.rb", "a.lua", "a.md", "a.markdown", "a.yml", "a.yaml", "a.sh", "a.bash",
+            "a.zsh", "a.json", "a.toml", "a.html", "a.css", "a.c", "a.h", "a.cpp", "a.cc", "a.hpp",
+            "a.java",
+        ] {
+            let named = language_of(std::path::Path::new(file));
+            assert_ne!(
+                Language::from_str(named),
+                Language::Plain,
+                "{file} is called `{named}`, which the highlighter does not know"
+            );
+        }
+
+        // And the fallback still is what it says it is.
+        assert_eq!(language_of(std::path::Path::new("a.unknown")), "text");
     }
 
     #[test]
