@@ -284,13 +284,21 @@ pub struct Moment {
     /// For a reaction or a comment, whether it wants the walk to stop.
     ///
     /// The field an agent watching the stream actually branches on.
-    #[serde(default, skip_serializing_if = "is_queue")]
+    #[serde(default, skip_serializing_if = "is_defer")]
     pub when: When,
 }
 
-/// Queue is the common case and the default, so it stays off the wire.
-fn is_queue(when: &When) -> bool {
-    *when == When::Queue
+/// Defer is the default, so it is the one that stays off the wire.
+///
+/// This said `Queue` for most of deck's life, and believed its own comment: it
+/// claimed queue was the default when [`When::default`] has always been
+/// `Defer`. So *wait for a gap* — the choice a reader makes when they want an
+/// answer during the walk — was dropped on the way out and read back as
+/// *defer*, meaning wait until they submit. The reader asked to be heard now
+/// and the agent was told to answer later, and nothing anywhere disagreed,
+/// because both sides were reading the same wrong field.
+fn is_defer(when: &When) -> bool {
+    *when == When::Defer
 }
 
 /// What kind of moment a [`Moment`] records.
@@ -485,6 +493,31 @@ impl From<String> for Kind {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_moment_keeps_the_floor_the_reader_asked_for() {
+        // The one that got away: `when` was skipped on the wire whenever it was
+        // `Queue`, and filled back in as `Defer`, so a reader who chose *wait
+        // for a gap* reached the agent as *answer me at submit*. Every value
+        // has to survive the trip, and the only one it is safe to leave out is
+        // the one `default` puts back.
+        for asked in [When::Defer, When::Queue, When::Interrupt] {
+            let moment = Moment {
+                at_ms: 1,
+                what: What::Wrote,
+                group: Some("g1".into()),
+                ref_id: None,
+                file: None,
+                range: None,
+                text: "hey".into(),
+                kind: Some(Kind::Question),
+                when: asked,
+            };
+            let json = serde_json::to_string(&moment).expect("it writes");
+            let read: Moment = serde_json::from_str(&json).expect("and reads");
+            assert_eq!(read.when, asked, "{asked:?} did not survive: {json}");
+        }
+    }
+
     use super::*;
 
     #[test]
