@@ -1192,6 +1192,14 @@ fn wait(deck: &std::path::Path, timeout: u64) -> ExitCode {
             }
         }
 
+        // Closed without answering. Checked after the review and the question
+        // so that neither can be lost to a race: a reader who submits and then
+        // closes has submitted, and that is the answer that goes back.
+        if deck_cli::was_shut(deck) {
+            eprintln!("deck: closed without a review");
+            return ExitCode::from(4);
+        }
+
         if until.is_some_and(|until| std::time::Instant::now() >= until) {
             eprintln!("deck: no review after {timeout}s");
             return ExitCode::from(3);

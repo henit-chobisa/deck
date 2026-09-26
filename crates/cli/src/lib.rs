@@ -35,6 +35,13 @@ pub mod refs;
 /// The file that says a deck is finished.
 const SEAL: &str = "done";
 
+/// The file that says the reader shut the deck without answering.
+///
+/// Inside the deck rather than beside it, unlike the review: a review is the
+/// deck's product and outlives it, and this is a fact about the deck itself
+/// that goes when it does.
+const SHUT: &str = "closed";
+
 /// Start a deck, and return the directory it lives in.
 ///
 /// `at` is the directory to put it in. The id is minted here rather than asked
@@ -568,6 +575,35 @@ pub fn seal(root: &Path) -> anyhow::Result<()> {
     );
     std::fs::write(root.join(SEAL), b"")?;
     Ok(())
+}
+
+/// Say the reader closed the deck without answering.
+///
+/// The other end of `wait`. Without this a waiter had exactly two ways to
+/// finish — a review, or a question asked mid-walk — and closing the window was
+/// neither, so it sat there until its timeout or for ever. The agent went on
+/// believing somebody was still reading.
+///
+/// # Errors
+///
+/// When the marker cannot be written.
+pub fn shut(root: &Path) -> std::io::Result<()> {
+    std::fs::write(root.join(SHUT), b"")
+}
+
+/// Whether the reader closed this deck without answering.
+#[must_use]
+pub fn was_shut(root: &Path) -> bool {
+    root.join(SHUT).exists()
+}
+
+/// Forget that it was ever closed.
+///
+/// Opening the same deck again is an ordinary thing to do — it is what the bar
+/// is for — and a marker left behind would kill the next waiter before the
+/// reader had looked at anything.
+pub fn reopened(root: &Path) {
+    let _ = std::fs::remove_file(root.join(SHUT));
 }
 
 /// Where the review for the deck at `root` will appear.

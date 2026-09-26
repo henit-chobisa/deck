@@ -285,7 +285,9 @@ pub fn open_pill_over(waiting: Vec<Session>, cx: &mut App) {
         // is told from a live one without asking.
         let joined = bar.update(cx, |pill, _window, cx| pill.show_last(cx));
         if joined.is_ok() {
-            cx.activate(true);
+            // And no `activate` here either. A second deck arriving is the
+            // commonest way this happened: the bar was already up and out of
+            // the way, and the only thing that changed was the count on it.
             return;
         }
         cx.remove_global::<Bar>();
@@ -320,7 +322,18 @@ pub fn open_pill_over(waiting: Vec<Session>, cx: &mut App) {
         window_background: WindowBackgroundAppearance::Transparent,
         is_movable: true,
         is_resizable: false,
-        focus: true,
+        // Shown, not focused. gpui turns this into `makeKeyAndOrderFront:`,
+        // which makes the window key and brings the *application* forward with
+        // it — so a deck finishing while somebody was typing took the keyboard
+        // out from under them, and they had to reach for the mouse to get back
+        // to what they were doing. `orderFront:` puts the bar on screen and
+        // leaves their hands where they are, which is the entire idea of a bar
+        // rather than a window.
+        //
+        // The cost, said plainly: `o`, `n` and `escape` do not reach the bar
+        // until it is clicked. A keystroke they have to ask for is a fair
+        // trade against one taken from them.
+        focus: false,
         ..Default::default()
     };
 
@@ -353,6 +366,12 @@ pub fn open_pill_over(waiting: Vec<Session>, cx: &mut App) {
 
 /// Put the deck itself on screen.
 pub fn open_deck(session: Session, cx: &mut App) {
+    // Whatever happened last time, they are here now. Reopening a deck off the
+    // bar is an ordinary thing to do, and a `closed` left behind from the last
+    // time would kill the next waiter before anybody had read a word.
+    deck_cli::reopened(&session.deck.root);
+    let root = session.deck.root.clone();
+
     // Sized to a deck, not to the screen. A review is read, so the window wants
     // the shape of a page rather than every pixel the display has. Placed
     // explicitly rather than centred: a deck is read from the top down, so it
@@ -429,9 +448,15 @@ pub fn open_deck(session: Session, cx: &mut App) {
     // way out — see `DeckView::on_close` — because that path quits the
     // application without closing the window first.
     let _ = handle.update(cx, |_, window, cx| {
-        window.on_window_should_close(cx, |window, _cx| {
+        window.on_window_should_close(cx, move |window, _cx| {
             if let WindowBounds::Windowed(bounds) = window.window_bounds() {
                 state::remember_bounds(bounds);
+            }
+            // The red button and `cmd-w` come through here and nowhere else —
+            // `stand_down` is the inside route, and the two do not meet. A
+            // waiter has to hear about this one too.
+            if let Err(err) = deck_cli::shut(&root) {
+                eprintln!("deck: could not say the deck was closed: {err}");
             }
             true
         });

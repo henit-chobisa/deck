@@ -2859,6 +2859,17 @@ impl DeckView {
     /// half-written one would be indistinguishable from a finished review.
     /// Leave, and let whatever is still waiting take the screen.
     fn stand_down(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        // Told, rather than left to be inferred. A waiter has no other way to
+        // learn this: it polls for a review and for a question, and a deck that
+        // was closed produces neither, so without a word here it sits until its
+        // timeout — or for ever, which is the default.
+        //
+        // Not in `on_hide`. Hiding is coming back later, and the waiter should
+        // still be there when they do.
+        if let Err(err) = deck_cli::shut(&self.deck.root) {
+            eprintln!("deck: could not say the deck was closed: {err}");
+        }
+
         // Whatever took the deck away, the screen comes back with it. A shade
         // is the one thing here that outlives its window, and one left behind
         // is a dimmed desktop with nothing on it to press.
