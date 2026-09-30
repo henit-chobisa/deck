@@ -1126,6 +1126,27 @@ deck group <path> \
     }"
 ```
 
+**Point at one half at a time.** A pane showing a change holds two rows for
+every line — the one going and the one arriving — and both answer to the same
+number, because the arriving side is numbered as it will be once the edit lands.
+So a bare point means the code **as it is**, and a `+` means the code **as it
+would be**:
+
+```bash
+deck group <path> \
+  --say 'That check ran twice. [point 140-142] Both calls hit the same key.
+[pause] [point +140-143] The new one folds them into a single pass.' \
+  --ref "src/batch.ts:140-142 [batch] the check that runs twice" \
+  --after "  if (!ok) {
+    pending -= 1;
+    retry(key);
+  }"
+```
+
+Two sentences, two lights. *This was the issue*, then *this is what it becomes* —
+which is how somebody reads a change, and it cannot be done if one point lights
+both halves at once.
+
 `--after` goes straight after the `--ref` it changes, because that is what it
 attaches to. A group can mix the two: one pane a change, the next the caller
 that has to keep working either way.

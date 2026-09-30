@@ -68,6 +68,18 @@ impl LineRange {
         self.first <= line && line <= self.last
     }
 
+    /// Whether this range and `other` share any line at all.
+    ///
+    /// What a diff row has to be asked. A line that is not in the file yet
+    /// answers for the whole range it replaces, so *is this row part of what is
+    /// being pointed at* cannot be a question about one line: a point covering
+    /// the middle of a change would leave the arriving half dark, which is the
+    /// half the sentence is usually about.
+    #[must_use]
+    pub fn overlaps(&self, other: Self) -> bool {
+        self.first <= other.last && other.first <= self.last
+    }
+
     /// The same range as a half-open, 0-based [`std::ops::Range`], ready to
     /// index a slice of lines.
     ///
@@ -117,6 +129,24 @@ impl std::fmt::Display for LineRange {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_point_inside_a_change_still_reaches_all_of_it() {
+        // Why a diff row is asked about a range and not a line. Every line it
+        // replaces answers for the whole of what is being changed, so a point
+        // aimed at the middle of that change has to light the arriving half
+        // too — the half the sentence is usually about.
+        let change = LineRange::new(315, 340);
+
+        assert!(change.overlaps(LineRange::new(320, 338)), "inside it");
+        assert!(change.overlaps(LineRange::new(300, 320)), "over its start");
+        assert!(change.overlaps(LineRange::new(338, 400)), "over its end");
+        assert!(change.overlaps(LineRange::single(315)), "its first line");
+        assert!(change.overlaps(LineRange::single(340)), "and its last");
+
+        assert!(!change.overlaps(LineRange::new(300, 314)), "just above");
+        assert!(!change.overlaps(LineRange::new(341, 400)), "just below");
+    }
+
     use super::*;
 
     #[test]

@@ -1130,10 +1130,12 @@ mod tests {
         };
         let mut voice = Voice::default();
         let guard = crate::prose::Spot {
+            side: crate::prose::Side::Going,
             lines: Some(deck_core::LineRange::new(106, 110)),
             block: None,
         };
         let thrown = crate::prose::Spot {
+            side: crate::prose::Side::Going,
             lines: Some(deck_core::LineRange::new(140, 140)),
             block: None,
         };
@@ -1169,10 +1171,12 @@ mod tests {
         // moment its words start inside it — never at the moment a separate
         // utterance happened to be fetched.
         let guard = crate::prose::Spot {
+            side: crate::prose::Side::Going,
             lines: Some(deck_core::LineRange::new(106, 110)),
             block: None,
         };
         let thrown = crate::prose::Spot {
+            side: crate::prose::Side::Going,
             lines: Some(deck_core::LineRange::new(140, 140)),
             block: None,
         };
@@ -1215,6 +1219,7 @@ mod tests {
         // The light takes a moment to come up, so it starts a little early.
         // Here the second piece is 100ms away and already pointed at.
         let thrown = crate::prose::Spot {
+            side: crate::prose::Side::Going,
             lines: Some(deck_core::LineRange::new(140, 140)),
             block: None,
         };
@@ -1248,6 +1253,7 @@ mod tests {
         voice.say(
             vec![Said {
                 point: Some(crate::prose::Spot {
+                    side: crate::prose::Side::Going,
                     lines: Some(deck_core::LineRange::new(12, 14)),
                     block: None,
                 }),
@@ -1261,6 +1267,7 @@ mod tests {
         assert_eq!(
             voice.pointing(),
             Some(crate::prose::Spot {
+                side: crate::prose::Side::Going,
                 lines: Some(deck_core::LineRange::new(12, 14)),
                 block: None
             })

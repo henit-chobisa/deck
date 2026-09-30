@@ -110,6 +110,8 @@ pub fn current_on(dark: bool, paper: Paper) -> Palette {
             ground: hex("#0d0e0e"),
             gone: Rgb::new(0, 0, 0),
             fresh: Rgb::new(0, 0, 0),
+            gone_deep: Rgb::new(0, 0, 0),
+            fresh_deep: Rgb::new(0, 0, 0),
         },
         (true, Paper::Warm) => Palette {
             band: hex("#1c1a19"),
@@ -133,6 +135,8 @@ pub fn current_on(dark: bool, paper: Paper) -> Palette {
             ground: hex("#b4b2ae"),
             gone: Rgb::new(0, 0, 0),
             fresh: Rgb::new(0, 0, 0),
+            gone_deep: Rgb::new(0, 0, 0),
+            fresh_deep: Rgb::new(0, 0, 0),
         },
         (false, Paper::Warm) => Palette {
             bg: hex("#e2ded7"),
@@ -158,8 +162,42 @@ pub fn current_on(dark: bool, paper: Paper) -> Palette {
     } else {
         (hex("#cc241d"), hex("#98971a"))
     };
+    // Matched by how far each one actually lands from the page, not by giving
+    // both the same weight. Gruvbox green is much brighter than gruvbox red on
+    // a dark ground and duller than it on a light one, so one weight put the
+    // two bands at different distances either way — the arriving half read as
+    // loud beside a going half that read as calm, and a change is one thing
+    // shown in two halves rather than two things.
+    //
+    // Solved against `tint` rather than predicted from the mix, because `tint`
+    // puts most of the page's lightness back afterwards and the arithmetic
+    // before that step does not survive it. Twenty halvings is exact to far
+    // more than a screen can show.
+    let page = palette.bg.lightness();
+    let travelled =
+        |ink: Rgb, weight: f32| (tint(palette.bg, ink, weight).lightness() - page).abs();
+
     palette.gone = tint(palette.bg, red, DIFF);
-    palette.fresh = tint(palette.bg, green, DIFF);
+    // Softer than the arriving half needs to be. Red at the same depth as
+    // green came out shouting — the hue is already the loud one, and doubling
+    // it turns a pointed line into a warning rather than an emphasis.
+    palette.gone_deep = tint(palette.bg, red, DIFF * 1.9);
+    let want = travelled(red, DIFF);
+    let (mut low, mut high) = (0.0_f32, 0.6_f32);
+    for _ in 0..20 {
+        let mid = f32::midpoint(low, high);
+        if travelled(green, mid) < want {
+            low = mid;
+        } else {
+            high = mid;
+        }
+    }
+    let matched = f32::midpoint(low, high);
+    palette.fresh = tint(palette.bg, green, matched);
+    // And deeper than the going half, for the opposite reason: green at a
+    // matched weight barely moved, so a pointed arriving line looked the same
+    // as an unpointed one.
+    palette.fresh_deep = tint(palette.bg, green, matched * 3.4);
     palette
 }
 
@@ -365,4 +403,58 @@ fn highlight_theme(palette: &Palette, dark: bool) -> std::sync::Arc<HighlightThe
         },
         std::sync::Arc::new,
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_pointed_line_deepens_into_its_own_colour() {
+        // A point used to wash the accent over whatever row it landed on, and
+        // on a diff that is the one thing it must not do: orange into the
+        // arriving green gives a muddy brown, and the row stops saying the only
+        // thing it was there to say.
+        //
+        // So each half has a deeper version of itself, further from the page
+        // than its resting band and in the same direction.
+        for dark in [true, false] {
+            for paper in [Paper::Grey, Paper::Warm] {
+                let p = current_on(dark, paper);
+                let page = p.bg.lightness();
+                for (rest, deep, half) in [
+                    (p.gone, p.gone_deep, "going"),
+                    (p.fresh, p.fresh_deep, "arriving"),
+                ] {
+                    let near = (rest.lightness() - page).abs();
+                    let far = (deep.lightness() - page).abs();
+                    assert!(
+                        far > near,
+                        "dark={dark} {half}: deep sits {far} from the page, resting {near}"
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn the_two_halves_of_a_change_sit_the_same_distance_from_the_page() {
+        // One weight for both put the arriving band much further from the paper
+        // than the going one, because gruvbox green is far brighter than
+        // gruvbox red — 0.243 against 0.214 on the dark ground. The green read
+        // as loud beside a red that read as calm, and a change is one thing
+        // shown in two halves rather than two things.
+        for dark in [true, false] {
+            for paper in [Paper::Grey, Paper::Warm] {
+                let palette = current_on(dark, paper);
+                let page = palette.bg.lightness();
+                let going = (palette.gone.lightness() - page).abs();
+                let arriving = (palette.fresh.lightness() - page).abs();
+                assert!(
+                    (going - arriving).abs() < 0.02,
+                    "dark={dark} paper={paper:?}: going travels {going}, arriving {arriving}"
+                );
+            }
+        }
+    }
 }

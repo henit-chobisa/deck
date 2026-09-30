@@ -248,6 +248,18 @@ pub struct Palette {
     pub gone: Rgb,
     /// The ground under a line that is coming.
     pub fresh: Rgb,
+    /// The same two grounds, deeper, for when the narration is pointing at one.
+    ///
+    /// A point used to wash the accent over whatever row it landed on, which
+    /// works on ordinary paper and ruins a diff: orange mixed into the arriving
+    /// green gives a muddy brown, and the one thing the row was saying — *this
+    /// is the half that arrives* — is the thing the light takes away. A pointed
+    /// red line should be a darker red and a pointed green line a darker green,
+    /// so the emphasis deepens what the row already means instead of arguing
+    /// with it.
+    pub gone_deep: Rgb,
+    /// The arriving ground, deeper. See [`gone_deep`](Self::gone_deep).
+    pub fresh_deep: Rgb,
     /// A comment marker and its text.
     pub comment: Rgb,
     /// Labels, line numbers, anything said quietly.
@@ -502,16 +514,12 @@ pub fn derive(imported: Imported) -> Palette {
         // on the page, so it is dark; a ground is a whole line's worth of paper
         // and has to be told from the page without becoming a colour the syntax
         // must fight. Tinted toward a brighter red and green for that reason.
-        gone: tint(
-            bg,
-            toward(bg, Rgb::new(0xcc, 0x24, 0x1d), Rgb::new(0xfb, 0x49, 0x34)),
-            DIFF,
-        ),
-        fresh: tint(
-            bg,
-            toward(bg, Rgb::new(0x98, 0x97, 0x1a), Rgb::new(0xb8, 0xbb, 0x26)),
-            DIFF,
-        ),
+        gone: tint(bg, toward(bg, RED_DIM, RED_BRIGHT), DIFF),
+        fresh: tint(bg, toward(bg, GREEN_DIM, GREEN_BRIGHT), DIFF),
+        // Twice the distance from the page, so a pointed line reads as more of
+        // what it already is rather than as a different colour.
+        gone_deep: tint(bg, toward(bg, RED_DIM, RED_BRIGHT), DIFF * 1.9),
+        fresh_deep: tint(bg, toward(bg, GREEN_DIM, GREEN_BRIGHT), DIFF * 3.4),
         comment: comment
             .unwrap_or_else(|| toward(bg, Rgb::new(0x42, 0x7b, 0x58), Rgb::new(0x8e, 0xc0, 0x7c))),
         // Text pulled back toward the page until it reads as an aside.
@@ -542,6 +550,13 @@ fn readable_on(ground: Rgb, a: Rgb, b: Rgb) -> Rgb {
 /// gives the lit range the warmth of paper rather than the look of a
 /// highlighter pen, and lands on the `#d7cbbb` the design was drawn against.
 const TINT_RESTORE: f32 = 0.1;
+
+/// The inks a diff ground is tinted toward: dim for a light page, bright for a
+/// dark one.
+const RED_DIM: Rgb = Rgb::new(0xcc, 0x24, 0x1d);
+const RED_BRIGHT: Rgb = Rgb::new(0xfb, 0x49, 0x34);
+const GREEN_DIM: Rgb = Rgb::new(0x98, 0x97, 0x1a);
+const GREEN_BRIGHT: Rgb = Rgb::new(0xb8, 0xbb, 0x26);
 
 /// `base` shifted toward another colour's hue, keeping nearly all its lightness.
 ///

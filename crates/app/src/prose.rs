@@ -285,8 +285,28 @@ pub const POINT: &str = "[point ";
 pub struct Spot {
     /// Lines of a file, lit in whichever pane is showing them.
     pub lines: Option<LineRange>,
+    /// Which half of a change those lines mean.
+    pub side: Side,
     /// One block of a picture, by the id the diagram gave it.
     pub block: Option<String>,
+}
+
+/// Which half of a change a point is aimed at.
+///
+/// A pane showing a change holds two rows for the same line — the one going and
+/// the one arriving — and once the arriving side is numbered as it will be,
+/// both answer to the same number. So a point at `336-338` matches twice, and
+/// lights red and green together, which is no use to somebody walking a change:
+/// *this was the issue*, then *this is what it becomes*, is two sentences and
+/// wants two lights.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Side {
+    /// The code as it is. What a bare `[point 336-338]` means, which leaves
+    /// every point ever written meaning what it already meant.
+    #[default]
+    Going,
+    /// The code as it would be: `[point +336-338]`.
+    Arriving,
 }
 
 /// `106-110`, `106` on its own, the id of a block, or one of each.
@@ -301,6 +321,7 @@ pub struct Spot {
 fn spot(text: &str) -> Option<Spot> {
     let mut found = Spot {
         lines: None,
+        side: Side::Going,
         block: None,
     };
     let mut parts = 0;
@@ -310,13 +331,23 @@ fn spot(text: &str) -> Option<Spot> {
     {
         let part = part.trim();
         parts += 1;
+        // `+336-338` is the arriving half. Taken off before the range is read,
+        // so everything below sees the same two numbers either way.
+        let (part, side) = match part.strip_prefix('+') {
+            Some(rest) => (rest, Side::Arriving),
+            None => (part, Side::Going),
+        };
         let (first, last) = part.split_once('-').unwrap_or((part, part));
         if let (Ok(first), Ok(last)) = (first.trim().parse(), last.trim().parse()) {
             if found.lines.is_some() {
                 return None; // two files is two things to read
             }
             found.lines = Some(LineRange::new(first, last));
+            found.side = side;
             continue;
+        }
+        if side == Side::Arriving {
+            return None; // `+` belongs to a range, and to nothing else
         }
         let blocklike = !part.is_empty()
             && part
@@ -702,7 +733,12 @@ impl Token {
                 .id(("say", at))
                 .when(pickable, |this| this.cursor_pointer())
                 .when(lit, |this| {
-                    this.bg(paint(palette.accent.mix(palette.band, 0.74)))
+                    // Firm enough to see at a glance. Three quarters of the way
+                    // to the band was a tint you could hold a whole sentence in
+                    // and not notice, which reads as the click having done
+                    // nothing — and a reader who thinks nothing happened does
+                    // not try again.
+                    this.bg(paint(palette.accent.mix(palette.band, 0.55)))
                         .rounded(px(2.))
                 })
                 .when(!lit && heard > 0., |this| {
@@ -994,6 +1030,27 @@ fn paragraph(para: &str, keep_beats: bool, said: &mut usize, at: &mut usize) -> 
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_point_says_which_half_of_a_change_it_means() {
+        // Once the arriving side is numbered as it will be, both halves answer
+        // to the same numbers — so a point with only numbers in it lights red
+        // and green together, and walking a change becomes impossible: *this
+        // was the issue* and *this is what it becomes* are two sentences and
+        // want two lights.
+        let bare = spot("336-338").expect("a plain range is a point");
+        assert_eq!(bare.side, Side::Going, "and every deck ever written stays");
+
+        let arriving = spot("+336-338").expect("and so is a marked one");
+        assert_eq!(arriving.side, Side::Arriving);
+        assert_eq!(arriving.lines, bare.lines, "same lines, other half");
+
+        // One line, either way.
+        assert_eq!(spot("+336").map(|at| at.side), Some(Side::Arriving));
+
+        // The mark belongs to a range and to nothing else, so this is prose.
+        assert!(spot("+checkout").is_none());
+    }
+
     // Spelled out rather than `#[test]`: this module glob-imports GPUI, which
     // exports a `test` attribute of its own and would otherwise shadow the
     // standard one.
@@ -1055,6 +1112,7 @@ mod tests {
         assert_eq!(
             out[1].point,
             Some(crate::prose::Spot {
+                side: Side::Going,
                 lines: None,
                 block: Some("checkout".into())
             })
@@ -1062,6 +1120,7 @@ mod tests {
         assert_eq!(
             out[2].point,
             Some(crate::prose::Spot {
+                side: Side::Going,
                 lines: Some(deck_core::LineRange::new(140, 140)),
                 block: None
             })
@@ -1117,6 +1176,7 @@ mod tests {
         assert_eq!(
             out[1].point,
             Some(crate::prose::Spot {
+                side: Side::Going,
                 lines: Some(deck_core::LineRange::new(106, 110)),
                 block: None
             })
@@ -1124,6 +1184,7 @@ mod tests {
         assert_eq!(
             out[2].point,
             Some(crate::prose::Spot {
+                side: Side::Going,
                 lines: Some(deck_core::LineRange::new(140, 140)),
                 block: None
             }),

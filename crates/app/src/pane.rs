@@ -52,9 +52,19 @@ pub(crate) const SPINE: f32 = 58.;
 /// How long a light takes to come up.
 const RISE: std::time::Duration = std::time::Duration::from_millis(520);
 
-/// How long a light takes to go out. Slower than coming up, so the eye has
-/// already moved to the new lines before the old ones are gone.
+/// How long a light takes to go out on its own, when nothing replaces it.
 const FALL: std::time::Duration = std::time::Duration::from_millis(760);
+
+/// How long it takes to go out when something else is arriving.
+///
+/// Much quicker, and this is the whole of the shimmer. A light leaving over
+/// 760ms while the next arrives over 520 leaves two of them on at once for a
+/// quarter of a second — three, if the reader is moving from claim to claim the
+/// way they are meant to. What that looks like is the old lines flickering as
+/// the new ones land, which is exactly what it is.
+///
+/// Leaving is not the same act as being replaced. Out of the way, and quickly.
+const HAND_OVER: std::time::Duration = std::time::Duration::from_millis(200);
 
 /// A light easing between off and on, from wherever it was when it was told.
 ///
@@ -67,6 +77,8 @@ pub(crate) struct Fade {
     /// The level it was at when it was last told to change.
     from: f32,
     since: Option<std::time::Instant>,
+    /// How long going out takes, for a light handed over rather than ended.
+    fall: Option<std::time::Duration>,
 }
 
 impl Fade {
@@ -83,13 +95,23 @@ impl Fade {
         true
     }
 
+    /// Go out quickly, because something else is arriving.
+    pub(crate) fn hand_over(&mut self) {
+        self.fall = Some(HAND_OVER);
+        self.set(false);
+    }
+
     /// Nought to one, eased at both ends.
     pub(crate) fn level(&self) -> f32 {
         let to = if self.on { 1. } else { 0. };
         let Some(since) = self.since else {
             return to;
         };
-        let whole = if self.on { RISE } else { FALL };
+        let whole = if self.on {
+            RISE
+        } else {
+            self.fall.unwrap_or(FALL)
+        };
         let along = (since.elapsed().as_secs_f32() / whole.as_secs_f32()).clamp(0., 1.);
         // Smoothstep: no snap at either end, which is the whole ask.
         let eased = along * along * (3. - 2. * along);
@@ -103,7 +125,11 @@ impl Fade {
 
     /// Whether it is still on its way somewhere.
     pub(crate) fn moving(&self) -> bool {
-        let whole = if self.on { RISE } else { FALL };
+        let whole = if self.on {
+            RISE
+        } else {
+            self.fall.unwrap_or(FALL)
+        };
         self.since.is_some_and(|since| since.elapsed() < whole)
     }
 }
@@ -130,8 +156,39 @@ struct Row {
     /// so a point could not light the arriving half of a change and a diff
     /// could not be selected or commented on at all.
     pin: u32,
+    /// The lines this row answers for, as a range.
+    ///
+    /// Its own single line, for a line that is in the file. The whole range
+    /// being changed, for a spliced one — and that is the part that has to be a
+    /// range rather than a point. A `[point 320-338]` inside a change of
+    /// 315-340 shares no line with a single pin of 340, so the arriving half
+    /// stayed dark while the sentence was about it.
+    answers: LineRange,
     /// What the ref is proposing about this line, if anything.
     change: Option<Change>,
+}
+
+impl Row {
+    /// Whether a point aimed at `side` means this row.
+    ///
+    /// The arriving side is *only* the arriving rows. It is tempting to say an
+    /// unchanged row belongs to both — there is only one of it, and pointing at
+    /// code that is not changing is the same act either way — and that is wrong
+    /// for one reason: the arriving rows are numbered as they will be, so they
+    /// collide with the real lines further down the file. A change of five
+    /// lines into six, at 340, gives green rows numbered 340 to 345 while the
+    /// file below still has its own 345 and 346. `+340-346` then lit the six
+    /// green rows and two ordinary lines under them.
+    ///
+    /// So `+` means the change and nothing else, and a bare point means the
+    /// file as it stands — the replaced lines and every unchanged line around
+    /// them, which is what pointing at code has always meant.
+    fn takes(&self, side: crate::prose::Side) -> bool {
+        match side {
+            crate::prose::Side::Going => !matches!(self.change, Some(Change::New)),
+            crate::prose::Side::Arriving => matches!(self.change, Some(Change::New)),
+        }
+    }
 }
 
 /// What a ref carrying an `after` or a `before` is saying about a line.
@@ -254,11 +311,19 @@ pub struct Pane {
     /// The spotlight says which part of the file the reader should be looking
     /// at, and it holds still while several sentences are said about it. This
     /// is the agent's finger inside that, and it moves with the sentences.
-    point: Option<LineRange>,
+    point: Option<(LineRange, crate::prose::Side)>,
     /// The lines coming up, and how far up they are.
     rising: Fade,
     /// The lines the finger just left, still going out.
-    was: Option<(LineRange, Fade)>,
+    /// Lights on their way out: the range, which half of a change it meant,
+    /// and how far gone it is.
+    ///
+    /// The side is not decoration. Without it a departing light landed on every
+    /// row whose number it overlapped, both halves of a change alike — so
+    /// leaving the going half lit the arriving half on its way out, and the
+    /// reader saw a half they had never pointed at flash as they moved away
+    /// from the other one.
+    was: Vec<(LineRange, crate::prose::Side, Fade)>,
     /// Whether anything in the pane is pointed at, which is what dims the rest
     /// of the lit range's bar.
     pointing: Fade,
@@ -320,6 +385,19 @@ pub struct Pane {
     /// whole match arm, a whole guard — and pinning it to the first line of
     /// that block loses which block was meant.
     pub selected: Option<LineRange>,
+    /// The rows the reader has hold of, as indices into `rows`.
+    ///
+    /// Selection is kept twice on purpose, and the two answer different
+    /// questions. `selected` is where a comment lands, which has to be file
+    /// lines, because that is the only thing an editor can be pointed at and
+    /// the only thing a range can be relocated through.
+    ///
+    /// This is what is *drawn*, and it cannot be file lines. Every arriving
+    /// line of a change shares one — they replace the same range, and none of
+    /// them is in the file — so a selection kept only in lines could not tell
+    /// the first new line from the fourth, and dragging across them lit all or
+    /// nothing. Rows are the only thing that distinguishes them.
+    picked: Option<(usize, usize)>,
 }
 
 impl Pane {
@@ -343,9 +421,19 @@ impl Pane {
 
             let coming: Vec<&str> = after.lines().collect();
             let mut fresh = highlight(after, &coming, &code.file, cx);
-            for row in &mut fresh {
-                row.number = None;
-                row.pin = authored.last;
+            for (offset, row) in fresh.iter_mut().enumerate() {
+                // The number it will have once the edit lands, so the gutter
+                // reads as the file afterwards rather than as a blank.
+                //
+                // A blank was the honest answer to "which line is this" and the
+                // wrong one to live with: it left the arriving half of a change
+                // with no address at all, so nothing could point at it, select
+                // it or comment on it, and an agent walking a change could not
+                // say *and this is what it becomes*.
+                let at = authored.first + u32::try_from(offset).unwrap_or(0);
+                row.number = Some(at);
+                row.pin = at;
+                row.answers = LineRange::single(at);
                 row.change = Some(Change::New);
             }
             added = fresh.len();
@@ -375,9 +463,14 @@ impl Pane {
             if !before.is_empty() {
                 let went: Vec<&str> = before.lines().collect();
                 let mut gone = highlight(before, &went, &code.file, cx);
-                for row in &mut gone {
-                    row.number = None;
-                    row.pin = authored.first;
+                for (offset, row) in gone.iter_mut().enumerate() {
+                    // The number it had before the edit, for the same reason:
+                    // the replaced half needs an address too, and the one it
+                    // answered to is the one it used to have.
+                    let at = authored.first + u32::try_from(offset).unwrap_or(0);
+                    row.number = Some(at);
+                    row.pin = at;
+                    row.answers = LineRange::single(at);
                     row.change = Some(Change::Gone);
                 }
                 added = gone.len();
@@ -417,11 +510,12 @@ impl Pane {
             name: code.name.clone().map(SharedString::from),
             file: code.file.clone(),
             selected: None,
+            picked: None,
             arriving: Fade::default(),
             proposed: code.after.clone(),
             point: None,
             rising: Fade::default(),
-            was: None,
+            was: Vec::new(),
             pointing: Fade::default(),
             heeded: Fade::default(),
         };
@@ -438,6 +532,54 @@ impl Pane {
     /// point at.
     fn row_of(&self, number: u32) -> usize {
         row_of(number, self.added_at, self.added)
+    }
+
+    /// Take hold of the rows between `from` and `to`, whichever way round.
+    ///
+    /// Draws by row and comments by line: the rows are kept as they are, and
+    /// the file range is derived from what those rows answer for. Drag across
+    /// three arriving lines and you see three lines held, and the comment lands
+    /// on the range they replace — which is the only place it could land.
+    pub fn select_rows(&mut self, from: usize, to: usize) {
+        let (first, last) = (from.min(to), from.max(to));
+        self.picked = Some((first, last));
+        let pins = self
+            .rows
+            .get(first..=last.min(self.rows.len().saturating_sub(1)))
+            .unwrap_or_default();
+        self.selected = match (
+            pins.iter().map(|row| row.pin).min(),
+            pins.iter().map(|row| row.pin).max(),
+        ) {
+            (Some(first), Some(last)) => Some(LineRange::new(first, last)),
+            _ => None,
+        };
+    }
+
+    /// Let go.
+    pub fn unpick(&mut self) {
+        self.picked = None;
+        self.selected = None;
+    }
+
+    /// Take hold of whatever rows answer for `range`.
+    ///
+    /// For a selection being put back rather than made — reopening a deck that
+    /// was hidden with one in it. Rows are the truth on screen, so a remembered
+    /// file range has to be turned back into them or it is remembered and
+    /// invisible.
+    pub fn select_lines(&mut self, range: LineRange) {
+        let held: Vec<usize> = self
+            .rows
+            .iter()
+            .enumerate()
+            .filter(|(_, row)| range.contains(row.pin))
+            .map(|(ix, _)| ix)
+            .collect();
+        match (held.first(), held.last()) {
+            (Some(&first), Some(&last)) => self.select_rows(first, last),
+            _ => self.unpick(),
+        }
     }
 
     /// Move only the live spotlight, leaving authored diff rows where they are.
@@ -464,16 +606,31 @@ impl Pane {
     /// Nothing scrolls. A point belongs inside the range already on screen,
     /// and a pane that jumped every time the narration moved a sentence on
     /// would take the code out from under the reader mid-sentence.
-    pub fn point_at(&mut self, range: Option<LineRange>) {
-        let range = range.map(|range| range.clamp_to(self.source_lines));
+    pub fn point_at(&mut self, range: Option<(LineRange, crate::prose::Side)>) {
+        let range = range.map(|(at, side)| (at.clamp_to(self.source_lines), side));
         if range == self.point {
             return;
         }
-        // The lines being left go out from wherever they had got to.
-        if let Some(left) = self.point {
+        // The lines being left go out from wherever they had got to — and the
+        // ones already on their way out keep going.
+        //
+        // This held one range, so pointing at a third place while the first was
+        // still fading dropped that fade on the floor: the lines snapped to
+        // nothing between frames, which reads as a shimmer rather than as a
+        // light going down. Somebody moving quickly through a group sees it on
+        // every step.
+        let left_trace = self.point.map(|(at, side)| (at.first, at.last, side));
+        self.was.retain(|(_, _, going)| going.moving());
+        if let Some((left, side)) = self.point {
             let mut going = self.rising;
-            going.set(false);
-            self.was = Some((left, going));
+            // Handed over when something is taking its place, and given the
+            // slow way out only when the pane stops being pointed at at all.
+            if range.is_some() {
+                going.hand_over();
+            } else {
+                going.set(false);
+            }
+            self.was.push((left, side, going));
         }
         self.point = range;
         self.rising = Fade::default();
@@ -481,6 +638,23 @@ impl Pane {
             self.rising.set(true);
         }
         self.pointing.set(range.is_some());
+
+        // Off unless asked for. Two guesses at a shimmer nobody but the reader
+        // can see is two guesses too many: this says what actually reached the
+        // pane, in what order, and how much of the last light was still on the
+        // way out when the next one landed.
+        if std::env::var_os("DECK_TRACE_POINT").is_some() {
+            eprintln!(
+                "point {:>8.3}s  {:?} -> {:?}  leaving={} rising={:.2}",
+                std::time::UNIX_EPOCH
+                    .elapsed()
+                    .map_or(0., |at| at.as_secs_f32() % 1000.),
+                left_trace,
+                range.map(|(at, side)| (at.first, at.last, side)),
+                self.was.len(),
+                self.rising.level(),
+            );
+        }
     }
 
     /// Say whether the agent is talking about this pane.
@@ -501,12 +675,12 @@ impl Pane {
             || self.pointing.moving()
             || self.heeded.moving()
             || self.arriving.moving()
-            || self.was.is_some_and(|(_, going)| going.moving())
+            || self.was.iter().any(|(_, _, going)| going.moving())
     }
 
     /// The lines the narration is pointing at, if any.
     #[must_use]
-    pub fn pointed(&self) -> Option<LineRange> {
+    pub fn pointed(&self) -> Option<(LineRange, crate::prose::Side)> {
         self.point
     }
 
@@ -554,8 +728,8 @@ impl Pane {
         }
         let seen = -f32::from(state.base_handle.offset().y);
         let furthest = f32::from(state.base_handle.max_offset().y).max(0.);
-        let top = self.row_of(point.first) as f32 * row;
-        let bottom = (self.row_of(point.last) + 1) as f32 * row;
+        let top = self.row_of(point.0.first) as f32 * row;
+        let bottom = (self.row_of(point.0.last) + 1) as f32 * row;
         let height = bottom - top;
 
         let target = if height + 2. * row <= viewport {
@@ -779,7 +953,11 @@ impl Pane {
         let lit = self.spotlight;
         let point = self.point;
         let rising = self.rising.level();
-        let was = self.was.map(|(range, going)| (range, going.level()));
+        let was: Vec<(LineRange, crate::prose::Side, f32)> = self
+            .was
+            .iter()
+            .map(|(range, side, going)| (*range, *side, going.level()))
+            .collect();
         let pointing = self.pointing.level();
         // A change that was authored is simply there; one that just arrived
         // comes up out of the page.
@@ -795,7 +973,7 @@ impl Pane {
         // misses.
         let flash = palette.focus.mix(palette.accent, 0.3);
         let gutter_fg = palette.fg.mix(palette.wash, 0.6);
-        let selected = self.selected;
+        let picked = self.picked;
         // A comment covers a range, so its bar covers the range: a mark on the
         // first line alone leaves the reader guessing how far down the remark
         // was meant to reach.
@@ -859,19 +1037,52 @@ impl Pane {
                     // file lines and a proposed line has none. So a point could
                     // not light the half of a change that was arriving, which
                     // is usually the half the sentence is about.
-                    let is_lit = lit.contains(pick_at);
-                    let is_picked = selected.is_some_and(|s| s.contains(pick_at));
+                    let is_lit = lit.overlaps(row.answers);
+                    // By row, because every arriving line of a change answers
+                    // for the same file line and a range of those cannot tell
+                    // the first from the fourth.
+                    let is_picked = picked.is_some_and(|(first, last)| ix >= first && ix <= last);
                     let has_mark = marked.contains(&pick_at);
-                    let in_point = point.is_some_and(|at| at.contains(pick_at));
-                    let in_was = was.is_some_and(|(range, _)| range.contains(pick_at));
+                    // The side as well as the lines. A pane showing a change
+                    // has two rows answering to each number — the one going and
+                    // the one arriving — so a point that only knew the numbers
+                    // matched both and lit red and green together. Walking a
+                    // change is two sentences, and wants two lights.
+                    let in_point =
+                        point.is_some_and(|(at, side)| at.overlaps(row.answers) && row.takes(side));
+                    // The brightest of everything still on its way out. Several
+                    // ranges can be fading at once — somebody moving quickly
+                    // leaves a trail of them — and a row caught by two should
+                    // go out from the higher, not flicker between them.
+                    let leaving = was
+                        .iter()
+                        .filter(|(range, side, _)| range.overlaps(row.answers) && row.takes(*side))
+                        .map(|(_, _, level)| *level)
+                        .fold(0., f32::max);
                     // How strongly this row is pointed at, right now. A line in
                     // both the old range and the new one never dips: it was lit
                     // and it stays lit.
-                    let pointed = match (in_point, in_was) {
-                        (true, true) => 1.,
-                        (true, false) => rising,
-                        (false, true) => was.map_or(0., |(_, level)| level),
-                        (false, false) => 0.,
+                    // Whichever of the two is brighter, and never a number of
+                    // its own.
+                    //
+                    // This used to answer a flat 1.0 for a row that was both
+                    // arriving and leaving, meaning to say *a line in both
+                    // ranges never dips*. It created the dip it was avoiding:
+                    // the row snapped to full, held while the old light
+                    // decayed, then dropped to however far the new one had
+                    // actually risen and climbed again. On, off, on — which is
+                    // why it only ever showed between two points that share
+                    // lines, and never between two that do not.
+                    // Added, not compared. Two smoothstep curves crossing
+                    // each other peak at a half apiece, so taking the brighter
+                    // still dips through the middle of a crossing — which is
+                    // the blink, one layer down from where it looked like it
+                    // was. Summed, a light handing over to another holds steady
+                    // the whole way across.
+                    let pointed = if in_point {
+                        (rising + leaving).min(1.)
+                    } else {
+                        leaving
                     };
 
                     div()
@@ -893,7 +1104,7 @@ impl Pane {
                             move |event: &MouseDownEvent, _window, cx| {
                                 let extend = event.modifiers.shift;
                                 let _ = view.update(cx, |deck, cx| {
-                                    deck.start_pick(pane_ix, pick_at, extend, cx);
+                                    deck.start_pick(pane_ix, ix, extend, cx);
                                 });
                             }
                         })
@@ -909,7 +1120,7 @@ impl Pane {
                             move |entered: &bool, _window, cx| {
                                 let entered = *entered;
                                 let _ = view.update(cx, |deck, _| {
-                                    deck.hover_row(pane_ix, pick_at, entered);
+                                    deck.hover_row(pane_ix, ix, entered);
                                 });
                             }
                         })
@@ -939,19 +1150,28 @@ impl Pane {
                         // pulled to the sentence being said without the page
                         // gaining a third kind of highlight to learn.
                         .bg(paint({
-                            let ground = match (row.change, is_lit) {
-                                (Some(Change::Gone), _) => flash.mix(palette.gone, arrived),
-                                (Some(Change::New), _) => flash.mix(palette.fresh, arrived),
-                                (None, true) => palette.focus.mix(palette.accent, 0.26 * pointed),
-                                (None, false) => palette.wash.mix(palette.accent, 0.26 * pointed),
+                            // What the row *is*: going, arriving, lit, or plain.
+                            let ground = match row.change {
+                                Some(Change::Gone) => flash.mix(palette.gone, arrived),
+                                Some(Change::New) => flash.mix(palette.fresh, arrived),
+                                None if is_lit => palette.focus,
+                                None => palette.wash,
                             };
-                            // Over the ground, not instead of it. Both diff
-                            // arms used to match `is_picked` with a wildcard,
-                            // so a selected row in a diff was drawn as a diff
-                            // row and nothing else — dragging worked, and was
-                            // invisible, which to a reader is the same thing as
-                            // not working. Numbers made no difference: the
-                            // lines being replaced carry a change too.
+                            // Then what is being *said* about it, over the top.
+                            //
+                            // A pointed line deepens into more of its own
+                            // colour rather than taking the accent. Washing
+                            // orange over the arriving green gave a muddy brown
+                            // and took away the one thing the row was saying —
+                            // that it is the half arriving. Red goes to a
+                            // darker red, green to a darker green, and only
+                            // ordinary paper takes the accent, where there is
+                            // no meaning of its own to drown.
+                            let ground = match row.change {
+                                Some(Change::Gone) => ground.mix(palette.gone_deep, pointed),
+                                Some(Change::New) => ground.mix(palette.fresh_deep, pointed),
+                                None => ground.mix(palette.accent, 0.26 * pointed),
+                            };
                             if is_picked {
                                 ground.mix(palette.accent, 0.14)
                             } else {
@@ -964,8 +1184,17 @@ impl Pane {
                                 .flex_none()
                                 .text_center()
                                 .text_color(paint(match row.change {
-                                    Some(Change::Gone) => palette.accent.mix(palette.del, arrived),
-                                    Some(Change::New) => palette.accent.mix(palette.add, arrived),
+                                    // The bar takes the point too, so a
+                                    // sub-highlight inside a diff has an edge
+                                    // as well as a ground.
+                                    Some(Change::Gone) => palette
+                                        .accent
+                                        .mix(palette.del, arrived)
+                                        .mix(palette.accent, pointed),
+                                    Some(Change::New) => palette
+                                        .accent
+                                        .mix(palette.add, arrived)
+                                        .mix(palette.accent, pointed),
                                     None if has_mark => palette.add,
                                     None if is_picked => palette.accent,
                                     // While the narration is pointing, the rest
@@ -1379,6 +1608,7 @@ fn highlight(source: &str, lines: &[&str], file: &std::path::Path, cx: &App) -> 
             runs: Vec::new(),
             number: u32::try_from(ix + 1).ok(),
             pin: u32::try_from(ix + 1).unwrap_or(u32::MAX),
+            answers: LineRange::single(u32::try_from(ix + 1).unwrap_or(u32::MAX)),
             change: None,
         })
         .collect();
@@ -1614,9 +1844,35 @@ mod tests {
         use gpui_kit::component::highlighter::Language;
 
         for file in [
-            "a.rs", "a.ts", "a.mts", "a.cts", "a.tsx", "a.js", "a.mjs", "a.cjs", "a.jsx", "a.py",
-            "a.go", "a.rb", "a.lua", "a.md", "a.markdown", "a.yml", "a.yaml", "a.sh", "a.bash",
-            "a.zsh", "a.json", "a.toml", "a.html", "a.css", "a.c", "a.h", "a.cpp", "a.cc", "a.hpp",
+            "a.rs",
+            "a.ts",
+            "a.mts",
+            "a.cts",
+            "a.tsx",
+            "a.js",
+            "a.mjs",
+            "a.cjs",
+            "a.jsx",
+            "a.py",
+            "a.go",
+            "a.rb",
+            "a.lua",
+            "a.md",
+            "a.markdown",
+            "a.yml",
+            "a.yaml",
+            "a.sh",
+            "a.bash",
+            "a.zsh",
+            "a.json",
+            "a.toml",
+            "a.html",
+            "a.css",
+            "a.c",
+            "a.h",
+            "a.cpp",
+            "a.cc",
+            "a.hpp",
             "a.java",
         ] {
             let named = language_of(std::path::Path::new(file));
@@ -1632,28 +1888,80 @@ mod tests {
     }
 
     #[test]
-    fn a_proposed_line_answers_for_the_range_it_belongs_to() {
-        // What a spliced row says when the spotlight, a point, a selection or a
-        // comment mark asks whether it is part of what is being discussed. It
-        // used to say no to all four, because it has no line number — so a
-        // point lit the half of a change that was going and not the half that
-        // was arriving, which is usually the half the sentence is about.
+    fn rows_are_held_one_at_a_time_and_commented_on_as_a_range() {
+        // The two halves of a selection, and why it is kept twice. Arriving
+        // lines all answer for the same file range — they replace it, and none
+        // of them is in the file — so a selection kept only in lines lit all of
+        // them or none. Held by row, a reader can take three of five.
         //
-        // The two directions pin opposite ways, and that is the whole care
-        // needed here: an `after` splices *below* the range, so it answers for
-        // the last line of it; a `before` splices *above*, so it answers for
-        // the first.
-        let range = LineRange::new(140, 148);
+        // And the comment still lands on the range they replace, because that
+        // is the only place in the file a proposed line can be said to be.
+        let pins = [140_u32, 148, 148, 148, 148, 149];
 
-        let arriving = range.last; // what `--after` writes onto its new rows
-        let going = range.first; // and what `--before` writes onto its old ones
+        // Three arriving rows out of four.
+        let held = 2..=4;
+        assert_eq!(held.clone().count(), 3, "three rows, distinctly");
 
-        assert!(range.contains(arriving), "an after row is inside the range");
-        assert!(range.contains(going), "and so is a before row");
+        let lines: Vec<u32> = held.map(|ix| pins[ix]).collect();
+        assert_eq!(
+            (lines.iter().min(), lines.iter().max()),
+            (Some(&148), Some(&148)),
+            "and one line to hang the comment on"
+        );
+    }
 
-        // The line each one hangs off is the one on its own side of the splice.
-        assert_eq!(arriving, 148);
-        assert_eq!(going, 140);
+    #[test]
+    fn the_arriving_side_stops_at_the_end_of_the_change() {
+        // The bleed that post-change numbering buys you. Five lines at 340
+        // becoming six gives green rows numbered 340..=345, while the file
+        // underneath still has its own 345 and 346 — so `+340-346` overlaps two
+        // ordinary lines below the change as well as the six it meant.
+        //
+        // Being part of the change is what settles it, not the number.
+        let arriving = Row {
+            text: "new".into(),
+            runs: Vec::new(),
+            number: Some(345),
+            pin: 345,
+            answers: LineRange::single(345),
+            change: Some(Change::New),
+        };
+        let unchanged = Row {
+            change: None,
+            ..arriving.clone()
+        };
+        let going = Row {
+            change: Some(Change::Gone),
+            ..arriving.clone()
+        };
+
+        assert!(arriving.takes(crate::prose::Side::Arriving));
+        assert!(!unchanged.takes(crate::prose::Side::Arriving), "the bleed");
+        assert!(!going.takes(crate::prose::Side::Arriving));
+
+        // And a bare point is the file as it stands: what is there now, plus
+        // what is being taken out of it.
+        assert!(unchanged.takes(crate::prose::Side::Going));
+        assert!(going.takes(crate::prose::Side::Going));
+        assert!(!arriving.takes(crate::prose::Side::Going));
+    }
+
+    #[test]
+    fn a_proposed_line_is_numbered_as_it_will_be() {
+        // A spliced line used to carry no number, and so no address: nothing
+        // could point at it, select it or comment on it, and an agent walking a
+        // change could not say *and this is what it becomes*.
+        //
+        // It takes the number it will have once the edit lands, counted from
+        // the first line of the range it replaces.
+        let range = LineRange::new(968, 970);
+        let arriving: Vec<u32> = (0..4).map(|offset| range.first + offset).collect();
+
+        assert_eq!(arriving, vec![968, 969, 970, 971]);
+        assert!(
+            arriving.last().is_some_and(|&last| last > range.last),
+            "a change that adds lines runs past the range it replaces"
+        );
     }
 
     #[test]
@@ -1670,6 +1978,96 @@ mod tests {
         assert_eq!(row(3), 4, "the range itself is past the two old lines");
         assert_eq!(row(5), 6);
         assert_eq!(row(6), 7);
+    }
+
+    #[test]
+    fn a_light_leaving_one_half_does_not_touch_the_other() {
+        // The one the reader found by watching which half flashed. Moving from
+        // the going half to a line below the change made the *arriving* half
+        // blink — a half that was not in either point.
+        //
+        // A departing light remembered its range and not its side, so it landed
+        // on every row whose number it overlapped. Both halves of a change
+        // answer to the same numbers, so leaving one always lit the other.
+        let row = |change| Row {
+            text: "x".into(),
+            runs: Vec::new(),
+            number: Some(331),
+            pin: 331,
+            answers: LineRange::single(331),
+            change,
+        };
+
+        let leaving = LineRange::new(330, 332);
+        assert!(
+            leaving.overlaps(row(Some(Change::New)).answers),
+            "same numbers"
+        );
+
+        // And the side is what keeps them apart.
+        assert!(row(Some(Change::Gone)).takes(crate::prose::Side::Going));
+        assert!(!row(Some(Change::New)).takes(crate::prose::Side::Going));
+        assert!(row(Some(Change::New)).takes(crate::prose::Side::Arriving));
+        assert!(!row(Some(Change::Gone)).takes(crate::prose::Side::Arriving));
+    }
+
+    #[test]
+    fn a_line_in_both_points_never_dips() {
+        // The tubelight blink, and why it only ever showed between two points
+        // that share lines. A row that is arriving *and* leaving used to be
+        // answered a flat 1.0 — so it snapped to full, held there while the old
+        // light decayed, dropped to however far the new one had actually risen,
+        // and climbed again. On, off, on.
+        //
+        // The brighter of the two is the whole rule: it can never dip, because
+        // the outgoing one only falls once the incoming has passed it.
+        let held = |rising: f32, leaving: f32| (rising + leaving).min(1.);
+
+        // Taking the brighter of the two is the obvious answer and it dips:
+        // two curves crossing peak at a half apiece in the middle.
+        assert!((0.5_f32).max(0.5) < 1., "which is the blink");
+
+        // Summed, the crossing holds steady the whole way over.
+        for step in 0..=10u8 {
+            let rising = f32::from(step) / 10.;
+            let leaving = 1. - rising;
+            assert!(
+                (held(rising, leaving) - 1.).abs() < f32::EPSILON,
+                "dipped at {rising}"
+            );
+        }
+
+        // And neither one alone is ever pushed past full.
+        assert!((held(1., 1.) - 1.).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn a_light_being_replaced_leaves_faster_than_one_that_just_ends() {
+        // The shimmer, as arithmetic. A light out over 760ms while the next
+        // comes up over 520 leaves both on together for a quarter of a second
+        // — and three at once for a reader moving claim to claim, which is what
+        // reads as the old lines flickering while the new ones land.
+        //
+        // Ending is not the same act as being replaced.
+        assert!(
+            HAND_OVER < RISE,
+            "a replaced light has to be gone before its replacement is up"
+        );
+        assert!(FALL > RISE, "but one that simply ends still settles slowly");
+
+        let mut handed = Fade::default();
+        handed.set(true);
+        handed.since = Some(std::time::Instant::now() - RISE);
+        handed.hand_over();
+        handed.since = Some(std::time::Instant::now() - HAND_OVER);
+        assert!(!handed.moving(), "and it is finished within its own time");
+
+        let mut ended = Fade::default();
+        ended.set(true);
+        ended.since = Some(std::time::Instant::now() - RISE);
+        ended.set(false);
+        ended.since = Some(std::time::Instant::now() - HAND_OVER);
+        assert!(ended.moving(), "where the slow one is still going");
     }
 
     #[test]

@@ -504,7 +504,7 @@ pub struct DeckView {
     /// it happens to be. Growing was wrong in a way that only shows up when
     /// you come back: drag 10 to 15, move back to 14, and 15 stays selected
     /// because a range that only ever widens has no way to let go.
-    drag_from: Option<(usize, u32)>,
+    drag_from: Option<(usize, usize)>,
     /// Whether the waiting panel has opened out to two ghosts.
     ///
     /// It starts as one and spreads after a beat. Not for the sake of the
@@ -626,7 +626,7 @@ pub struct DeckView {
     /// rewrote the selection. So hover records the row and nothing else, and
     /// whether this is a drag is read from the move event itself, which cannot
     /// be stale.
-    hovered: Option<(usize, u32)>,
+    hovered: Option<(usize, usize)>,
 }
 
 /// How fast a flow travels.
@@ -791,7 +791,11 @@ impl DeckView {
                 if let Some(code) = pane.code_mut()
                     && code.ref_id == place.ref_id
                 {
-                    code.selected = place.selected;
+                    if let Some(range) = place.selected {
+                        code.select_lines(range);
+                    } else {
+                        code.unpick();
+                    }
                     let scroll = code.scroll();
                     let mut scroll = scroll.0.borrow_mut();
                     scroll.deferred_scroll_to_item = None;
@@ -1775,6 +1779,8 @@ impl DeckView {
         // lines to name. Either way the pane is chosen by what it is already
         // showing rather than by its place in the row.
         let lines = at.as_ref().and_then(|at| at.lines);
+        // Which half of a change those lines mean, if the pane is showing one.
+        let side = at.as_ref().map_or(crate::prose::Side::Going, |at| at.side);
         let block = at.as_ref().and_then(|at| at.block.clone());
         // Two owners, because one point may hold a file and a picture at once:
         // the code, and where it sits in the flow. Each half finds its own pane
@@ -1809,7 +1815,11 @@ impl DeckView {
         let mut moved = false;
         for (ix, pane) in self.panes.iter_mut().enumerate() {
             if let Some(code) = pane.code_mut() {
-                let want = if Some(ix) == reading { lines } else { None };
+                let want = if Some(ix) == reading {
+                    lines.map(|at| (at, side))
+                } else {
+                    None
+                };
                 if code.pointed() != want {
                     code.point_at(want);
                     moved = true;
@@ -2118,21 +2128,21 @@ impl DeckView {
     ///
     /// Shift keeps the anchor where it was, so shift-clicking reaches from the
     /// line the selection started on rather than from its nearest edge.
-    pub fn start_pick(&mut self, pane_ix: usize, line: u32, extend: bool, cx: &mut Context<Self>) {
+    pub fn start_pick(&mut self, pane_ix: usize, row: usize, extend: bool, cx: &mut Context<Self>) {
         self.live.pause(PauseReason::Selection);
         let anchor = match self.drag_from {
-            Some((had_pane, had_line)) if extend && had_pane == pane_ix => had_line,
-            _ => line,
+            Some((had_pane, had_row)) if extend && had_pane == pane_ix => had_row,
+            _ => row,
         };
         self.drag_from = Some((pane_ix, anchor));
-        self.pick(pane_ix, line, cx);
+        self.pick(pane_ix, row, cx);
     }
 
     /// Remember which row the pointer is over. Selects nothing by itself.
-    pub fn hover_row(&mut self, pane_ix: usize, line: u32, entered: bool) {
+    pub fn hover_row(&mut self, pane_ix: usize, row: usize, entered: bool) {
         if entered {
-            self.hovered = Some((pane_ix, line));
-        } else if self.hovered == Some((pane_ix, line)) {
+            self.hovered = Some((pane_ix, row));
+        } else if self.hovered == Some((pane_ix, row)) {
             self.hovered = None;
         }
     }
@@ -2181,18 +2191,21 @@ impl DeckView {
     }
 
     /// Select from the drag's anchor to `line`.
-    pub fn pick(&mut self, pane_ix: usize, line: u32, cx: &mut Context<Self>) {
+    pub fn pick(&mut self, pane_ix: usize, row: usize, cx: &mut Context<Self>) {
         self.picked_said = None;
         self.said_from = None;
         let anchor = match self.drag_from {
             Some((pane, from)) if pane == pane_ix => from,
-            _ => line,
+            _ => row,
         };
         for (ix, pane) in self.panes.iter_mut().enumerate() {
             match pane {
                 Sheet::Code(code) => {
-                    code.selected =
-                        (ix == pane_ix).then(|| LineRange::new(anchor.min(line), anchor.max(line)));
+                    if ix == pane_ix {
+                        code.select_rows(anchor, row);
+                    } else {
+                        code.unpick();
+                    }
                 }
                 // One selection in the window, whatever kind of pane it is in.
                 Sheet::Drawn(chart) => chart.selected = None,
@@ -2294,7 +2307,19 @@ impl DeckView {
         self.live.pause(PauseReason::Selection);
         self.said_from = Some(at);
         self.said_dragged = false;
-        self.picked_said = Some((at, at));
+        // The sentence, not the word. `sentence_around` has always decided
+        // what a comment on the prose *quotes*; the selection showed one word,
+        // so pressing a line lit a single faint token and read as nothing
+        // happening at all — while the comment, if you made one, quietly
+        // carried the whole sentence. The two agree now.
+        //
+        // A drag still narrows it: `pick_say` takes over from the anchor as
+        // soon as the pointer moves, which is the finer selection somebody who
+        // wants one is already asking for.
+        self.picked_said = self
+            .group()
+            .and_then(|group| crate::prose::sentence_around(&group.say, at))
+            .or(Some((at, at)));
         for pane in &mut self.panes {
             pane.unpick();
         }
@@ -2363,11 +2388,19 @@ impl DeckView {
     }
 
     /// Extend the narration selection to the hovered word, while held.
+    ///
+    /// Only once the pointer is on a *different* word. It used to run the
+    /// moment a button went down, because the pointer is of course hovering the
+    /// word it just pressed — so the sentence taken on the press was overwritten
+    /// by a one-word range before a single frame had been drawn. The sentence
+    /// came back on release, which is why a comment quoted the whole of it while
+    /// the reader had watched nothing happen and let go.
     fn drag_say_to_hovered(&mut self, cx: &mut Context<Self>) {
         if let (Some(from), Some(over)) = (self.said_from, self.said_over)
+            && over != from
             && self.picked_said != Some((from, over))
         {
-            self.said_dragged |= over != from;
+            self.said_dragged = true;
             self.picked_said = Some((from, over));
             cx.notify();
         }
@@ -2829,7 +2862,11 @@ impl DeckView {
                 let carry_on = view.update(cx, |deck, cx| {
                     let quiet = deck.deck.sealed() && !deck_cli::is_heard(&deck.deck.root);
                     let was = deck.unheard;
-                    deck.unheard = if quiet { deck.unheard.saturating_add(1) } else { 0 };
+                    deck.unheard = if quiet {
+                        deck.unheard.saturating_add(1)
+                    } else {
+                        0
+                    };
                     // Only when it crosses, so this is not a repaint a second
                     // for as long as the deck is open.
                     if (was >= UNHEARD_FOR) != (deck.unheard >= UNHEARD_FOR) {
@@ -2909,9 +2946,7 @@ impl DeckView {
         // and the deck should not be left claiming both. Not in `on_hide`
         // either — hiding is coming back later, and the waiter should still be
         // there when they do.
-        if !answered
-            && let Err(err) = deck_cli::shut(&self.deck.root)
-        {
+        if !answered && let Err(err) = deck_cli::shut(&self.deck.root) {
             eprintln!("deck: could not say the deck was closed: {err}");
         }
 
@@ -3914,9 +3949,12 @@ impl DeckView {
                                 .items_center()
                                 .gap(px(6.))
                                 .text_color(paint(self.palette.muted))
-                                .child(div().size(px(5.)).rounded_full().bg(paint(
-                                    self.palette.muted,
-                                )))
+                                .child(
+                                    div()
+                                        .size(px(5.))
+                                        .rounded_full()
+                                        .bg(paint(self.palette.muted)),
+                                )
                                 .child("nobody is listening"),
                         )
                     })

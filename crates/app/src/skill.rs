@@ -693,6 +693,8 @@ mod tests {
             "The test is whether you are pointing or proposing",
             "A diff is a proposal, so draw it before you make the edit",
             "Never show it as a highlight",
+            "Point at one half at a time",
+            "[point +140-143]",
             "reach for `--before`",
             "New code is still a change, and this is the one that gets missed",
             "Empty is the whole trick",
