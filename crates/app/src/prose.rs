@@ -106,6 +106,13 @@ pub struct Picking {
     /// pressed arrives the way the sentence a voice is reading does. One of
     /// them easing in while the other snaps is two different windows.
     pub shown: f32,
+    /// Word ranges somebody has already said something about.
+    ///
+    /// A comment on the narration used to leave the narration exactly as it
+    /// was, so the only evidence it existed was a line in the rail — and if the
+    /// rail was folded, none at all. A reader could write one and have no way
+    /// of telling whether it had landed.
+    pub remarked: Vec<(usize, usize)>,
 }
 
 impl Picking {
@@ -139,6 +146,7 @@ impl Picking {
             heard,
             pickable: false,
             shown: 1.,
+            remarked: Vec::new(),
         }
     }
 }
@@ -758,6 +766,10 @@ impl Token {
         }
         let (down, over) = (picking.down.clone(), picking.over.clone());
         let pickable = picking.pickable;
+        let remarked = picking
+            .remarked
+            .iter()
+            .any(|(from, to)| at >= *from && at <= *to);
         let wrap = move |inner: AnyElement| {
             div()
                 .id(("say", at))
@@ -774,6 +786,31 @@ impl Token {
                 .when(lit <= 0. && heard > 0., |this| {
                     this.bg(paint(palette.band.mix(palette.accent, 0.2 * heard)))
                 })
+                // Something was said about these words. Underlined rather than
+                // filled: the ground is already doing two jobs here — what is
+                // selected, and what is being read aloud — and a third colour
+                // competing with those is how a band of prose turns into a
+                // paint chart. A rule under the words is quiet and unambiguous.
+                //
+                // The rule is always there and usually invisible. A border that
+                // appears only when there is a comment adds a pixel to the
+                // word's height the moment one lands, and the whole paragraph
+                // reflows around it — the line the reader is looking at moves
+                // under them as they write about it.
+                .border_b_1()
+                .border_color(if remarked {
+                    paint(palette.comment)
+                } else {
+                    // Transparent, not the band's colour.
+                    //
+                    // Painting it the band only hides it on the band, and this
+                    // same prose is drawn in the rail as well, on a different
+                    // ground — so every turn in the conversation came out with
+                    // a rule under it. Reserving the space costs nothing;
+                    // guessing what is behind it costs a line under everything.
+                    gpui_kit::transparent_black()
+                })
+                .when(remarked, |this| this.cursor_pointer())
                 .on_mouse_down(MouseButton::Left, move |_, window, cx| {
                     down(at, window, cx);
                 })

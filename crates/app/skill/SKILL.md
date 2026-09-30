@@ -544,6 +544,19 @@ again. Same verb, and the loop continues until they submit.
 The conversation is always there: it does not need a mode turned on, and neither
 do you. Assume somebody may talk to you at any point after `deck open`.
 
+**They can answer the sentence, not only the code.** Dragging across the
+narration and pressing `c` writes a remark against the claim itself — which is
+where *this whole approach is wrong* goes, and it has nowhere else to live. Those
+come back with the sentence they were written against as the quote, and the
+narration keeps a rule under those words afterwards so the reader can find what
+they said.
+
+Which is a thing to write *for*. A sentence somebody can disagree with is one
+that says something disagreeable: a claim, a judgement, a *this should have
+been*. A paragraph of description gives them nothing to put a finger on, and the
+reader who wanted to argue with you scrolls past looking for the place to do it.
+One claim per sentence, said plainly enough to be wrong.
+
 **Most remarks will not wake you, and that is the default.** A comment is
 *deferred* unless the reader says otherwise: it goes into the review and you see
 it when they submit. `deck wait` returns `{"asked": …}` only when they chose to
