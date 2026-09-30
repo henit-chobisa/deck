@@ -117,6 +117,19 @@ struct Row {
     /// The line this is in the file, or `None` for a line that is not in it
     /// yet.
     number: Option<u32>,
+    /// The file line this row answers for.
+    ///
+    /// Its own, for a line that is in the file. For a spliced one it is the
+    /// nearest line of the range being changed — below it for an `after`,
+    /// above it for a `before` — because that is the only real place a
+    /// proposed line can be said to be.
+    ///
+    /// Everything that asks *is this row part of what is being talked about*
+    /// asks it of this: the spotlight, a point, a selection, a comment mark.
+    /// They all asked `number` once, and all answered no for a proposed line,
+    /// so a point could not light the arriving half of a change and a diff
+    /// could not be selected or commented on at all.
+    pin: u32,
     /// What the ref is proposing about this line, if anything.
     change: Option<Change>,
 }
@@ -332,6 +345,7 @@ impl Pane {
             let mut fresh = highlight(after, &coming, &code.file, cx);
             for row in &mut fresh {
                 row.number = None;
+                row.pin = authored.last;
                 row.change = Some(Change::New);
             }
             added = fresh.len();
@@ -363,6 +377,7 @@ impl Pane {
                 let mut gone = highlight(before, &went, &code.file, cx);
                 for row in &mut gone {
                     row.number = None;
+                    row.pin = authored.first;
                     row.change = Some(Change::Gone);
                 }
                 added = gone.len();
@@ -823,19 +838,32 @@ impl Pane {
             visible
                 .map(|ix| {
                     let row = rows[ix].clone();
-                    // The file line, where there is one. A spliced-in line has
-                    // none: it is not in the file, and giving it the number of
-                    // whatever it was pushed past would be a lie the reader
-                    // would then quote in a comment.
-                    let number = row.number.unwrap_or(0);
-                    let is_lit = row.number.is_some() && lit.contains(number);
-                    let is_picked =
-                        row.number.is_some() && selected.is_some_and(|s| s.contains(number));
-                    let has_mark = marked.contains(&number);
-                    let in_point =
-                        row.number.is_some() && point.is_some_and(|at| at.contains(number));
-                    let in_was = row.number.is_some()
-                        && was.is_some_and(|(range, _)| range.contains(number));
+                    // What a press on this row means.
+                    //
+                    // The gutter still shows nothing for a spliced line — it is
+                    // not in the file, and a number there would be a lie the
+                    // reader would quote back. This is the other question. Zero is not a line, so a spliced row answered
+                    // the mouse with a range nothing could contain: pressing a
+                    // proposed line selected nothing and a diff could not be
+                    // commented on at all.
+                    //
+                    // It stands in for the line the splice hangs off — the last
+                    // line going, for an `after`; the one above the arrival,
+                    // for a `before`. That is the honest pin, because a comment
+                    // about a line that is not in the file yet is a comment
+                    // about the range it would replace.
+                    let pick_at = row.pin;
+                    // All of these ask the same question — *is this row part of
+                    // what is being talked about* — and all of them used to
+                    // answer no for a spliced line, because they asked it in
+                    // file lines and a proposed line has none. So a point could
+                    // not light the half of a change that was arriving, which
+                    // is usually the half the sentence is about.
+                    let is_lit = lit.contains(pick_at);
+                    let is_picked = selected.is_some_and(|s| s.contains(pick_at));
+                    let has_mark = marked.contains(&pick_at);
+                    let in_point = point.is_some_and(|at| at.contains(pick_at));
+                    let in_was = was.is_some_and(|(range, _)| range.contains(pick_at));
                     // How strongly this row is pointed at, right now. A line in
                     // both the old range and the new one never dips: it was lit
                     // and it stays lit.
@@ -865,7 +893,7 @@ impl Pane {
                             move |event: &MouseDownEvent, _window, cx| {
                                 let extend = event.modifiers.shift;
                                 let _ = view.update(cx, |deck, cx| {
-                                    deck.start_pick(pane_ix, number, extend, cx);
+                                    deck.start_pick(pane_ix, pick_at, extend, cx);
                                 });
                             }
                         })
@@ -881,7 +909,7 @@ impl Pane {
                             move |entered: &bool, _window, cx| {
                                 let entered = *entered;
                                 let _ = view.update(cx, |deck, _| {
-                                    deck.hover_row(pane_ix, number, entered);
+                                    deck.hover_row(pane_ix, pick_at, entered);
                                 });
                             }
                         })
@@ -910,15 +938,24 @@ impl Pane {
                         // the rest of the range gives up its bar, so the eye is
                         // pulled to the sentence being said without the page
                         // gaining a third kind of highlight to learn.
-                        .bg(paint(match (row.change, is_picked, is_lit) {
-                            (Some(Change::Gone), _, _) => flash.mix(palette.gone, arrived),
-                            (Some(Change::New), _, _) => flash.mix(palette.fresh, arrived),
-                            (None, true, _) => palette.focus.mix(palette.accent, 0.14),
-                            (None, false, true) => {
-                                palette.focus.mix(palette.accent, 0.26 * pointed)
-                            }
-                            (None, false, false) => {
-                                palette.wash.mix(palette.accent, 0.26 * pointed)
+                        .bg(paint({
+                            let ground = match (row.change, is_lit) {
+                                (Some(Change::Gone), _) => flash.mix(palette.gone, arrived),
+                                (Some(Change::New), _) => flash.mix(palette.fresh, arrived),
+                                (None, true) => palette.focus.mix(palette.accent, 0.26 * pointed),
+                                (None, false) => palette.wash.mix(palette.accent, 0.26 * pointed),
+                            };
+                            // Over the ground, not instead of it. Both diff
+                            // arms used to match `is_picked` with a wildcard,
+                            // so a selected row in a diff was drawn as a diff
+                            // row and nothing else — dragging worked, and was
+                            // invisible, which to a reader is the same thing as
+                            // not working. Numbers made no difference: the
+                            // lines being replaced carry a change too.
+                            if is_picked {
+                                ground.mix(palette.accent, 0.14)
+                            } else {
+                                ground
                             }
                         }))
                         .child(
@@ -1341,6 +1378,7 @@ fn highlight(source: &str, lines: &[&str], file: &std::path::Path, cx: &App) -> 
             text: SharedString::from((*line).to_string()),
             runs: Vec::new(),
             number: u32::try_from(ix + 1).ok(),
+            pin: u32::try_from(ix + 1).unwrap_or(u32::MAX),
             change: None,
         })
         .collect();
@@ -1591,6 +1629,31 @@ mod tests {
 
         // And the fallback still is what it says it is.
         assert_eq!(language_of(std::path::Path::new("a.unknown")), "text");
+    }
+
+    #[test]
+    fn a_proposed_line_answers_for_the_range_it_belongs_to() {
+        // What a spliced row says when the spotlight, a point, a selection or a
+        // comment mark asks whether it is part of what is being discussed. It
+        // used to say no to all four, because it has no line number — so a
+        // point lit the half of a change that was going and not the half that
+        // was arriving, which is usually the half the sentence is about.
+        //
+        // The two directions pin opposite ways, and that is the whole care
+        // needed here: an `after` splices *below* the range, so it answers for
+        // the last line of it; a `before` splices *above*, so it answers for
+        // the first.
+        let range = LineRange::new(140, 148);
+
+        let arriving = range.last; // what `--after` writes onto its new rows
+        let going = range.first; // and what `--before` writes onto its old ones
+
+        assert!(range.contains(arriving), "an after row is inside the range");
+        assert!(range.contains(going), "and so is a before row");
+
+        // The line each one hangs off is the one on its own side of the splice.
+        assert_eq!(arriving, 148);
+        assert_eq!(going, 140);
     }
 
     #[test]
