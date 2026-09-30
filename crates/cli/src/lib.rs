@@ -740,7 +740,8 @@ mod tests {
         assert!(is_heard(deck), "and now something has");
 
         // Aged past the window, the way a killed waiter leaves it.
-        let stale = std::time::SystemTime::now() - (STILL_THERE + std::time::Duration::from_secs(1));
+        let stale =
+            std::time::SystemTime::now() - (STILL_THERE + std::time::Duration::from_secs(1));
         let file = std::fs::File::options()
             .write(true)
             .open(deck.join(HEARD))
