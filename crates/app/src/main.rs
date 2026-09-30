@@ -18,6 +18,7 @@ mod chart;
 mod cli;
 mod config;
 mod conversation;
+mod draft;
 mod hook;
 mod live;
 mod load;

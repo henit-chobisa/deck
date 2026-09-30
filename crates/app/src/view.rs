@@ -268,18 +268,21 @@ struct ResolvedShow {
 }
 
 /// A remark the reader has written, before it goes back.
-#[derive(Clone)]
-struct Remark {
-    group: SharedString,
-    ref_id: Option<SharedString>,
-    file: Option<std::path::PathBuf>,
-    range: Option<LineRange>,
+///
+/// Written to disk as it is made, so a reader who quits — or is quit on — finds
+/// it again when they reopen. See [`crate::draft`].
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
+pub struct Remark {
+    pub group: SharedString,
+    pub ref_id: Option<SharedString>,
+    pub file: Option<std::path::PathBuf>,
+    pub range: Option<LineRange>,
     /// The text the remark was pinned to, so the far side can find it again if
     /// the file has moved underneath.
-    quote: String,
-    text: String,
+    pub quote: String,
+    pub text: String,
     /// Whether it can wait.
-    when: deck_core::When,
+    pub when: deck_core::When,
     /// What the reader wants done about it.
     ///
     /// Carried per remark rather than decided at submit time, because it is the
@@ -287,7 +290,7 @@ struct Remark {
     /// used to go out as `Question` whatever they meant, which made the agent
     /// guess tone from prose — the exact thing [`deck_core::Kind`] exists to
     /// stop.
-    kind: deck_core::Kind,
+    pub kind: deck_core::Kind,
 }
 
 struct ReadingPlace {
@@ -690,7 +693,7 @@ impl DeckView {
             live,
             layout,
             snapshots,
-            remarks,
+            mut remarks,
             conversation,
             reading,
             picked_said,
@@ -706,6 +709,22 @@ impl DeckView {
             widths,
             folded,
         } = session;
+
+        // Nothing in hand means this deck is being opened rather than taken
+        // back off the bar — so whatever was being written when it last went
+        // away is still on disk, and belongs to the reader.
+        let mut conversation = conversation;
+        if remarks.is_empty() {
+            let held = crate::draft::read(&deck.root);
+            remarks = held.remarks;
+            // The rail draws the transcript, not the remarks — so without this
+            // the comments came back into the review and into nothing the
+            // reader could see, which looks exactly like nothing having been
+            // kept at all.
+            if conversation.transcript.is_empty() {
+                conversation.transcript = held.transcript;
+            }
+        }
 
         live.ready();
         let mut view = Self {
@@ -2722,6 +2741,14 @@ impl DeckView {
         self.note(deck_core::What::Reacted, Some(kind), when, face, &remark);
         self.told_page(&remark);
         self.remarks.push(remark);
+        // Written down as it is made. The way out is exactly what cannot be
+        // relied on — a quit, a crash and a force-close all skip whatever tidy
+        // exit path they were meant to take.
+        crate::draft::save(
+            &self.deck.root,
+            &self.remarks,
+            &self.conversation.transcript,
+        );
         cx.notify();
     }
 
@@ -2760,6 +2787,14 @@ impl DeckView {
         );
         self.told_page(&remark);
         self.remarks.push(remark);
+        // Written down as it is made. The way out is exactly what cannot be
+        // relied on — a quit, a crash and a force-close all skip whatever tidy
+        // exit path they were meant to take.
+        crate::draft::save(
+            &self.deck.root,
+            &self.remarks,
+            &self.conversation.transcript,
+        );
         cx.notify();
     }
 
@@ -3007,7 +3042,12 @@ impl DeckView {
             // Answered, so it does not come back. Whatever else is waiting
             // does: the bar returns, and the command only ends once the queue
             // is empty.
-            Ok(()) => self.stand_down(true, window, cx),
+            Ok(()) => {
+                // The review is behind them now. A draft left lying about
+                // would put answered comments in front of the next reader.
+                crate::draft::clear(&self.deck.root);
+                self.stand_down(true, window, cx);
+            }
             Err(err) => eprintln!("deck: could not write {}: {err}", path.display()),
         }
     }
@@ -3454,6 +3494,11 @@ impl DeckView {
     pub fn drop_remark(&mut self, remark_ix: usize, cx: &mut Context<Self>) {
         if remark_ix < self.remarks.len() {
             self.remarks.remove(remark_ix);
+            crate::draft::save(
+                &self.deck.root,
+                &self.remarks,
+                &self.conversation.transcript,
+            );
             // Folded state is held by index, so removing one shifts every
             // remark after it. Rebuild rather than leave the set pointing at
             // whatever moved up into the gap.

@@ -423,6 +423,18 @@ impl Cli {
                 // reach an agent: a question, an interruption, a review, a
                 // close. Run it again after answering and it listens again.
                 if std::env::var_os(HOLDING).is_none() && detach() {
+                    // Cleared here, before listening, and not left to the
+                    // window.
+                    //
+                    // The window clears it too — but only when the reader opens
+                    // the deck off the bar, which may be minutes away or never.
+                    // Until then a `closed` from the last time is still sitting
+                    // there, and the listener reads it the moment it starts and
+                    // reports a deck closed without an answer that nobody has
+                    // even looked at yet.
+                    for path in &deck {
+                        deck_cli::reopened(path);
+                    }
                     return Err(wait(&deck[0], 0));
                 }
 
