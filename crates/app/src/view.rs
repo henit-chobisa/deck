@@ -28,7 +28,7 @@ gpui_kit::actions!(
     deck,
     [
         NextGroup, PrevGroup, Comment, Rotate, Walk, Follow, Hide, Submit, Discard, Noted, Asked,
-        Wrong, ZoomIn, ZoomOut, ZoomReset, Zen, Close
+        Wrong, ZoomIn, ZoomOut, ZoomReset, Zen, Close, Unlight
     ]
 );
 
@@ -48,6 +48,7 @@ const KEYS: &[(&str, &str, &str)] = &[
     ("w", "walk", "walk"),
     ("c", "comment", "comment"),
     ("t", "turn", "turn"),
+    ("⎋", "clear", "clear"),
     ("z", "zen", "lights"),
     ("h", "hide", "hide"),
     ("s", "submit", "submit"),
@@ -71,6 +72,10 @@ pub fn bindings() -> Vec<KeyBinding> {
         KeyBinding::new("h", Hide, Some("Deck")),
         KeyBinding::new("s", Submit, Some("Deck")),
         KeyBinding::new("q", Close, Some("Deck")),
+        // Escape is bound in the composer too, for discarding a remark. That
+        // context is deeper than this one, so while somebody is writing it
+        // takes the key and this never runs.
+        KeyBinding::new("escape", Unlight, Some("Deck")),
         KeyBinding::new("cmd-q", Close, None),
         // Zoom is bound window-wide, not to the deck's context: needing the
         // text bigger is not a thing that should stop working because a
@@ -473,6 +478,19 @@ pub struct DeckView {
     /// Folded when live starts. The code is what the reader came for; the
     /// conversation is a click away.
     rail_open: crate::pane::Fade,
+    /// The sentence of a rail turn the reader last pressed.
+    ///
+    /// Kept here rather than in the turn, because only one can be lit: pressing
+    /// a sentence in one reply and then another in the next has to move the
+    /// light, not add a second one.
+    pressed: Option<(usize, (usize, usize), crate::pane::Fade)>,
+    /// The narration's picked sentence as it is *drawn*, with its own light.
+    ///
+    /// Kept beside `picked_said` rather than inside it because the pick is set
+    /// and cleared from a dozen places — a drag, a key, a turn, a walk
+    /// starting — and every one of them wants the light to follow without
+    /// having to say so. It is brought into step once a frame.
+    said_lit: Option<((usize, usize), crate::pane::Fade)>,
     /// The sentence being heard, and how far its light has come up.
     heard_now: Option<(crate::speech::Narration, (usize, usize), crate::pane::Fade)>,
     /// The sentence just heard, its light going out.
@@ -753,6 +771,8 @@ impl DeckView {
             folds: Vec::new(),
             temporary: std::collections::HashSet::new(),
             rail_open: crate::pane::Fade::default(),
+            pressed: None,
+            said_lit: None,
             rail_width,
             conversation,
             rail_scroll,
@@ -1400,9 +1420,36 @@ impl DeckView {
         cx: &mut Context<Self>,
     ) {
         let said = crate::prose::pointed(text, speech.pause);
-        // Nothing to carry and nobody to carry it to. A silent walk of prose
-        // that never points would only keep a timer alive to change nothing.
-        if !speech.aloud && !said.iter().any(|piece| piece.point.is_some()) {
+        // Nobody is listening, so there is no clock to keep.
+        //
+        // Without a real voice the queue is paced by `timed`, which walks the
+        // points at the speed somebody would have read them aloud. With the
+        // reader not in a walk that is a window stepping through their code on
+        // its own, which is what it looked like.
+        //
+        // The pointing still lands, because an agent pointing at the line it
+        // is talking about is most of what an answer is worth. It lands once,
+        // on the first point, and holds there. From that moment the reader
+        // moves the light themselves by pressing a sentence — which is what a
+        // silent walk is, and the only thing that should be driving it.
+        if !speech.aloud {
+            let Some(first) = said.iter().find_map(|piece| piece.point.clone()) else {
+                return;
+            };
+            // No `attend` here, deliberately. It arms a three second linger
+            // that only the speech task ever reads, and the speech task is the
+            // thing this branch exists to not start — so the clock would be
+            // wound and never looked at, and the frame it raises would come up
+            // and stay. Whether it ever went out would depend on whether a
+            // voice happened to be busy for some other reason.
+            //
+            // The frame is the agent attending to a pane. Nothing is attending
+            // here: the lines light, they hold, and the reader puts them out.
+            self.point_at(Some(first), cx);
+            if let Some((ix, target)) = self.point_away() {
+                self.followed = Some(std::time::Instant::now());
+                self.glide(ix, target, cx);
+            }
             return;
         }
         // One passage, not a sentence at a time. Queued piece by piece, the
@@ -2083,6 +2130,76 @@ impl DeckView {
         cx.notify();
     }
 
+    /// Whether two word ranges are the same stretch of prose, still.
+    ///
+    /// A drag grows the range it started from, so the two always touch. A
+    /// press on another sentence lands somewhere disjoint. That is the whole
+    /// difference between a light that should carry on and one that should
+    /// start again.
+    fn still_the_same(was: (usize, usize), now: (usize, usize)) -> bool {
+        was.0 <= now.1 && now.0 <= was.1
+    }
+
+    /// Bring the narration's lit sentence into step with the pick.
+    ///
+    /// The pick says which words a comment would land on, and is cleared the
+    /// moment that stops being true. The light says what is on screen, and has
+    /// to outlive the pick by as long as it takes to go out.
+    fn settle_said_light(&mut self) {
+        if let Some(range) = self.picked_said {
+            // A drag keeps the light it already has, or the rise would restart
+            // on every frame and never arrive. A press on another sentence
+            // starts a new one — it is somewhere else on the page, and
+            // carrying the old light there means it is simply on, which is the
+            // snap this was supposed to remove.
+            // Whichever way it was heading. A light still falling after an
+            // escape reverses from wherever it had got to, because `set` starts
+            // from the level rather than from the end it was aiming at. Asking
+            // whether it was on threw that away and jumped to nothing first.
+            let carry = match self.said_lit {
+                Some((words, light)) if Self::still_the_same(words, range) => Some(light),
+                _ => None,
+            };
+            let mut light = carry.unwrap_or_else(|| {
+                crate::pane::Fade::default().paced(crate::pane::HAND_RISE, crate::pane::HAND_FALL)
+            });
+            light.set(true);
+            self.said_lit = Some((range, light));
+        } else if let Some((_, light)) = &mut self.said_lit {
+            light.set(false);
+        }
+    }
+
+    /// Put the reader's own light out.
+    ///
+    /// Everything on screen that a person put there: the sentence pressed in
+    /// the rail, the one picked in the narration, the lines picked in a pane,
+    /// and the spotlight those raised. What the agent is pointing at is left
+    /// alone — it is mid-sentence, and its light goes out by itself.
+    fn on_unlight(&mut self, _: &Unlight, _window: &mut Window, cx: &mut Context<Self>) {
+        if let Some((_, _, light)) = &mut self.pressed {
+            light.set(false);
+        }
+        self.picked_said = None;
+        for pane in &mut self.panes {
+            // `Sheet::unpick` clears only where a comment would land. A code
+            // pane also holds the rows being drawn and the light on them, and
+            // those are the half the reader can see — so the pane is asked
+            // directly, and the other kinds keep the sheet's own answer.
+            if let Some(code) = pane.code_mut() {
+                code.unpick();
+            } else {
+                pane.unpick();
+            }
+        }
+        // Back to whatever the voice is pointing at, not to nothing. If this
+        // runs mid-sentence the rail still shows that sentence being heard,
+        // and taking its light away leaves the two disagreeing until the voice
+        // moves on. Only the reader's own light is the reader's to put out.
+        let _ = self.point_at(self.voice.pointing(), cx);
+        cx.notify();
+    }
+
     fn on_close(&mut self, _: &Close, window: &mut Window, cx: &mut Context<Self>) {
         // The platform's should-close hook does not run when the window is
         // taken away from inside, so the shape is written here.
@@ -2346,6 +2463,66 @@ impl DeckView {
         cx.notify();
     }
 
+    /// A sentence of a turn in the rail was pressed.
+    ///
+    /// The turn's own words are the clean copy — the transcript keeps it
+    /// without beats or points, because that is what a review should carry — so
+    /// the pointing is read from the copy kept beside it, which still has it.
+    /// A turn nobody spoke has no pointed copy and nothing to move to.
+    fn press_said(&mut self, turn: usize, at: usize, cx: &mut Context<Self>) {
+        let pointed = self.conversation.spoken.get(&turn).cloned();
+        let sentence = self
+            .conversation
+            .transcript
+            .get(turn)
+            .and_then(|moment| crate::prose::sentence_around(&moment.text, at));
+        self.pressed = sentence.map(|range| {
+            // The narration's own pace, because this is the same act the voice
+            // performs and a reader should not be able to tell which of them
+            // lit a sentence. Moving to another sentence keeps the light it
+            // already has rather than starting from nothing.
+            let carry = match self.pressed {
+                Some((was, words, light)) if was == turn && Self::still_the_same(words, range) => {
+                    Some(light)
+                }
+                _ => None,
+            };
+            let mut light = carry.unwrap_or_else(|| {
+                crate::pane::Fade::default().paced(crate::pane::HAND_RISE, crate::pane::HAND_FALL)
+            });
+            light.set(true);
+            (turn, range, light)
+        });
+
+        // Reader activity, so the agent stops moving them — the same hold
+        // pressing the narration takes.
+        self.live.pause(PauseReason::Selection);
+        // A turn was said about the group that was on screen at the time, and
+        // its points are line numbers in *that* group's panes. Press it three
+        // groups later and `point_at` matches those numbers against whatever
+        // is showing now, which is a different file with lines of the same
+        // name — so the light lands somewhere real and wrong, and looks
+        // deliberate.
+        //
+        // The sentence still lights, because the press happened. Only the code
+        // is left alone.
+        let here = self
+            .conversation
+            .transcript
+            .get(turn)
+            .and_then(|moment| moment.group.as_deref())
+            .is_none_or(|said_in| self.group().is_some_and(|group| group.id == said_in));
+        if let Some(say) = pointed.filter(|_| here) {
+            self.attend();
+            self.point_at(Self::point_in(&say, at), cx);
+            if let Some((ix, target)) = self.point_away() {
+                self.followed = Some(std::time::Instant::now());
+                self.glide(ix, target, cx);
+            }
+        }
+        cx.notify();
+    }
+
     /// Light the code a sentence of the narration is about.
     ///
     /// The same thing the voice does, with the reader as the clock. A voice
@@ -2384,11 +2561,23 @@ impl DeckView {
     /// how many words of the page it is — so the word the reader touched falls
     /// inside exactly one of them, and that piece carries the lines.
     fn point_of(&self, at: usize) -> Option<crate::prose::Spot> {
-        let group = self.group()?;
+        Self::point_in(&self.group()?.say, at)
+    }
+
+    /// What the word at `at` of `say` is pointing at, if anything.
+    ///
+    /// Taken as text rather than read off the current group, because the rail
+    /// asks the same question about a turn the agent said earlier — and that
+    /// turn's prose is not the group's.
+    ///
+    /// The count works because `pointed` strips the points before counting, so
+    /// its word numbers are the ones the reader sees: the same numbers the
+    /// clean copy in the transcript is drawn with.
+    fn point_in(say: &str, at: usize) -> Option<crate::prose::Spot> {
         let mut seen = 0;
         // The pause only changes what a voice hears, and nothing here is
         // heard. Cutting is the same either way.
-        for piece in crate::prose::pointed(&group.say, 0) {
+        for piece in crate::prose::pointed(say, 0) {
             seen += piece.words;
             if at < seen {
                 return piece.point;
@@ -3207,7 +3396,8 @@ impl DeckView {
                                 &self.palette,
                                 cx.theme().mono_font_family.clone(),
                                 &crate::prose::Picking {
-                                    range: self.picked_said,
+                                    range: self.said_lit.map(|(words, _)| words),
+                                    shown: self.said_lit.map_or(0., |(_, light)| light.level()),
                                     down: {
                                         let deck = cx.entity().downgrade();
                                         std::rc::Rc::new(move |at, _window, cx| {
@@ -4275,6 +4465,26 @@ impl DeckView {
                     let picking = crate::prose::Picking::quiet(
                         self.heard_in(crate::speech::Narration::Answer(ix)),
                     );
+                    // Only a turn with a pointed copy beside it can move the
+                    // code, so only that turn offers the hand. The reader's own
+                    // words were never spoken, and a turn restored from a draft
+                    // lost its copy with the window: a pointer on either would
+                    // promise a light that cannot come.
+                    let picking = if again {
+                        let mine = self.pressed.filter(|(turn, _, _)| *turn == ix);
+                        picking.pressable(
+                            mine.map(|(_, range, _)| range),
+                            mine.map_or(0., |(_, _, light)| light.level()),
+                            {
+                                let deck = cx.entity().downgrade();
+                                std::rc::Rc::new(move |at, _window, cx| {
+                                    deck.update(cx, |deck, cx| deck.press_said(ix, at, cx)).ok();
+                                })
+                            },
+                        )
+                    } else {
+                        picking
+                    };
                     crate::prose::render_look(
                         crate::prose::parse(&moment.text),
                         palette,
@@ -5082,6 +5292,7 @@ use crate::pane::SPINE;
 
 impl Render for DeckView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        self.settle_said_light();
         // A page's own view is not deck's to paint, so it is moved here, before
         // anything is drawn: to where the last frame measured its hole, or off
         // the screen if the room is in the middle of moving.
@@ -5113,6 +5324,8 @@ impl Render for DeckView {
             .flatten()
             .any(|(_, _, light)| light.moving());
         if hearing
+            || self.pressed.is_some_and(|(_, _, light)| light.moving())
+            || self.said_lit.is_some_and(|(_, light)| light.moving())
             || self.rail_open.moving()
             || self.folds.iter().any(crate::pane::Fade::moving)
             || self
@@ -5410,6 +5623,7 @@ impl Render for DeckView {
             .on_action(cx.listener(Self::on_asked))
             .on_action(cx.listener(Self::on_wrong))
             .on_action(cx.listener(Self::on_follow))
+            .on_action(cx.listener(Self::on_unlight))
             .on_action(cx.listener(Self::on_close))
             .on_action(cx.listener(Self::on_comment))
             .on_action(cx.listener(Self::on_rotate))
@@ -5544,6 +5758,52 @@ impl Render for DeckView {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn moving_to_another_sentence_starts_the_light_again() {
+        // Reported from inside a deck: the first press eased in, and every
+        // press after it arrived at full strength. The guard that stops a drag
+        // restarting the rise on every frame was catching a press on a
+        // different sentence too, so the light was simply carried there, which
+        // is the same as not having one.
+        let drag = |was, now| DeckView::still_the_same(was, now);
+
+        // A drag grows the range it started from, so the two always touch.
+        assert!(drag((4, 9), (4, 12)), "extended forwards");
+        assert!(drag((4, 9), (2, 9)), "and backwards");
+        assert!(drag((4, 9), (4, 9)), "and the same sentence pressed twice");
+
+        // Another sentence is somewhere else on the page.
+        assert!(!drag((4, 9), (10, 15)), "the next sentence");
+        assert!(!drag((10, 15), (4, 9)), "and the one before it");
+
+        // Touching at a single word still counts as the same stretch: a drag
+        // that has only just crossed into the next sentence has not left.
+        assert!(drag((4, 9), (9, 14)), "one word of overlap is still a drag");
+    }
+
+    #[test]
+    fn a_sentence_of_a_reply_points_where_the_reply_pointed() {
+        // The rail draws the clean copy of a turn — no beats, no points,
+        // because that is what a review should carry — so pressing a sentence
+        // of it has to read the pointing from the copy kept beside it.
+        //
+        // The two agree on word numbers, and that is what makes this work:
+        // `pointed` strips the points before counting, so its numbers are the
+        // ones the reader sees.
+        let spoken = "The counter is wrong. [point 140-148] This line runs twice.";
+
+        // A word in the first sentence, before any point.
+        assert!(DeckView::point_in(spoken, 1).is_none(), "nothing yet");
+
+        // And one after it.
+        let at = DeckView::point_in(spoken, 6).expect("the point applies from here on");
+        assert_eq!(
+            at.lines,
+            Some(deck_core::LineRange::new(140, 148)),
+            "the lines that sentence was about"
+        );
+    }
+
     // Spelled out rather than `#[test]`: this module glob-imports GPUI, which
     // exports a `test` attribute of its own and would otherwise shadow the
     // standard one.

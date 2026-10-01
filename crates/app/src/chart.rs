@@ -188,7 +188,7 @@ fn around(
     let boxes: Vec<Bounds<Pixels>> = cluster
         .nodes
         .iter()
-        .filter_map(|id| index(id).and_then(&box_of))
+        .filter_map(|id| index(id).and_then(box_of))
         .collect();
     let first = *boxes.first()?;
 

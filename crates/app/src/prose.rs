@@ -100,9 +100,31 @@ pub struct Picking {
     /// Whether the words can be picked at all. The rail's record cannot, and a
     /// pointer hand over words that do nothing is a promise it breaks.
     pub pickable: bool,
+    /// How far up the lit range has come, nought to one.
+    ///
+    /// A level rather than the boolean `range` alone, so a sentence the reader
+    /// pressed arrives the way the sentence a voice is reading does. One of
+    /// them easing in while the other snaps is two different windows.
+    pub shown: f32,
 }
 
 impl Picking {
+    /// Give a quiet piece of prose a hand: pressable words, and a lit range.
+    ///
+    /// The rail's turns are read rather than picked from, so they start quiet —
+    /// but an agent's turn is *about* code, and pressing a sentence of it is
+    /// the same act as pressing a sentence of the narration. Without this the
+    /// reply that explained something was the one place in the window where
+    /// putting a finger on a sentence did nothing at all.
+    #[must_use]
+    pub fn pressable(mut self, lit: Option<(usize, usize)>, shown: f32, down: Down) -> Self {
+        self.pickable = true;
+        self.range = lit;
+        self.shown = shown;
+        self.down = down;
+        self
+    }
+
     /// Prose that is read but not picked from: the rail's record of what was
     /// said. It still lights the sentence being heard.
     #[must_use]
@@ -116,6 +138,7 @@ impl Picking {
             name: std::rc::Rc::new(|_, _, _, _| {}),
             heard,
             pickable: false,
+            shown: 1.,
         }
     }
 }
@@ -659,9 +682,16 @@ impl Token {
         // between any two of them, and a range of elements is the finest thing
         // that layout can be asked about.
         let at = self.at;
-        let lit = picking
+        // How lit this word is as part of a picked sentence: the range says
+        // which words, `shown` says how far up the light has come.
+        let lit = if picking
             .range
-            .is_some_and(|(from, to)| at >= from.min(to) && at <= from.max(to));
+            .is_some_and(|(from, to)| at >= from.min(to) && at <= from.max(to))
+        {
+            picking.shown
+        } else {
+            0.
+        };
         // Being heard: a soft ground under the sentence the voice is on, which
         // rises and falls rather than jumping from one sentence to the next.
         let heard = picking
@@ -732,16 +762,16 @@ impl Token {
             div()
                 .id(("say", at))
                 .when(pickable, |this| this.cursor_pointer())
-                .when(lit, |this| {
+                .when(lit > 0., |this| {
                     // Firm enough to see at a glance. Three quarters of the way
                     // to the band was a tint you could hold a whole sentence in
                     // and not notice, which reads as the click having done
                     // nothing — and a reader who thinks nothing happened does
                     // not try again.
-                    this.bg(paint(palette.accent.mix(palette.band, 0.55)))
-                        .rounded(px(2.))
+                    let firm = palette.accent.mix(palette.band, 0.55);
+                    this.bg(paint(palette.band.mix(firm, lit))).rounded(px(2.))
                 })
-                .when(!lit && heard > 0., |this| {
+                .when(lit <= 0. && heard > 0., |this| {
                     this.bg(paint(palette.band.mix(palette.accent, 0.2 * heard)))
                 })
                 .on_mouse_down(MouseButton::Left, move |_, window, cx| {
