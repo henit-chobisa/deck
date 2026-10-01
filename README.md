@@ -17,7 +17,8 @@ A presentation surface for agents, written in Rust.
 
 </div>
 
-<img width="1292" height="1346" alt="file-91edb215334a29711dd9a11712a287e7" src="https://github.com/user-attachments/assets/108158d4-5486-4a3d-a8d3-562d315fcc5c" />
+<img width="2706" height="2516" alt="Screenshot 2026-10-01 at 3 20 46 PM" src="https://github.com/user-attachments/assets/f04e882f-4621-47ae-a170-3dab14e9697e" />
+
 
 <!--
   The hero goes here, and it is the most important thing on this page: a reader
