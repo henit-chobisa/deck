@@ -2122,6 +2122,16 @@ impl DeckView {
         cx.notify();
     }
 
+    /// Whether two word ranges are the same stretch of prose, still.
+    ///
+    /// A drag grows the range it started from, so the two always touch. A
+    /// press on another sentence lands somewhere disjoint. That is the whole
+    /// difference between a light that should carry on and one that should
+    /// start again.
+    fn still_the_same(was: (usize, usize), now: (usize, usize)) -> bool {
+        was.0 <= now.1 && now.0 <= was.1
+    }
+
     /// Bring the narration's lit sentence into step with the pick.
     ///
     /// The pick says which words a comment would land on, and is cleared the
@@ -2129,16 +2139,20 @@ impl DeckView {
     /// to outlive the pick by as long as it takes to go out.
     fn settle_said_light(&mut self) {
         if let Some(range) = self.picked_said {
-            match &mut self.said_lit {
-                // Already up: move the words under it, so dragging across a
-                // sentence does not restart the rise on every frame.
-                Some((words, light)) if light.on() => *words = range,
-                slot => {
-                    let mut light = crate::pane::Fade::default();
-                    light.set(true);
-                    *slot = Some((range, light));
+            // A drag keeps the light it already has, or the rise would restart
+            // on every frame and never arrive. A press on another sentence
+            // starts a new one — it is somewhere else on the page, and
+            // carrying the old light there means it is simply on, which is the
+            // snap this was supposed to remove.
+            let carry = match self.said_lit {
+                Some((words, light)) if light.on() && Self::still_the_same(words, range) => {
+                    Some(light)
                 }
-            }
+                _ => None,
+            };
+            let mut light = carry.unwrap_or_default();
+            light.set(true);
+            self.said_lit = Some((range, light));
         } else if let Some((_, light)) = &mut self.said_lit {
             light.set(false);
         }
@@ -2443,10 +2457,15 @@ impl DeckView {
             // performs and a reader should not be able to tell which of them
             // lit a sentence. Moving to another sentence keeps the light it
             // already has rather than starting from nothing.
-            let mut light = match self.pressed {
-                Some((_, _, light)) if light.on() => light,
-                _ => crate::pane::Fade::default(),
+            let carry = match self.pressed {
+                Some((was, words, light))
+                    if was == turn && light.on() && Self::still_the_same(words, range) =>
+                {
+                    Some(light)
+                }
+                _ => None,
             };
+            let mut light = carry.unwrap_or_default();
             light.set(true);
             (turn, range, light)
         });
@@ -5700,6 +5719,29 @@ impl Render for DeckView {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn moving_to_another_sentence_starts_the_light_again() {
+        // Reported from inside a deck: the first press eased in, and every
+        // press after it arrived at full strength. The guard that stops a drag
+        // restarting the rise on every frame was catching a press on a
+        // different sentence too, so the light was simply carried there, which
+        // is the same as not having one.
+        let drag = |was, now| DeckView::still_the_same(was, now);
+
+        // A drag grows the range it started from, so the two always touch.
+        assert!(drag((4, 9), (4, 12)), "extended forwards");
+        assert!(drag((4, 9), (2, 9)), "and backwards");
+        assert!(drag((4, 9), (4, 9)), "and the same sentence pressed twice");
+
+        // Another sentence is somewhere else on the page.
+        assert!(!drag((4, 9), (10, 15)), "the next sentence");
+        assert!(!drag((10, 15), (4, 9)), "and the one before it");
+
+        // Touching at a single word still counts as the same stretch: a drag
+        // that has only just crossed into the next sentence has not left.
+        assert!(drag((4, 9), (9, 14)), "one word of overlap is still a drag");
+    }
+
     #[test]
     fn a_sentence_of_a_reply_points_where_the_reply_pointed() {
         // The rail draws the clean copy of a turn — no beats, no points,
