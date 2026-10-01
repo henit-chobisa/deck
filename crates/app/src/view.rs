@@ -483,7 +483,14 @@ pub struct DeckView {
     /// Kept here rather than in the turn, because only one can be lit: pressing
     /// a sentence in one reply and then another in the next has to move the
     /// light, not add a second one.
-    pressed: Option<(usize, (usize, usize))>,
+    pressed: Option<(usize, (usize, usize), crate::pane::Fade)>,
+    /// The narration's picked sentence as it is *drawn*, with its own light.
+    ///
+    /// Kept beside `picked_said` rather than inside it because the pick is set
+    /// and cleared from a dozen places — a drag, a key, a turn, a walk
+    /// starting — and every one of them wants the light to follow without
+    /// having to say so. It is brought into step once a frame.
+    said_lit: Option<((usize, usize), crate::pane::Fade)>,
     /// The sentence being heard, and how far its light has come up.
     heard_now: Option<(crate::speech::Narration, (usize, usize), crate::pane::Fade)>,
     /// The sentence just heard, its light going out.
@@ -765,6 +772,7 @@ impl DeckView {
             temporary: std::collections::HashSet::new(),
             rail_open: crate::pane::Fade::default(),
             pressed: None,
+            said_lit: None,
             rail_width,
             conversation,
             rail_scroll,
@@ -2114,6 +2122,28 @@ impl DeckView {
         cx.notify();
     }
 
+    /// Bring the narration's lit sentence into step with the pick.
+    ///
+    /// The pick says which words a comment would land on, and is cleared the
+    /// moment that stops being true. The light says what is on screen, and has
+    /// to outlive the pick by as long as it takes to go out.
+    fn settle_said_light(&mut self) {
+        if let Some(range) = self.picked_said {
+            match &mut self.said_lit {
+                // Already up: move the words under it, so dragging across a
+                // sentence does not restart the rise on every frame.
+                Some((words, light)) if light.on() => *words = range,
+                slot => {
+                    let mut light = crate::pane::Fade::default();
+                    light.set(true);
+                    *slot = Some((range, light));
+                }
+            }
+        } else if let Some((_, light)) = &mut self.said_lit {
+            light.set(false);
+        }
+    }
+
     /// Put the reader's own light out.
     ///
     /// Everything on screen that a person put there: the sentence pressed in
@@ -2121,7 +2151,9 @@ impl DeckView {
     /// and the spotlight those raised. What the agent is pointing at is left
     /// alone — it is mid-sentence, and its light goes out by itself.
     fn on_unlight(&mut self, _: &Unlight, _window: &mut Window, cx: &mut Context<Self>) {
-        self.pressed = None;
+        if let Some((_, _, light)) = &mut self.pressed {
+            light.set(false);
+        }
         self.picked_said = None;
         for pane in &mut self.panes {
             pane.unpick();
@@ -2406,7 +2438,18 @@ impl DeckView {
             .transcript
             .get(turn)
             .and_then(|moment| crate::prose::sentence_around(&moment.text, at));
-        self.pressed = sentence.map(|range| (turn, range));
+        self.pressed = sentence.map(|range| {
+            // The narration's own pace, because this is the same act the voice
+            // performs and a reader should not be able to tell which of them
+            // lit a sentence. Moving to another sentence keeps the light it
+            // already has rather than starting from nothing.
+            let mut light = match self.pressed {
+                Some((_, _, light)) if light.on() => light,
+                _ => crate::pane::Fade::default(),
+            };
+            light.set(true);
+            (turn, range, light)
+        });
 
         // Reader activity, so the agent stops moving them — the same hold
         // pressing the narration takes.
@@ -3295,7 +3338,8 @@ impl DeckView {
                                 &self.palette,
                                 cx.theme().mono_font_family.clone(),
                                 &crate::prose::Picking {
-                                    range: self.picked_said,
+                                    range: self.said_lit.map(|(words, _)| words),
+                                    shown: self.said_lit.map_or(0., |(_, light)| light.level()),
                                     down: {
                                         let deck = cx.entity().downgrade();
                                         std::rc::Rc::new(move |at, _window, cx| {
@@ -4369,10 +4413,10 @@ impl DeckView {
                     // lost its copy with the window: a pointer on either would
                     // promise a light that cannot come.
                     let picking = if again {
+                        let mine = self.pressed.filter(|(turn, _, _)| *turn == ix);
                         picking.pressable(
-                            self.pressed
-                                .filter(|(turn, _)| *turn == ix)
-                                .map(|(_, range)| range),
+                            mine.map(|(_, range, _)| range),
+                            mine.map_or(0., |(_, _, light)| light.level()),
                             {
                                 let deck = cx.entity().downgrade();
                                 std::rc::Rc::new(move |at, _window, cx| {
@@ -5190,6 +5234,7 @@ use crate::pane::SPINE;
 
 impl Render for DeckView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        self.settle_said_light();
         // A page's own view is not deck's to paint, so it is moved here, before
         // anything is drawn: to where the last frame measured its hole, or off
         // the screen if the room is in the middle of moving.
@@ -5221,6 +5266,8 @@ impl Render for DeckView {
             .flatten()
             .any(|(_, _, light)| light.moving());
         if hearing
+            || self.pressed.is_some_and(|(_, _, light)| light.moving())
+            || self.said_lit.is_some_and(|(_, light)| light.moving())
             || self.rail_open.moving()
             || self.folds.iter().any(crate::pane::Fade::moving)
             || self
