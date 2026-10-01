@@ -4322,18 +4322,27 @@ impl DeckView {
                     // is a chip here too, and the sentence being heard is lit.
                     let picking = crate::prose::Picking::quiet(
                         self.heard_in(crate::speech::Narration::Answer(ix)),
-                    )
-                    .pressable(
-                        self.pressed
-                            .filter(|(turn, _)| *turn == ix)
-                            .map(|(_, range)| range),
-                        {
-                            let deck = cx.entity().downgrade();
-                            std::rc::Rc::new(move |at, _window, cx| {
-                                deck.update(cx, |deck, cx| deck.press_said(ix, at, cx)).ok();
-                            })
-                        },
                     );
+                    // Only a turn with a pointed copy beside it can move the
+                    // code, so only that turn offers the hand. The reader's own
+                    // words were never spoken, and a turn restored from a draft
+                    // lost its copy with the window: a pointer on either would
+                    // promise a light that cannot come.
+                    let picking = if again {
+                        picking.pressable(
+                            self.pressed
+                                .filter(|(turn, _)| *turn == ix)
+                                .map(|(_, range)| range),
+                            {
+                                let deck = cx.entity().downgrade();
+                                std::rc::Rc::new(move |at, _window, cx| {
+                                    deck.update(cx, |deck, cx| deck.press_said(ix, at, cx)).ok();
+                                })
+                            },
+                        )
+                    } else {
+                        picking
+                    };
                     crate::prose::render_look(
                         crate::prose::parse(&moment.text),
                         palette,
