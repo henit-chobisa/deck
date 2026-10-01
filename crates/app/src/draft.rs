@@ -93,6 +93,8 @@ mod tests {
             ref_id: Some("g1r1".into()),
             file: Some("src/lib.rs".into()),
             range: Some(deck_core::LineRange::single(4)),
+            said: None,
+            moment: None,
             quote: "fn main() {".into(),
             text: text.into(),
             when: deck_core::When::Queue,
@@ -137,6 +139,40 @@ mod tests {
         // Submitting puts the review behind them.
         clear(deck);
         assert!(read(deck).remarks.is_empty());
+    }
+
+    #[test]
+    fn a_remark_on_the_prose_keeps_the_words_it_was_about() {
+        // The mark under the narration is drawn from the word range, so a
+        // remark that comes back without one comes back invisible — the
+        // comment is in the review and the sentence it answered looks
+        // untouched.
+        //
+        // Its place in the transcript survives with it, because the transcript
+        // is written into the same file by the same call. A mark you can see
+        // and cannot follow is worse than no mark, and that is what dropping
+        // this number left behind after a quit.
+        let room = tempfile::tempdir().expect("a directory");
+        let deck = room.path();
+
+        let on_prose = Remark {
+            said: Some((12, 19)),
+            moment: Some(3),
+            ..remark("this claim is the part I doubt")
+        };
+        save(deck, &[on_prose], &[]);
+
+        let back = read(deck);
+        assert_eq!(
+            back.remarks[0].said,
+            Some((12, 19)),
+            "the words it answered"
+        );
+        assert_eq!(
+            back.remarks[0].moment,
+            Some(3),
+            "and where in the rail it was answered, so the mark still leads there"
+        );
     }
 
     #[test]

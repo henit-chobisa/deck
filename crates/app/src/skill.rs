@@ -454,6 +454,8 @@ mod tests {
             "Never announce the deck instead of leaving it alone",
             "One listener, and only one",
             "Every way they can reach you comes back the same way",
+            "They can answer the sentence, not only the code",
+            "One claim per sentence, said plainly enough to be wrong",
             "a process wakes you by ending",
             "Answered a question? Run `deck open` again",
             "This is also how you hear back",

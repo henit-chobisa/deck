@@ -248,7 +248,18 @@ enum About {
         quote: String,
     },
     /// The selected narration, or the group's opening claim.
-    Claim { group: SharedString, quote: String },
+    Claim {
+        group: SharedString,
+        quote: String,
+        /// Which words, so the prose can show afterwards that something was
+        /// said about them.
+        ///
+        /// The quote alone cannot do it: that is the text, and finding it again
+        /// means searching for a string which may well appear twice. Without
+        /// this a comment on the narration left no mark at all — the reader had
+        /// no way to see it had landed, and no way to find it again.
+        said: Option<(usize, usize)>,
+    },
 }
 
 /// Live mode, and how far through its transition it is.
@@ -282,6 +293,25 @@ pub struct Remark {
     pub ref_id: Option<SharedString>,
     pub file: Option<std::path::PathBuf>,
     pub range: Option<LineRange>,
+    /// Which words of the narration it was about, for a remark on the prose.
+    #[serde(default)]
+    pub said: Option<(usize, usize)>,
+    /// Where this turn sits in the transcript, so the rail can be taken to it.
+    ///
+    /// Recorded when the remark is made rather than looked for afterwards: the
+    /// rail is a list of turns and a remark is one of them, but matching the
+    /// two up later means comparing text, and two comments can say the same
+    /// thing about different places.
+    ///
+    /// Carried across a quit, because the transcript it indexes is carried
+    /// with it — both come out of the same draft, written together. It was
+    /// skipped when only the remarks were kept and the next session rebuilt
+    /// its own transcript, which would have made this point at whatever
+    /// happened to sit there.
+    ///
+    /// Only trustworthy alongside that transcript. Restoring remarks onto a
+    /// transcript from somewhere else drops it; see where the draft is read.
+    pub moment: Option<usize>,
     /// The text the remark was pinned to, so the far side can find it again if
     /// the file has moved underneath.
     pub quote: String,
@@ -491,6 +521,20 @@ pub struct DeckView {
     /// starting — and every one of them wants the light to follow without
     /// having to say so. It is brought into step once a frame.
     said_lit: Option<((usize, usize), crate::pane::Fade)>,
+    /// The turn the reader was just taken to, and its fading light.
+    ///
+    /// Scrolling to a comment puts it on screen and says nothing about which
+    /// one it is — the rail is a column of similar-looking turns, and landing
+    /// somewhere in it leaves the reader to work out what they were brought
+    /// here for. The light says *this one*, then gets out of the way.
+    showing: Option<(usize, crate::pane::Fade)>,
+    /// Which showing the running timer belongs to.
+    ///
+    /// Each navigation starts a timer that puts the light out after a moment.
+    /// Without a name on it, a timer started for one mark puts out whichever
+    /// light happens to be up when it fires — so opening a second mark inside
+    /// the hold had its highlight cut short by the first one's timer.
+    shown_at: u64,
     /// The sentence being heard, and how far its light has come up.
     heard_now: Option<(crate::speech::Narration, (usize, usize), crate::pane::Fade)>,
     /// The sentence just heard, its light going out.
@@ -741,6 +785,13 @@ impl DeckView {
             // kept at all.
             if conversation.transcript.is_empty() {
                 conversation.transcript = held.transcript;
+            } else {
+                // The remarks came back onto a transcript they were not written
+                // against, so their places in it mean nothing. Better a mark
+                // that leads nowhere than one that leads somewhere wrong.
+                for remark in &mut remarks {
+                    remark.moment = None;
+                }
             }
         }
 
@@ -773,6 +824,8 @@ impl DeckView {
             rail_open: crate::pane::Fade::default(),
             pressed: None,
             said_lit: None,
+            showing: None,
+            shown_at: 0,
             rail_width,
             conversation,
             rail_scroll,
@@ -2435,6 +2488,9 @@ impl DeckView {
         Some(About::Claim {
             group: group.id.clone().into(),
             quote,
+            said: self
+                .picked_said
+                .map(|(from, to)| (from.min(to), from.max(to))),
         })
     }
 
@@ -2523,6 +2579,97 @@ impl DeckView {
         cx.notify();
     }
 
+    /// Where in the rail the newest followable remark on these words was
+    /// answered.
+    ///
+    /// Newest first, and skipping any that cannot be followed. Taking the
+    /// oldest match and then asking for its place meant one restored remark
+    /// whose place had been cleared hid every later one on the same words —
+    /// and when they could all be followed, pressing a mark went to the first
+    /// thing ever said there rather than the thing just written.
+    fn answered_at(remarks: &[Remark], group: &str, at: usize) -> Option<usize> {
+        remarks
+            .iter()
+            .rev()
+            .filter(|remark| {
+                remark.group.as_ref() == group
+                    && remark.said.is_some_and(|(from, to)| at >= from && at <= to)
+            })
+            .find_map(|remark| remark.moment)
+    }
+
+    /// Take the reader to what was said about these words, if anything was.
+    ///
+    /// Pressing an underlined word is the only way back to a comment on the
+    /// prose. The rail may be folded — it often is, because the whole point of
+    /// folding it is to read without the conversation in the way — and a mark
+    /// pointing at something the reader cannot reach is worse than no mark.
+    ///
+    /// So the rail opens if it is shut, and goes to the remark either way.
+    fn show_remark_on(&mut self, at: usize, cx: &mut Context<Self>) {
+        let Some(group) = self.group().map(|group| group.id.clone()) else {
+            return;
+        };
+        let Some(moment) = Self::answered_at(&self.remarks, &group, at) else {
+            return;
+        };
+
+        self.rail_open.set(true);
+        // Where that turn sits among the ones the rail actually draws, which is
+        // not where it sits in the transcript: the transcript holds moments the
+        // rail leaves out, and the two drift apart the moment one happens.
+        let place = self
+            .conversation
+            .transcript
+            .iter()
+            .enumerate()
+            .filter(|(_, turn)| {
+                matches!(
+                    turn.what,
+                    deck_core::What::Said
+                        | deck_core::What::Reacted
+                        | deck_core::What::Wrote
+                        | deck_core::What::Shown
+                )
+            })
+            .position(|(ix, _)| ix == moment);
+        if let Some(place) = place {
+            self.rail_scroll.scroll_to_item(place);
+        }
+
+        let mut light = crate::pane::Fade::default();
+        light.set(true);
+        self.showing = Some((moment, light));
+        self.shown_at = self.shown_at.wrapping_add(1);
+        self.fade_showing(self.shown_at, cx);
+        cx.notify();
+    }
+
+    /// Let the light on a turn go out on its own, a moment after it arrives.
+    ///
+    /// It says *this one*, and then it has to stop saying it — a turn left
+    /// permanently lit is a second kind of selection the rail never asked for.
+    fn fade_showing(&self, mine: u64, cx: &mut Context<Self>) {
+        const HELD: std::time::Duration = std::time::Duration::from_millis(900);
+
+        cx.spawn(async move |view, cx| {
+            cx.background_executor().timer(HELD).await;
+            let _ = view.update(cx, |deck, cx| {
+                // Only the light this timer was started for. Another mark
+                // opened inside the hold has replaced it and brought its own
+                // timer, and that one is the one allowed to end it.
+                if deck.shown_at != mine {
+                    return;
+                }
+                if let Some((_, light)) = deck.showing.as_mut() {
+                    light.set(false);
+                }
+                cx.notify();
+            });
+        })
+        .detach();
+    }
+
     /// Light the code a sentence of the narration is about.
     ///
     /// The same thing the voice does, with the reader as the clock. A voice
@@ -2531,6 +2678,13 @@ impl DeckView {
     /// and the light should not care.
     fn follow_said(&mut self, at: usize, cx: &mut Context<Self>) {
         let Some(point) = self.point_of(at) else {
+            // A sentence that points at nothing puts the light out rather than
+            // leaving the last one burning. Returning here left the code lit
+            // for a sentence the reader had moved on from, so pressing around
+            // the narration looked like the light had stuck — and the one
+            // sentence they could not get it to move off was whichever one had
+            // pointed last.
+            self.point_at(None, cx);
             return;
         };
         self.attend();
@@ -2628,7 +2782,16 @@ impl DeckView {
             self.picked_said = Some(found);
             cx.notify();
         }
-        self.said_from = None;
+        // Here rather than on the way down, because on the way down nobody
+        // knows yet whether this is a click or the start of a drag. Opening the
+        // rail mid-drag reflows the prose under the pointer that is still
+        // selecting it.
+        let from = self.said_from.take();
+        if !self.said_dragged
+            && let Some(at) = from
+        {
+            self.show_remark_on(at, cx);
+        }
     }
 
     /// Open the composer on whatever is picked.
@@ -2768,6 +2931,8 @@ impl DeckView {
                 // nothing to point an editor at.
                 file: None,
                 range: None,
+                said: None,
+                moment: None,
                 quote,
                 text,
                 kind,
@@ -2784,16 +2949,20 @@ impl DeckView {
                 ref_id: Some(ref_id),
                 file: Some(file),
                 range: Some(range),
+                said: None,
+                moment: None,
                 quote,
                 text,
                 kind,
                 when,
             },
-            About::Claim { group, quote } => Remark {
+            About::Claim { group, quote, said } => Remark {
                 group,
                 ref_id: None,
                 file: None,
                 range: None,
+                said,
+                moment: None,
                 quote,
                 text,
                 kind,
@@ -2929,7 +3098,20 @@ impl DeckView {
         }
         self.note(deck_core::What::Reacted, Some(kind), when, face, &remark);
         self.told_page(&remark);
+        // The selection has done its job. Left on, the sentence stays filled
+        // in the accent — and now that a remark leaves a mark of its own, the
+        // two sit on the same words and the prose reads as a paint blob rather
+        // than as a sentence somebody said something about.
+        self.picked_said = None;
+        self.said_from = None;
+        for pane in &mut self.panes {
+            pane.unpick();
+        }
         self.remarks.push(remark);
+        // Where its turn sits, before anything is written down.
+        if let Some(mine) = self.remarks.last_mut() {
+            mine.moment = self.conversation.transcript.len().checked_sub(1);
+        }
         // Written down as it is made. The way out is exactly what cannot be
         // relied on — a quit, a crash and a force-close all skip whatever tidy
         // exit path they were meant to take.
@@ -2975,7 +3157,20 @@ impl DeckView {
             &remark,
         );
         self.told_page(&remark);
+        // The selection has done its job. Left on, the sentence stays filled
+        // in the accent — and now that a remark leaves a mark of its own, the
+        // two sit on the same words and the prose reads as a paint blob rather
+        // than as a sentence somebody said something about.
+        self.picked_said = None;
+        self.said_from = None;
+        for pane in &mut self.panes {
+            pane.unpick();
+        }
         self.remarks.push(remark);
+        // Where its turn sits, before anything is written down.
+        if let Some(mine) = self.remarks.last_mut() {
+            mine.moment = self.conversation.transcript.len().checked_sub(1);
+        }
         // Written down as it is made. The way out is exactly what cannot be
         // relied on — a quit, a crash and a force-close all skip whatever tidy
         // exit path they were meant to take.
@@ -3421,6 +3616,20 @@ impl DeckView {
                                     heard: self
                                         .heard_in(crate::speech::Narration::Group(self.group_ix)),
                                     pickable: true,
+                                    // Only this group's. A word range means
+                                    // nothing against another group's prose —
+                                    // the same numbers there are different
+                                    // words entirely.
+                                    remarked: self
+                                        .remarks
+                                        .iter()
+                                        .filter(|remark| {
+                                            self.group().is_some_and(|group| {
+                                                remark.group.as_ref() == group.id
+                                            })
+                                        })
+                                        .filter_map(|remark| remark.said)
+                                        .collect(),
                                     name: {
                                         let deck = cx.entity().downgrade();
                                         std::rc::Rc::new(move |name, naming, _window, cx| {
@@ -4537,9 +4746,21 @@ impl DeckView {
                     .when(place == last, |this| this.h(px(10.)))
                     .when(place != last, |this| this.bottom_0());
 
+                // Brought here from the prose, a moment ago. The light says
+                // which turn the reader was sent to look at, and fades rather
+                // than staying on, because a permanently lit turn is a second
+                // kind of selection nobody asked the rail for.
+                let brought = self
+                    .showing
+                    .as_ref()
+                    .filter(|(at, _)| *at == ix)
+                    .map_or(0., |(_, light)| light.level());
+
                 div()
                     .h_flex()
                     .items_stretch()
+                    .rounded(px(3.))
+                    .bg(paint(palette.band.mix(palette.accent, 0.3 * brought)))
                     .child(
                         div()
                             .relative()
@@ -5327,6 +5548,10 @@ impl Render for DeckView {
             || self.pressed.is_some_and(|(_, _, light)| light.moving())
             || self.said_lit.is_some_and(|(_, light)| light.moving())
             || self.rail_open.moving()
+            || self
+                .showing
+                .as_ref()
+                .is_some_and(|(_, light)| light.moving())
             || self.folds.iter().any(crate::pane::Fade::moving)
             || self
                 .panes
@@ -5779,6 +6004,60 @@ mod tests {
         // Touching at a single word still counts as the same stretch: a drag
         // that has only just crossed into the next sentence has not left.
         assert!(drag((4, 9), (9, 14)), "one word of overlap is still a drag");
+    }
+
+    fn said_about(said: Option<(usize, usize)>, moment: Option<usize>) -> Remark {
+        Remark {
+            group: "g1".into(),
+            ref_id: None,
+            file: None,
+            range: None,
+            said,
+            moment,
+            quote: String::new(),
+            text: "a remark".into(),
+            when: deck_core::When::Queue,
+            kind: deck_core::Kind::Question,
+        }
+    }
+
+    #[test]
+    fn a_mark_leads_to_the_newest_remark_that_can_be_followed() {
+        // Raised in review. The lookup took the oldest remark covering the word
+        // and *then* asked where it sat in the rail, so a remark restored from
+        // a draft — whose place is cleared, because it was written against a
+        // transcript this session does not have — hid every later one on the
+        // same words. Pressing the mark did nothing at all.
+        let restored = said_about(Some((4, 9)), None);
+        let written = said_about(Some((4, 9)), Some(7));
+        assert_eq!(
+            DeckView::answered_at(&[restored.clone(), written.clone()], "g1", 6),
+            Some(7),
+            "the one that can be followed, not the one that came first"
+        );
+
+        // And with both followable, the newest is the one worth going to: it is
+        // what the reader just wrote, not what they said about it last week.
+        let older = said_about(Some((4, 9)), Some(2));
+        assert_eq!(
+            DeckView::answered_at(&[older, written], "g1", 6),
+            Some(7),
+            "newest first"
+        );
+
+        // Another group's words are different words with the same numbers.
+        let elsewhere = Remark {
+            group: "g2".into(),
+            ..said_about(Some((4, 9)), Some(7))
+        };
+        assert_eq!(DeckView::answered_at(&[elsewhere], "g1", 6), None);
+
+        // Outside the range, and nothing said at all.
+        assert_eq!(
+            DeckView::answered_at(std::slice::from_ref(&restored), "g1", 20),
+            None
+        );
+        assert_eq!(DeckView::answered_at(&[restored], "g1", 6), None);
     }
 
     #[test]
