@@ -303,10 +303,14 @@ pub struct Remark {
     /// two up later means comparing text, and two comments can say the same
     /// thing about different places.
     ///
-    /// Not carried across a quit. It indexes a transcript this session built,
-    /// and the next one rebuilds it — so a number kept from before would point
-    /// at whatever now happens to sit there.
-    #[serde(skip)]
+    /// Carried across a quit, because the transcript it indexes is carried
+    /// with it — both come out of the same draft, written together. It was
+    /// skipped when only the remarks were kept and the next session rebuilt
+    /// its own transcript, which would have made this point at whatever
+    /// happened to sit there.
+    ///
+    /// Only trustworthy alongside that transcript. Restoring remarks onto a
+    /// transcript from somewhere else drops it; see where the draft is read.
     pub moment: Option<usize>,
     /// The text the remark was pinned to, so the far side can find it again if
     /// the file has moved underneath.
@@ -524,6 +528,13 @@ pub struct DeckView {
     /// somewhere in it leaves the reader to work out what they were brought
     /// here for. The light says *this one*, then gets out of the way.
     showing: Option<(usize, crate::pane::Fade)>,
+    /// Which showing the running timer belongs to.
+    ///
+    /// Each navigation starts a timer that puts the light out after a moment.
+    /// Without a name on it, a timer started for one mark puts out whichever
+    /// light happens to be up when it fires — so opening a second mark inside
+    /// the hold had its highlight cut short by the first one's timer.
+    shown_at: u64,
     /// The sentence being heard, and how far its light has come up.
     heard_now: Option<(crate::speech::Narration, (usize, usize), crate::pane::Fade)>,
     /// The sentence just heard, its light going out.
@@ -774,6 +785,13 @@ impl DeckView {
             // kept at all.
             if conversation.transcript.is_empty() {
                 conversation.transcript = held.transcript;
+            } else {
+                // The remarks came back onto a transcript they were not written
+                // against, so their places in it mean nothing. Better a mark
+                // that leads nowhere than one that leads somewhere wrong.
+                for remark in &mut remarks {
+                    remark.moment = None;
+                }
             }
         }
 
@@ -807,6 +825,7 @@ impl DeckView {
             pressed: None,
             said_lit: None,
             showing: None,
+            shown_at: 0,
             rail_width,
             conversation,
             rail_scroll,
@@ -2480,7 +2499,6 @@ impl DeckView {
         self.live.pause(PauseReason::Selection);
         self.said_from = Some(at);
         self.said_dragged = false;
-        self.show_remark_on(at, cx);
         // The sentence, not the word. `sentence_around` has always decided
         // what a comment on the prose *quotes*; the selection showed one word,
         // so pressing a line lit a single faint token and read as nothing
@@ -2611,7 +2629,8 @@ impl DeckView {
         let mut light = crate::pane::Fade::default();
         light.set(true);
         self.showing = Some((moment, light));
-        self.fade_showing(cx);
+        self.shown_at = self.shown_at.wrapping_add(1);
+        self.fade_showing(self.shown_at, cx);
         cx.notify();
     }
 
@@ -2619,12 +2638,18 @@ impl DeckView {
     ///
     /// It says *this one*, and then it has to stop saying it — a turn left
     /// permanently lit is a second kind of selection the rail never asked for.
-    fn fade_showing(&self, cx: &mut Context<Self>) {
+    fn fade_showing(&self, mine: u64, cx: &mut Context<Self>) {
         const HELD: std::time::Duration = std::time::Duration::from_millis(900);
 
         cx.spawn(async move |view, cx| {
             cx.background_executor().timer(HELD).await;
             let _ = view.update(cx, |deck, cx| {
+                // Only the light this timer was started for. Another mark
+                // opened inside the hold has replaced it and brought its own
+                // timer, and that one is the one allowed to end it.
+                if deck.shown_at != mine {
+                    return;
+                }
                 if let Some((_, light)) = deck.showing.as_mut() {
                     light.set(false);
                 }
@@ -2746,7 +2771,16 @@ impl DeckView {
             self.picked_said = Some(found);
             cx.notify();
         }
-        self.said_from = None;
+        // Here rather than on the way down, because on the way down nobody
+        // knows yet whether this is a click or the start of a drag. Opening the
+        // rail mid-drag reflows the prose under the pointer that is still
+        // selecting it.
+        let from = self.said_from.take();
+        if !self.said_dragged
+            && let Some(at) = from
+        {
+            self.show_remark_on(at, cx);
+        }
     }
 
     /// Open the composer on whatever is picked.

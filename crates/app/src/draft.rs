@@ -148,10 +148,10 @@ mod tests {
         // comment is in the review and the sentence it answered looks
         // untouched.
         //
-        // Its place in the transcript deliberately does not survive. That
-        // number indexes a transcript this session built, and the next one
-        // builds its own, so a value kept from before would point at whatever
-        // happens to sit there now.
+        // Its place in the transcript survives with it, because the transcript
+        // is written into the same file by the same call. A mark you can see
+        // and cannot follow is worse than no mark, and that is what dropping
+        // this number left behind after a quit.
         let room = tempfile::tempdir().expect("a directory");
         let deck = room.path();
 
@@ -168,7 +168,11 @@ mod tests {
             Some((12, 19)),
             "the words it answered"
         );
-        assert_eq!(back.remarks[0].moment, None, "and not a stale index");
+        assert_eq!(
+            back.remarks[0].moment,
+            Some(3),
+            "and where in the rail it was answered, so the mark still leads there"
+        );
     }
 
     #[test]
