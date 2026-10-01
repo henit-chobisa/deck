@@ -6053,7 +6053,10 @@ mod tests {
         assert_eq!(DeckView::answered_at(&[elsewhere], "g1", 6), None);
 
         // Outside the range, and nothing said at all.
-        assert_eq!(DeckView::answered_at(&[restored.clone()], "g1", 20), None);
+        assert_eq!(
+            DeckView::answered_at(std::slice::from_ref(&restored), "g1", 20),
+            None
+        );
         assert_eq!(DeckView::answered_at(&[restored], "g1", 6), None);
     }
 
