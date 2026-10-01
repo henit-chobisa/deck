@@ -1412,9 +1412,28 @@ impl DeckView {
         cx: &mut Context<Self>,
     ) {
         let said = crate::prose::pointed(text, speech.pause);
-        // Nothing to carry and nobody to carry it to. A silent walk of prose
-        // that never points would only keep a timer alive to change nothing.
-        if !speech.aloud && !said.iter().any(|piece| piece.point.is_some()) {
+        // Nobody is listening, so there is no clock to keep.
+        //
+        // Without a real voice the queue is paced by `timed`, which walks the
+        // points at the speed somebody would have read them aloud. With the
+        // reader not in a walk that is a window stepping through their code on
+        // its own, which is what it looked like.
+        //
+        // The pointing still lands, because an agent pointing at the line it
+        // is talking about is most of what an answer is worth. It lands once,
+        // on the first point, and holds there. From that moment the reader
+        // moves the light themselves by pressing a sentence — which is what a
+        // silent walk is, and the only thing that should be driving it.
+        if !speech.aloud {
+            let Some(first) = said.iter().find_map(|piece| piece.point.clone()) else {
+                return;
+            };
+            self.attend();
+            self.point_at(Some(first), cx);
+            if let Some((ix, target)) = self.point_away() {
+                self.followed = Some(std::time::Instant::now());
+                self.glide(ix, target, cx);
+            }
             return;
         }
         // One passage, not a sentence at a time. Queued piece by piece, the
