@@ -1436,7 +1436,15 @@ impl DeckView {
             let Some(first) = said.iter().find_map(|piece| piece.point.clone()) else {
                 return;
             };
-            self.attend();
+            // No `attend` here, deliberately. It arms a three second linger
+            // that only the speech task ever reads, and the speech task is the
+            // thing this branch exists to not start — so the clock would be
+            // wound and never looked at, and the frame it raises would come up
+            // and stay. Whether it ever went out would depend on whether a
+            // voice happened to be busy for some other reason.
+            //
+            // The frame is the agent attending to a pane. Nothing is attending
+            // here: the lines light, they hold, and the reader puts them out.
             self.point_at(Some(first), cx);
             if let Some((ix, target)) = self.point_away() {
                 self.followed = Some(std::time::Instant::now());
@@ -2485,7 +2493,22 @@ impl DeckView {
         // Reader activity, so the agent stops moving them — the same hold
         // pressing the narration takes.
         self.live.pause(PauseReason::Selection);
-        if let Some(say) = pointed {
+        // A turn was said about the group that was on screen at the time, and
+        // its points are line numbers in *that* group's panes. Press it three
+        // groups later and `point_at` matches those numbers against whatever
+        // is showing now, which is a different file with lines of the same
+        // name — so the light lands somewhere real and wrong, and looks
+        // deliberate.
+        //
+        // The sentence still lights, because the press happened. Only the code
+        // is left alone.
+        let here = self
+            .conversation
+            .transcript
+            .get(turn)
+            .and_then(|moment| moment.group.as_deref())
+            .is_none_or(|said_in| self.group().is_some_and(|group| group.id == said_in));
+        if let Some(say) = pointed.filter(|_| here) {
             self.attend();
             self.point_at(Self::point_in(&say, at), cx);
             if let Some((ix, target)) = self.point_away() {
