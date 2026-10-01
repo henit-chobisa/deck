@@ -2579,6 +2579,25 @@ impl DeckView {
         cx.notify();
     }
 
+    /// Where in the rail the newest followable remark on these words was
+    /// answered.
+    ///
+    /// Newest first, and skipping any that cannot be followed. Taking the
+    /// oldest match and then asking for its place meant one restored remark
+    /// whose place had been cleared hid every later one on the same words —
+    /// and when they could all be followed, pressing a mark went to the first
+    /// thing ever said there rather than the thing just written.
+    fn answered_at(remarks: &[Remark], group: &str, at: usize) -> Option<usize> {
+        remarks
+            .iter()
+            .rev()
+            .filter(|remark| {
+                remark.group.as_ref() == group
+                    && remark.said.is_some_and(|(from, to)| at >= from && at <= to)
+            })
+            .find_map(|remark| remark.moment)
+    }
+
     /// Take the reader to what was said about these words, if anything was.
     ///
     /// Pressing an underlined word is the only way back to a comment on the
@@ -2591,15 +2610,7 @@ impl DeckView {
         let Some(group) = self.group().map(|group| group.id.clone()) else {
             return;
         };
-        let Some(moment) = self
-            .remarks
-            .iter()
-            .find(|remark| {
-                remark.group.as_ref() == group
-                    && remark.said.is_some_and(|(from, to)| at >= from && at <= to)
-            })
-            .and_then(|remark| remark.moment)
-        else {
+        let Some(moment) = Self::answered_at(&self.remarks, &group, at) else {
             return;
         };
 
@@ -5993,6 +6004,57 @@ mod tests {
         // Touching at a single word still counts as the same stretch: a drag
         // that has only just crossed into the next sentence has not left.
         assert!(drag((4, 9), (9, 14)), "one word of overlap is still a drag");
+    }
+
+    fn said_about(said: Option<(usize, usize)>, moment: Option<usize>) -> Remark {
+        Remark {
+            group: "g1".into(),
+            ref_id: None,
+            file: None,
+            range: None,
+            said,
+            moment,
+            quote: String::new(),
+            text: "a remark".into(),
+            when: deck_core::When::Queue,
+            kind: deck_core::Kind::Question,
+        }
+    }
+
+    #[test]
+    fn a_mark_leads_to_the_newest_remark_that_can_be_followed() {
+        // Raised in review. The lookup took the oldest remark covering the word
+        // and *then* asked where it sat in the rail, so a remark restored from
+        // a draft — whose place is cleared, because it was written against a
+        // transcript this session does not have — hid every later one on the
+        // same words. Pressing the mark did nothing at all.
+        let restored = said_about(Some((4, 9)), None);
+        let written = said_about(Some((4, 9)), Some(7));
+        assert_eq!(
+            DeckView::answered_at(&[restored.clone(), written.clone()], "g1", 6),
+            Some(7),
+            "the one that can be followed, not the one that came first"
+        );
+
+        // And with both followable, the newest is the one worth going to: it is
+        // what the reader just wrote, not what they said about it last week.
+        let older = said_about(Some((4, 9)), Some(2));
+        assert_eq!(
+            DeckView::answered_at(&[older, written], "g1", 6),
+            Some(7),
+            "newest first"
+        );
+
+        // Another group's words are different words with the same numbers.
+        let elsewhere = Remark {
+            group: "g2".into(),
+            ..said_about(Some((4, 9)), Some(7))
+        };
+        assert_eq!(DeckView::answered_at(&[elsewhere], "g1", 6), None);
+
+        // Outside the range, and nothing said at all.
+        assert_eq!(DeckView::answered_at(&[restored.clone()], "g1", 20), None);
+        assert_eq!(DeckView::answered_at(&[restored], "g1", 6), None);
     }
 
     #[test]
