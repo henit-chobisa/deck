@@ -596,15 +596,26 @@ impl Pane {
     pub fn select_rows(&mut self, from: usize, to: usize) {
         let (first, last) = (from.min(to), from.max(to));
         self.picked = Some((first, last));
+        // A drag grows the range it started from, so the two always touch, and
+        // the light carries on rather than restarting on every frame. A fresh
+        // click lands somewhere disjoint and starts its own.
+        //
+        // Direction does not come into it: a light still falling after an
+        // escape reverses from wherever it had got to, which is what `set`
+        // does. Asking whether it was on would have thrown that away and made
+        // the band jump to nothing before climbing again.
+        let touching = self
+            .held
+            .is_some_and(|((was_first, was_last), _)| was_first <= last && first <= was_last);
         match &mut self.held {
-            // Already up, or on its way: move the range under the light rather
-            // than starting a new one, or a drag would restart the rise on
-            // every frame and never arrive.
-            Some((rows, light)) if light.on() => *rows = (first, last),
-            _ => {
+            Some((rows, light)) if touching => {
+                *rows = (first, last);
+                light.set(true);
+            }
+            slot => {
                 let mut light = Fade::default().paced(PICK_RISE, PICK_FALL);
                 light.set(true);
-                self.held = Some(((first, last), light));
+                *slot = Some(((first, last), light));
             }
         }
         let pins = self
@@ -2083,6 +2094,32 @@ mod tests {
         assert!(!row(Some(Change::New)).takes(crate::prose::Side::Going));
         assert!(row(Some(Change::New)).takes(crate::prose::Side::Arriving));
         assert!(!row(Some(Change::Gone)).takes(crate::prose::Side::Arriving));
+    }
+
+    #[test]
+    fn a_light_on_its_way_out_reverses_rather_than_restarting() {
+        // Raised in review: the guards asked whether a light was *on*, which is
+        // false for one still falling. Pressing escape and reselecting the same
+        // sentence before the fall finished threw that light away and started
+        // again, so the band dropped to nothing and climbed, instead of simply
+        // coming back from where it had got to.
+        let mut light = Fade::default();
+        light.set(true);
+        light.since = Some(std::time::Instant::now() - RISE);
+        assert!((light.level() - 1.).abs() < 0.01, "all the way up");
+
+        // Escape: on its way down, and partway there.
+        light.set(false);
+        light.since = Some(std::time::Instant::now() - FALL / 2);
+        let falling = light.level();
+        assert!((0.05..0.95).contains(&falling), "halfway out: {falling}");
+
+        // Reselected before it finished.
+        light.set(true);
+        assert!(
+            (light.level() - falling).abs() < 0.01,
+            "comes back from {falling} rather than from nothing"
+        );
     }
 
     #[test]

@@ -2144,10 +2144,12 @@ impl DeckView {
             // starts a new one — it is somewhere else on the page, and
             // carrying the old light there means it is simply on, which is the
             // snap this was supposed to remove.
+            // Whichever way it was heading. A light still falling after an
+            // escape reverses from wherever it had got to, because `set` starts
+            // from the level rather than from the end it was aiming at. Asking
+            // whether it was on threw that away and jumped to nothing first.
             let carry = match self.said_lit {
-                Some((words, light)) if light.on() && Self::still_the_same(words, range) => {
-                    Some(light)
-                }
+                Some((words, light)) if Self::still_the_same(words, range) => Some(light),
                 _ => None,
             };
             let mut light = carry.unwrap_or_default();
@@ -2170,9 +2172,21 @@ impl DeckView {
         }
         self.picked_said = None;
         for pane in &mut self.panes {
-            pane.unpick();
+            // `Sheet::unpick` clears only where a comment would land. A code
+            // pane also holds the rows being drawn and the light on them, and
+            // those are the half the reader can see — so the pane is asked
+            // directly, and the other kinds keep the sheet's own answer.
+            if let Some(code) = pane.code_mut() {
+                code.unpick();
+            } else {
+                pane.unpick();
+            }
         }
-        let _ = self.point_at(None, cx);
+        // Back to whatever the voice is pointing at, not to nothing. If this
+        // runs mid-sentence the rail still shows that sentence being heard,
+        // and taking its light away leaves the two disagreeing until the voice
+        // moves on. Only the reader's own light is the reader's to put out.
+        let _ = self.point_at(self.voice.pointing(), cx);
         cx.notify();
     }
 
@@ -2458,9 +2472,7 @@ impl DeckView {
             // lit a sentence. Moving to another sentence keeps the light it
             // already has rather than starting from nothing.
             let carry = match self.pressed {
-                Some((was, words, light))
-                    if was == turn && light.on() && Self::still_the_same(words, range) =>
-                {
+                Some((was, words, light)) if was == turn && Self::still_the_same(words, range) => {
                     Some(light)
                 }
                 _ => None,
