@@ -66,6 +66,30 @@ const FALL: std::time::Duration = std::time::Duration::from_millis(760);
 /// Leaving is not the same act as being replaced. Out of the way, and quickly.
 const HAND_OVER: std::time::Duration = std::time::Duration::from_millis(200);
 
+/// How long the reader's own selection takes to come up.
+const PICK_RISE: std::time::Duration = std::time::Duration::from_millis(150);
+
+/// And how long it takes to go out.
+///
+/// Longer than it took to arrive, on purpose. Coming up answers a gesture and
+/// should feel caused by it; going out answers nothing, and a band that simply
+/// stops existing reads as a glitch rather than as a hand being taken away.
+const PICK_FALL: std::time::Duration = std::time::Duration::from_millis(420);
+
+/// A pace, as the milliseconds a `Fade` stores it as.
+fn ms(of: std::time::Duration) -> u16 {
+    u16::try_from(of.as_millis()).unwrap_or(u16::MAX)
+}
+
+/// That pace back, or `fallback` when none was given.
+fn span(stored: u16, fallback: std::time::Duration) -> std::time::Duration {
+    if stored == 0 {
+        fallback
+    } else {
+        std::time::Duration::from_millis(u64::from(stored))
+    }
+}
+
 /// A light easing between off and on, from wherever it was when it was told.
 ///
 /// Time-based rather than a GPUI animation, for the reason the live room is:
@@ -77,8 +101,15 @@ pub(crate) struct Fade {
     /// The level it was at when it was last told to change.
     from: f32,
     since: Option<std::time::Instant>,
-    /// How long going out takes, for a light handed over rather than ended.
-    fall: Option<std::time::Duration>,
+    /// Milliseconds a light of its own pace takes, or nought for the
+    /// narration's.
+    ///
+    /// Milliseconds rather than a `Duration` because a `Pane` carries four of
+    /// these and sits in an enum beside much smaller things: two `u16` cost
+    /// four bytes where two `Option<Duration>` cost thirty-two, and no light
+    /// in this window runs for a minute.
+    fall_ms: u16,
+    rise_ms: u16,
 }
 
 impl Fade {
@@ -95,9 +126,22 @@ impl Fade {
         true
     }
 
+    /// Give this light its own pace.
+    ///
+    /// The narration's timings answer to a voice. A light that answers to a
+    /// hand wants different ones: quick enough in that it feels like the
+    /// gesture caused it, slow enough out that letting go is something you
+    /// watch rather than something that has already happened.
+    #[must_use]
+    pub(crate) fn paced(mut self, rise: std::time::Duration, fall: std::time::Duration) -> Self {
+        self.rise_ms = ms(rise);
+        self.fall_ms = ms(fall);
+        self
+    }
+
     /// Go out quickly, because something else is arriving.
     pub(crate) fn hand_over(&mut self) {
-        self.fall = Some(HAND_OVER);
+        self.fall_ms = ms(HAND_OVER);
         self.set(false);
     }
 
@@ -108,9 +152,9 @@ impl Fade {
             return to;
         };
         let whole = if self.on {
-            RISE
+            span(self.rise_ms, RISE)
         } else {
-            self.fall.unwrap_or(FALL)
+            span(self.fall_ms, FALL)
         };
         let along = (since.elapsed().as_secs_f32() / whole.as_secs_f32()).clamp(0., 1.);
         // Smoothstep: no snap at either end, which is the whole ask.
@@ -126,9 +170,9 @@ impl Fade {
     /// Whether it is still on its way somewhere.
     pub(crate) fn moving(&self) -> bool {
         let whole = if self.on {
-            RISE
+            span(self.rise_ms, RISE)
         } else {
-            self.fall.unwrap_or(FALL)
+            span(self.fall_ms, FALL)
         };
         self.since.is_some_and(|since| since.elapsed() < whole)
     }
@@ -398,6 +442,14 @@ pub struct Pane {
     /// the first new line from the fourth, and dragging across them lit all or
     /// nothing. Rows are the only thing that distinguishes them.
     picked: Option<(usize, usize)>,
+    /// The pick as it is *drawn*: the rows, and how far their light has come
+    /// up or gone down.
+    ///
+    /// Separate from `picked` because it has to outlive it. Letting go clears
+    /// where a comment would land straight away — nothing should land on a
+    /// range nobody is holding — while the band it leaves behind is still on
+    /// screen, going out.
+    held: Option<((usize, usize), Fade)>,
 }
 
 impl Pane {
@@ -511,6 +563,7 @@ impl Pane {
             file: code.file.clone(),
             selected: None,
             picked: None,
+            held: None,
             arriving: Fade::default(),
             proposed: code.after.clone(),
             point: None,
@@ -543,6 +596,17 @@ impl Pane {
     pub fn select_rows(&mut self, from: usize, to: usize) {
         let (first, last) = (from.min(to), from.max(to));
         self.picked = Some((first, last));
+        match &mut self.held {
+            // Already up, or on its way: move the range under the light rather
+            // than starting a new one, or a drag would restart the rise on
+            // every frame and never arrive.
+            Some((rows, light)) if light.on() => *rows = (first, last),
+            _ => {
+                let mut light = Fade::default().paced(PICK_RISE, PICK_FALL);
+                light.set(true);
+                self.held = Some(((first, last), light));
+            }
+        }
         let pins = self
             .rows
             .get(first..=last.min(self.rows.len().saturating_sub(1)))
@@ -560,6 +624,11 @@ impl Pane {
     pub fn unpick(&mut self) {
         self.picked = None;
         self.selected = None;
+        // The rows stay while the light goes down. They are not held any more
+        // — `picked` and `selected` already say so — they are just still lit.
+        if let Some((_, light)) = &mut self.held {
+            light.set(false);
+        }
     }
 
     /// Take hold of whatever rows answer for `range`.
@@ -676,6 +745,7 @@ impl Pane {
             || self.heeded.moving()
             || self.arriving.moving()
             || self.was.iter().any(|(_, _, going)| going.moving())
+            || self.held.is_some_and(|(_, light)| light.moving())
     }
 
     /// The lines the narration is pointing at, if any.
@@ -973,7 +1043,7 @@ impl Pane {
         // misses.
         let flash = palette.focus.mix(palette.accent, 0.3);
         let gutter_fg = palette.fg.mix(palette.wash, 0.6);
-        let picked = self.picked;
+        let held = self.held;
         // A comment covers a range, so its bar covers the range: a mark on the
         // first line alone leaves the reader guessing how far down the remark
         // was meant to reach.
@@ -1041,7 +1111,13 @@ impl Pane {
                     // By row, because every arriving line of a change answers
                     // for the same file line and a range of those cannot tell
                     // the first from the fourth.
-                    let is_picked = picked.is_some_and(|(first, last)| ix >= first && ix <= last);
+                    let holding = held.map_or(0., |((first, last), light)| {
+                        if ix >= first && ix <= last {
+                            light.level()
+                        } else {
+                            0.
+                        }
+                    });
                     let has_mark = marked.contains(&pick_at);
                     // The side as well as the lines. A pane showing a change
                     // has two rows answering to each number — the one going and
@@ -1172,11 +1248,7 @@ impl Pane {
                                 Some(Change::New) => ground.mix(palette.fresh_deep, pointed),
                                 None => ground.mix(palette.accent, 0.26 * pointed),
                             };
-                            if is_picked {
-                                ground.mix(palette.accent, 0.14)
-                            } else {
-                                ground
-                            }
+                            ground.mix(palette.accent, 0.14 * holding)
                         }))
                         .child(
                             div()
@@ -1196,7 +1268,9 @@ impl Pane {
                                         .mix(palette.add, arrived)
                                         .mix(palette.accent, pointed),
                                     None if has_mark => palette.add,
-                                    None if is_picked => palette.accent,
+                                    None if holding > 0. => {
+                                        palette.wash.mix(palette.accent, holding.max(pointed))
+                                    }
                                     // While the narration is pointing, the rest
                                     // of the lit range steps back. Two ranges
                                     // with the same bar is two claims about
@@ -2009,6 +2083,41 @@ mod tests {
         assert!(!row(Some(Change::New)).takes(crate::prose::Side::Going));
         assert!(row(Some(Change::New)).takes(crate::prose::Side::Arriving));
         assert!(!row(Some(Change::Gone)).takes(crate::prose::Side::Arriving));
+    }
+
+    #[test]
+    fn a_pick_arrives_quicker_than_it_leaves() {
+        // The ask, as a pair of numbers: coming up should feel caused by the
+        // gesture, going out should be something you watch.
+        assert!(
+            PICK_RISE < PICK_FALL,
+            "a band that leaves as fast as it arrived reads as a glitch"
+        );
+        assert!(
+            PICK_RISE < RISE,
+            "and quicker in than the narration, which answers to a voice"
+        );
+
+        let mut light = Fade::default().paced(PICK_RISE, PICK_FALL);
+        light.set(true);
+        // Halfway through its own rise, not through the narration's.
+        light.since = Some(std::time::Instant::now() - PICK_RISE / 2);
+        let halfway = light.level();
+        assert!(
+            (0.2..0.8).contains(&halfway),
+            "eased, and already well up: {halfway}"
+        );
+
+        light.since = Some(std::time::Instant::now() - PICK_RISE);
+        assert!(!light.moving(), "arrived in its own time, not in RISE");
+
+        // And letting go takes the longer way out.
+        light.set(false);
+        light.since = Some(std::time::Instant::now() - PICK_RISE);
+        assert!(
+            light.moving(),
+            "still leaving after as long as it took to come"
+        );
     }
 
     #[test]
