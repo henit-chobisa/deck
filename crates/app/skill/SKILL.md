@@ -1265,14 +1265,20 @@ And one more plan check, for teaching decks: **does the story make them reason, 
 receive?** If the deck reveals everything top-down with nothing for them to predict, you
 have written a lecture. Find the spot where you can point at the code and ask them first.
 
-**Then ask what kind of pane each group wants.** Three answers, and the first is the one
-you will reach for without noticing:
+**Then ask which panes each group needs.** Not one answer — most groups want more than
+one, and the mistake is stopping at the first, which is the one you reach for without
+noticing:
 
 - **A file**, when the evidence is code that exists. Most groups.
 - **A picture**, when answering means naming three or more places and the order they run
   in. See §4.
 - **A page**, when you would have to draw it **twice** to show what happens — a before and
   an after — because the thing being explained is the bit in between. See §5.
+
+**A picture or a page almost always wants a file beside it.** The picture says *where* in
+the flow you are, the refs say *what* the code does there; the page shows the movement,
+the ref shows the line that causes it. §4 and §5 both pair them, and a group that answers
+with a shape and no code has left the reader to find the code themselves.
 
 That last test is the one that makes the difference, because a page is the pane everybody
 forgets. Rows merging on a key, a queue filling until the producer is told to stop, a node
