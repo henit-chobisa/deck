@@ -19,7 +19,7 @@ Focused on engineers, built for agents.
 
 <img src="assets/hero.png" alt="A deck open: the narration band across the top, two panes of code with the lines it is talking about lit, a flow of the same request as a shape, and a page counting the bucket down">
 
-<p align="center"><i>An agent walks you through its intent, on the lines where the decision lives. You argue, decide, and lock.</i></p>
+<p align="center"><i>An agent leverages deck to walk you through intent, on the lines where decision lives. Argue, decide and lock.</i></p>
 
 <div align="center">
 
