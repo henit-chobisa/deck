@@ -13,24 +13,13 @@
 [![Release](https://img.shields.io/github/v/release/henit-chobisa/deck?include_prereleases&color=d65d0e)](https://github.com/henit-chobisa/deck/releases)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
 
-A presentation surface for agents, written in Rust.
+Focused on engineers, built for agents.
 
 </div>
 
-<img width="2706" height="2516" alt="deck.png" />
-
-
-<!--
-  The hero goes here, and it is the most important thing on this page: a reader
-  learns what deck is from the picture faster than from any paragraph on it.
-
-  What belongs here is a deck OPEN — two panes of code with the narration band
-  above them, around 1600 wide. Drop it at assets/deck.png and uncomment:
-
-<img src="assets/deck.png" alt="A deck open on two panes of code with the narration above them">
+<img src="assets/hero.png" alt="A deck open: the narration band across the top, two panes of code with the lines it is talking about lit, a flow of the same request as a shape, and a page counting the bucket down">
 
 <p align="center"><i>An agent points at the lines it means. You walk them, comment, and submit.</i></p>
--->
 
 <div align="center">
 
