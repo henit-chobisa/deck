@@ -28,7 +28,7 @@ gpui_kit::actions!(
     deck,
     [
         NextGroup, PrevGroup, Comment, Rotate, Walk, Follow, Hide, Submit, Discard, Noted, Asked,
-        Wrong, ZoomIn, ZoomOut, ZoomReset, Zen, Close
+        Wrong, ZoomIn, ZoomOut, ZoomReset, Zen, Close, Unlight
     ]
 );
 
@@ -48,6 +48,7 @@ const KEYS: &[(&str, &str, &str)] = &[
     ("w", "walk", "walk"),
     ("c", "comment", "comment"),
     ("t", "turn", "turn"),
+    ("⎋", "clear", "clear"),
     ("z", "zen", "lights"),
     ("h", "hide", "hide"),
     ("s", "submit", "submit"),
@@ -71,6 +72,10 @@ pub fn bindings() -> Vec<KeyBinding> {
         KeyBinding::new("h", Hide, Some("Deck")),
         KeyBinding::new("s", Submit, Some("Deck")),
         KeyBinding::new("q", Close, Some("Deck")),
+        // Escape is bound in the composer too, for discarding a remark. That
+        // context is deeper than this one, so while somebody is writing it
+        // takes the key and this never runs.
+        KeyBinding::new("escape", Unlight, Some("Deck")),
         KeyBinding::new("cmd-q", Close, None),
         // Zoom is bound window-wide, not to the deck's context: needing the
         // text bigger is not a thing that should stop working because a
@@ -2087,6 +2092,22 @@ impl DeckView {
     /// also has eleven other things on it.
     fn on_follow(&mut self, _: &Follow, _window: &mut Window, cx: &mut Context<Self>) {
         self.live.follow();
+        cx.notify();
+    }
+
+    /// Put the reader's own light out.
+    ///
+    /// Everything on screen that a person put there: the sentence pressed in
+    /// the rail, the one picked in the narration, the lines picked in a pane,
+    /// and the spotlight those raised. What the agent is pointing at is left
+    /// alone — it is mid-sentence, and its light goes out by itself.
+    fn on_unlight(&mut self, _: &Unlight, _window: &mut Window, cx: &mut Context<Self>) {
+        self.pressed = None;
+        self.picked_said = None;
+        for pane in &mut self.panes {
+            pane.unpick();
+        }
+        let _ = self.point_at(None, cx);
         cx.notify();
     }
 
@@ -5478,6 +5499,7 @@ impl Render for DeckView {
             .on_action(cx.listener(Self::on_asked))
             .on_action(cx.listener(Self::on_wrong))
             .on_action(cx.listener(Self::on_follow))
+            .on_action(cx.listener(Self::on_unlight))
             .on_action(cx.listener(Self::on_close))
             .on_action(cx.listener(Self::on_comment))
             .on_action(cx.listener(Self::on_rotate))
