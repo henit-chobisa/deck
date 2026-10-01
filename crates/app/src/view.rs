@@ -473,6 +473,12 @@ pub struct DeckView {
     /// Folded when live starts. The code is what the reader came for; the
     /// conversation is a click away.
     rail_open: crate::pane::Fade,
+    /// The sentence of a rail turn the reader last pressed.
+    ///
+    /// Kept here rather than in the turn, because only one can be lit: pressing
+    /// a sentence in one reply and then another in the next has to move the
+    /// light, not add a second one.
+    pressed: Option<(usize, (usize, usize))>,
     /// The sentence being heard, and how far its light has come up.
     heard_now: Option<(crate::speech::Narration, (usize, usize), crate::pane::Fade)>,
     /// The sentence just heard, its light going out.
@@ -753,6 +759,7 @@ impl DeckView {
             folds: Vec::new(),
             temporary: std::collections::HashSet::new(),
             rail_open: crate::pane::Fade::default(),
+            pressed: None,
             rail_width,
             conversation,
             rail_scroll,
@@ -2346,6 +2353,35 @@ impl DeckView {
         cx.notify();
     }
 
+    /// A sentence of a turn in the rail was pressed.
+    ///
+    /// The turn's own words are the clean copy — the transcript keeps it
+    /// without beats or points, because that is what a review should carry — so
+    /// the pointing is read from the copy kept beside it, which still has it.
+    /// A turn nobody spoke has no pointed copy and nothing to move to.
+    fn press_said(&mut self, turn: usize, at: usize, cx: &mut Context<Self>) {
+        let pointed = self.conversation.spoken.get(&turn).cloned();
+        let sentence = self
+            .conversation
+            .transcript
+            .get(turn)
+            .and_then(|moment| crate::prose::sentence_around(&moment.text, at));
+        self.pressed = sentence.map(|range| (turn, range));
+
+        // Reader activity, so the agent stops moving them — the same hold
+        // pressing the narration takes.
+        self.live.pause(PauseReason::Selection);
+        if let Some(say) = pointed {
+            self.attend();
+            self.point_at(Self::point_in(&say, at), cx);
+            if let Some((ix, target)) = self.point_away() {
+                self.followed = Some(std::time::Instant::now());
+                self.glide(ix, target, cx);
+            }
+        }
+        cx.notify();
+    }
+
     /// Light the code a sentence of the narration is about.
     ///
     /// The same thing the voice does, with the reader as the clock. A voice
@@ -2384,11 +2420,23 @@ impl DeckView {
     /// how many words of the page it is — so the word the reader touched falls
     /// inside exactly one of them, and that piece carries the lines.
     fn point_of(&self, at: usize) -> Option<crate::prose::Spot> {
-        let group = self.group()?;
+        Self::point_in(&self.group()?.say, at)
+    }
+
+    /// What the word at `at` of `say` is pointing at, if anything.
+    ///
+    /// Taken as text rather than read off the current group, because the rail
+    /// asks the same question about a turn the agent said earlier — and that
+    /// turn's prose is not the group's.
+    ///
+    /// The count works because `pointed` strips the points before counting, so
+    /// its word numbers are the ones the reader sees: the same numbers the
+    /// clean copy in the transcript is drawn with.
+    fn point_in(say: &str, at: usize) -> Option<crate::prose::Spot> {
         let mut seen = 0;
         // The pause only changes what a voice hears, and nothing here is
         // heard. Cutting is the same either way.
-        for piece in crate::prose::pointed(&group.say, 0) {
+        for piece in crate::prose::pointed(say, 0) {
             seen += piece.words;
             if at < seen {
                 return piece.point;
@@ -4274,6 +4322,17 @@ impl DeckView {
                     // is a chip here too, and the sentence being heard is lit.
                     let picking = crate::prose::Picking::quiet(
                         self.heard_in(crate::speech::Narration::Answer(ix)),
+                    )
+                    .pressable(
+                        self.pressed
+                            .filter(|(turn, _)| *turn == ix)
+                            .map(|(_, range)| range),
+                        {
+                            let deck = cx.entity().downgrade();
+                            std::rc::Rc::new(move |at, _window, cx| {
+                                deck.update(cx, |deck, cx| deck.press_said(ix, at, cx)).ok();
+                            })
+                        },
                     );
                     crate::prose::render_look(
                         crate::prose::parse(&moment.text),
@@ -5544,6 +5603,29 @@ impl Render for DeckView {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_sentence_of_a_reply_points_where_the_reply_pointed() {
+        // The rail draws the clean copy of a turn — no beats, no points,
+        // because that is what a review should carry — so pressing a sentence
+        // of it has to read the pointing from the copy kept beside it.
+        //
+        // The two agree on word numbers, and that is what makes this work:
+        // `pointed` strips the points before counting, so its numbers are the
+        // ones the reader sees.
+        let spoken = "The counter is wrong. [point 140-148] This line runs twice.";
+
+        // A word in the first sentence, before any point.
+        assert!(DeckView::point_in(spoken, 1).is_none(), "nothing yet");
+
+        // And one after it.
+        let at = DeckView::point_in(spoken, 6).expect("the point applies from here on");
+        assert_eq!(
+            at.lines,
+            Some(deck_core::LineRange::new(140, 148)),
+            "the lines that sentence was about"
+        );
+    }
+
     // Spelled out rather than `#[test]`: this module glob-imports GPUI, which
     // exports a `test` attribute of its own and would otherwise shadow the
     // standard one.

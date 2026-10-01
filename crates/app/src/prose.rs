@@ -103,6 +103,21 @@ pub struct Picking {
 }
 
 impl Picking {
+    /// Give a quiet piece of prose a hand: pressable words, and a lit range.
+    ///
+    /// The rail's turns are read rather than picked from, so they start quiet —
+    /// but an agent's turn is *about* code, and pressing a sentence of it is
+    /// the same act as pressing a sentence of the narration. Without this the
+    /// reply that explained something was the one place in the window where
+    /// putting a finger on a sentence did nothing at all.
+    #[must_use]
+    pub fn pressable(mut self, lit: Option<(usize, usize)>, down: Down) -> Self {
+        self.pickable = true;
+        self.range = lit;
+        self.down = down;
+        self
+    }
+
     /// Prose that is read but not picked from: the rail's record of what was
     /// said. It still lights the sentence being heard.
     #[must_use]
