@@ -66,15 +66,20 @@ const FALL: std::time::Duration = std::time::Duration::from_millis(760);
 /// Leaving is not the same act as being replaced. Out of the way, and quickly.
 const HAND_OVER: std::time::Duration = std::time::Duration::from_millis(200);
 
-/// How long the reader's own selection takes to come up.
-const PICK_RISE: std::time::Duration = std::time::Duration::from_millis(150);
+/// How long a light the reader raised takes to come up.
+///
+/// Every timing above this one answers to a voice, and a voice is slow on
+/// purpose. A light that answers a hand is a different thing: the reader
+/// already knows what they did, and anything that takes half a second to agree
+/// with them reads as the window thinking about it.
+pub(crate) const HAND_RISE: std::time::Duration = std::time::Duration::from_millis(150);
 
 /// And how long it takes to go out.
 ///
 /// Longer than it took to arrive, on purpose. Coming up answers a gesture and
 /// should feel caused by it; going out answers nothing, and a band that simply
 /// stops existing reads as a glitch rather than as a hand being taken away.
-const PICK_FALL: std::time::Duration = std::time::Duration::from_millis(420);
+pub(crate) const HAND_FALL: std::time::Duration = std::time::Duration::from_millis(420);
 
 /// A pace, as the milliseconds a `Fade` stores it as.
 fn ms(of: std::time::Duration) -> u16 {
@@ -613,7 +618,7 @@ impl Pane {
                 light.set(true);
             }
             slot => {
-                let mut light = Fade::default().paced(PICK_RISE, PICK_FALL);
+                let mut light = Fade::default().paced(HAND_RISE, HAND_FALL);
                 light.set(true);
                 *slot = Some(((first, last), light));
             }
@@ -2123,34 +2128,38 @@ mod tests {
     }
 
     #[test]
-    fn a_pick_arrives_quicker_than_it_leaves() {
+    fn a_light_the_reader_raised_arrives_quicker_than_it_leaves() {
         // The ask, as a pair of numbers: coming up should feel caused by the
         // gesture, going out should be something you watch.
         assert!(
-            PICK_RISE < PICK_FALL,
+            HAND_RISE < HAND_FALL,
             "a band that leaves as fast as it arrived reads as a glitch"
         );
         assert!(
-            PICK_RISE < RISE,
+            HAND_RISE < RISE,
             "and quicker in than the narration, which answers to a voice"
         );
+        // Reported as sluggish when the sentences were on the narration pace.
+        // Half a second to agree with a click reads as the window thinking
+        // about it, whatever the easing does.
+        assert!(HAND_RISE * 3 < RISE, "comfortably quicker, not marginally");
 
-        let mut light = Fade::default().paced(PICK_RISE, PICK_FALL);
+        let mut light = Fade::default().paced(HAND_RISE, HAND_FALL);
         light.set(true);
         // Halfway through its own rise, not through the narration's.
-        light.since = Some(std::time::Instant::now() - PICK_RISE / 2);
+        light.since = Some(std::time::Instant::now() - HAND_RISE / 2);
         let halfway = light.level();
         assert!(
             (0.2..0.8).contains(&halfway),
             "eased, and already well up: {halfway}"
         );
 
-        light.since = Some(std::time::Instant::now() - PICK_RISE);
+        light.since = Some(std::time::Instant::now() - HAND_RISE);
         assert!(!light.moving(), "arrived in its own time, not in RISE");
 
         // And letting go takes the longer way out.
         light.set(false);
-        light.since = Some(std::time::Instant::now() - PICK_RISE);
+        light.since = Some(std::time::Instant::now() - HAND_RISE);
         assert!(
             light.moving(),
             "still leaving after as long as it took to come"

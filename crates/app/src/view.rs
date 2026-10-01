@@ -2160,7 +2160,9 @@ impl DeckView {
                 Some((words, light)) if Self::still_the_same(words, range) => Some(light),
                 _ => None,
             };
-            let mut light = carry.unwrap_or_default();
+            let mut light = carry.unwrap_or_else(|| {
+                crate::pane::Fade::default().paced(crate::pane::HAND_RISE, crate::pane::HAND_FALL)
+            });
             light.set(true);
             self.said_lit = Some((range, light));
         } else if let Some((_, light)) = &mut self.said_lit {
@@ -2485,7 +2487,9 @@ impl DeckView {
                 }
                 _ => None,
             };
-            let mut light = carry.unwrap_or_default();
+            let mut light = carry.unwrap_or_else(|| {
+                crate::pane::Fade::default().paced(crate::pane::HAND_RISE, crate::pane::HAND_FALL)
+            });
             light.set(true);
             (turn, range, light)
         });
