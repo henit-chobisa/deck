@@ -50,6 +50,7 @@ base64 = "0.22"
 # Names the voice cache by what went into a sound, so a changed voice is never
 # answered from an old file.
 sha2 = "0.10"
+semver = "1"
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 toml = "0.9"

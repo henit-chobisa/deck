@@ -35,6 +35,7 @@ mod sheet;
 mod skill;
 mod speech;
 mod state;
+mod upgrade;
 mod view;
 mod waiting;
 

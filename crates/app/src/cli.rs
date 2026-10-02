@@ -323,6 +323,24 @@ enum What {
     /// this is the one thing only you can answer.
     Setup,
 
+    /// Replace deck with a newer deck.
+    ///
+    /// Asks whether prereleases count, then downloads the newest release that
+    /// has a binary attached, checks it against its published checksum, checks
+    /// that it starts, and moves it into place. Windows that are already open
+    /// are unaffected — the next deck anybody opens is the new one.
+    ///
+    /// Not for a copy a package manager installed: there it says so and stops,
+    /// because replacing that file wins until the next `brew upgrade` disagrees.
+    Upgrade {
+        /// Take prereleases too, without being asked.
+        #[arg(long)]
+        prerelease: bool,
+        /// Stable releases only, without being asked.
+        #[arg(long, conflicts_with = "prerelease")]
+        stable: bool,
+    },
+
     /// Read a `Stop` event and say whether the reply should have been a deck.
     ///
     /// Run by the agent, never by a person: `deck setup` offers to register it,
@@ -490,6 +508,12 @@ impl Cli {
             ),
             What::Walk => report(crate::setup::live()),
             What::Setup => report(crate::setup::run()),
+            What::Upgrade { prerelease, stable } => {
+                // Neither flag is a question to ask; either one is an answer
+                // already given.
+                let unstable = prerelease.then_some(true).or(stable.then_some(false));
+                report(crate::upgrade::run(unstable))
+            }
             What::Hook => report(crate::hook::run()),
             What::Show {
                 deck,
