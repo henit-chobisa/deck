@@ -3048,9 +3048,10 @@ impl DeckView {
     /// remarks read as neutral, and an agent left to infer tone from prose gets
     /// it wrong. Naming it costs the reader one keystroke."*
     ///
-    /// It decides more than tone. A question or a must-fix expects an answer
-    /// and wakes the agent when it goes; a nit waits for the review with
-    /// everything else.
+    /// It decides nothing in this window. The kind travels in the review and
+    /// the far side is told to weigh it — *a must-fix blocks, a nit does not*
+    /// — and that is the whole of its job. What decides whether the agent is
+    /// woken is `when`, which is a different control and always was.
     fn choose_kind(&mut self, kind: deck_core::Kind, cx: &mut Context<Self>) {
         self.composing_kind = kind;
         cx.notify();
