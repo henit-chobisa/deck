@@ -363,12 +363,7 @@ pub struct Session {
     rail_width: Option<f32>,
     rail_scroll: ScrollHandle,
     aloud: bool,
-    draft: Option<(
-        About,
-        Entity<TextareaState>,
-        deck_core::Kind,
-        deck_core::When,
-    )>,
+    draft: Option<(About, Entity<TextareaState>, deck_core::When)>,
     group_ix: usize,
     turn: Option<u8>,
     band_height: Option<f32>,
@@ -451,7 +446,6 @@ pub struct DeckView {
     /// *what the remark is pinned to* and this is *what the reader wants done*.
     /// Reset every time a composer opens: a must-fix should never be inherited
     /// by the next remark.
-    composing_kind: deck_core::Kind,
     /// Whether the remark being written wants the walk to stop.
     composing_when: deck_core::When,
     /// Whether a voice is reading the deck aloud.
@@ -804,7 +798,6 @@ impl DeckView {
             focus: cx.focus_handle(),
             remarks,
             composing: None,
-            composing_kind: deck_core::Kind::default(),
             composing_when: deck_core::When::default(),
             aloud,
             unheard: 0,
@@ -852,11 +845,10 @@ impl DeckView {
             spread: false,
             spreading: Task::ready(()),
         };
-        if let Some((about, state, kind, when)) = draft {
+        if let Some((about, state, when)) = draft {
             view.live.pause(PauseReason::Composer);
             let listen = Self::listen_composer(&state, window, cx);
             view.composing = Some((about, state, listen));
-            view.composing_kind = kind;
             view.composing_when = when;
         }
         view.build_panes(cx);
@@ -2836,7 +2828,6 @@ impl DeckView {
         let listen = Self::listen_composer(&state, window, cx);
 
         self.composing = Some((about, state, listen));
-        self.composing_kind = deck_core::Kind::default();
         self.composing_when = deck_core::When::default();
         cx.notify();
     }
@@ -3042,21 +3033,6 @@ impl DeckView {
         }
     }
 
-    /// Say what the comment being written is asking for.
-    ///
-    /// The thing [`deck_core::Kind`] was written for and never had: *"Terse
-    /// remarks read as neutral, and an agent left to infer tone from prose gets
-    /// it wrong. Naming it costs the reader one keystroke."*
-    ///
-    /// It decides nothing in this window. The kind travels in the review and
-    /// the far side is told to weigh it — *a must-fix blocks, a nit does not*
-    /// — and that is the whole of its job. What decides whether the agent is
-    /// woken is `when`, which is a different control and always was.
-    fn choose_kind(&mut self, kind: deck_core::Kind, cx: &mut Context<Self>) {
-        self.composing_kind = kind;
-        cx.notify();
-    }
-
     fn save_remark(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let Some((about, state, _listen)) = self.composing.take() else {
             return;
@@ -3067,7 +3043,9 @@ impl DeckView {
         // to move anything for the rest of the session.
         self.live.composer_closed();
         let said = state.read(cx).value().trim().to_string();
-        let kind = self.composing_kind;
+        // Every comment is a comment. The reader asked for one and nothing
+        // else, and the far side reads the words.
+        let kind = deck_core::Kind::default();
         self.focus.focus(window, cx);
 
         if said.is_empty() {
@@ -3164,14 +3142,10 @@ impl DeckView {
             rail_width: self.rail_width,
             rail_scroll: self.rail_scroll.clone(),
             aloud: self.aloud,
-            draft: self.composing.as_ref().map(|(about, state, _)| {
-                (
-                    about.clone(),
-                    state.clone(),
-                    self.composing_kind,
-                    self.composing_when,
-                )
-            }),
+            draft: self
+                .composing
+                .as_ref()
+                .map(|(about, state, _)| (about.clone(), state.clone(), self.composing_when)),
             group_ix: self.group_ix,
             turn: self.turn,
             band_height: self.band_height,
@@ -4919,8 +4893,7 @@ impl DeckView {
                         // panel, and sending them to a box on top of the file they
                         // are reading pulls their eye off the thing they are
                         // replying about.
-                        .children(self.render_composer(cx))
-                        .children(self.composing.is_some().then(|| self.render_kinds(cx))),
+                        .children(self.render_composer(cx)),
                 )
             })
             .when(open < 1., |this| {
@@ -5280,74 +5253,7 @@ impl DeckView {
             )
             .into_any_element()
     }
-
-    /// The reactions, under a rule at the foot of the panel.
-    ///
-    /// Words, not faces. Every other surface in this window is one ink and one
-    /// accent; seven colour glyphs along the bottom fought all of it, and no
-    /// arrangement of them fixed that — the problem was never which emoji.
-    ///
-    /// A word also says exactly what it means. `bug` is `bug`; a beetle is a
-    /// beetle until the reader decides what you meant by it.
-    fn render_kinds(&self, cx: &mut Context<Self>) -> AnyElement {
-        let palette = &self.palette;
-        let mono = cx.theme().mono_font_family.clone();
-
-        div()
-            .h_flex()
-            .flex_wrap()
-            .flex_none()
-            .items_center()
-            .gap(px(2.))
-            .mt(px(9.))
-            .pt(px(8.))
-            .border_t_1()
-            .border_color(paint(palette.edge))
-            .children(KINDS.iter().enumerate().map(|(ix, &(mark, kind))| {
-                let tone = match kind {
-                    deck_core::Kind::MustFix => palette.del,
-                    deck_core::Kind::Question => palette.accent,
-                    deck_core::Kind::Nit => palette.muted,
-                };
-                // The one it already is reads as chosen rather than as another
-                // thing to press.
-                let chosen = self.composing_kind == kind;
-                div()
-                    .id(("react", ix))
-                    .flex_none()
-                    .px(px(6.))
-                    .py(px(3.))
-                    .rounded(px(4.))
-                    .font_family(mono.clone())
-                    .text_size(px(10.5))
-                    .text_color(paint(tone))
-                    .cursor_pointer()
-                    .hover(|style| style.bg(paint(palette.wash)))
-                    .when(chosen, |this| this.bg(paint(palette.wash)))
-                    .on_click(cx.listener(move |deck, _, _window, cx| {
-                        deck.choose_kind(kind, cx);
-                    }))
-                    .child(mark)
-            }))
-            .into_any_element()
-    }
 }
-
-/// What a remark can be, in the order of how much it asks of the far side.
-///
-/// Words rather than faces, and short ones. They sit in a panel that can be
-/// dragged narrow, they are coloured by what they ask for, and each says
-/// exactly one thing — which a picture of a beetle does not.
-///
-/// Three, because there are three kinds. The row used to carry seven words for
-/// the same three — `+1` and `nice` were one kind, `careful` and `bug` and
-/// `stop` another — which asked the reader to choose between words that did
-/// the same thing.
-const KINDS: &[(&str, deck_core::Kind)] = &[
-    ("nit", deck_core::Kind::Nit),
-    ("question", deck_core::Kind::Question),
-    ("must-fix", deck_core::Kind::MustFix),
-];
 
 /// Report a prolonged wait without pretending to know why the agent is quiet.
 ///
@@ -6004,27 +5910,6 @@ mod tests {
     use core::prelude::v1::test;
 
     use super::*;
-
-    #[test]
-    fn every_kind_is_offered_exactly_once() {
-        // The row used to carry seven words for three kinds, and two of them
-        // behaved differently from the rest — `stop` took the floor where the
-        // others waited. One word per kind is the whole point of the change,
-        // so a fourth word, or a kind with no word, is a regression.
-        assert_eq!(KINDS.len(), 3, "one word each, and no more");
-
-        for kind in [
-            deck_core::Kind::Nit,
-            deck_core::Kind::Question,
-            deck_core::Kind::MustFix,
-        ] {
-            assert_eq!(
-                KINDS.iter().filter(|(_, it)| *it == kind).count(),
-                1,
-                "{kind:?} is offered once"
-            );
-        }
-    }
 
     #[test]
     fn a_dragged_share_is_ignored_once_it_is_the_only_pane_open() {

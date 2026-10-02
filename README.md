@@ -260,18 +260,9 @@ It lists every Chirp 3 HD voice and plays one before you choose it. Until that
 is done the window does not offer the key at all, and everything else works
 without it.
 
-Every comment says what it is asking for. While the composer is open, a row
-under it offers the three:
-
-```
-nit        worth saying, not worth blocking on
-question   answer this
-must-fix   this one blocks
-```
-
-This is what `Kind` in the protocol has always been for. Every comment used to
-go back marked `question` whatever you meant, which left the agent guessing your
-tone from your prose.
+A comment is a comment. There is nothing to grade it with and nothing to choose
+before you type — `c`, write, send. What you do choose is *when* it is heard:
+with the review, at the next gap, or now.
 
 ### What the agent can do while you watch
 
