@@ -27,8 +27,8 @@ use crate::sheet::{Sheet, Slot};
 gpui_kit::actions!(
     deck,
     [
-        NextGroup, PrevGroup, Comment, Rotate, Walk, Follow, Hide, Submit, Discard, Noted, Asked,
-        Wrong, ZoomIn, ZoomOut, ZoomReset, Zen, Close, Unlight
+        NextGroup, PrevGroup, Comment, Rotate, Walk, Follow, Hide, Submit, Discard, ZoomIn,
+        ZoomOut, ZoomReset, Zen, Close, Unlight
     ]
 );
 
@@ -64,9 +64,6 @@ pub fn bindings() -> Vec<KeyBinding> {
         KeyBinding::new("c", Comment, Some("Deck")),
         KeyBinding::new("t", Rotate, Some("Deck")),
         KeyBinding::new("w", Walk, Some("Deck")),
-        KeyBinding::new("1", Noted, Some("Deck")),
-        KeyBinding::new("2", Asked, Some("Deck")),
-        KeyBinding::new("3", Wrong, Some("Deck")),
         KeyBinding::new("f", Follow, Some("Deck")),
         KeyBinding::new("z", Zen, Some("Deck")),
         KeyBinding::new("h", Hide, Some("Deck")),
@@ -2158,21 +2155,6 @@ impl DeckView {
         self.narrate(&say, Some(of), &speech, cx);
     }
 
-    /// *Noted.* The cheapest thing a reader can say, and the most common.
-    fn on_noted(&mut self, _: &Noted, _window: &mut Window, cx: &mut Context<Self>) {
-        self.react(FACES[0].1, face_when(FACES[0].0), FACES[0].0, cx);
-    }
-
-    /// *Wait, what?* — the one that should make an agent stop and explain.
-    fn on_asked(&mut self, _: &Asked, _window: &mut Window, cx: &mut Context<Self>) {
-        self.react(FACES[3].1, face_when(FACES[3].0), FACES[3].0, cx);
-    }
-
-    /// *That's wrong.* Blocking, and it should read as blocking.
-    fn on_wrong(&mut self, _: &Wrong, _window: &mut Window, cx: &mut Context<Self>) {
-        self.react(FACES[4].1, face_when(FACES[4].0), FACES[4].0, cx);
-    }
-
     /// Turn the rest of the screen down, or back up.
     ///
     /// The deck does not change. What changes is everything that was competing
@@ -3071,55 +3053,8 @@ impl DeckView {
     ///
     /// While a composer is open the same keys set the kind of the remark being
     /// written instead, because there the reader already has words.
-    fn react(
-        &mut self,
-        kind: deck_core::Kind,
-        when: deck_core::When,
-        face: &str,
-        cx: &mut Context<Self>,
-    ) {
-        if self.composing.is_some() {
-            self.composing_kind = kind;
-            cx.notify();
-            return;
-        }
-        let Some(about) = self.pinned() else {
-            return;
-        };
-        // The face is the message. Two faces can ask the agent for the same
-        // thing and still not mean the same thing, so the one the reader
-        // pressed travels with the remark rather than being flattened away.
-        let remark = Self::remark(about, face.to_string(), kind, when);
-        // Nothing is owed for a remark nobody has been told about. A bar
-        // filling up beside a deferred note would be waiting for an answer
-        // that is not due until the review is submitted.
-        if kind != deck_core::Kind::Nit && when != deck_core::When::Defer {
-            self.expect_answer(cx);
-        }
-        self.note(deck_core::What::Reacted, Some(kind), when, face, &remark);
-        self.told_page(&remark);
-        // The selection has done its job. Left on, the sentence stays filled
-        // in the accent — and now that a remark leaves a mark of its own, the
-        // two sit on the same words and the prose reads as a paint blob rather
-        // than as a sentence somebody said something about.
-        self.picked_said = None;
-        self.said_from = None;
-        for pane in &mut self.panes {
-            pane.unpick();
-        }
-        self.remarks.push(remark);
-        // Where its turn sits, before anything is written down.
-        if let Some(mine) = self.remarks.last_mut() {
-            mine.moment = self.conversation.transcript.len().checked_sub(1);
-        }
-        // Written down as it is made. The way out is exactly what cannot be
-        // relied on — a quit, a crash and a force-close all skip whatever tidy
-        // exit path they were meant to take.
-        crate::draft::save(
-            &self.deck.root,
-            &self.remarks,
-            &self.conversation.transcript,
-        );
+    fn choose_kind(&mut self, kind: deck_core::Kind, cx: &mut Context<Self>) {
+        self.composing_kind = kind;
         cx.notify();
     }
 
@@ -4986,7 +4921,7 @@ impl DeckView {
                         // are reading pulls their eye off the thing they are
                         // replying about.
                         .children(self.render_composer(cx))
-                        .child(self.render_reactions(cx)),
+                        .children(self.composing.is_some().then(|| self.render_kinds(cx))),
                 )
             })
             .when(open < 1., |this| {
@@ -5355,7 +5290,7 @@ impl DeckView {
     ///
     /// A word also says exactly what it means. `bug` is `bug`; a beetle is a
     /// beetle until the reader decides what you meant by it.
-    fn render_reactions(&self, cx: &mut Context<Self>) -> AnyElement {
+    fn render_kinds(&self, cx: &mut Context<Self>) -> AnyElement {
         let palette = &self.palette;
         let mono = cx.theme().mono_font_family.clone();
 
@@ -5369,12 +5304,15 @@ impl DeckView {
             .pt(px(8.))
             .border_t_1()
             .border_color(paint(palette.edge))
-            .children(FACES.iter().enumerate().map(|(ix, &(mark, kind))| {
+            .children(KINDS.iter().enumerate().map(|(ix, &(mark, kind))| {
                 let tone = match kind {
                     deck_core::Kind::MustFix => palette.del,
                     deck_core::Kind::Question => palette.accent,
                     deck_core::Kind::Nit => palette.muted,
                 };
+                // The one it already is reads as chosen rather than as another
+                // thing to press.
+                let chosen = self.composing_kind == kind;
                 div()
                     .id(("react", ix))
                     .flex_none()
@@ -5386,13 +5324,9 @@ impl DeckView {
                     .text_color(paint(tone))
                     .cursor_pointer()
                     .hover(|style| style.bg(paint(palette.wash)))
+                    .when(chosen, |this| this.bg(paint(palette.wash)))
                     .on_click(cx.listener(move |deck, _, _window, cx| {
-                        // Pressed or clicked, a face means the same thing.
-                        // This read `Queue` while the keys read the default, so
-                        // the rail woke the agent out of `deck wait` with a
-                        // reaction the reader believed they were keeping until
-                        // they submitted.
-                        deck.react(kind, face_when(mark), mark, cx);
+                        deck.choose_kind(kind, cx);
                     }))
                     .child(mark)
             }))
@@ -5413,22 +5347,16 @@ impl DeckView {
 /// A reaction means the same thing however it was left, so this is the only
 /// place that decides. Everything waits for the review, as every remark does,
 /// except `stop` — the one face whose whole point is to take the floor.
-fn face_when(mark: &str) -> deck_core::When {
-    if mark == "stop" {
-        deck_core::When::Interrupt
-    } else {
-        deck_core::When::default()
-    }
-}
-
-const FACES: &[(&str, deck_core::Kind)] = &[
-    ("+1", deck_core::Kind::Nit),
-    ("nice", deck_core::Kind::Nit),
-    ("looking", deck_core::Kind::Question),
-    ("?", deck_core::Kind::Question),
-    ("careful", deck_core::Kind::MustFix),
-    ("bug", deck_core::Kind::MustFix),
-    ("stop", deck_core::Kind::MustFix),
+/// What a remark can be, in the order of how much it asks of the far side.
+///
+/// Three, because there are three kinds. The row used to carry seven words for
+/// the same three — `+1` and `nice` were one kind, `careful` and `bug` and
+/// `stop` another — which asked the reader to choose between words that did
+/// the same thing.
+const KINDS: &[(&str, deck_core::Kind)] = &[
+    ("nit", deck_core::Kind::Nit),
+    ("question", deck_core::Kind::Question),
+    ("must-fix", deck_core::Kind::MustFix),
 ];
 
 /// Report a prolonged wait without pretending to know why the agent is quiet.
@@ -5844,9 +5772,6 @@ impl Render for DeckView {
             .on_action(cx.listener(Self::on_next))
             .on_action(cx.listener(Self::on_prev))
             .on_action(cx.listener(Self::on_walk))
-            .on_action(cx.listener(Self::on_noted))
-            .on_action(cx.listener(Self::on_asked))
-            .on_action(cx.listener(Self::on_wrong))
             .on_action(cx.listener(Self::on_follow))
             .on_action(cx.listener(Self::on_unlight))
             .on_action(cx.listener(Self::on_close))
@@ -6091,21 +6016,23 @@ mod tests {
     use super::*;
 
     #[test]
-    fn a_face_waits_for_the_review_however_it_was_left() {
-        // The bug this exists for: the rail's faces read `Queue` while the keys
-        // read the default, so clicking one woke the agent out of `deck wait`
-        // with a reaction the reader thought they were keeping until submit.
-        for &(mark, _) in FACES {
-            let when = face_when(mark);
-            if mark == "stop" {
-                assert_eq!(when, deck_core::When::Interrupt, "{mark} takes the floor");
-            } else {
-                assert_eq!(
-                    when,
-                    deck_core::When::default(),
-                    "{mark} is owed nothing until the review goes back"
-                );
-            }
+    fn every_kind_is_offered_exactly_once() {
+        // The row used to carry seven words for three kinds, and two of them
+        // behaved differently from the rest — `stop` took the floor where the
+        // others waited. One word per kind is the whole point of the change,
+        // so a fourth word, or a kind with no word, is a regression.
+        assert_eq!(KINDS.len(), 3, "one word each, and no more");
+
+        for kind in [
+            deck_core::Kind::Nit,
+            deck_core::Kind::Question,
+            deck_core::Kind::MustFix,
+        ] {
+            assert_eq!(
+                KINDS.iter().filter(|(_, it)| *it == kind).count(),
+                1,
+                "{kind:?} is offered once"
+            );
         }
     }
 
