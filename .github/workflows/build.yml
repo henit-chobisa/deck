@@ -15,6 +15,15 @@ env:
   CARGO_TERM_COLOR: always
   RUSTFLAGS: -D warnings
 
+# `--locked` on every cargo call, everywhere.
+#
+# Without it cargo quietly updates `Cargo.lock` to match a manifest it
+# disagrees with, and the build goes green on a lockfile nobody committed.
+# Twice in one day a dependency or a version went in and the lock did not —
+# both found by a reviewer, neither by any of this. Anybody packaging deck
+# builds with `--locked`, so a stale lock is their problem and not ours until
+# it is.
+
 jobs:
   macos:
     name: macOS
@@ -23,7 +32,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
-      - run: cargo build --workspace --release
+      - run: cargo build --locked --workspace --release
 
   portable:
     name: Linux (no window)
@@ -36,7 +45,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
-      - run: cargo build -p deck-core -p deck-cli -p deck-theme
+      - run: cargo build --locked -p deck-core -p deck-cli -p deck-theme
 
   windows:
     name: Windows
@@ -52,4 +61,4 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
-      - run: cargo build --workspace
+      - run: cargo build --locked --workspace
