@@ -20,6 +20,7 @@ mod config;
 mod conversation;
 mod draft;
 mod hook;
+mod icon;
 mod live;
 mod load;
 mod page;
@@ -130,6 +131,7 @@ fn show(decks: Vec<Deck>, opening: &cli::Opening) {
         .run(move |cx: &mut App| {
             gpui_kit::init(cx);
             palette::embed_fonts(cx);
+            icon::wear_the_mark();
 
             cx.bind_keys(view::bindings());
             cx.bind_keys(pill::bindings());
