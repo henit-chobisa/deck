@@ -69,8 +69,8 @@ pub fn run(unstable: Option<bool>) -> anyhow::Result<()> {
     };
 
     let there = release.tag.trim_start_matches('v');
-    if there == RUNNING {
-        println!("  deck {RUNNING} is the newest there is");
+    if !newer(there, RUNNING) {
+        println!("  deck {RUNNING} is already at least as new as {there}");
         return Ok(());
     }
 
@@ -153,6 +153,24 @@ fn releases() -> anyhow::Result<Vec<Release>> {
         .collect())
 }
 
+/// Whether `candidate` is strictly newer than `running`.
+///
+/// By version rather than by difference. Asking only whether the two strings
+/// disagree calls a downgrade an upgrade: somebody who built 0.1.4 from source
+/// would be handed 0.1.3 because that is the newest release with a binary on
+/// it, and told it was an improvement.
+///
+/// Anything that will not parse is not newer. A tag nobody can order is not a
+/// thing to replace a working deck with.
+fn newer(candidate: &str, running: &str) -> bool {
+    use semver::Version;
+
+    match (Version::parse(candidate), Version::parse(running)) {
+        (Ok(there), Ok(here)) => there > here,
+        _ => false,
+    }
+}
+
 /// The newest one worth installing.
 ///
 /// A release with no binary attached is not an upgrade anybody can take, which
@@ -183,9 +201,22 @@ fn swap(here: &Path, release: &Release) -> anyhow::Result<()> {
     let wanted = fetch(sums)?;
     checked(&archive, &wanted)?;
 
+    // Exclusive, and the lock as well as the workspace. `create_dir` fails if
+    // something is already there, so two upgrades running at once cannot
+    // delete each other's staged binary — which could otherwise install a file
+    // the other one had not finished checking.
+    //
+    // A directory left behind by a crash has to be cleared by hand. That is
+    // the right trade: the alternative is removing one that a live upgrade is
+    // halfway through using.
     let staging = beside.join(".deck-upgrade");
-    let _ = std::fs::remove_dir_all(&staging);
-    std::fs::create_dir_all(&staging).context("nowhere to unpack into")?;
+    std::fs::create_dir(&staging).with_context(|| {
+        format!(
+            "{} already exists — another upgrade is running, or one stopped \
+             partway and left it behind",
+            staging.display()
+        )
+    })?;
     let tidy = Tidy(staging.clone());
 
     let holding = staging.join("deck.tar.gz");
@@ -224,12 +255,21 @@ fn swap(here: &Path, release: &Release) -> anyhow::Result<()> {
         bail!("the new deck would not start, so it is not going in");
     }
 
-    // The one it replaces, kept. A release that turns out to be wrong is then
-    // one `mv` from undone, by somebody who may have no network left to fetch
-    // the old one again.
+    // The one it replaces, kept — as a hard link rather than a move.
+    //
+    // Moving it first leaves nothing at the install path until the second
+    // rename lands, and anything that goes wrong in that gap leaves the
+    // machine with no deck at all: a failed rename, a full disk, a signal. A
+    // link gives the old binary a second name while the first one still works,
+    // so the only moment anything changes is the rename, which is atomic.
+    //
+    // And the backup is checked. Replacing a deck without keeping the one it
+    // replaced is the case somebody needs most when a release is bad and they
+    // have no network left to fetch the old one again.
     let previous = beside.join("deck.prev");
     let _ = std::fs::remove_file(&previous);
-    let _ = std::fs::rename(here, &previous);
+    std::fs::hard_link(here, &previous)
+        .context("could not keep a copy of the deck being replaced")?;
 
     std::fs::rename(&fresh, here).context("could not put the new deck in place")?;
     drop(tidy);
@@ -391,6 +431,30 @@ mod tests {
             all
         });
         assert!(checked(b"deck", format!("{real}  deck.tar.gz").as_bytes()).is_ok());
+    }
+
+    #[test]
+    fn only_a_strictly_newer_release_is_an_upgrade() {
+        // Raised in review. Asking only whether the two strings disagree calls
+        // a downgrade an upgrade: somebody running a 0.1.4 they built from
+        // source would be handed 0.1.3, because that is the newest release
+        // with a binary attached.
+        assert!(!newer("0.1.3", "0.1.4"), "a downgrade is not an upgrade");
+        assert!(!newer("0.1.4", "0.1.4"), "and neither is the same version");
+        assert!(newer("0.1.4", "0.1.3"));
+        assert!(newer("0.2.0", "0.1.9"), "minor over patch");
+        assert!(newer("1.0.0", "0.9.9"), "and major over minor");
+
+        // Prereleases order below the release they lead to, which is what
+        // stops an rc replacing the thing it was an rc for.
+        assert!(newer("0.1.4", "0.1.4-rc.1"), "the release beats its rc");
+        assert!(!newer("0.1.4-rc.1", "0.1.4"), "and not the other way");
+        assert!(newer("0.1.4-rc.2", "0.1.4-rc.1"), "rc 2 over rc 1");
+
+        // A tag nobody can order is not a thing to replace a working deck
+        // with.
+        assert!(!newer("tip", "0.1.3"));
+        assert!(!newer("0.1.4", "whatever this build is"));
     }
 
     #[test]
