@@ -13,16 +13,21 @@
 # signing here changes that without a Developer ID.
 name: Release
 
-# Runs on pull requests too, which is the point: everything up to the upload
-# is the risky half — two architectures, `lipo`, and a signature that has to
-# survive both — and finding out it is wrong on the tag you meant to ship is
-# the worst time to find out. On a pull request it builds, signs, verifies and
-# throws the result away.
+# On the release, not on the tag.
+#
+# `cut-a-release` pushes the tag in step 3 and writes the release in step 5, so
+# a workflow triggered by the tag runs while there is still nothing to upload
+# to and `gh release upload` fails. Publishing the release is the event that
+# means *there is somewhere to put this*.
+#
+# The pull request trigger is only for changes to this file. Two release builds
+# is twenty minutes, which is not a thing to spend on every pull request — but
+# it is exactly what you want when the thing being changed is the release.
 on:
-  push:
-    tags: ["v*"]
+  release:
+    types: [published]
   pull_request:
-    paths: [".github/workflows/release.yml", "Cargo.toml", "crates/**"]
+    paths: [".github/workflows/release.yml"]
   workflow_dispatch:
     inputs:
       tag:
@@ -39,7 +44,12 @@ jobs:
     permissions:
       contents: write
     steps:
+      # The revision the release points at, not whatever main happens to be.
+      # A dispatch for an existing tag after main has moved would otherwise
+      # build something else entirely and attach it under that tag's name.
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: aarch64-apple-darwin,x86_64-apple-darwin
@@ -73,7 +83,7 @@ jobs:
       - name: Wrap it
         id: wrap
         run: |
-          tag="${{ inputs.tag || github.ref_name }}"
+          tag="${{ inputs.tag || github.event.release.tag_name || github.ref_name }}"
           name="deck-${tag}-macos-universal.tar.gz"
           tar -czf "$name" -C out deck
           shasum -a 256 "$name" > "$name.sha256"
@@ -83,7 +93,7 @@ jobs:
       # Only a real release has somewhere to put it. A pull request has proved
       # the thing builds and runs, which is what it was asked.
       - name: Attach it to the release
-        if: startsWith(github.ref, 'refs/tags/') || inputs.tag
+        if: github.event_name == 'release' || inputs.tag
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
