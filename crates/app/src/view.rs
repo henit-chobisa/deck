@@ -4860,7 +4860,7 @@ impl DeckView {
                                 )
                                 .child(
                                     div()
-                                        .font_family(mono)
+                                        .font_family(mono.clone())
                                         .text_size(px(9.5))
                                         .text_color(paint(if following {
                                             palette.muted
@@ -4902,6 +4902,12 @@ impl DeckView {
                                         .px(px(12.))
                                         .text_center()
                                         .text_size(px(11.))
+                                        // The window's mono. Without this the
+                                        // line inherits the panel's UI font,
+                                        // which has no italic face — so
+                                        // `italic` set a style nothing could
+                                        // draw and the text came out upright.
+                                        .font_family(mono.clone())
                                         .italic()
                                         .text_color(paint(palette.muted.mix(palette.band, 0.35)))
                                         .child(self.nothing_yet())
