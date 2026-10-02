@@ -1,0 +1,107 @@
+# Build the thing people actually install.
+#
+# Until this existed a release carried a demo video and nothing to run, and
+# every install path compiled nineteen tree-sitter grammars on the reader's
+# machine. That is minutes of waiting for something that could be a download.
+#
+# The binary is signed ad-hoc — `codesign -s -`, no identity, no Apple
+# Developer account. On Apple Silicon a binary has to carry *some* signature to
+# execute at all, and ad-hoc satisfies that. What it does not satisfy is
+# Gatekeeper's quarantine, which is set by browsers and by Mail and *not* by
+# curl or by Homebrew. So the install instructions have to stay `curl` and
+# `brew`: a tarball somebody downloads in Safari will be held, and no amount of
+# signing here changes that without a Developer ID.
+name: Release
+
+# On the release, not on the tag.
+#
+# `cut-a-release` pushes the tag in step 3 and writes the release in step 5, so
+# a workflow triggered by the tag runs while there is still nothing to upload
+# to and `gh release upload` fails. Publishing the release is the event that
+# means *there is somewhere to put this*.
+#
+# The pull request trigger is only for changes to this file. Two release builds
+# is twenty minutes, which is not a thing to spend on every pull request — but
+# it is exactly what you want when the thing being changed is the release.
+on:
+  release:
+    types: [published]
+  pull_request:
+    paths: [".github/workflows/release.yml"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: The release to attach the binary to
+        required: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  macos:
+    name: macOS
+    runs-on: macos-latest
+    permissions:
+      contents: write
+    steps:
+      # The revision the release points at, not whatever main happens to be.
+      # A dispatch for an existing tag after main has moved would otherwise
+      # build something else entirely and attach it under that tag's name.
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+      - uses: Swatinem/rust-cache@v2
+
+      # Both architectures, then one file. A universal binary means the install
+      # script has nothing to decide and no way to pick wrong.
+      - run: cargo build --release -p deck-app --target aarch64-apple-darwin
+      - run: cargo build --release -p deck-app --target x86_64-apple-darwin
+
+      - name: Make it universal
+        run: |
+          mkdir -p out
+          lipo -create -output out/deck \
+            target/aarch64-apple-darwin/release/deck \
+            target/x86_64-apple-darwin/release/deck
+          lipo -info out/deck
+
+      # Ad-hoc, and verified rather than assumed: an unsigned binary runs
+      # nowhere on arm64, and a silently unsigned release would be discovered
+      # by the first person to install it.
+      - name: Sign it
+        run: |
+          codesign --force --sign - out/deck
+          codesign --verify --verbose out/deck
+          codesign -dv out/deck 2>&1 | grep -q adhoc
+
+      - name: Check it runs
+        run: ./out/deck --version
+
+      - name: Wrap it
+        id: wrap
+        run: |
+          # A pull request has no tag, and `github.ref_name` there is `52/merge`
+          # — a slash, which is not a filename. The name only matters for the
+          # upload, which a pull request does not do.
+          tag="${{ inputs.tag || github.event.release.tag_name }}"
+          [ -n "$tag" ] || tag=dev
+          name="deck-${tag}-macos-universal.tar.gz"
+          tar -czf "$name" -C out deck
+          shasum -a 256 "$name" > "$name.sha256"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "name=$name" >> "$GITHUB_OUTPUT"
+
+      # Only a real release has somewhere to put it. A pull request has proved
+      # the thing builds and runs, which is what it was asked.
+      - name: Attach it to the release
+        if: github.event_name == 'release' || inputs.tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release upload "${{ steps.wrap.outputs.tag }}" \
+            "${{ steps.wrap.outputs.name }}" \
+            "${{ steps.wrap.outputs.name }}.sha256" \
+            --clobber

@@ -4355,6 +4355,11 @@ impl DeckView {
                         if said == 1 { "" } else { "s" }
                     ))
                     .child(self.deck.header.id.clone())
+                    // Which deck is running. Asked for because there was no way
+                    // to tell from inside the window, and the first thing
+                    // anybody reporting a bug has to answer is which version
+                    // they are on.
+                    .child(format!("deck {}", env!("CARGO_PKG_VERSION")))
                     // Putting the deck away has to be reachable without
                     // knowing a key. It sits at the quiet end of the strip
                     // rather than as a control in the header: it is a way out,
