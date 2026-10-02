@@ -4905,17 +4905,28 @@ impl DeckView {
                                         .items_center()
                                         .justify_center()
                                         .px(px(12.))
-                                        .text_center()
-                                        .text_size(px(11.))
-                                        // The window's mono. Without this the
-                                        // line inherits the panel's UI font,
-                                        // which has no italic face — so
-                                        // `italic` set a style nothing could
-                                        // draw and the text came out upright.
-                                        .font_family(mono.clone())
-                                        .italic()
-                                        .text_color(paint(palette.muted.mix(palette.band, 0.35)))
-                                        .child(self.nothing_yet())
+                                        // The words go in a child of their own, with a
+                                        // width. A string handed straight to a flex row is
+                                        // laid out at whatever width it asks for and runs off
+                                        // both edges of a rail somebody has dragged narrow —
+                                        // there is nothing for it to wrap inside. The row
+                                        // centres this; this is what the line breaks against.
+                                        .child(
+                                            div()
+                                                .w_full()
+                                                .text_center()
+                                                .text_size(px(11.))
+                                                // The window's mono. Without this the line
+                                                // inherits the panel's UI font, which has no
+                                                // italic face — so `italic` set a style
+                                                // nothing could draw and it came out upright.
+                                                .font_family(mono.clone())
+                                                .italic()
+                                                .text_color(paint(
+                                                    palette.muted.mix(palette.band, 0.35),
+                                                ))
+                                                .child(self.nothing_yet()),
+                                        )
                                 }))
                                 .children(lines),
                         )
@@ -5923,9 +5934,14 @@ mod tests {
 
         for line in NOTHING_YET {
             assert!(!line.is_empty(), "an empty one is the bug being fixed");
+            // The rail starts at 304 points and can be dragged narrower, so
+            // no length is safe and the line has to wrap — which it now does.
+            // This is only a bound on how much of the panel one can eat: four
+            // wrapped lines of filler in an empty rail is its own kind of
+            // noise.
             assert!(
                 line.len() < 56,
-                "{line:?} has to fit a panel somebody dragged narrow"
+                "{line:?} would fill a narrow rail even wrapped"
             );
             assert_eq!(
                 line.trim(),
