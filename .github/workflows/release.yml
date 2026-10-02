@@ -1,0 +1,93 @@
+# Build the thing people actually install.
+#
+# Until this existed a release carried a demo video and nothing to run, and
+# every install path compiled nineteen tree-sitter grammars on the reader's
+# machine. That is minutes of waiting for something that could be a download.
+#
+# The binary is signed ad-hoc — `codesign -s -`, no identity, no Apple
+# Developer account. On Apple Silicon a binary has to carry *some* signature to
+# execute at all, and ad-hoc satisfies that. What it does not satisfy is
+# Gatekeeper's quarantine, which is set by browsers and by Mail and *not* by
+# curl or by Homebrew. So the install instructions have to stay `curl` and
+# `brew`: a tarball somebody downloads in Safari will be held, and no amount of
+# signing here changes that without a Developer ID.
+name: Release
+
+# Runs on pull requests too, which is the point: everything up to the upload
+# is the risky half — two architectures, `lipo`, and a signature that has to
+# survive both — and finding out it is wrong on the tag you meant to ship is
+# the worst time to find out. On a pull request it builds, signs, verifies and
+# throws the result away.
+on:
+  push:
+    tags: ["v*"]
+  pull_request:
+    paths: [".github/workflows/release.yml", "Cargo.toml", "crates/**"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: The release to attach the binary to
+        required: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  macos:
+    name: macOS
+    runs-on: macos-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+      - uses: Swatinem/rust-cache@v2
+
+      # Both architectures, then one file. A universal binary means the install
+      # script has nothing to decide and no way to pick wrong.
+      - run: cargo build --release -p deck-app --target aarch64-apple-darwin
+      - run: cargo build --release -p deck-app --target x86_64-apple-darwin
+
+      - name: Make it universal
+        run: |
+          mkdir -p out
+          lipo -create -output out/deck \
+            target/aarch64-apple-darwin/release/deck \
+            target/x86_64-apple-darwin/release/deck
+          lipo -info out/deck
+
+      # Ad-hoc, and verified rather than assumed: an unsigned binary runs
+      # nowhere on arm64, and a silently unsigned release would be discovered
+      # by the first person to install it.
+      - name: Sign it
+        run: |
+          codesign --force --sign - out/deck
+          codesign --verify --verbose out/deck
+          codesign -dv out/deck 2>&1 | grep -q adhoc
+
+      - name: Check it runs
+        run: ./out/deck --version
+
+      - name: Wrap it
+        id: wrap
+        run: |
+          tag="${{ inputs.tag || github.ref_name }}"
+          name="deck-${tag}-macos-universal.tar.gz"
+          tar -czf "$name" -C out deck
+          shasum -a 256 "$name" > "$name.sha256"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "name=$name" >> "$GITHUB_OUTPUT"
+
+      # Only a real release has somewhere to put it. A pull request has proved
+      # the thing builds and runs, which is what it was asked.
+      - name: Attach it to the release
+        if: startsWith(github.ref, 'refs/tags/') || inputs.tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release upload "${{ steps.wrap.outputs.tag }}" \
+            "${{ steps.wrap.outputs.name }}" \
+            "${{ steps.wrap.outputs.name }}.sha256" \
+            --clobber
