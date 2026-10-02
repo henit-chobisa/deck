@@ -4451,6 +4451,27 @@ impl DeckView {
     /// popped into place would make the reader find their place again.
     ///
     /// Newest last, because a walk reads forwards.
+    /// Which empty line the reader gets, for the group in front of them.
+    ///
+    /// Follows the group rather than a clock. It changes as they walk and holds
+    /// still while they read — a line that rewrites itself under somebody is a
+    /// line they end up watching instead of the code.
+    ///
+    /// FNV-1a over the group's own words, so another deck lands somewhere else
+    /// without needing a source of randomness or anything kept between frames.
+    fn nothing_yet(&self) -> &'static str {
+        let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
+        let say = self.group().map_or("", |group| group.say.as_str());
+        // The index as well as the words, so two groups that happen to say the
+        // same thing still land in different places.
+        for byte in say.bytes().chain(self.group_ix.to_le_bytes()) {
+            hash ^= u64::from(byte);
+            hash = hash.wrapping_mul(0x0100_0000_01b3);
+        }
+        let at = hash % NOTHING_YET.len() as u64;
+        NOTHING_YET[usize::try_from(at).unwrap_or(0)]
+    }
+
     fn render_rail(&self, speaking: bool, cx: &mut Context<Self>) -> AnyElement {
         let wide = self.rail_width.unwrap_or(RAIL);
         let open = self.rail_open.level();
@@ -4733,6 +4754,9 @@ impl DeckView {
                     .into_any_element()
             })
             .collect();
+        // Nobody has said anything, so the thread is empty and the space is
+        // the first thing the reader sees in the panel.
+        let nothing = lines.is_empty();
 
         div()
             .id("live-rail")
@@ -4869,6 +4893,18 @@ impl DeckView {
                                 .min_h_0()
                                 .overflow_y_scroll()
                                 .track_scroll(&self.rail_scroll)
+                                .children(nothing.then(|| {
+                                    div()
+                                        .flex_1()
+                                        .flex()
+                                        .items_center()
+                                        .justify_center()
+                                        .px(px(12.))
+                                        .text_center()
+                                        .text_size(px(11.))
+                                        .text_color(paint(palette.muted.mix(palette.band, 0.35)))
+                                        .child(self.nothing_yet())
+                                }))
                                 .children(lines),
                         )
                         .child(
@@ -5254,6 +5290,25 @@ impl DeckView {
             .into_any_element()
     }
 }
+
+/// Something to read while nobody has said anything yet.
+///
+/// An empty panel with nothing in it reads as broken rather than as new, and
+/// *no comments* reads as a form field. These are short, lowercase and in the
+/// window's own register — the rail already says `listening` and `resume · f`
+/// a few points above.
+const NOTHING_YET: &[&str] = &[
+    "3… 2… 1… argue",
+    "nothing yet. press c",
+    "the floor is yours",
+    "no objections so far, which is also a result",
+    "say the thing",
+    "quiet. suspiciously quiet",
+    "nobody has pushed back yet",
+    "approving in silence is still approving",
+    "go on, then",
+    "the agent is listening",
+];
 
 /// Report a prolonged wait without pretending to know why the agent is quiet.
 ///
@@ -5839,6 +5894,31 @@ mod tests {
             text: "a remark".into(),
             when: deck_core::When::Queue,
             kind: deck_core::Kind::Question,
+        }
+    }
+
+    #[test]
+    fn the_empty_rail_has_ten_things_to_say_and_no_repeats() {
+        assert_eq!(NOTHING_YET.len(), 10);
+
+        // A repeat is a shuffle that sometimes does not shuffle, which is the
+        // one way this is worse than a fixed line.
+        let mut seen: Vec<&str> = NOTHING_YET.to_vec();
+        seen.sort_unstable();
+        seen.dedup();
+        assert_eq!(seen.len(), NOTHING_YET.len(), "all ten are different");
+
+        for line in NOTHING_YET {
+            assert!(!line.is_empty(), "an empty one is the bug being fixed");
+            assert!(
+                line.len() < 56,
+                "{line:?} has to fit a panel somebody dragged narrow"
+            );
+            assert_eq!(
+                line.trim(),
+                *line,
+                "{line:?} is centred, so stray space is visible"
+            );
         }
     }
 
