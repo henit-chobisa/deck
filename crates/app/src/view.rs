@@ -27,8 +27,8 @@ use crate::sheet::{Sheet, Slot};
 gpui_kit::actions!(
     deck,
     [
-        NextGroup, PrevGroup, Comment, Rotate, Walk, Follow, Hide, Submit, Discard, Noted, Asked,
-        Wrong, ZoomIn, ZoomOut, ZoomReset, Zen, Close, Unlight
+        NextGroup, PrevGroup, Comment, Rotate, Walk, Follow, Hide, Submit, Discard, ZoomIn,
+        ZoomOut, ZoomReset, Zen, Close, Unlight
     ]
 );
 
@@ -64,9 +64,6 @@ pub fn bindings() -> Vec<KeyBinding> {
         KeyBinding::new("c", Comment, Some("Deck")),
         KeyBinding::new("t", Rotate, Some("Deck")),
         KeyBinding::new("w", Walk, Some("Deck")),
-        KeyBinding::new("1", Noted, Some("Deck")),
-        KeyBinding::new("2", Asked, Some("Deck")),
-        KeyBinding::new("3", Wrong, Some("Deck")),
         KeyBinding::new("f", Follow, Some("Deck")),
         KeyBinding::new("z", Zen, Some("Deck")),
         KeyBinding::new("h", Hide, Some("Deck")),
@@ -366,12 +363,7 @@ pub struct Session {
     rail_width: Option<f32>,
     rail_scroll: ScrollHandle,
     aloud: bool,
-    draft: Option<(
-        About,
-        Entity<TextareaState>,
-        deck_core::Kind,
-        deck_core::When,
-    )>,
+    draft: Option<(About, Entity<TextareaState>, deck_core::When)>,
     group_ix: usize,
     turn: Option<u8>,
     band_height: Option<f32>,
@@ -454,7 +446,6 @@ pub struct DeckView {
     /// *what the remark is pinned to* and this is *what the reader wants done*.
     /// Reset every time a composer opens: a must-fix should never be inherited
     /// by the next remark.
-    composing_kind: deck_core::Kind,
     /// Whether the remark being written wants the walk to stop.
     composing_when: deck_core::When,
     /// Whether a voice is reading the deck aloud.
@@ -807,7 +798,6 @@ impl DeckView {
             focus: cx.focus_handle(),
             remarks,
             composing: None,
-            composing_kind: deck_core::Kind::default(),
             composing_when: deck_core::When::default(),
             aloud,
             unheard: 0,
@@ -855,11 +845,10 @@ impl DeckView {
             spread: false,
             spreading: Task::ready(()),
         };
-        if let Some((about, state, kind, when)) = draft {
+        if let Some((about, state, when)) = draft {
             view.live.pause(PauseReason::Composer);
             let listen = Self::listen_composer(&state, window, cx);
             view.composing = Some((about, state, listen));
-            view.composing_kind = kind;
             view.composing_when = when;
         }
         view.build_panes(cx);
@@ -2158,21 +2147,6 @@ impl DeckView {
         self.narrate(&say, Some(of), &speech, cx);
     }
 
-    /// *Noted.* The cheapest thing a reader can say, and the most common.
-    fn on_noted(&mut self, _: &Noted, _window: &mut Window, cx: &mut Context<Self>) {
-        self.react(FACES[0].1, face_when(FACES[0].0), FACES[0].0, cx);
-    }
-
-    /// *Wait, what?* — the one that should make an agent stop and explain.
-    fn on_asked(&mut self, _: &Asked, _window: &mut Window, cx: &mut Context<Self>) {
-        self.react(FACES[3].1, face_when(FACES[3].0), FACES[3].0, cx);
-    }
-
-    /// *That's wrong.* Blocking, and it should read as blocking.
-    fn on_wrong(&mut self, _: &Wrong, _window: &mut Window, cx: &mut Context<Self>) {
-        self.react(FACES[4].1, face_when(FACES[4].0), FACES[4].0, cx);
-    }
-
     /// Turn the rest of the screen down, or back up.
     ///
     /// The deck does not change. What changes is everything that was competing
@@ -2854,7 +2828,6 @@ impl DeckView {
         let listen = Self::listen_composer(&state, window, cx);
 
         self.composing = Some((about, state, listen));
-        self.composing_kind = deck_core::Kind::default();
         self.composing_when = deck_core::When::default();
         cx.notify();
     }
@@ -3060,69 +3033,6 @@ impl DeckView {
         }
     }
 
-    /// One keystroke, one reaction, pinned to what is on screen.
-    ///
-    /// The thing [`deck_core::Kind`] was written for and never had: *"Terse
-    /// remarks read as neutral, and an agent left to infer tone from prose gets
-    /// it wrong. Naming it costs the reader one keystroke."* A reaction is a
-    /// remark with no words — the kind *is* the message — so it costs nothing
-    /// to leave one, and a walk ends up dense with exactly where the reader
-    /// agreed and where they did not.
-    ///
-    /// While a composer is open the same keys set the kind of the remark being
-    /// written instead, because there the reader already has words.
-    fn react(
-        &mut self,
-        kind: deck_core::Kind,
-        when: deck_core::When,
-        face: &str,
-        cx: &mut Context<Self>,
-    ) {
-        if self.composing.is_some() {
-            self.composing_kind = kind;
-            cx.notify();
-            return;
-        }
-        let Some(about) = self.pinned() else {
-            return;
-        };
-        // The face is the message. Two faces can ask the agent for the same
-        // thing and still not mean the same thing, so the one the reader
-        // pressed travels with the remark rather than being flattened away.
-        let remark = Self::remark(about, face.to_string(), kind, when);
-        // Nothing is owed for a remark nobody has been told about. A bar
-        // filling up beside a deferred note would be waiting for an answer
-        // that is not due until the review is submitted.
-        if kind != deck_core::Kind::Nit && when != deck_core::When::Defer {
-            self.expect_answer(cx);
-        }
-        self.note(deck_core::What::Reacted, Some(kind), when, face, &remark);
-        self.told_page(&remark);
-        // The selection has done its job. Left on, the sentence stays filled
-        // in the accent — and now that a remark leaves a mark of its own, the
-        // two sit on the same words and the prose reads as a paint blob rather
-        // than as a sentence somebody said something about.
-        self.picked_said = None;
-        self.said_from = None;
-        for pane in &mut self.panes {
-            pane.unpick();
-        }
-        self.remarks.push(remark);
-        // Where its turn sits, before anything is written down.
-        if let Some(mine) = self.remarks.last_mut() {
-            mine.moment = self.conversation.transcript.len().checked_sub(1);
-        }
-        // Written down as it is made. The way out is exactly what cannot be
-        // relied on — a quit, a crash and a force-close all skip whatever tidy
-        // exit path they were meant to take.
-        crate::draft::save(
-            &self.deck.root,
-            &self.remarks,
-            &self.conversation.transcript,
-        );
-        cx.notify();
-    }
-
     fn save_remark(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let Some((about, state, _listen)) = self.composing.take() else {
             return;
@@ -3133,7 +3043,9 @@ impl DeckView {
         // to move anything for the rest of the session.
         self.live.composer_closed();
         let said = state.read(cx).value().trim().to_string();
-        let kind = self.composing_kind;
+        // Every comment is a comment. The reader asked for one and nothing
+        // else, and the far side reads the words.
+        let kind = deck_core::Kind::default();
         self.focus.focus(window, cx);
 
         if said.is_empty() {
@@ -3230,14 +3142,10 @@ impl DeckView {
             rail_width: self.rail_width,
             rail_scroll: self.rail_scroll.clone(),
             aloud: self.aloud,
-            draft: self.composing.as_ref().map(|(about, state, _)| {
-                (
-                    about.clone(),
-                    state.clone(),
-                    self.composing_kind,
-                    self.composing_when,
-                )
-            }),
+            draft: self
+                .composing
+                .as_ref()
+                .map(|(about, state, _)| (about.clone(), state.clone(), self.composing_when)),
             group_ix: self.group_ix,
             turn: self.turn,
             band_height: self.band_height,
@@ -4536,6 +4444,27 @@ impl DeckView {
 }
 
 impl DeckView {
+    /// Which empty line the reader gets, for the group in front of them.
+    ///
+    /// Follows the group rather than a clock. It changes as they walk and holds
+    /// still while they read — a line that rewrites itself under somebody is a
+    /// line they end up watching instead of the code.
+    ///
+    /// FNV-1a over the group's own words, so another deck lands somewhere else
+    /// without needing a source of randomness or anything kept between frames.
+    fn nothing_yet(&self) -> &'static str {
+        let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
+        let say = self.group().map_or("", |group| group.say.as_str());
+        // The index as well as the words, so two groups that happen to say the
+        // same thing still land in different places.
+        for byte in say.bytes().chain(self.group_ix.to_le_bytes()) {
+            hash ^= u64::from(byte);
+            hash = hash.wrapping_mul(0x0100_0000_01b3);
+        }
+        let at = hash % NOTHING_YET.len() as u64;
+        NOTHING_YET[usize::try_from(at).unwrap_or(0)]
+    }
+
     /// The rail: everything you have said, in the order you said it.
     ///
     /// Slides in rather than appearing, and carries its own width so the panes
@@ -4825,6 +4754,9 @@ impl DeckView {
                     .into_any_element()
             })
             .collect();
+        // Nobody has said anything, so the thread is empty and the space is
+        // the first thing the reader sees in the panel.
+        let nothing = lines.is_empty();
 
         div()
             .id("live-rail")
@@ -4928,7 +4860,7 @@ impl DeckView {
                                 )
                                 .child(
                                     div()
-                                        .font_family(mono)
+                                        .font_family(mono.clone())
                                         .text_size(px(9.5))
                                         .text_color(paint(if following {
                                             palette.muted
@@ -4961,6 +4893,25 @@ impl DeckView {
                                 .min_h_0()
                                 .overflow_y_scroll()
                                 .track_scroll(&self.rail_scroll)
+                                .children(nothing.then(|| {
+                                    div()
+                                        .flex_1()
+                                        .flex()
+                                        .items_center()
+                                        .justify_center()
+                                        .px(px(12.))
+                                        .text_center()
+                                        .text_size(px(11.))
+                                        // The window's mono. Without this the
+                                        // line inherits the panel's UI font,
+                                        // which has no italic face — so
+                                        // `italic` set a style nothing could
+                                        // draw and the text came out upright.
+                                        .font_family(mono.clone())
+                                        .italic()
+                                        .text_color(paint(palette.muted.mix(palette.band, 0.35)))
+                                        .child(self.nothing_yet())
+                                }))
                                 .children(lines),
                         )
                         .child(
@@ -4985,8 +4936,7 @@ impl DeckView {
                         // panel, and sending them to a box on top of the file they
                         // are reading pulls their eye off the thing they are
                         // replying about.
-                        .children(self.render_composer(cx))
-                        .child(self.render_reactions(cx)),
+                        .children(self.render_composer(cx)),
                 )
             })
             .when(open < 1., |this| {
@@ -5346,89 +5296,26 @@ impl DeckView {
             )
             .into_any_element()
     }
-
-    /// The reactions, under a rule at the foot of the panel.
-    ///
-    /// Words, not faces. Every other surface in this window is one ink and one
-    /// accent; seven colour glyphs along the bottom fought all of it, and no
-    /// arrangement of them fixed that — the problem was never which emoji.
-    ///
-    /// A word also says exactly what it means. `bug` is `bug`; a beetle is a
-    /// beetle until the reader decides what you meant by it.
-    fn render_reactions(&self, cx: &mut Context<Self>) -> AnyElement {
-        let palette = &self.palette;
-        let mono = cx.theme().mono_font_family.clone();
-
-        div()
-            .h_flex()
-            .flex_wrap()
-            .flex_none()
-            .items_center()
-            .gap(px(2.))
-            .mt(px(9.))
-            .pt(px(8.))
-            .border_t_1()
-            .border_color(paint(palette.edge))
-            .children(FACES.iter().enumerate().map(|(ix, &(mark, kind))| {
-                let tone = match kind {
-                    deck_core::Kind::MustFix => palette.del,
-                    deck_core::Kind::Question => palette.accent,
-                    deck_core::Kind::Nit => palette.muted,
-                };
-                div()
-                    .id(("react", ix))
-                    .flex_none()
-                    .px(px(6.))
-                    .py(px(3.))
-                    .rounded(px(4.))
-                    .font_family(mono.clone())
-                    .text_size(px(10.5))
-                    .text_color(paint(tone))
-                    .cursor_pointer()
-                    .hover(|style| style.bg(paint(palette.wash)))
-                    .on_click(cx.listener(move |deck, _, _window, cx| {
-                        // Pressed or clicked, a face means the same thing.
-                        // This read `Queue` while the keys read the default, so
-                        // the rail woke the agent out of `deck wait` with a
-                        // reaction the reader believed they were keeping until
-                        // they submitted.
-                        deck.react(kind, face_when(mark), mark, cx);
-                    }))
-                    .child(mark)
-            }))
-            .into_any_element()
-    }
 }
 
-/// The reactions, and what each one asks the agent to do.
+/// Something to read while nobody has said anything yet.
 ///
-/// In one place so the row and the transcript cannot drift apart: the mark is
-/// the remark's whole text, so what the reader pressed is what the agent reads.
+/// An empty panel with nothing in it reads as broken rather than as new, and
+/// *no comments* reads as a form field — it names the absence and adds nothing.
 ///
-/// Words rather than faces, and short ones. They sit in a panel that can be
-/// dragged narrow, they are coloured by what they ask for, and each says
-/// exactly one thing — which a picture of a beetle does not.
-/// When a face is owed to the agent.
-///
-/// A reaction means the same thing however it was left, so this is the only
-/// place that decides. Everything waits for the review, as every remark does,
-/// except `stop` — the one face whose whole point is to take the floor.
-fn face_when(mark: &str) -> deck_core::When {
-    if mark == "stop" {
-        deck_core::When::Interrupt
-    } else {
-        deck_core::When::default()
-    }
-}
-
-const FACES: &[(&str, deck_core::Kind)] = &[
-    ("+1", deck_core::Kind::Nit),
-    ("nice", deck_core::Kind::Nit),
-    ("looking", deck_core::Kind::Question),
-    ("?", deck_core::Kind::Question),
-    ("careful", deck_core::Kind::MustFix),
-    ("bug", deck_core::Kind::MustFix),
-    ("stop", deck_core::Kind::MustFix),
+/// Drawn in italic, which is what keeps them from being mistaken for a turn
+/// somebody wrote. Everything else in the rail is upright.
+const NOTHING_YET: &[&str] = &[
+    "3… 2… 1… Argue",
+    "Nothing yet. Press c",
+    "The floor is yours",
+    "No objections so far, which is also a result",
+    "Say the thing",
+    "Quiet. Suspiciously quiet",
+    "Nobody has pushed back yet",
+    "Approving in silence is still approving",
+    "Go on, then",
+    "The agent is listening",
 ];
 
 /// Report a prolonged wait without pretending to know why the agent is quiet.
@@ -5844,9 +5731,6 @@ impl Render for DeckView {
             .on_action(cx.listener(Self::on_next))
             .on_action(cx.listener(Self::on_prev))
             .on_action(cx.listener(Self::on_walk))
-            .on_action(cx.listener(Self::on_noted))
-            .on_action(cx.listener(Self::on_asked))
-            .on_action(cx.listener(Self::on_wrong))
             .on_action(cx.listener(Self::on_follow))
             .on_action(cx.listener(Self::on_unlight))
             .on_action(cx.listener(Self::on_close))
@@ -6022,6 +5906,35 @@ mod tests {
     }
 
     #[test]
+    fn the_empty_rail_has_ten_things_to_say_and_no_repeats() {
+        assert_eq!(NOTHING_YET.len(), 10);
+
+        // A repeat is a shuffle that sometimes does not shuffle, which is the
+        // one way this is worse than a fixed line.
+        let mut seen: Vec<&str> = NOTHING_YET.to_vec();
+        seen.sort_unstable();
+        seen.dedup();
+        assert_eq!(seen.len(), NOTHING_YET.len(), "all ten are different");
+
+        for line in NOTHING_YET {
+            assert!(!line.is_empty(), "an empty one is the bug being fixed");
+            assert!(
+                line.len() < 56,
+                "{line:?} has to fit a panel somebody dragged narrow"
+            );
+            assert_eq!(
+                line.trim(),
+                *line,
+                "{line:?} is centred, so stray space is visible"
+            );
+            assert!(
+                line.starts_with(|first: char| first.is_uppercase() || first.is_numeric()),
+                "{line:?} starts the way a sentence does"
+            );
+        }
+    }
+
+    #[test]
     fn a_mark_leads_to_the_newest_remark_that_can_be_followed() {
         // Raised in review. The lookup took the oldest remark covering the word
         // and *then* asked where it sat in the rail, so a remark restored from
@@ -6089,25 +6002,6 @@ mod tests {
     use core::prelude::v1::test;
 
     use super::*;
-
-    #[test]
-    fn a_face_waits_for_the_review_however_it_was_left() {
-        // The bug this exists for: the rail's faces read `Queue` while the keys
-        // read the default, so clicking one woke the agent out of `deck wait`
-        // with a reaction the reader thought they were keeping until submit.
-        for &(mark, _) in FACES {
-            let when = face_when(mark);
-            if mark == "stop" {
-                assert_eq!(when, deck_core::When::Interrupt, "{mark} takes the floor");
-            } else {
-                assert_eq!(
-                    when,
-                    deck_core::When::default(),
-                    "{mark} is owed nothing until the review goes back"
-                );
-            }
-        }
-    }
 
     #[test]
     fn a_dragged_share_is_ignored_once_it_is_the_only_pane_open() {

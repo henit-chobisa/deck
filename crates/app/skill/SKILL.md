@@ -1767,9 +1767,11 @@ disagree, trust `quote` — search for it. `source` says how far to trust `range
 and `diff` are exact, `fingerprint` is a good guess, `stale` means the line moved and could
 not be found.
 
-`kind` is `must-fix`, `question` or `nit`. Treat them differently: a `must-fix` blocks, a
-`nit` does not. A comment with **no `ref` and no `range`** is about the group's claim
-rather than any line — often the most important one in the review.
+`kind` is on every comment and is always the same: the reader is not asked to grade what
+they wrote, so weigh the words rather than the field. `when` is the one that carries
+intent — `interrupt` meant *answer me now*, `defer` meant *this can wait for the review*.
+A comment with **no `ref` and no `range`** is about the group's claim rather than any
+line — often the most important one in the review.
 
 Act on every comment. Answer the questions, fix what they objected to. Their comments are
 often the real "but why" — a question in a comment means the deck did not carry the model

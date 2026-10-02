@@ -260,24 +260,9 @@ It lists every Chirp 3 HD voice and plays one before you choose it. Until that
 is done the window does not offer the key at all, and everything else works
 without it.
 
-Three keys answer, and they cost one keystroke each:
-
-```
-1   noted
-2   wait, what?
-3   that's wrong
-```
-
-Tapping one leaves a reaction pinned to whatever is on screen — no typing, no
-composer, nothing to close. It waits for the review like every other remark, so
-the agent is not off working on half a thought; the composer offers *wait for a
-gap* and *interrupt* when you want it heard sooner. `c` is still there when you have actual words, and
-while the composer is open those same three keys set what the comment is asking
-for instead of leaving a bare reaction.
-
-This is what `Kind` in the protocol has always been for. Every comment used to
-go back marked `question` whatever you meant, which left the agent guessing your
-tone from your prose.
+A comment is a comment. There is nothing to grade it with and nothing to choose
+before you type — `c`, write, send. What you do choose is *when* it is heard:
+with the review, at the next gap, or now.
 
 ### What the agent can do while you watch
 
