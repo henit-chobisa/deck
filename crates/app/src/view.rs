@@ -3042,17 +3042,15 @@ impl DeckView {
         }
     }
 
-    /// One keystroke, one reaction, pinned to what is on screen.
+    /// Say what the comment being written is asking for.
     ///
     /// The thing [`deck_core::Kind`] was written for and never had: *"Terse
     /// remarks read as neutral, and an agent left to infer tone from prose gets
-    /// it wrong. Naming it costs the reader one keystroke."* A reaction is a
-    /// remark with no words — the kind *is* the message — so it costs nothing
-    /// to leave one, and a walk ends up dense with exactly where the reader
-    /// agreed and where they did not.
+    /// it wrong. Naming it costs the reader one keystroke."*
     ///
-    /// While a composer is open the same keys set the kind of the remark being
-    /// written instead, because there the reader already has words.
+    /// It decides more than tone. A question or a must-fix expects an answer
+    /// and wakes the agent when it goes; a nit waits for the review with
+    /// everything else.
     fn choose_kind(&mut self, kind: deck_core::Kind, cx: &mut Context<Self>) {
         self.composing_kind = kind;
         cx.notify();
@@ -5334,20 +5332,11 @@ impl DeckView {
     }
 }
 
-/// The reactions, and what each one asks the agent to do.
-///
-/// In one place so the row and the transcript cannot drift apart: the mark is
-/// the remark's whole text, so what the reader pressed is what the agent reads.
+/// What a remark can be, in the order of how much it asks of the far side.
 ///
 /// Words rather than faces, and short ones. They sit in a panel that can be
 /// dragged narrow, they are coloured by what they ask for, and each says
 /// exactly one thing — which a picture of a beetle does not.
-/// When a face is owed to the agent.
-///
-/// A reaction means the same thing however it was left, so this is the only
-/// place that decides. Everything waits for the review, as every remark does,
-/// except `stop` — the one face whose whole point is to take the floor.
-/// What a remark can be, in the order of how much it asks of the far side.
 ///
 /// Three, because there are three kinds. The row used to carry seven words for
 /// the same three — `+1` and `nice` were one kind, `careful` and `bug` and
