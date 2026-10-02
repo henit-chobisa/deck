@@ -57,8 +57,8 @@ jobs:
 
       # Both architectures, then one file. A universal binary means the install
       # script has nothing to decide and no way to pick wrong.
-      - run: cargo build --release -p deck-app --target aarch64-apple-darwin
-      - run: cargo build --release -p deck-app --target x86_64-apple-darwin
+      - run: cargo build --locked --release -p deck-app --target aarch64-apple-darwin
+      - run: cargo build --locked --release -p deck-app --target x86_64-apple-darwin
 
       - name: Make it universal
         run: |
