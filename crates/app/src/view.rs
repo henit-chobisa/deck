@@ -4444,13 +4444,6 @@ impl DeckView {
 }
 
 impl DeckView {
-    /// The rail: everything you have said, in the order you said it.
-    ///
-    /// Slides in rather than appearing, and carries its own width so the panes
-    /// beside it are squeezed by the same number in the same frame. A rail that
-    /// popped into place would make the reader find their place again.
-    ///
-    /// Newest last, because a walk reads forwards.
     /// Which empty line the reader gets, for the group in front of them.
     ///
     /// Follows the group rather than a clock. It changes as they walk and holds
@@ -4472,6 +4465,13 @@ impl DeckView {
         NOTHING_YET[usize::try_from(at).unwrap_or(0)]
     }
 
+    /// The rail: everything you have said, in the order you said it.
+    ///
+    /// Slides in rather than appearing, and carries its own width so the panes
+    /// beside it are squeezed by the same number in the same frame. A rail that
+    /// popped into place would make the reader find their place again.
+    ///
+    /// Newest last, because a walk reads forwards.
     fn render_rail(&self, speaking: bool, cx: &mut Context<Self>) -> AnyElement {
         let wide = self.rail_width.unwrap_or(RAIL);
         let open = self.rail_open.level();
