@@ -83,7 +83,11 @@ jobs:
       - name: Wrap it
         id: wrap
         run: |
-          tag="${{ inputs.tag || github.event.release.tag_name || github.ref_name }}"
+          # A pull request has no tag, and `github.ref_name` there is `52/merge`
+          # — a slash, which is not a filename. The name only matters for the
+          # upload, which a pull request does not do.
+          tag="${{ inputs.tag || github.event.release.tag_name }}"
+          [ -n "$tag" ] || tag=dev
           name="deck-${tag}-macos-universal.tar.gz"
           tar -czf "$name" -C out deck
           shasum -a 256 "$name" > "$name.sha256"
