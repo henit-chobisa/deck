@@ -4902,6 +4902,7 @@ impl DeckView {
                                         .px(px(12.))
                                         .text_center()
                                         .text_size(px(11.))
+                                        .italic()
                                         .text_color(paint(palette.muted.mix(palette.band, 0.35)))
                                         .child(self.nothing_yet())
                                 }))
@@ -5294,20 +5295,21 @@ impl DeckView {
 /// Something to read while nobody has said anything yet.
 ///
 /// An empty panel with nothing in it reads as broken rather than as new, and
-/// *no comments* reads as a form field. These are short, lowercase and in the
-/// window's own register — the rail already says `listening` and `resume · f`
-/// a few points above.
+/// *no comments* reads as a form field — it names the absence and adds nothing.
+///
+/// Drawn in italic, which is what keeps them from being mistaken for a turn
+/// somebody wrote. Everything else in the rail is upright.
 const NOTHING_YET: &[&str] = &[
-    "3… 2… 1… argue",
-    "nothing yet. press c",
-    "the floor is yours",
-    "no objections so far, which is also a result",
-    "say the thing",
-    "quiet. suspiciously quiet",
-    "nobody has pushed back yet",
-    "approving in silence is still approving",
-    "go on, then",
-    "the agent is listening",
+    "3… 2… 1… Argue",
+    "Nothing yet. Press c",
+    "The floor is yours",
+    "No objections so far, which is also a result",
+    "Say the thing",
+    "Quiet. Suspiciously quiet",
+    "Nobody has pushed back yet",
+    "Approving in silence is still approving",
+    "Go on, then",
+    "The agent is listening",
 ];
 
 /// Report a prolonged wait without pretending to know why the agent is quiet.
@@ -5918,6 +5920,10 @@ mod tests {
                 line.trim(),
                 *line,
                 "{line:?} is centred, so stray space is visible"
+            );
+            assert!(
+                line.starts_with(|first: char| first.is_uppercase() || first.is_numeric()),
+                "{line:?} starts the way a sentence does"
             );
         }
     }
