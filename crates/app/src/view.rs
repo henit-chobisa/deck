@@ -2379,6 +2379,7 @@ impl DeckView {
                 .child(
                     div()
                         .id("notes")
+                        .relative()
                         .w(px(560.))
                         .max_w(relative(0.9))
                         .max_h(relative(0.8))
@@ -2442,17 +2443,7 @@ impl DeckView {
                                                     .font_family(mono.clone())
                                                     .child("deck upgrade"),
                                             )
-                                        })
-                                        .child(
-                                            div()
-                                                .id("notes-close")
-                                                .cursor_pointer()
-                                                .hover(|this| this.text_color(paint(palette.fg)))
-                                                .on_click(cx.listener(|deck, _, window, cx| {
-                                                    deck.hide_notes(window, cx);
-                                                }))
-                                                .child("esc"),
-                                        ),
+                                        }),
                                 ),
                         )
                         .child(div().h(px(1.)).mx(px(24.)).bg(paint(palette.edge)))
@@ -2469,6 +2460,32 @@ impl DeckView {
                                 .v_flex()
                                 .gap(px(10.))
                                 .children(body),
+                        )
+                        // A way out that needs no key. The words *esc* sat in
+                        // the corner, which told a keyboard user what they
+                        // already knew and gave everybody else nothing to
+                        // press. Escape and a click off the card still work.
+                        .child(
+                            div()
+                                .id("notes-close")
+                                .absolute()
+                                .top(px(12.))
+                                .right(px(12.))
+                                .size(px(24.))
+                                .flex()
+                                .items_center()
+                                .justify_center()
+                                .rounded(px(6.))
+                                .cursor_pointer()
+                                .text_size(px(13.))
+                                .text_color(paint(palette.muted))
+                                .hover(|this| {
+                                    this.bg(paint(palette.wash)).text_color(paint(palette.fg))
+                                })
+                                .on_click(cx.listener(|deck, _, window, cx| {
+                                    deck.hide_notes(window, cx);
+                                }))
+                                .child("✕"),
                         ),
                 )
                 .into_any_element(),
