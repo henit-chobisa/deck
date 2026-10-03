@@ -60,9 +60,10 @@ const KEYS: &[(&str, &str, &str)] = &[
 ///
 /// It was a fixed 56 points — under three lines — so anything longer than a
 /// sentence was written through a slot, scrolling past what had just been
-/// said (#21). Three lines empty is room to start; twelve is as much as the
-/// rail can give before the box pushes the conversation out of sight.
-const COMPOSER_ROWS: (usize, usize) = (3, 12);
+/// said (#21). Three lines empty is room to start. Eight is what still fits
+/// in the shortest window deck allows: at twelve, a 360-point window gave
+/// the conversation nothing and cut off the bottom of the box itself.
+const COMPOSER_ROWS: (usize, usize) = (3, 8);
 
 /// The bindings, in the context the window claims.
 #[must_use]
@@ -4150,11 +4151,14 @@ impl DeckView {
                 //
                 // No height of its own: the box grows with what is written, by
                 // [`COMPOSER_ROWS`].
+                //
+                // Set on the textarea, not on a wrapper: the input sets its own
+                // size and leading on its frame, which beat anything inherited,
+                // and a row of the auto-grow is that leading.
                 .child(
-                    div()
+                    Textarea::new(state)
                         .text_size(px(13.2))
-                        .line_height(px(20.))
-                        .child(Textarea::new(state)),
+                        .line_height(px(20.)),
                 )
                 // Under the box, where a hint belongs: beside the location it
                 // competes with the one thing the reader needs to read.
