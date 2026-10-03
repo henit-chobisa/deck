@@ -1249,6 +1249,12 @@ impl DeckView {
             // Kept out of the published stream on purpose. That stream is what
             // the *reader* did, and an agent being told about the move it just
             // asked for is an echo it would have to learn to ignore.
+            //
+            // And it is a row in the rail, so the rail follows it like any
+            // other. It used to be the one turn added without asking, which is
+            // why a walk — nothing but moves — left the rail where it was
+            // while it filled up underneath (#19).
+            self.follow_rail();
             self.conversation.transcript.push(deck_core::Moment {
                 at_ms: u64::try_from(self.conversation.began.elapsed().as_millis())
                     .unwrap_or(u64::MAX),
@@ -2944,6 +2950,18 @@ impl DeckView {
         }
     }
 
+    /// Keep the rail at its newest turn, if that is where the reader is.
+    ///
+    /// Called before a turn is added, while the scroll still describes the
+    /// rail as it was: a reader at the tail stays at the tail, and one reading
+    /// something older is not pulled away from it by the next turn arriving.
+    /// GPUI applies the scroll at the next layout, once the new row is there.
+    fn follow_rail(&self) {
+        if -self.rail_scroll.offset().y >= self.rail_scroll.max_offset().y - px(24.) {
+            self.rail_scroll.scroll_to_bottom();
+        }
+    }
+
     /// Record one moment of the walk, against a remark's own anchor.
     ///
     /// Written at the instant the thing happens rather than reconstructed at
@@ -2971,11 +2989,7 @@ impl DeckView {
         // The review keeps it either way. What `when` decides is the floor: a
         // reader who took it is heard at once and the voice stops; a reader who
         // waited is heard in the next gap.
-        // Follow new turns only while the reader is at the tail. Reading an
-        // older answer must not be interrupted by the next one arriving.
-        if -self.rail_scroll.offset().y >= self.rail_scroll.max_offset().y - px(24.) {
-            self.rail_scroll.scroll_to_bottom();
-        }
+        self.follow_rail();
         if when == deck_core::When::Interrupt {
             self.voice.hush();
         }
