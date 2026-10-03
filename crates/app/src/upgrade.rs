@@ -32,6 +32,20 @@ use crate::setup::{accent, bold, dim, mark};
 /// rather than watching deck think about it.
 const PATIENCE: std::time::Duration = std::time::Duration::from_secs(10);
 
+/// How long the tarball itself may take.
+///
+/// The ten seconds above cover the whole body, which is right for a release
+/// list and wrong for twenty-five megabytes: anything slower than about twenty
+/// megabits failed every time, and the automatic install would then try again
+/// tomorrow and fail the same way, for ever.
+const DOWNLOAD: std::time::Duration = std::time::Duration::from_secs(10 * 60);
+
+/// How old a staging directory has to be before it is taken to be left over.
+///
+/// Longer than [`DOWNLOAD`] and everything after it, by a margin, so a live
+/// upgrade is never mistaken for an abandoned one.
+pub(crate) const ABANDONED: std::time::Duration = std::time::Duration::from_secs(20 * 60);
+
 /// Where the releases are.
 const RELEASES: &str = "https://api.github.com/repos/henit-chobisa/deck/releases";
 
@@ -109,7 +123,7 @@ pub fn run(unstable: Option<bool>) -> anyhow::Result<()> {
     }
 
     println!("  {}", dim(&format!("deck {there}, and this is {RUNNING}")));
-    swap(&here, release)?;
+    swap(&here, release, Showing::Bar)?;
 
     println!("  {} deck {}", accent("✓"), bold(there));
     println!("  {}", dim("Open a deck and it will be the new one."));
@@ -123,6 +137,86 @@ pub fn run(unstable: Option<bool>) -> anyhow::Result<()> {
     );
     println!();
     Ok(())
+}
+
+/// Install the newest stable release, saying nothing, if this copy is one deck
+/// may replace by itself.
+///
+/// What automatic updates run, on a background thread. `Ok(None)` is every
+/// reason not to: a copy a package manager owns, one being built from source,
+/// or nothing newer to install. An error is something going wrong partway,
+/// and leaves the deck that was there — [`swap`] only changes anything at the
+/// final rename.
+pub(crate) fn quietly() -> anyhow::Result<Option<String>> {
+    let here = installed()?;
+    if !replaceable(&here) {
+        return Ok(None);
+    }
+    let releases = releases()?;
+    let Some(release) = pick(&releases, false) else {
+        return Ok(None);
+    };
+    let there = release.tag.trim_start_matches('v');
+    if !newer(there, RUNNING) {
+        return Ok(None);
+    }
+    // Another deck may have put it there already — one started after this one,
+    // which asked first. Then it is installed, and fetching it again to rename
+    // it over itself would be twenty-five megabytes of nothing.
+    if let Some(disk) = on_disk(&here)
+        && !newer(there, &disk)
+    {
+        return Ok(newer(&disk, RUNNING).then_some(disk));
+    }
+    swap(&here, release, Showing::Nothing)?;
+    Ok(Some(there.to_string()))
+}
+
+/// The version of the deck at `exe` now, which is not always this one.
+fn on_disk(exe: &Path) -> Option<String> {
+    let said = std::process::Command::new(exe)
+        .arg("--version")
+        .output()
+        .ok()?;
+    said.status
+        .success()
+        .then(|| version_in(&String::from_utf8_lossy(&said.stdout)))
+        .flatten()
+}
+
+/// The version in `deck --version`'s answer: `deck 0.1.3` gives `0.1.3`.
+fn version_in(said: &str) -> Option<String> {
+    let word = said.split_whitespace().last()?;
+    semver::Version::parse(word).ok().map(|_| word.to_string())
+}
+
+/// Whether deck may replace this copy without being asked.
+///
+/// Not one Homebrew owns, for the reason [`managed`] gives. And not a build
+/// out of a cargo `target` directory, or any debug build: somebody working on
+/// deck would find the binary they just built swapped for a release.
+///
+/// Not one `cargo install` put in `~/.cargo/bin` either — that is somebody
+/// who builds deck themselves, and the two would take turns replacing each
+/// other. And not on Windows, where a running `.exe` cannot be renamed over.
+fn replaceable(exe: &Path) -> bool {
+    let cargo_home = std::env::var_os("CARGO_HOME").map(PathBuf::from);
+    !cfg!(debug_assertions)
+        && !cfg!(windows)
+        && managed(exe).is_none()
+        && !exe
+            .components()
+            .any(|part| part.as_os_str() == "target" || part.as_os_str() == ".cargo")
+        && !cargo_home.is_some_and(|home| exe.starts_with(home))
+}
+
+/// Whether a download is drawn arriving.
+#[derive(Clone, Copy)]
+enum Showing {
+    /// In a terminal, with somebody watching.
+    Bar,
+    /// In the background, where a progress bar would land in some log.
+    Nothing,
 }
 
 /// Where deck is, with every symlink followed.
@@ -218,7 +312,10 @@ pub(crate) fn newer(candidate: &str, running: &str) -> bool {
 fn pick(releases: &[Release], unstable: bool) -> Option<&Release> {
     releases
         .iter()
-        .filter(|it| it.tarball.is_some())
+        // Both, as `swap` needs both. A release whose checksum failed to
+        // upload would otherwise be picked, refused, and picked again every
+        // day, while a complete older one was never tried.
+        .filter(|it| it.tarball.is_some() && it.sums.is_some())
         .find(|it| unstable || !it.prerelease)
 }
 
@@ -227,7 +324,7 @@ fn pick(releases: &[Release], unstable: bool) -> Option<&Release> {
 /// Everything happens beside the installed binary rather than in a temporary
 /// directory, because `rename` is only atomic within one filesystem and
 /// `/tmp` is not guaranteed to be the same one.
-fn swap(here: &Path, release: &Release) -> anyhow::Result<()> {
+fn swap(here: &Path, release: &Release, showing: Showing) -> anyhow::Result<()> {
     let (Some(tarball), Some(sums)) = (&release.tarball, &release.sums) else {
         bail!("{} has no binary attached to it", release.tag);
     };
@@ -236,8 +333,11 @@ fn swap(here: &Path, release: &Release) -> anyhow::Result<()> {
         .context("deck is not in a directory, which should not be possible")?;
     writable(beside)?;
 
-    let archive = carry(tarball)?;
-    let wanted = fetch(sums)?;
+    let archive = match showing {
+        Showing::Bar => carry(tarball)?,
+        Showing::Nothing => fetch(tarball, DOWNLOAD)?,
+    };
+    let wanted = fetch(sums, PATIENCE)?;
     checked(&archive, &wanted)?;
 
     // Exclusive, and the lock as well as the workspace. `create_dir` fails if
@@ -245,10 +345,19 @@ fn swap(here: &Path, release: &Release) -> anyhow::Result<()> {
     // delete each other's staged binary — which could otherwise install a file
     // the other one had not finished checking.
     //
-    // A directory left behind by a crash has to be cleared by hand. That is
-    // the right trade: the alternative is removing one that a live upgrade is
-    // halfway through using.
+    // One left behind by a deck that stopped partway is cleared once it is
+    // older than any upgrade could take. Before, it had to be cleared by
+    // hand, and the automatic install — which nobody watches — was blocked by
+    // it silently and for good.
     let staging = beside.join(".deck-upgrade");
+    let left_over = std::fs::metadata(&staging)
+        .and_then(|meta| meta.modified())
+        .ok()
+        .and_then(|at| at.elapsed().ok())
+        .is_some_and(|age| age >= ABANDONED);
+    if left_over {
+        let _ = std::fs::remove_dir_all(&staging);
+    }
     std::fs::create_dir(&staging).with_context(|| {
         format!(
             "{} already exists — another upgrade is running, or one stopped \
@@ -257,6 +366,14 @@ fn swap(here: &Path, release: &Release) -> anyhow::Result<()> {
         )
     })?;
     let tidy = Tidy(staging.clone());
+
+    // Somebody may have got there first — a `deck upgrade` by hand while the
+    // automatic one was downloading. Renaming the same version over itself
+    // would also make `deck.prev` that version, and lose the real way back.
+    let there = release.tag.trim_start_matches('v');
+    if on_disk(here).is_some_and(|disk| !newer(there, &disk)) {
+        return Ok(());
+    }
 
     let holding = staging.join("deck.tar.gz");
     std::fs::write(&holding, &archive).context("could not write the download")?;
@@ -277,11 +394,13 @@ fn swap(here: &Path, release: &Release) -> anyhow::Result<()> {
 
     // Ad-hoc, because an unsigned binary does not run on Apple Silicon at all,
     // and because extracting it is the step that drops whatever signature it
-    // arrived with.
-    run_it(
-        "codesign",
-        &["--force", "--sign", "-", &fresh.to_string_lossy()],
-    )?;
+    // arrived with. Only there: nowhere else has `codesign`, or needs it.
+    if cfg!(target_os = "macos") {
+        run_it(
+            "codesign",
+            &["--force", "--sign", "-", &fresh.to_string_lossy()],
+        )?;
+    }
 
     // The last check before it becomes the deck everybody gets: it has to run.
     // A release that cannot start its own binary should go no further than
@@ -337,11 +456,11 @@ fn writable(dir: &Path) -> anyhow::Result<()> {
     Ok(())
 }
 
-/// Get the bytes at a url.
-fn fetch(url: &str) -> anyhow::Result<Vec<u8>> {
+/// Get the bytes at a url, giving up after `patience`.
+fn fetch(url: &str, patience: std::time::Duration) -> anyhow::Result<Vec<u8>> {
     let mut body = ureq::get(url)
         .config()
-        .timeout_global(Some(PATIENCE))
+        .timeout_global(Some(patience))
         .build()
         .header("User-Agent", concat!("deck/", env!("CARGO_PKG_VERSION")))
         .call()
@@ -363,7 +482,7 @@ fn carry(url: &str) -> anyhow::Result<Vec<u8>> {
 
     let mut body = ureq::get(url)
         .config()
-        .timeout_global(Some(PATIENCE))
+        .timeout_global(Some(DOWNLOAD))
         .build()
         .header("User-Agent", concat!("deck/", env!("CARGO_PKG_VERSION")))
         .call()
@@ -690,5 +809,25 @@ mod tests {
     fn an_empty_checksum_file_is_not_a_pass() {
         assert!(checked(b"deck", b"").is_err());
         assert!(checked(b"deck", b"   \n").is_err());
+    }
+
+    #[test]
+    fn only_an_installed_release_build_replaces_itself() {
+        let homebrew = Path::new("/opt/homebrew/Cellar/deck/0.1.2/bin/deck");
+        let built = Path::new("/Users/me/deck/target/release/deck");
+        let installed = Path::new("/Users/me/.local/bin/deck");
+        assert!(!replaceable(homebrew), "Homebrew's");
+        assert!(!replaceable(built), "a build somebody is working on");
+        // Tests are a debug build, which is never replaced either; a release
+        // build in ~/.local/bin is the one that is.
+        assert_eq!(replaceable(installed), !cfg!(debug_assertions));
+    }
+
+    #[test]
+    fn the_version_on_disk_is_read_from_its_own_answer() {
+        assert_eq!(version_in("deck 0.1.4\n"), Some("0.1.4".into()));
+        assert_eq!(version_in("deck 0.1.3-rc.2"), Some("0.1.3-rc.2".into()));
+        assert_eq!(version_in(""), None);
+        assert_eq!(version_in("deck: command not found"), None);
     }
 }
