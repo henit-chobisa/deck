@@ -537,6 +537,17 @@ pub struct DeckView {
     /// other things they decided about this deck.
     rail_width: Option<f32>,
     rail_scroll: ScrollHandle,
+    /// Whether the rail is held at its newest turn.
+    ///
+    /// Decided by what the reader does — scrolling, pressing *Latest*, going
+    /// to a remark — and never guessed from where the scroll happens to sit.
+    /// The guess was wrong whenever something appeared under the list: a
+    /// *doing* line or the comment box shortened the rail, the bottom moved
+    /// away from a reader who had not, and the rail stopped following (#19).
+    rail_pinned: std::cell::Cell<bool>,
+    /// The reader turned the wheel over the rail since it was last drawn, so
+    /// whether it is pinned is read from where they left it.
+    rail_wheeled: std::cell::Cell<bool>,
     /// Whether the narration is the thing a comment would land on.
     /// Which sentence of the narration is picked, if any.
     ///
@@ -819,6 +830,8 @@ impl DeckView {
             rail_width,
             conversation,
             rail_scroll,
+            rail_pinned: std::cell::Cell::new(true),
+            rail_wheeled: std::cell::Cell::new(false),
             picked_said,
             said_from: None,
             said_over: None,
@@ -2614,6 +2627,8 @@ impl DeckView {
             })
             .position(|(ix, _)| ix == moment);
         if let Some(place) = place {
+            // Going to an older turn is leaving the tail.
+            self.rail_pinned.set(false);
             self.rail_scroll.scroll_to_item(place);
         }
 
@@ -2950,14 +2965,13 @@ impl DeckView {
         }
     }
 
-    /// Keep the rail at its newest turn, if that is where the reader is.
+    /// Keep the rail at its newest turn, if the reader is holding it there.
     ///
-    /// Called before a turn is added, while the scroll still describes the
-    /// rail as it was: a reader at the tail stays at the tail, and one reading
-    /// something older is not pulled away from it by the next turn arriving.
-    /// GPUI applies the scroll at the next layout, once the new row is there.
+    /// The rail does this itself every time it is drawn while pinned (see
+    /// [`Self::rail_pinned`]); this asks now as well, so a turn added between
+    /// frames is followed by the frame that draws it.
     fn follow_rail(&self) {
-        if -self.rail_scroll.offset().y >= self.rail_scroll.max_offset().y - px(24.) {
+        if self.rail_pinned.get() {
             self.rail_scroll.scroll_to_bottom();
         }
     }
@@ -4912,6 +4926,26 @@ impl DeckView {
                                 .min_h_0()
                                 .overflow_y_scroll()
                                 .track_scroll(&self.rail_scroll)
+                                // Only drawn while the rail is open, so a
+                                // folded rail never piles up a scroll to the
+                                // bottom that would land over a remark the
+                                // reader went to when it opened.
+                                .map(|this| {
+                                    let scroll = &self.rail_scroll;
+                                    if self.rail_wheeled.take() {
+                                        let tail =
+                                            -scroll.offset().y >= scroll.max_offset().y - px(24.);
+                                        self.rail_pinned.set(tail);
+                                    }
+                                    if self.rail_pinned.get() {
+                                        scroll.scroll_to_bottom();
+                                    }
+                                    this
+                                })
+                                .on_scroll_wheel(cx.listener(|deck, _, _window, cx| {
+                                    deck.rail_wheeled.set(true);
+                                    cx.notify();
+                                }))
                                 .children(nothing.then(|| {
                                     div()
                                         .flex_1()
@@ -4953,6 +4987,7 @@ impl DeckView {
                                 .text_color(paint(palette.muted))
                                 .cursor_pointer()
                                 .on_click(cx.listener(|deck, _, _window, cx| {
+                                    deck.rail_pinned.set(true);
                                     deck.rail_scroll.scroll_to_bottom();
                                     cx.notify();
                                 }))
