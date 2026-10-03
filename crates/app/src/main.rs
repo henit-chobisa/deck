@@ -135,7 +135,7 @@ fn show(decks: Vec<Deck>, opening: &cli::Opening) {
             palette::embed_fonts(cx);
             // Before any window, so an update that is already known is in the
             // foot from the first frame. It returns at once either way.
-            update::look();
+            update::look(cx);
             icon::wear_the_mark();
 
             cx.bind_keys(view::bindings());

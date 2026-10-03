@@ -61,8 +61,10 @@ pub fn available() -> Option<String> {
 
 /// Show what is already known, and ask again if it is a day old.
 ///
-/// Returns at once. The asking happens on a thread of its own.
-pub fn look() {
+/// Returns at once. The asking happens on the background executor, and the
+/// answer is brought back to the main thread so the windows draw it straight
+/// away rather than whenever something else next makes them paint.
+pub fn look(cx: &mut gpui_kit::App) {
     let automatic = crate::config::read().map_or(true, |config| config.updates.automatic);
     if !automatic {
         return;
@@ -74,20 +76,31 @@ pub fn look() {
         return;
     }
 
-    let _ = std::thread::Builder::new()
-        .name("deck-update".into())
-        .spawn(move || {
-            // Recorded whether or not the answer came back. A machine with no
-            // route out would otherwise ask on every launch, and each of those
-            // is a thread waiting three seconds on nothing.
-            let latest = latest().or(known.latest);
-            let known = Known {
-                latest,
-                checked: now(),
-            };
-            write(&known);
-            remember(&known);
-        });
+    let asking = cx.background_executor().spawn(async move {
+        let known = settle(latest(), read(), now());
+        write(&known);
+        known
+    });
+    cx.spawn(async move |cx| {
+        let known = asking.await;
+        remember(&known);
+        cx.update(gpui_kit::App::refresh_windows);
+    })
+    .detach();
+}
+
+/// What to keep, given what the network said and what is on disk now.
+///
+/// `on_disk` is read again just before writing, not carried from startup, so
+/// a second deck that asked in the meantime and got an answer is not
+/// overwritten by this one failing. A failure keeps whatever is known and
+/// moves only the clock: a machine with no route out would otherwise ask on
+/// every launch, each a wait of three seconds on nothing.
+fn settle(answer: Option<String>, on_disk: Known, now: u64) -> Known {
+    Known {
+        latest: answer.or(on_disk.latest),
+        checked: now,
+    }
 }
 
 /// Whether an answer from `checked` is old enough to ask again.
@@ -131,17 +144,18 @@ fn latest() -> Option<String> {
 
 /// The version a release offers, if it offers anything to install.
 ///
-/// A release with no binary attached cannot be upgraded to, so it is not worth
-/// telling anybody about — which is every release before the workflow that
-/// builds one.
+/// A release `deck upgrade` would refuse is not worth telling anybody about.
+/// It wants the tarball and the checksum beside it, so this wants both — and
+/// no release before the workflow that builds them has either.
 fn installable(release: &serde_json::Value) -> Option<String> {
     let tag = release["tag_name"].as_str()?;
-    let has_binary = release["assets"].as_array()?.iter().any(|asset| {
-        asset["name"]
-            .as_str()
-            .is_some_and(|name| name.ends_with(".tar.gz"))
-    });
-    has_binary.then(|| tag.trim_start_matches('v').to_string())
+    let names: Vec<&str> = release["assets"]
+        .as_array()?
+        .iter()
+        .filter_map(|asset| asset["name"].as_str())
+        .collect();
+    let has = |suffix: &str| names.iter().any(|name| name.ends_with(suffix));
+    (has(".tar.gz") && has(".tar.gz.sha256")).then(|| tag.trim_start_matches('v').to_string())
 }
 
 fn store() -> Option<std::path::PathBuf> {
@@ -162,8 +176,14 @@ fn write(known: &Known) {
     if let Some(dir) = path.parent() {
         let _ = std::fs::create_dir_all(dir);
     }
-    if let Ok(text) = serde_json::to_string(known) {
-        let _ = std::fs::write(path, text);
+    // Written beside and renamed over, so a deck reading at the same moment
+    // sees the old answer or the new one and never half of either.
+    let Ok(text) = serde_json::to_string(known) else {
+        return;
+    };
+    let partial = path.with_extension(format!("json.{}", std::process::id()));
+    if std::fs::write(&partial, text).is_ok() && std::fs::rename(&partial, &path).is_err() {
+        let _ = std::fs::remove_file(&partial);
     }
 }
 
@@ -225,6 +245,34 @@ mod tests {
             ]
         });
         assert_eq!(installable(&real), Some("0.1.4".into()));
+
+        // `deck upgrade` will not install a tarball it cannot check.
+        let unchecked = serde_json::json!({
+            "tag_name": "v0.1.4",
+            "assets": [{ "name": "deck-v0.1.4-macos-universal.tar.gz" }]
+        });
+        assert_eq!(installable(&unchecked), None);
+    }
+
+    #[test]
+    fn a_failed_ask_keeps_what_another_deck_found() {
+        let found_meanwhile = Known {
+            latest: Some("0.1.4".into()),
+            checked: 100,
+        };
+        assert_eq!(
+            settle(None, found_meanwhile, 200),
+            Known {
+                latest: Some("0.1.4".into()),
+                checked: 200
+            },
+            "no answer moves the clock and nothing else"
+        );
+        assert_eq!(
+            settle(Some("0.1.5".into()), Known::default(), 200).latest,
+            Some("0.1.5".into()),
+            "an answer wins"
+        );
     }
 
     #[test]
