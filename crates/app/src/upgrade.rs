@@ -38,6 +38,28 @@ const RELEASES: &str = "https://api.github.com/repos/henit-chobisa/deck/releases
 /// What this build is.
 const RUNNING: &str = env!("CARGO_PKG_VERSION");
 
+/// The word this platform's binary carries in a release asset's name, as in
+/// `deck-v0.1.3-macos-universal.tar.gz`.
+///
+/// Only macOS has one today. The others are named so that the day a release
+/// carries their binary they find it, and until then they find nothing —
+/// rather than a macOS tarball they would download and could not run.
+pub(crate) const PLATFORM: &str = if cfg!(target_os = "macos") {
+    "macos"
+} else if cfg!(windows) {
+    "windows"
+} else {
+    "linux"
+};
+
+/// Whether a release asset called `name` is this platform's, ending `suffix`.
+///
+/// One rule for `deck upgrade` and for the update check, so the foot never
+/// offers a release that `deck upgrade` would then refuse.
+pub(crate) fn ours(name: &str, suffix: &str) -> bool {
+    name.contains(&format!("-{PLATFORM}-")) && name.ends_with(suffix)
+}
+
 /// A release, as much of one as this needs.
 struct Release {
     tag: String,
@@ -156,7 +178,7 @@ fn releases() -> anyhow::Result<Vec<Release>> {
             let find = |suffix: &str| {
                 it["assets"].as_array()?.iter().find_map(|asset| {
                     let name = asset["name"].as_str()?;
-                    name.ends_with(suffix)
+                    ours(name, suffix)
                         .then(|| asset["browser_download_url"].as_str())?
                         .map(ToString::to_string)
                 })
@@ -180,7 +202,7 @@ fn releases() -> anyhow::Result<Vec<Release>> {
 ///
 /// Anything that will not parse is not newer. A tag nobody can order is not a
 /// thing to replace a working deck with.
-fn newer(candidate: &str, running: &str) -> bool {
+pub(crate) fn newer(candidate: &str, running: &str) -> bool {
     use semver::Version;
 
     match (Version::parse(candidate), Version::parse(running)) {
