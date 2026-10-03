@@ -83,6 +83,20 @@ mod tests {
 
     use super::*;
 
+    #[test]
+    fn updates_are_on_unless_somebody_says_otherwise() {
+        // Every config written before the section existed has none, and those
+        // people should get updates like everybody else.
+        let old: deck_core::config::Config =
+            toml::from_str("[zen]\ndim = 0.5\n").expect("an old config reads");
+        assert!(old.updates.automatic);
+
+        // And one line turns off every request deck would make by itself.
+        let off: deck_core::config::Config =
+            toml::from_str("[updates]\nautomatic = false\n").expect("the switch reads");
+        assert!(!off.updates.automatic);
+    }
+
     fn scratch(name: &str, text: &str) -> PathBuf {
         let path = std::env::temp_dir().join(format!("deck-config-{name}.toml"));
         std::fs::write(&path, text).expect("the scratch file is writable");

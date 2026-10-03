@@ -29,6 +29,31 @@ pub struct Config {
     pub zen: Zen,
     /// How the narration sounds when it is read aloud.
     pub speech: Speech,
+    /// Whether deck keeps itself current.
+    pub updates: Updates,
+}
+
+/// The `[updates]` section.
+///
+/// One switch for everything deck does on the network by itself: looking for a
+/// newer release once a day, and installing it when there is one. Somebody on a
+/// machine that should make no requests of its own sets this once and gets
+/// exactly that — `deck upgrade` still works when they ask for it.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct Updates {
+    /// Look for a newer stable deck once a day, and install it.
+    ///
+    /// On by default. Only ever a stable release — a prerelease is something
+    /// somebody asks for with `deck upgrade --prerelease`, never something that
+    /// arrives on its own.
+    pub automatic: bool,
+}
+
+impl Default for Updates {
+    fn default() -> Self {
+        Self { automatic: true }
+    }
 }
 
 /// The `[speech]` section.

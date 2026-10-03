@@ -180,7 +180,7 @@ fn releases() -> anyhow::Result<Vec<Release>> {
 ///
 /// Anything that will not parse is not newer. A tag nobody can order is not a
 /// thing to replace a working deck with.
-fn newer(candidate: &str, running: &str) -> bool {
+pub(crate) fn newer(candidate: &str, running: &str) -> bool {
     use semver::Version;
 
     match (Version::parse(candidate), Version::parse(running)) {

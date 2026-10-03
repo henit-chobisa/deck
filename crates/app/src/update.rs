@@ -1,0 +1,256 @@
+//! Whether a newer deck exists, found out quietly.
+//!
+//! # Nothing here may be noticed when it fails
+//!
+//! deck runs on laptops on planes, behind proxies, and on machines that should
+//! make no requests at all. So the question is asked at most once a day, off
+//! the main thread, with a short patience, and every way it can fail — no
+//! network, a proxy that eats the request, GitHub answering with something
+//! odd — ends the same way: nothing is shown and nothing is said. A deck that
+//! paused before opening, or put an error in the corner, because it could not
+//! reach a server it did not need would be broken for exactly the people who
+//! can least do anything about it.
+//!
+//! # What is remembered
+//!
+//! The last answer is kept in `~/.deck/update.json`, and read at startup before
+//! any request is made. So a newer release that was already known shows the
+//! moment a deck opens, offline or not, and the network is only asked again
+//! once that answer is a day old.
+//!
+//! Stable releases only. A prerelease is something somebody asks for with
+//! `deck upgrade --prerelease`; it is never offered to them unasked.
+
+use std::sync::Mutex;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
+
+use serde::{Deserialize, Serialize};
+
+/// How long an answer is good for.
+const ONCE_A_DAY: Duration = Duration::from_secs(24 * 60 * 60);
+
+/// How long to wait before deciding there is no network. Short, because the
+/// only thing waiting is a background thread nobody is watching.
+const PATIENCE: Duration = Duration::from_secs(3);
+
+/// The newest stable release. GitHub leaves prereleases out of this one by
+/// itself, which is the whole of the stable-only rule.
+const LATEST: &str = "https://api.github.com/repos/henit-chobisa/deck/releases/latest";
+
+/// What this build is.
+const RUNNING: &str = env!("CARGO_PKG_VERSION");
+
+/// The newer version, once one is known. Read by the window on every frame, so
+/// it is a lock around a short string rather than anything that does work.
+static FOUND: Mutex<Option<String>> = Mutex::new(None);
+
+/// What was learned last time, kept between runs.
+#[derive(Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+struct Known {
+    /// The newest stable release that has a binary attached, without its `v`.
+    latest: Option<String>,
+    /// When that was asked, in seconds since the epoch.
+    checked: u64,
+}
+
+/// A newer stable deck, if one is known.
+#[must_use]
+pub fn available() -> Option<String> {
+    FOUND.lock().ok().and_then(|found| found.clone())
+}
+
+/// Show what is already known, and ask again if it is a day old.
+///
+/// Returns at once. The asking happens on a thread of its own.
+pub fn look() {
+    let automatic = crate::config::read().map_or(true, |config| config.updates.automatic);
+    if !automatic {
+        return;
+    }
+
+    let known = read();
+    remember(&known);
+    if !due(known.checked, now()) {
+        return;
+    }
+
+    let _ = std::thread::Builder::new()
+        .name("deck-update".into())
+        .spawn(move || {
+            // Recorded whether or not the answer came back. A machine with no
+            // route out would otherwise ask on every launch, and each of those
+            // is a thread waiting three seconds on nothing.
+            let latest = latest().or(known.latest);
+            let known = Known {
+                latest,
+                checked: now(),
+            };
+            write(&known);
+            remember(&known);
+        });
+}
+
+/// Whether an answer from `checked` is old enough to ask again.
+fn due(checked: u64, now: u64) -> bool {
+    now.saturating_sub(checked) >= ONCE_A_DAY.as_secs()
+}
+
+/// What the window should show, given what is known and what is running.
+///
+/// Only a release strictly newer than this one. An older one is not an update,
+/// and neither is the same one.
+fn worth_showing(latest: Option<&str>, running: &str) -> Option<String> {
+    latest
+        .filter(|latest| crate::upgrade::newer(latest, running))
+        .map(ToString::to_string)
+}
+
+/// Make what is known what the window shows.
+fn remember(known: &Known) {
+    if let Ok(mut found) = FOUND.lock() {
+        *found = worth_showing(known.latest.as_deref(), RUNNING);
+    }
+}
+
+/// Ask GitHub for the newest stable release with a binary on it.
+///
+/// `None` for every failure, because every failure means the same thing here.
+fn latest() -> Option<String> {
+    let reply: serde_json::Value = ureq::get(LATEST)
+        .config()
+        .timeout_global(Some(PATIENCE))
+        .build()
+        .header("User-Agent", concat!("deck/", env!("CARGO_PKG_VERSION")))
+        .call()
+        .ok()?
+        .body_mut()
+        .read_json()
+        .ok()?;
+    installable(&reply)
+}
+
+/// The version a release offers, if it offers anything to install.
+///
+/// A release with no binary attached cannot be upgraded to, so it is not worth
+/// telling anybody about — which is every release before the workflow that
+/// builds one.
+fn installable(release: &serde_json::Value) -> Option<String> {
+    let tag = release["tag_name"].as_str()?;
+    let has_binary = release["assets"].as_array()?.iter().any(|asset| {
+        asset["name"]
+            .as_str()
+            .is_some_and(|name| name.ends_with(".tar.gz"))
+    });
+    has_binary.then(|| tag.trim_start_matches('v').to_string())
+}
+
+fn store() -> Option<std::path::PathBuf> {
+    deck_core::home::deck().map(|deck| deck.join("update.json"))
+}
+
+fn read() -> Known {
+    store()
+        .and_then(|path| std::fs::read_to_string(path).ok())
+        .and_then(|text| serde_json::from_str(&text).ok())
+        .unwrap_or_default()
+}
+
+fn write(known: &Known) {
+    let Some(path) = store() else {
+        return;
+    };
+    if let Some(dir) = path.parent() {
+        let _ = std::fs::create_dir_all(dir);
+    }
+    if let Ok(text) = serde_json::to_string(known) {
+        let _ = std::fs::write(path, text);
+    }
+}
+
+fn now() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |since| since.as_secs())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn asked_at_most_once_a_day() {
+        let day = ONCE_A_DAY.as_secs();
+        assert!(due(0, day), "never asked is due");
+        assert!(
+            !due(1_000, 1_000 + day - 1),
+            "a second short of a day is not"
+        );
+        assert!(due(1_000, 1_000 + day), "a day is");
+
+        // A clock set backwards must not make it ask on every launch forever,
+        // or never again. Saturating keeps it from wrapping round to huge.
+        assert!(
+            !due(5_000, 1_000),
+            "a checked time in the future is not due"
+        );
+    }
+
+    #[test]
+    fn only_a_strictly_newer_release_is_shown() {
+        assert_eq!(worth_showing(Some("0.1.4"), "0.1.3"), Some("0.1.4".into()));
+        assert_eq!(worth_showing(Some("0.1.3"), "0.1.3"), None, "the same");
+        assert_eq!(worth_showing(Some("0.1.2"), "0.1.3"), None, "an older one");
+        assert_eq!(worth_showing(None, "0.1.3"), None, "nothing known");
+
+        // Somebody running an rc of a release sees the release when it ships.
+        assert_eq!(
+            worth_showing(Some("0.1.3"), "0.1.3-rc.2"),
+            Some("0.1.3".into())
+        );
+    }
+
+    #[test]
+    fn a_release_with_no_binary_is_not_offered() {
+        let media_only = serde_json::json!({
+            "tag_name": "v0.1.2",
+            "assets": [{ "name": "pages-demo.gif" }, { "name": "4.26.13.mp4" }]
+        });
+        assert_eq!(installable(&media_only), None);
+
+        let real = serde_json::json!({
+            "tag_name": "v0.1.4",
+            "assets": [
+                { "name": "deck-v0.1.4-macos-universal.tar.gz" },
+                { "name": "deck-v0.1.4-macos-universal.tar.gz.sha256" }
+            ]
+        });
+        assert_eq!(installable(&real), Some("0.1.4".into()));
+    }
+
+    #[test]
+    fn an_odd_answer_is_no_answer() {
+        assert_eq!(installable(&serde_json::json!({})), None);
+        assert_eq!(
+            installable(&serde_json::json!({ "message": "rate limited" })),
+            None
+        );
+    }
+
+    #[test]
+    fn what_is_known_survives_a_restart() {
+        let known = Known {
+            latest: Some("0.1.4".into()),
+            checked: 1_790_000_000,
+        };
+        let text = serde_json::to_string(&known).expect("it writes");
+        assert_eq!(
+            serde_json::from_str::<Known>(&text).expect("it reads"),
+            known
+        );
+
+        // A file from some future deck with more in it, or a broken one, reads
+        // as knowing nothing rather than failing — which means asking again.
+        let unknown: Known = serde_json::from_str("not json").unwrap_or_default();
+        assert_eq!(unknown, Known::default());
+    }
+}

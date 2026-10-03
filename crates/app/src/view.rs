@@ -4360,6 +4360,24 @@ impl DeckView {
                     // anybody reporting a bug has to answer is which version
                     // they are on.
                     .child(format!("deck {}", env!("CARGO_PKG_VERSION")))
+                    // A newer stable release, when one is known. The same dot
+                    // the strip uses for *nobody is listening*, in the accent
+                    // rather than muted — by that rule, this is a thing asking
+                    // to be pressed rather than a fact about the room.
+                    .children(crate::update::available().map(|newer| {
+                        div()
+                            .h_flex()
+                            .items_center()
+                            .gap(px(6.))
+                            .text_color(paint(self.palette.accent))
+                            .child(
+                                div()
+                                    .size(px(5.))
+                                    .rounded_full()
+                                    .bg(paint(self.palette.accent)),
+                            )
+                            .child(format!("{newer} available"))
+                    }))
                     // Putting the deck away has to be reachable without
                     // knowing a key. It sits at the quiet end of the strip
                     // rather than as a control in the header: it is a way out,
