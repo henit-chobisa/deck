@@ -1,13 +1,15 @@
 //! What the deck remembers between runs.
 //!
-//! The window's shape, and which way the reader last turned the page. A deck is
-//! opened by an agent rather than by the reader, so the reader never gets to
-//! place the window or arrange it before it appears — the only way it can
-//! arrive the way they want it is to arrive the way they last left it.
+//! The window's shape, which way the reader last turned the page, and when
+//! they last asked a comment to be heard. A deck is opened by an agent rather
+//! than by the reader, so the reader never gets to place the window or arrange
+//! it before it appears — the only way it can arrive the way they want it is
+//! to arrive the way they last left it.
 //!
-//! Both are written into one file, and each is written without disturbing the
-//! other: the shape is known when the window closes and the turn is known the
-//! moment it is asked for, so the two never arrive together.
+//! All three are written into one file, and each is written without
+//! disturbing the others: the shape is known when the window closes, the turn
+//! the moment it is asked for, and the delivery when a chip is pressed, so no
+//! two of them arrive together.
 //!
 //! Kept beside the config the app will read later, under `~/.deck`, so there is
 //! one place to look for anything deck has written about you.
@@ -118,10 +120,11 @@ pub fn remember_turn(turn: u8) {
 
 /// Write what is given and leave the rest as it was.
 ///
-/// Read, change, write. The two things remembered here are learned at different
-/// moments — the turn when it is asked for, the shape when the window closes —
-/// so a writer that put down everything it knew would put down a default over
-/// something the other one had just saved.
+/// Read, change, write. The three things remembered here are learned at
+/// different moments — the turn when it is asked for, the delivery when a chip
+/// is pressed, the shape when the window closes — so a writer that put down
+/// everything it knew would put down a default over something another had just
+/// saved.
 ///
 /// Failure is silent on purpose. This runs while the window is closing, and a
 /// deck that refused to shut because it could not write a preference would be a
