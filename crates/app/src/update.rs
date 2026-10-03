@@ -20,6 +20,14 @@
 //!
 //! Stable releases only. A prerelease is something somebody asks for with
 //! `deck upgrade --prerelease`; it is never offered to them unasked.
+//!
+//! # And then installed
+//!
+//! When the daily ask finds a newer release, it is installed in the same
+//! background task, the way `deck upgrade` would — checked, signed, tried, and
+//! renamed over the running binary, which carries on untouched. The next deck
+//! opened is the new one, and it opens on its notes. A copy Homebrew owns, or
+//! one somebody is building, is told about and left alone.
 
 use std::sync::Mutex;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -53,10 +61,25 @@ struct Known {
     checked: u64,
 }
 
-/// A newer stable deck, if one is known.
+/// A newer stable deck that has been installed, and is what opens next.
+static INSTALLED: Mutex<Option<String>> = Mutex::new(None);
+
+/// A newer stable deck, if one is known and not already installed.
 #[must_use]
 pub fn available() -> Option<String> {
+    if installed().is_some() {
+        return None;
+    }
     FOUND.lock().ok().and_then(|found| found.clone())
+}
+
+/// The newer deck installed while this one was running, if one was.
+#[must_use]
+pub fn installed() -> Option<String> {
+    INSTALLED
+        .lock()
+        .ok()
+        .and_then(|installed| installed.clone())
 }
 
 /// Show what is already known, and ask again if it is a day old.
@@ -80,21 +103,29 @@ pub fn look(cx: &mut gpui_kit::App) {
         // Another deck is asking. What it learns lands in the file, and this
         // one reads it next launch rather than asking the same question twice.
         let Some(_held) = store().and_then(|path| Held::take(&path.with_extension("lock"))) else {
-            return read();
+            return (read(), None);
         };
         // Read again now the lock is held: a deck that held it a moment ago
         // may have asked already, and the answer it wrote is good for a day.
         let before = read();
         if !due(before.checked, now()) {
-            return before;
+            return (before, None);
         }
         let known = settle(latest(), before, now());
         write(&known);
-        known
+        // Still under the lock, so two decks never install at once. Any
+        // failure leaves the deck that was there, and the foot still says a
+        // newer one is available for somebody to run `deck upgrade` by hand.
+        let installed = worth_showing(known.latest.as_deref(), RUNNING)
+            .and_then(|_| crate::upgrade::quietly().ok().flatten());
+        (known, installed)
     });
     cx.spawn(async move |cx| {
-        let known = asking.await;
+        let (known, installed) = asking.await;
         remember(&known);
+        if let (Some(version), Ok(mut slot)) = (installed, INSTALLED.lock()) {
+            *slot = Some(version);
+        }
         cx.update(gpui_kit::App::refresh_windows);
     })
     .detach();

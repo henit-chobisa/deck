@@ -109,7 +109,7 @@ pub fn run(unstable: Option<bool>) -> anyhow::Result<()> {
     }
 
     println!("  {}", dim(&format!("deck {there}, and this is {RUNNING}")));
-    swap(&here, release)?;
+    swap(&here, release, Showing::Bar)?;
 
     println!("  {} deck {}", accent("✓"), bold(there));
     println!("  {}", dim("Open a deck and it will be the new one."));
@@ -123,6 +123,51 @@ pub fn run(unstable: Option<bool>) -> anyhow::Result<()> {
     );
     println!();
     Ok(())
+}
+
+/// Install the newest stable release, saying nothing, if this copy is one deck
+/// may replace by itself.
+///
+/// What automatic updates run, on a background thread. `Ok(None)` is every
+/// reason not to: a copy a package manager owns, one being built from source,
+/// or nothing newer to install. An error is something going wrong partway,
+/// and leaves the deck that was there — [`swap`] only changes anything at the
+/// final rename.
+pub(crate) fn quietly() -> anyhow::Result<Option<String>> {
+    let here = installed()?;
+    if !replaceable(&here) {
+        return Ok(None);
+    }
+    let releases = releases()?;
+    let Some(release) = pick(&releases, false) else {
+        return Ok(None);
+    };
+    let there = release.tag.trim_start_matches('v');
+    if !newer(there, RUNNING) {
+        return Ok(None);
+    }
+    swap(&here, release, Showing::Nothing)?;
+    Ok(Some(there.to_string()))
+}
+
+/// Whether deck may replace this copy without being asked.
+///
+/// Not one Homebrew owns, for the reason [`managed`] gives. And not a build
+/// out of a cargo `target` directory, or any debug build: somebody working on
+/// deck would find the binary they just built swapped for a release.
+fn replaceable(exe: &Path) -> bool {
+    !cfg!(debug_assertions)
+        && managed(exe).is_none()
+        && !exe.components().any(|part| part.as_os_str() == "target")
+}
+
+/// Whether a download is drawn arriving.
+#[derive(Clone, Copy)]
+enum Showing {
+    /// In a terminal, with somebody watching.
+    Bar,
+    /// In the background, where a progress bar would land in some log.
+    Nothing,
 }
 
 /// Where deck is, with every symlink followed.
@@ -227,7 +272,7 @@ fn pick(releases: &[Release], unstable: bool) -> Option<&Release> {
 /// Everything happens beside the installed binary rather than in a temporary
 /// directory, because `rename` is only atomic within one filesystem and
 /// `/tmp` is not guaranteed to be the same one.
-fn swap(here: &Path, release: &Release) -> anyhow::Result<()> {
+fn swap(here: &Path, release: &Release, showing: Showing) -> anyhow::Result<()> {
     let (Some(tarball), Some(sums)) = (&release.tarball, &release.sums) else {
         bail!("{} has no binary attached to it", release.tag);
     };
@@ -236,7 +281,10 @@ fn swap(here: &Path, release: &Release) -> anyhow::Result<()> {
         .context("deck is not in a directory, which should not be possible")?;
     writable(beside)?;
 
-    let archive = carry(tarball)?;
+    let archive = match showing {
+        Showing::Bar => carry(tarball)?,
+        Showing::Nothing => fetch(tarball)?,
+    };
     let wanted = fetch(sums)?;
     checked(&archive, &wanted)?;
 
@@ -690,5 +738,17 @@ mod tests {
     fn an_empty_checksum_file_is_not_a_pass() {
         assert!(checked(b"deck", b"").is_err());
         assert!(checked(b"deck", b"   \n").is_err());
+    }
+
+    #[test]
+    fn only_an_installed_release_build_replaces_itself() {
+        let homebrew = Path::new("/opt/homebrew/Cellar/deck/0.1.2/bin/deck");
+        let built = Path::new("/Users/me/deck/target/release/deck");
+        let installed = Path::new("/Users/me/.local/bin/deck");
+        assert!(!replaceable(homebrew), "Homebrew's");
+        assert!(!replaceable(built), "a build somebody is working on");
+        // Tests are a debug build, which is never replaced either; a release
+        // build in ~/.local/bin is the one that is.
+        assert_eq!(replaceable(installed), !cfg!(debug_assertions));
     }
 }

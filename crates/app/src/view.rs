@@ -2355,6 +2355,7 @@ impl DeckView {
 
         let page = crate::notes::page(version);
         let running = version == crate::notes::RUNNING;
+        let waiting = crate::update::installed().as_deref() == Some(version.as_str());
         Some(
             div()
                 .id("notes-shade")
@@ -2406,6 +2407,8 @@ impl DeckView {
                                                 .text_color(paint(palette.muted))
                                                 .child(if running {
                                                     "what changed in this deck"
+                                                } else if waiting {
+                                                    "installed — what the next deck brings"
                                                 } else {
                                                     "what a newer deck brings"
                                                 }),
@@ -2433,7 +2436,7 @@ impl DeckView {
                                                 .on_click(move |_, _window, cx| cx.open_url(&page))
                                                 .child("on GitHub ↗"),
                                         )
-                                        .when(!running, |this| {
+                                        .when(!running && !waiting, |this| {
                                             this.child(
                                                 div()
                                                     .font_family(mono.clone())
@@ -4663,6 +4666,28 @@ impl DeckView {
                     // the strip uses for *nobody is listening*, in the accent
                     // rather than muted — by that rule, this is a thing asking
                     // to be pressed rather than a fact about the room.
+                    // Installed already, by itself: there is nothing left to
+                    // do but open another deck, and the notes say what it is.
+                    .children(crate::update::installed().map(|newer| {
+                        let asked = newer.clone();
+                        div()
+                            .id("installed")
+                            .cursor_pointer()
+                            .on_click(cx.listener(move |deck, _, _window, cx| {
+                                deck.show_notes(asked.clone(), cx);
+                            }))
+                            .h_flex()
+                            .items_center()
+                            .gap(px(6.))
+                            .text_color(paint(self.palette.accent))
+                            .child(
+                                div()
+                                    .size(px(5.))
+                                    .rounded_full()
+                                    .bg(paint(self.palette.accent)),
+                            )
+                            .child(format!("{newer} next time"))
+                    }))
                     .children(crate::update::available().map(|newer| {
                         let asked = newer.clone();
                         div()
