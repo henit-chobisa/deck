@@ -137,6 +137,10 @@ pub fn bindings() -> Vec<KeyBinding> {
         // The notes card holds the keyboard while it is up, so escape reaches
         // it whatever was focused before — the comment box included.
         KeyBinding::new("escape", Unlight, Some("DeckNotes")),
+        // The warning before quitting over an unsent comment: `q` again is
+        // the answer, escape is changing your mind.
+        KeyBinding::new("q", Close, Some("DeckQuit")),
+        KeyBinding::new("escape", Unlight, Some("DeckQuit")),
     ]
 }
 
@@ -308,6 +312,76 @@ enum About {
         /// no way to see it had landed, and no way to find it again.
         said: Option<(usize, usize)>,
     },
+}
+
+impl About {
+    /// This, in the shape a draft on disk keeps it.
+    fn pinned(&self) -> crate::draft::Pinned {
+        use crate::draft::Pinned;
+        match self {
+            Self::Lines {
+                group,
+                ref_id,
+                file,
+                range,
+                quote,
+            } => Pinned::Lines {
+                group: group.to_string(),
+                ref_id: ref_id.to_string(),
+                file: file.clone(),
+                range: *range,
+                quote: quote.clone(),
+            },
+            Self::Drawn {
+                group,
+                ref_id,
+                quote,
+            } => Pinned::Drawn {
+                group: group.to_string(),
+                ref_id: ref_id.to_string(),
+                quote: quote.clone(),
+            },
+            Self::Claim { group, quote, said } => Pinned::Claim {
+                group: group.to_string(),
+                quote: quote.clone(),
+                said: *said,
+            },
+        }
+    }
+
+    /// Back from a draft on disk.
+    fn from_pinned(pinned: crate::draft::Pinned) -> Self {
+        use crate::draft::Pinned;
+        match pinned {
+            Pinned::Lines {
+                group,
+                ref_id,
+                file,
+                range,
+                quote,
+            } => Self::Lines {
+                group: group.into(),
+                ref_id: ref_id.into(),
+                file,
+                range,
+                quote,
+            },
+            Pinned::Drawn {
+                group,
+                ref_id,
+                quote,
+            } => Self::Drawn {
+                group: group.into(),
+                ref_id: ref_id.into(),
+                quote,
+            },
+            Pinned::Claim { group, quote, said } => Self::Claim {
+                group: group.into(),
+                quote,
+                said,
+            },
+        }
+    }
 }
 
 /// Live mode, and how far through its transition it is.
@@ -728,6 +802,13 @@ pub struct DeckView {
     notes_scroll: ScrollHandle,
     /// The notes card's hold on the keyboard while it is up.
     notes_focus: FocusHandle,
+    /// The warning that quitting leaves a comment unsent, while it is up.
+    ///
+    /// Only ever shown when the comment box has words in it: `q` with nothing
+    /// written just quits.
+    quitting: bool,
+    /// That warning's hold on the keyboard, so `q` and escape reach it.
+    quit_focus: FocusHandle,
     /// The fetch of notes that were not cached. Replaced, and so dropped,
     /// when another version's notes are asked for.
     fetching_notes: Task<()>,
@@ -837,9 +918,11 @@ impl DeckView {
         // back off the bar — so whatever was being written when it last went
         // away is still on disk, and belongs to the reader.
         let mut conversation = conversation;
+        let mut unsent = None;
         if remarks.is_empty() {
             let held = crate::draft::read(&deck.root);
             remarks = held.remarks;
+            unsent = held.unsent;
             // The rail draws the transcript, not the remarks — so without this
             // the comments came back into the review and into nothing the
             // reader could see, which looks exactly like nothing having been
@@ -911,6 +994,8 @@ impl DeckView {
             notes: None,
             notes_scroll: ScrollHandle::new(),
             notes_focus: cx.focus_handle(),
+            quitting: false,
+            quit_focus: cx.focus_handle(),
             fetching_notes: Task::ready(()),
             voice: crate::speech::Voice::default(),
             folded,
@@ -926,6 +1011,14 @@ impl DeckView {
             let listen = Self::listen_composer(&state, window, cx);
             view.composing = Some((about, state, listen));
             view.composing_when = when;
+        } else if let Some(unsent) = unsent {
+            // A comment left in the box when the deck was quit. It comes back
+            // as it was left — the box open, the words in it.
+            view.open_composer(About::from_pinned(unsent.about), window, cx);
+            if let Some((_, state, _)) = view.composing.as_ref() {
+                let text = unsent.text;
+                state.update(cx, |state, cx| state.set_value(text, window, cx));
+            }
         }
         view.build_panes(cx);
         if let Some(stage) = view.live.stage()
@@ -2346,6 +2439,154 @@ impl DeckView {
     /// Pressing anywhere off the card puts it away, and so does escape. The
     /// card is the only thing that can be pressed while it is up: the deck
     /// behind it is dimmed to say so, and occluded so that it is true.
+    /// Before quitting over a comment with words in it: what happens to them.
+    ///
+    /// Set as the release notes are — the same card over the same dimmed
+    /// window, the same cross — so the two read as one kind of thing. Escape,
+    /// the cross and a click off the card keep you here; `q` again quits.
+    fn render_quitting(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
+        if !self.quitting {
+            return None;
+        }
+        let palette = &self.palette;
+        let mono = cx.theme().mono_font_family.clone();
+        let button = |id: &'static str, label: &'static str, key: &'static str, primary: bool| {
+            div()
+                .id(id)
+                .h_flex()
+                .items_center()
+                .gap(px(6.))
+                .px(px(10.))
+                .py(px(5.))
+                .rounded(px(5.))
+                .cursor_pointer()
+                .text_size(px(11.5))
+                .when(primary, |this| {
+                    this.bg(paint(palette.accent))
+                        .text_color(paint(palette.on_accent))
+                })
+                .when(!primary, |this| {
+                    this.border_1()
+                        .border_color(paint(palette.edge))
+                        .text_color(paint(palette.fg))
+                        .hover(|style| style.bg(paint(palette.wash)))
+                })
+                .child(label)
+                .child(
+                    div()
+                        .font_family(mono.clone())
+                        .text_size(px(10.))
+                        .opacity(0.7)
+                        .child(key),
+                )
+        };
+        Some(
+            div()
+                .id("quit-shade")
+                .track_focus(&self.quit_focus)
+                .key_context("DeckQuit")
+                .on_action(cx.listener(Self::on_unlight))
+                .on_action(cx.listener(Self::on_close))
+                .absolute()
+                .top_0()
+                .left_0()
+                .right_0()
+                .bottom_0()
+                .flex()
+                .items_center()
+                .justify_center()
+                .bg(paint(palette.bg).opacity(0.72))
+                .occlude()
+                .on_mouse_down(
+                    MouseButton::Left,
+                    cx.listener(|deck, _, window, cx| deck.stay(window, cx)),
+                )
+                .child(
+                    div()
+                        .id("quit-card")
+                        .relative()
+                        .w(px(440.))
+                        .max_w(relative(0.9))
+                        .v_flex()
+                        .rounded(px(10.))
+                        .border_1()
+                        .border_color(paint(palette.edge))
+                        .bg(paint(palette.bg))
+                        .shadow_lg()
+                        .on_mouse_down(MouseButton::Left, |_, _window, cx| cx.stop_propagation())
+                        .child(
+                            div()
+                                .v_flex()
+                                .gap(px(4.))
+                                .px(px(24.))
+                                .pt(px(20.))
+                                .pb(px(14.))
+                                .child(
+                                    div()
+                                        .text_size(px(11.))
+                                        .text_color(paint(palette.muted))
+                                        .child("before you go"),
+                                )
+                                .child(
+                                    div()
+                                        .text_size(px(18.))
+                                        .font_weight(FontWeight::SEMIBOLD)
+                                        .child("Your comment isn't sent yet"),
+                                ),
+                        )
+                        .child(div().h(px(1.)).mx(px(24.)).bg(paint(palette.edge)))
+                        .child(
+                            div()
+                                .px(px(24.))
+                                .pt(px(16.))
+                                .text_size(px(13.))
+                                .line_height(px(20.5))
+                                .text_color(paint(palette.fg))
+                                .child(
+                                    "It is kept as a draft. Open this deck again and it \
+                                     will be back in the comment box, as you left it.",
+                                ),
+                        )
+                        .child(
+                            div()
+                                .h_flex()
+                                .justify_end()
+                                .gap(px(8.))
+                                .px(px(24.))
+                                .pt(px(18.))
+                                .pb(px(20.))
+                                .child(button("quit-stay", "Keep writing", "esc", false).on_click(
+                                    cx.listener(|deck, _, window, cx| deck.stay(window, cx)),
+                                ))
+                                .child(button("quit-go", "Quit", "q", true).on_click(cx.listener(
+                                    |deck, _, window, cx| deck.on_close(&Close, window, cx),
+                                ))),
+                        )
+                        .child(
+                            div()
+                                .id("quit-close")
+                                .absolute()
+                                .top(px(12.))
+                                .right(px(12.))
+                                .size(px(24.))
+                                .flex()
+                                .items_center()
+                                .justify_center()
+                                .rounded(px(6.))
+                                .cursor_pointer()
+                                .text_size(px(13.))
+                                .text_color(paint(palette.muted))
+                                .hover(|this| {
+                                    this.bg(paint(palette.wash)).text_color(paint(palette.fg))
+                                })
+                                .on_click(cx.listener(|deck, _, window, cx| deck.stay(window, cx)))
+                                .child("✕"),
+                        ),
+                )
+                .into_any_element(),
+        )
+    }
+
     fn render_notes(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
         use crate::notes::{Block, Notes};
 
@@ -2571,6 +2812,10 @@ impl DeckView {
     /// and the spotlight those raised. What the agent is pointing at is left
     /// alone — it is mid-sentence, and its light goes out by itself.
     fn on_unlight(&mut self, _: &Unlight, window: &mut Window, cx: &mut Context<Self>) {
+        if self.quitting {
+            self.stay(window, cx);
+            return;
+        }
         // Notes over the window are the nearest thing to put away.
         if self.notes.is_some() {
             self.hide_notes(window, cx);
@@ -2606,18 +2851,59 @@ impl DeckView {
     /// the window that cannot be got back. So it goes back to the box instead,
     /// which also shows why nothing closed. An open box with nothing in it
     /// holds nothing to lose, and closes like any other.
+    /// `q`: quit.
+    ///
+    /// With words in the comment box it asks first, once — they are kept as
+    /// a draft either way, and `q` again quits. It used to take the reader
+    /// back into the box instead, which made the quit key sometimes not quit.
     fn on_leave(&mut self, _: &Leave, window: &mut Window, cx: &mut Context<Self>) {
-        let unsaved = self
-            .composing
-            .as_ref()
-            .is_some_and(|(_, state, _)| !state.read(cx).value().trim().is_empty());
-        if unsaved && self.back_to_the_box(window, cx) {
+        if self.unsent(cx).is_some() {
+            self.quitting = true;
+            self.quit_focus.focus(window, cx);
+            cx.notify();
             return;
         }
         self.on_close(&Close, window, cx);
     }
 
+    /// Put the warning away, and the keyboard back where it was.
+    fn stay(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.quitting = false;
+        match self.composing.as_ref().map(|(_, state, _)| state.clone()) {
+            Some(state) if self.rail_open.on() => {
+                state.update(cx, |state, cx| state.focus(window, cx));
+            }
+            _ => self.focus.focus(window, cx),
+        }
+        cx.notify();
+    }
+
+    /// The comment in the box, if it says anything, in the shape a draft
+    /// keeps it in.
+    fn unsent(&self, cx: &App) -> Option<crate::draft::Unsent> {
+        let (about, state, _) = self.composing.as_ref()?;
+        let text = state.read(cx).value().to_string();
+        (!text.trim().is_empty()).then(|| crate::draft::Unsent {
+            about: about.pinned(),
+            text,
+        })
+    }
+
+    /// Write down everything in hand: the remarks, the transcript, and the
+    /// comment still in the box.
+    fn keep_draft(&self, cx: &App) {
+        crate::draft::save(
+            &self.deck.root,
+            &self.remarks,
+            &self.conversation.transcript,
+            self.unsent(cx),
+        );
+    }
+
     fn on_close(&mut self, _: &Close, window: &mut Window, cx: &mut Context<Self>) {
+        // Whatever is in the comment box is kept, for the next time this deck
+        // is opened.
+        self.keep_draft(cx);
         // The platform's should-close hook does not run when the window is
         // taken away from inside, so the shape is written here.
         if let WindowBounds::Windowed(bounds) = window.window_bounds() {
@@ -3263,6 +3549,11 @@ impl DeckView {
         cx: &mut Context<Self>,
     ) -> Subscription {
         cx.subscribe_in(state, window, |deck, _, event: &InputEvent, window, cx| {
+            // Written down as it is typed, so a crash or a force-quit keeps it
+            // as surely as `q` does.
+            if matches!(event, InputEvent::Change) {
+                deck.keep_draft(cx);
+            }
             if matches!(
                 event,
                 InputEvent::PressEnter {
@@ -3290,6 +3581,8 @@ impl DeckView {
             return;
         }
         self.composing = None;
+        // Thrown away, so not kept for next time either.
+        self.keep_draft(cx);
         // Thrown away rather than saved, but the anchor still goes back: the
         // hold belongs to the composer, not to whether it produced anything.
         self.live.composer_closed();
@@ -3551,11 +3844,7 @@ impl DeckView {
         // Written down as it is made. The way out is exactly what cannot be
         // relied on — a quit, a crash and a force-close all skip whatever tidy
         // exit path they were meant to take.
-        crate::draft::save(
-            &self.deck.root,
-            &self.remarks,
-            &self.conversation.transcript,
-        );
+        self.keep_draft(cx);
         cx.notify();
     }
 
@@ -4266,11 +4555,7 @@ impl DeckView {
     pub fn drop_remark(&mut self, remark_ix: usize, cx: &mut Context<Self>) {
         if remark_ix < self.remarks.len() {
             self.remarks.remove(remark_ix);
-            crate::draft::save(
-                &self.deck.root,
-                &self.remarks,
-                &self.conversation.transcript,
-            );
+            self.keep_draft(cx);
             // Folded state is held by index, so removing one shifts every
             // remark after it. Rebuild rather than leave the set pointing at
             // whatever moved up into the gap.
@@ -6301,7 +6586,7 @@ impl Render for DeckView {
             // Nor while the notes are up. They are a card over the deck, and a
             // key matched up the focus chain would otherwise reach through it:
             // `s` sent the review, `c` opened a comment under the card.
-            .when(!typing && self.notes.is_none(), |this| {
+            .when(!typing && self.notes.is_none() && !self.quitting, |this| {
                 this.key_context("Deck")
             })
             .on_action(cx.listener(Self::on_next))
@@ -6440,6 +6725,7 @@ impl Render for DeckView {
                 )
             })
             .children(self.render_notes(cx))
+            .children(self.render_quitting(cx))
     }
 }
 

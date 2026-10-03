@@ -16,7 +16,7 @@
 
 use std::path::Path;
 
-use deck_core::Moment;
+use deck_core::{LineRange, Moment};
 use serde::{Deserialize, Serialize};
 
 use crate::view::Remark;
@@ -34,6 +34,45 @@ pub struct Draft {
     pub remarks: Vec<Remark>,
     #[serde(default)]
     pub transcript: Vec<Moment>,
+    /// The comment still in the box, if it had any words in it.
+    ///
+    /// `q` quits, whatever is open. It used to take the reader back to an
+    /// unsaved comment instead, which is a quit key that sometimes does not
+    /// quit. So the words are kept here and the box comes back with them.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub unsent: Option<Unsent>,
+}
+
+/// A comment being written: what it is about, and what it says so far.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Unsent {
+    pub about: Pinned,
+    pub text: String,
+}
+
+/// What an unsent comment is pinned to, in a shape that can be written down.
+///
+/// The window's own version holds GPUI strings, which have no business in a
+/// file; this mirrors it with plain ones.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum Pinned {
+    Lines {
+        group: String,
+        ref_id: String,
+        file: std::path::PathBuf,
+        range: LineRange,
+        quote: String,
+    },
+    Drawn {
+        group: String,
+        ref_id: String,
+        quote: String,
+    },
+    Claim {
+        group: String,
+        quote: String,
+        said: Option<(usize, usize)>,
+    },
 }
 
 /// The file remarks are kept in while they are still being written.
@@ -48,14 +87,15 @@ const DRAFT: &str = "draft.json";
 /// Through a temporary file, so an interrupted write cannot leave half a draft
 /// where a whole one was — and a half-parsed draft would lose the work just as
 /// surely as no draft at all.
-pub fn save(root: &Path, remarks: &[Remark], transcript: &[Moment]) {
-    if remarks.is_empty() {
+pub fn save(root: &Path, remarks: &[Remark], transcript: &[Moment], unsent: Option<Unsent>) {
+    if remarks.is_empty() && unsent.is_none() {
         clear(root);
         return;
     }
     let held = Draft {
         remarks: remarks.to_vec(),
         transcript: transcript.to_vec(),
+        unsent,
     };
     let Ok(json) = serde_json::to_string(&held) else {
         return;
@@ -124,7 +164,7 @@ mod tests {
             kind: Some(deck_core::Kind::MustFix),
             when: deck_core::When::Queue,
         };
-        save(deck, &[remark("this assumes sorted input")], &[said]);
+        save(deck, &[remark("this assumes sorted input")], &[said], None);
 
         let back = read(deck);
         assert_eq!(back.remarks.len(), 1);
@@ -160,7 +200,7 @@ mod tests {
             moment: Some(3),
             ..remark("this claim is the part I doubt")
         };
-        save(deck, &[on_prose], &[]);
+        save(deck, &[on_prose], &[], None);
 
         let back = read(deck);
         assert_eq!(
@@ -183,10 +223,39 @@ mod tests {
         let room = tempfile::tempdir().expect("a directory");
         let deck = room.path();
 
-        save(deck, &[remark("first thoughts")], &[]);
-        save(deck, &[], &[]);
+        save(deck, &[remark("first thoughts")], &[], None);
+        save(deck, &[], &[], None);
 
         assert!(!deck.join(DRAFT).exists(), "and the file is gone");
         assert!(read(deck).remarks.is_empty());
+    }
+
+    #[test]
+    fn a_comment_left_in_the_box_comes_back() {
+        // `q` quits with words in the box. They are only worth quitting over
+        // if they are there next time — with nothing else written, too.
+        let room = tempfile::tempdir().expect("a directory");
+        let deck = room.path();
+        let unsent = Unsent {
+            about: Pinned::Lines {
+                group: "g1".into(),
+                ref_id: "g1r1".into(),
+                file: "src/lib.rs".into(),
+                range: LineRange::new(4, 6),
+                quote: "fn main() {".into(),
+            },
+            text: "half a thought".into(),
+        };
+
+        save(deck, &[], &[], Some(unsent.clone()));
+        assert_eq!(
+            read(deck).unsent,
+            Some(unsent),
+            "kept with no remarks at all"
+        );
+
+        // Sent or thrown away, it is not brought back again.
+        save(deck, &[], &[], None);
+        assert!(!deck.join(DRAFT).exists());
     }
 }
