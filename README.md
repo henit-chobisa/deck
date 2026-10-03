@@ -188,9 +188,11 @@ showing it.
 
 Drag across lines and press `c`. Drag across the narration itself to answer a
 sentence rather than a line, which is where *this whole approach is wrong* goes.
-`⌘↩` saves, `esc` discards. Every comment goes back at once, pinned to the lines
-it was about, with the text it was written against — so it survives the file
-moving underneath it.
+Finish it one of two ways: **Ask now** (`⌘↩`, or `Ctrl+Enter` on Windows and
+Linux) puts the question to the agent straight away, and **Add to review**
+(`⇧⌘↩` / `Ctrl+Shift+Enter`) holds it until you submit. `esc` discards. Every
+comment is pinned to the lines it was about, with the text it was written
+against — so it survives the file moving underneath it.
 
 ### Put it away without losing it
 
