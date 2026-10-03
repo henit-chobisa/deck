@@ -156,8 +156,8 @@ fn latest() -> Option<String> {
 /// The version a release offers, if it offers anything to install.
 ///
 /// A release `deck upgrade` would refuse is not worth telling anybody about.
-/// It wants the tarball and the checksum beside it, so this wants both — and
-/// no release before the workflow that builds them has either.
+/// It wants this platform's tarball and the checksum beside it, so this wants
+/// both — and no release before the workflow that builds them has either.
 fn installable(release: &serde_json::Value) -> Option<String> {
     let tag = release["tag_name"].as_str()?;
     let names: Vec<&str> = release["assets"]
@@ -165,7 +165,7 @@ fn installable(release: &serde_json::Value) -> Option<String> {
         .iter()
         .filter_map(|asset| asset["name"].as_str())
         .collect();
-    let has = |suffix: &str| names.iter().any(|name| name.ends_with(suffix));
+    let has = |suffix: &str| names.iter().any(|name| crate::upgrade::ours(name, suffix));
     (has(".tar.gz") && has(".tar.gz.sha256")).then(|| tag.trim_start_matches('v').to_string())
 }
 
@@ -290,21 +290,33 @@ mod tests {
         });
         assert_eq!(installable(&media_only), None);
 
+        let tarball = |platform: &str| format!("deck-v0.1.4-{platform}-universal.tar.gz");
+        let ours = tarball(crate::upgrade::PLATFORM);
         let real = serde_json::json!({
             "tag_name": "v0.1.4",
-            "assets": [
-                { "name": "deck-v0.1.4-macos-universal.tar.gz" },
-                { "name": "deck-v0.1.4-macos-universal.tar.gz.sha256" }
-            ]
+            "assets": [{ "name": ours }, { "name": format!("{ours}.sha256") }]
         });
         assert_eq!(installable(&real), Some("0.1.4".into()));
 
         // `deck upgrade` will not install a tarball it cannot check.
         let unchecked = serde_json::json!({
             "tag_name": "v0.1.4",
-            "assets": [{ "name": "deck-v0.1.4-macos-universal.tar.gz" }]
+            "assets": [{ "name": ours }]
         });
         assert_eq!(installable(&unchecked), None);
+
+        // Nor one built for somewhere else: today every release carries a
+        // macOS binary and nothing else, and Windows must not be offered it.
+        let elsewhere = tarball(if crate::upgrade::PLATFORM == "macos" {
+            "windows"
+        } else {
+            "macos"
+        });
+        let theirs = serde_json::json!({
+            "tag_name": "v0.1.4",
+            "assets": [{ "name": elsewhere }, { "name": format!("{elsewhere}.sha256") }]
+        });
+        assert_eq!(installable(&theirs), None);
     }
 
     #[test]
