@@ -70,6 +70,20 @@ const KEYS: &[(&str, &str, &str)] = &[
     ("q", "close", "close"),
 ];
 
+/// A shortcut as it is labelled on this keyboard.
+///
+/// The bindings say `secondary`, which GPUI reads as ⌘ on a Mac and Ctrl
+/// everywhere else; a label has to say the same. Before, the bindings said
+/// `cmd` — the Windows key, on Windows — and the labels said ⌘, so on
+/// Windows neither the keys nor the hints were right.
+fn chord(mac: &'static str, elsewhere: &'static str) -> &'static str {
+    if cfg!(target_os = "macos") {
+        mac
+    } else {
+        elsewhere
+    }
+}
+
 /// The bindings, in the context the window claims.
 #[must_use]
 pub fn bindings() -> Vec<KeyBinding> {
@@ -86,21 +100,22 @@ pub fn bindings() -> Vec<KeyBinding> {
         // Bare `q` is its own action, not `Close`. It is one key with no
         // modifier, which is the kind that gets pressed by accident, and once
         // the deck's keys work beside an open comment it could take half a
-        // remark with it. `cmd-q` stays `Close`: somebody who holds a modifier
-        // to quit means it, and refusing them is worse than any comment.
+        // remark with it. ⌘Q (Ctrl+Q elsewhere) stays `Close`: somebody who
+        // holds a modifier to quit means it, and refusing them is worse than
+        // any comment.
         KeyBinding::new("q", Leave, Some("Deck")),
         // Escape is bound in the composer too, for discarding a remark. That
         // context is deeper than this one, so while somebody is writing it
         // takes the key and this never runs.
         KeyBinding::new("escape", Unlight, Some("Deck")),
-        KeyBinding::new("cmd-q", Close, None),
+        KeyBinding::new("secondary-q", Close, None),
         // Zoom is bound window-wide, not to the deck's context: needing the
         // text bigger is not a thing that should stop working because a
         // composer has the keyboard.
-        KeyBinding::new("cmd-=", ZoomIn, None),
-        KeyBinding::new("cmd-+", ZoomIn, None),
-        KeyBinding::new("cmd--", ZoomOut, None),
-        KeyBinding::new("cmd-0", ZoomReset, None),
+        KeyBinding::new("secondary-=", ZoomIn, None),
+        KeyBinding::new("secondary-+", ZoomIn, None),
+        KeyBinding::new("secondary--", ZoomOut, None),
+        KeyBinding::new("secondary-0", ZoomReset, None),
         // Escape reaches here because the input's own Escape handler ends in
         // `cx.propagate()`. Saving does not: the input binds `secondary-enter`
         // in a context deeper than this one and handles it itself, so ⌘⏎ is
@@ -4292,18 +4307,22 @@ impl DeckView {
             .flex_none()
             .gap(px(6.))
             .child(
-                button("add-to-review", "Add to review", "⇧⌘⏎", false).on_click(cx.listener(
-                    |deck, _, window, cx| {
-                        deck.save_remark(deck_core::When::Defer, window, cx);
-                    },
-                )),
+                button(
+                    "add-to-review",
+                    "Add to review",
+                    chord("⇧⌘⏎", "Ctrl+Shift+Enter"),
+                    false,
+                )
+                .on_click(cx.listener(|deck, _, window, cx| {
+                    deck.save_remark(deck_core::When::Defer, window, cx);
+                })),
             )
             .child(
-                button("ask-now", "Ask now", "⌘⏎", true).on_click(cx.listener(
-                    |deck, _, window, cx| {
+                button("ask-now", "Ask now", chord("⌘⏎", "Ctrl+Enter"), true).on_click(
+                    cx.listener(|deck, _, window, cx| {
                         deck.save_remark(deck_core::When::Interrupt, window, cx);
-                    },
-                )),
+                    }),
+                ),
             )
     }
 
@@ -6192,7 +6211,12 @@ mod tests {
             Some("deck::Leave"),
             "bare q checks for words first"
         );
-        assert_eq!(action("cmd-q"), Some("deck::Close"), "cmd-q never refuses");
+        // `secondary` is ⌘ on a Mac and Ctrl elsewhere, so ask for it the way
+        // this platform spells it — the test runs on Windows too.
+        let quit = gpui_kit::Keystroke::parse("secondary-q")
+            .expect("a keystroke")
+            .unparse();
+        assert_eq!(action(&quit), Some("deck::Close"), "{quit} never refuses");
     }
 
     #[test]
