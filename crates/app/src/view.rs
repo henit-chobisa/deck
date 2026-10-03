@@ -3191,10 +3191,12 @@ impl DeckView {
     /// are words here somebody has not finished — and the answer is the same:
     /// put the reader back where the words are. For `q` that also shows why the
     /// window did not close, which a refusal on its own would not.
-    fn back_to_the_box(&self, window: &mut Window, cx: &mut Context<Self>) -> bool {
+    fn back_to_the_box(&mut self, window: &mut Window, cx: &mut Context<Self>) -> bool {
         let Some((_, state, _)) = self.composing.as_ref() else {
             return false;
         };
+        // The rail may have been folded with the draft in it.
+        self.rail_open.set(true);
         state.update(cx, |state, cx| state.focus(window, cx));
         cx.notify();
         true
@@ -5333,19 +5335,25 @@ impl DeckView {
                                                 .text_size(px(13.))
                                                 .text_color(paint(palette.muted))
                                                 .hover(|style| style.bg(paint(palette.wash)))
-                                                .on_click(cx.listener(|deck, _, _window, cx| {
-                                                    // Not while something is
-                                                    // being written in it. A
-                                                    // composer folded away is
-                                                    // an invisible box holding
-                                                    // the keyboard, and every
-                                                    // key pressed after that
-                                                    // looks like a key that has
-                                                    // stopped working.
-                                                    if deck.composing.is_none() {
-                                                        deck.rail_open.set(false);
-                                                        cx.notify();
+                                                .on_click(cx.listener(|deck, _, window, cx| {
+                                                    // Even with a comment
+                                                    // being written: the
+                                                    // draft waits, folded
+                                                    // with the rail, and `c`
+                                                    // brings both back. It
+                                                    // used to refuse, which
+                                                    // read as a button that
+                                                    // did not work. What it
+                                                    // guarded against — a
+                                                    // hidden box holding the
+                                                    // keyboard — is why the
+                                                    // keyboard goes back to
+                                                    // the deck here.
+                                                    deck.rail_open.set(false);
+                                                    if deck.composing.is_some() {
+                                                        deck.focus.focus(window, cx);
                                                     }
+                                                    cx.notify();
                                                 }))
                                                 .child("›"),
                                         )
