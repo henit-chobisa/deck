@@ -104,8 +104,9 @@ pub fn look(cx: &mut gpui_kit::App) {
 ///
 /// `on_disk` is read under the lock, not carried from startup, so a deck that
 /// asked in the meantime and got an answer is not overwritten by this one
-/// failing. A failure keeps whatever is known and moves only the clock: a machine with no route out would otherwise ask on
-/// every launch, each a wait of three seconds on nothing.
+/// failing. A failure keeps whatever is known and moves only the clock: a
+/// machine with no route out would otherwise ask on every launch, each a wait
+/// of three seconds on nothing.
 fn settle(answer: Option<String>, on_disk: Known, now: u64) -> Known {
     Known {
         latest: answer.or(on_disk.latest),
