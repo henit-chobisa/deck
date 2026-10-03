@@ -77,7 +77,18 @@ pub fn look(cx: &mut gpui_kit::App) {
     }
 
     let asking = cx.background_executor().spawn(async move {
-        let known = settle(latest(), read(), now());
+        // Another deck is asking. What it learns lands in the file, and this
+        // one reads it next launch rather than asking the same question twice.
+        let Some(_held) = store().and_then(|path| Held::take(&path.with_extension("lock"))) else {
+            return read();
+        };
+        // Read again now the lock is held: a deck that held it a moment ago
+        // may have asked already, and the answer it wrote is good for a day.
+        let before = read();
+        if !due(before.checked, now()) {
+            return before;
+        }
+        let known = settle(latest(), before, now());
         write(&known);
         known
     });
@@ -89,12 +100,11 @@ pub fn look(cx: &mut gpui_kit::App) {
     .detach();
 }
 
-/// What to keep, given what the network said and what is on disk now.
+/// What to keep, given what the network said and what is on disk.
 ///
-/// `on_disk` is read again just before writing, not carried from startup, so
-/// a second deck that asked in the meantime and got an answer is not
-/// overwritten by this one failing. A failure keeps whatever is known and
-/// moves only the clock: a machine with no route out would otherwise ask on
+/// `on_disk` is read under the lock, not carried from startup, so a deck that
+/// asked in the meantime and got an answer is not overwritten by this one
+/// failing. A failure keeps whatever is known and moves only the clock: a machine with no route out would otherwise ask on
 /// every launch, each a wait of three seconds on nothing.
 fn settle(answer: Option<String>, on_disk: Known, now: u64) -> Known {
     Known {
@@ -156,6 +166,48 @@ fn installable(release: &serde_json::Value) -> Option<String> {
         .collect();
     let has = |suffix: &str| names.iter().any(|name| name.ends_with(suffix));
     (has(".tar.gz") && has(".tar.gz.sha256")).then(|| tag.trim_start_matches('v').to_string())
+}
+
+/// Asking the network, held by one deck at a time across every process.
+///
+/// A file created only if it does not exist, which the filesystem decides
+/// atomically, and removed when this is dropped. A deck killed while holding
+/// it leaves it behind, so one older than any ask could take is taken over.
+struct Held(std::path::PathBuf);
+
+impl Held {
+    /// Longer than the patience of a request, by a wide margin.
+    const STALE: Duration = Duration::from_secs(60);
+
+    fn take(path: &std::path::Path) -> Option<Self> {
+        if let Some(dir) = path.parent() {
+            let _ = std::fs::create_dir_all(dir);
+        }
+        let create = || {
+            std::fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(path)
+        };
+        if create().is_ok() {
+            return Some(Self(path.to_path_buf()));
+        }
+        let abandoned = std::fs::metadata(path)
+            .and_then(|meta| meta.modified())
+            .ok()
+            .and_then(|at| at.elapsed().ok())
+            .is_some_and(|age| age >= Self::STALE);
+        if abandoned && std::fs::remove_file(path).is_ok() && create().is_ok() {
+            return Some(Self(path.to_path_buf()));
+        }
+        None
+    }
+}
+
+impl Drop for Held {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.0);
+    }
 }
 
 fn store() -> Option<std::path::PathBuf> {
@@ -252,6 +304,19 @@ mod tests {
             "assets": [{ "name": "deck-v0.1.4-macos-universal.tar.gz" }]
         });
         assert_eq!(installable(&unchecked), None);
+    }
+
+    #[test]
+    fn only_one_deck_asks_at_a_time() {
+        let path = std::env::temp_dir().join(format!("deck-update-{}.lock", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+
+        let first = Held::take(&path).expect("nobody holds it");
+        assert!(Held::take(&path).is_none(), "a second deck waits its turn");
+        drop(first);
+        assert!(!path.exists(), "letting go removes it");
+        assert!(Held::take(&path).is_some(), "and the next deck can take it");
+        assert!(!path.exists());
     }
 
     #[test]
