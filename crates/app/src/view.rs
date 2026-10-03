@@ -3305,8 +3305,17 @@ impl DeckView {
     /// sends the review over them. It brings the draft back. Sending a
     /// half-written remark the reader could not see, as an interruption, was
     /// what it did before.
+    ///
+    /// An empty box is not a draft: it goes, and the review is sent, rather
+    /// than `s` opening a box with nothing in it.
     fn on_submit(&mut self, _: &Submit, window: &mut Window, cx: &mut Context<Self>) {
-        if self.back_to_the_box(window, cx) {
+        let empty = self
+            .composing
+            .as_ref()
+            .is_some_and(|(_, state, _)| state.read(cx).value().trim().is_empty());
+        if empty {
+            self.on_discard(&Discard, window, cx);
+        } else if self.back_to_the_box(window, cx) {
             return;
         }
         self.submit_review(window, cx);
