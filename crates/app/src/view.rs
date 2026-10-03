@@ -2813,14 +2813,21 @@ impl DeckView {
         cx.notify();
     }
 
-    /// Whether the caret is in the comment box right now.
+    /// Asked of the text area's own focus handle every frame rather than kept
+    /// here as a flag, because focus moves without this view being told: a
+    /// click anywhere hands it to the root, and that click is the moment the
+    /// deck's keys have to come back. A flag would be right until the first
+    /// click and wrong after it.
     fn typing(&self, window: &Window, cx: &App) -> bool {
         self.composing
             .as_ref()
             .is_some_and(|(_, state, _)| state.read(cx).focus_handle(cx).is_focused(window))
     }
 
-    /// Put the caret back in the open comment box. Says whether there was one.
+    /// Shared by `c` and `q` because both are answering the same thing — there
+    /// are words here somebody has not finished — and the answer is the same:
+    /// put the reader back where the words are. For `q` that also shows why the
+    /// window did not close, which a refusal on its own would not.
     fn back_to_the_box(&self, window: &mut Window, cx: &mut Context<Self>) -> bool {
         let Some((_, state, _)) = self.composing.as_ref() else {
             return false;
