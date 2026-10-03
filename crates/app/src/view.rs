@@ -886,11 +886,13 @@ impl DeckView {
         // A deck with automatic updates turned off makes no request by
         // itself, and opening on notes nobody asked for is one. So it opens on
         // them only if they are already kept; a click in the foot still asks.
-        if crate::notes::announcing() {
-            let may_ask = crate::config::read().map_or(true, |config| config.updates.automatic);
-            if may_ask || crate::notes::cached(crate::notes::RUNNING).is_some() {
-                view.show_notes(crate::notes::RUNNING.to_string(), window, cx);
-            }
+        // Asked before the moment is taken, so a deck that may not ask keeps
+        // it for when the notes are kept.
+        let may_ask = crate::config::read().map_or(true, |config| config.updates.automatic);
+        if (may_ask || crate::notes::cached(crate::notes::RUNNING).is_some())
+            && crate::notes::announcing()
+        {
+            view.show_notes(crate::notes::RUNNING.to_string(), window, cx);
         }
         for place in reading {
             for pane in &mut view.panes {
@@ -6064,7 +6066,13 @@ impl Render for DeckView {
             // even with the caret inside the composer — typing the letter shut
             // the window and threw the remark away. The deck's keys are only
             // the deck's keys when the deck has the keyboard.
-            .when(self.composing.is_none(), |this| this.key_context("Deck"))
+            //
+            // Nor while the notes are up. They are a card over the deck, and a
+            // key matched up the focus chain would otherwise reach through it:
+            // `s` sent the review, `c` opened a comment under the card.
+            .when(self.composing.is_none() && self.notes.is_none(), |this| {
+                this.key_context("Deck")
+            })
             .on_action(cx.listener(Self::on_next))
             .on_action(cx.listener(Self::on_prev))
             .on_action(cx.listener(Self::on_walk))

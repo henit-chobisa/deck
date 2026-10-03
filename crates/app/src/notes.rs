@@ -12,7 +12,9 @@
 //!
 //! When somebody presses the version in the foot, or the *available* beside
 //! it. And once, by itself, the first time a deck opens after it has been
-//! upgraded — the one moment the reader certainly has not read them yet.
+//! upgraded — the one moment the reader certainly has not read them yet. With
+//! `[updates] automatic = false` that only happens if the notes are already
+//! kept, since fetching them would be a request nobody asked for.
 //!
 //! # Only the blocks a release uses
 //!
@@ -70,17 +72,25 @@ pub fn cached(version: &str) -> Option<Notes> {
 #[must_use]
 pub fn fetch(version: &str) -> Notes {
     let url = format!("https://api.github.com/repos/henit-chobisa/deck/releases/tags/v{version}");
-    let reply: Option<serde_json::Value> = ureq::get(&url)
+    let reply = ureq::get(&url)
         .config()
         .timeout_global(Some(PATIENCE))
         .build()
         .header("User-Agent", concat!("deck/", env!("CARGO_PKG_VERSION")))
-        .call()
-        .ok()
-        .and_then(|mut reply| reply.body_mut().read_json().ok());
-    let Some(body) = reply.as_ref().and_then(|reply| reply["body"].as_str()) else {
-        return Notes::Away;
+        .call();
+    let reply: serde_json::Value = match reply {
+        Ok(mut reply) => match reply.body_mut().read_json() {
+            Ok(reply) => reply,
+            Err(_) => return Notes::Away,
+        },
+        // GitHub answered, and there is no such release — a build from a
+        // version nobody tagged. That is no notes, not no network.
+        Err(ureq::Error::StatusCode(404)) => return Notes::Read(Vec::new()),
+        Err(_) => return Notes::Away,
     };
+    // A release with no description comes back with `"body": null`. That is
+    // an answer too, and one worth keeping so it is not asked again.
+    let body = reply["body"].as_str().unwrap_or_default();
     keep(version, body);
     Notes::Read(blocks(body))
 }
@@ -180,6 +190,7 @@ pub fn blocks(markdown: &str) -> Vec<Block> {
     let mut out = Vec::new();
     let mut para: Vec<&str> = Vec::new();
     let mut fence: Option<Vec<&str>> = None;
+    let mut comment = false;
 
     let flush = |para: &mut Vec<&str>, out: &mut Vec<Block>| {
         if !para.is_empty() {
@@ -190,6 +201,26 @@ pub fn blocks(markdown: &str) -> Vec<Block> {
 
     for line in markdown.lines() {
         let trimmed = line.trim();
+        // HTML is for the release page. A comment — often several lines, in a
+        // release template — and a line that is nothing but a tag, like
+        // `<details>`, would otherwise be drawn as words.
+        if comment {
+            comment = !trimmed.contains("-->");
+            continue;
+        }
+        if fence.is_none() && trimmed.starts_with("<!--") {
+            flush(&mut para, &mut out);
+            comment = !trimmed.contains("-->");
+            continue;
+        }
+        if fence.is_none() && tagged(trimmed) {
+            flush(&mut para, &mut out);
+            let words = untagged(trimmed);
+            if !words.is_empty() {
+                out.push(Block::Para(plain(&words)));
+            }
+            continue;
+        }
         if let Some(code) = &mut fence {
             if trimmed.starts_with("```") {
                 out.push(Block::Code(code.join("\n")));
@@ -202,7 +233,7 @@ pub fn blocks(markdown: &str) -> Vec<Block> {
         if trimmed.starts_with("```") {
             flush(&mut para, &mut out);
             fence = Some(Vec::new());
-        } else if trimmed.is_empty() || is_rule(trimmed) || trimmed.starts_with("<!--") {
+        } else if trimmed.is_empty() || is_rule(trimmed) {
             flush(&mut para, &mut out);
         } else if let Some(heading) = heading(trimmed) {
             flush(&mut para, &mut out);
@@ -303,8 +334,46 @@ fn link(text: &str) -> Option<(&str, &str)> {
         return None;
     }
     let after = &text[close + 2..];
-    let end = after.find(')')?;
+    // The address can hold brackets of its own — a Wikipedia page often does —
+    // so it ends at the `)` that balances, not the first one.
+    let mut depth = 0usize;
+    let end = after.char_indices().find_map(|(at, ch)| match ch {
+        '(' => {
+            depth += 1;
+            None
+        }
+        ')' if depth == 0 => Some(at),
+        ')' => {
+            depth -= 1;
+            None
+        }
+        _ => None,
+    })?;
     Some((words, &after[end + 1..]))
+}
+
+/// A line of HTML: it opens with a tag and closes with one, like
+/// `<details>` or `<summary>More</summary>`.
+fn tagged(line: &str) -> bool {
+    line.len() > 2
+        && line.starts_with('<')
+        && line.ends_with('>')
+        && line[1..].starts_with(|ch: char| ch.is_ascii_alphabetic() || ch == '/')
+}
+
+/// The words of a line of HTML, without its tags.
+fn untagged(line: &str) -> String {
+    let mut out = String::new();
+    let mut inside = false;
+    for ch in line.chars() {
+        match ch {
+            '<' => inside = true,
+            '>' => inside = false,
+            _ if !inside => out.push(ch),
+            _ => {}
+        }
+    }
+    out.trim().to_string()
 }
 
 #[cfg(test)]
@@ -338,6 +407,32 @@ mod tests {
         );
         assert_eq!(plain("a [bracket] alone"), "a [bracket] alone");
         assert_eq!(plain("[unclosed](nowhere"), "[unclosed](nowhere");
+        assert_eq!(
+            plain("[spec](https://en.wikipedia.org/wiki/Foo_(bar)) here"),
+            "spec here",
+            "an address with brackets of its own"
+        );
+    }
+
+    #[test]
+    fn html_is_left_to_the_release_page() {
+        let notes = "Intro.\n\n<!-- template:\nfill this in\n-->\n\n\
+            <details>\n<summary>More</summary>\n\nHidden words.\n\n</details>\n\
+            <!-- one line -->\nAfter.";
+        assert_eq!(
+            blocks(notes),
+            vec![
+                Block::Para("Intro.".into()),
+                Block::Para("More".into()),
+                Block::Para("Hidden words.".into()),
+                Block::Para("After.".into()),
+            ]
+        );
+        // Something that only looks like a tag is still prose.
+        assert_eq!(
+            blocks("<3 this release"),
+            vec![Block::Para("<3 this release".into())]
+        );
     }
 
     #[test]
