@@ -1,10 +1,12 @@
 //! The comments a reader has written, before they go back.
 //!
 //! Hiding a deck keeps them: the window is packed into a [`Session`] and put on
-//! the bar, and everything it was holding goes with it. Quitting does not, and
-//! for most of deck's life that meant a reader who closed the window by
+//! the bar, and everything it was holding goes with it. Quitting used not to,
+//! and for most of deck's life that meant a reader who closed the window by
 //! accident — or whose machine did it for them — lost every word they had
-//! typed. Nothing warned them, because nothing knew.
+//! typed. Nothing warned them, because nothing knew. Now quitting keeps the
+//! remarks and the comment still in the box, and opening the deck again puts
+//! both back.
 //!
 //! So they are written down as they are made. In the deck's own directory,
 //! beside `done` and the review, because that is where everything else about

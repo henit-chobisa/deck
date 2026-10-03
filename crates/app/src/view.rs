@@ -2556,7 +2556,12 @@ impl DeckView {
                                 .pt(px(18.))
                                 .pb(px(20.))
                                 .child(button("quit-stay", "Keep writing", "esc", false).on_click(
-                                    cx.listener(|deck, _, window, cx| deck.stay(window, cx)),
+                                    // Back into the words, opening the rail if
+                                    // the draft was folded away in it.
+                                    cx.listener(|deck, _, window, cx| {
+                                        deck.quitting = false;
+                                        deck.back_to_the_box(window, cx);
+                                    }),
                                 ))
                                 .child(button("quit-go", "Quit", "q", true).on_click(cx.listener(
                                     |deck, _, window, cx| deck.on_close(&Close, window, cx),
@@ -2844,13 +2849,6 @@ impl DeckView {
         cx.notify();
     }
 
-    /// `q`: close, unless that would throw away words somebody wrote.
-    ///
-    /// With a comment open and the caret elsewhere, `q` would otherwise close
-    /// the window with the remark unsaved — and the remark is the one thing in
-    /// the window that cannot be got back. So it goes back to the box instead,
-    /// which also shows why nothing closed. An open box with nothing in it
-    /// holds nothing to lose, and closes like any other.
     /// `q`: quit.
     ///
     /// With words in the comment box it asks first, once — they are kept as
@@ -3479,10 +3477,10 @@ impl DeckView {
             .is_some_and(|(_, state, _)| state.read(cx).focus_handle(cx).is_focused(window))
     }
 
-    /// Shared by `c` and `q` because both are answering the same thing — there
-    /// are words here somebody has not finished — and the answer is the same:
-    /// put the reader back where the words are. For `q` that also shows why the
-    /// window did not close, which a refusal on its own would not.
+    /// Shared by `c`, `s` and the rail's spine, which are all answering the
+    /// same thing — there are words here somebody has not finished — and the
+    /// answer is the same: put the reader back where the words are. Not by
+    /// `q`, which quits and keeps the words as a draft (see `on_leave`).
     fn back_to_the_box(&mut self, window: &mut Window, cx: &mut Context<Self>) -> bool {
         let Some((_, state, _)) = self.composing.as_ref() else {
             return false;
@@ -6929,12 +6927,13 @@ mod tests {
     }
 
     #[test]
-    fn bare_q_cannot_take_a_comment_with_it_and_cmd_q_still_quits() {
-        // `q` is one key with no modifier — the kind pressed by accident — and
-        // with the deck's keys working beside an open comment it would close
-        // the window on half a remark. So it is its own action, which checks.
-        // `cmd-q` is a person meaning to quit, and stays the unconditional one.
-        let action = |key: &str| {
+    fn bare_q_asks_once_over_a_comment_and_cmd_q_never_asks() {
+        // Bare `q` is its own action, which quits — but over words in the
+        // comment box it shows the warning first, and in that warning `q`
+        // again is the one that closes. `cmd-q` is a person meaning to quit,
+        // and stays unconditional. Looked up by context as well as key: `q`
+        // is bound in more than one.
+        let action = |key: &str, context: Option<&str>| {
             bindings()
                 .into_iter()
                 .find(|binding| {
@@ -6942,20 +6941,30 @@ mod tests {
                         .keystrokes()
                         .first()
                         .is_some_and(|stroke| stroke.unparse() == key)
+                        && binding.predicate().map(|it| it.to_string()).as_deref() == context
                 })
                 .map(|binding| binding.action().name())
         };
         assert_eq!(
-            action("q"),
+            action("q", Some("Deck")),
             Some("deck::Leave"),
             "bare q checks for words first"
+        );
+        assert_eq!(
+            action("q", Some("DeckQuit")),
+            Some("deck::Close"),
+            "and q again, in the warning, quits"
         );
         // `secondary` is ⌘ on a Mac and Ctrl elsewhere, so ask for it the way
         // this platform spells it — the test runs on Windows too.
         let quit = gpui_kit::Keystroke::parse("secondary-q")
             .expect("a keystroke")
             .unparse();
-        assert_eq!(action(&quit), Some("deck::Close"), "{quit} never refuses");
+        assert_eq!(
+            action(&quit, None),
+            Some("deck::Close"),
+            "{quit} never refuses"
+        );
     }
 
     #[test]
