@@ -24,6 +24,8 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{Context as _, bail};
 
+use crate::setup::{accent, bold, dim, mark};
+
 /// How long to wait on the network before deciding there is not one.
 ///
 /// Short on purpose. Somewhere with no route out should find that out quickly
@@ -36,10 +38,31 @@ const RELEASES: &str = "https://api.github.com/repos/henit-chobisa/deck/releases
 /// What this build is.
 const RUNNING: &str = env!("CARGO_PKG_VERSION");
 
+/// The word this platform's binary carries in a release asset's name, as in
+/// `deck-v0.1.3-macos-universal.tar.gz`.
+///
+/// Only macOS has one today. The others are named so that the day a release
+/// carries their binary they find it, and until then they find nothing —
+/// rather than a macOS tarball they would download and could not run.
+pub(crate) const PLATFORM: &str = if cfg!(target_os = "macos") {
+    "macos"
+} else if cfg!(windows) {
+    "windows"
+} else {
+    "linux"
+};
+
+/// Whether a release asset called `name` is this platform's, ending `suffix`.
+///
+/// One rule for `deck upgrade` and for the update check, so the foot never
+/// offers a release that `deck upgrade` would then refuse.
+pub(crate) fn ours(name: &str, suffix: &str) -> bool {
+    name.contains(&format!("-{PLATFORM}-")) && name.ends_with(suffix)
+}
+
 /// A release, as much of one as this needs.
 struct Release {
     tag: String,
-    notes: String,
     prerelease: bool,
     tarball: Option<String>,
     sums: Option<String>,
@@ -49,6 +72,12 @@ struct Release {
 ///
 /// `unstable` is the answer to *do you want prereleases too*, or `None` to ask.
 pub fn run(unstable: Option<bool>) -> anyhow::Result<()> {
+    // The same opening `deck setup` wears. A command that prints in its own
+    // style reads as a different program, and this one did.
+    println!();
+    println!("  {}  {}", mark(), bold("deck upgrade"));
+    println!();
+
     let here = installed()?;
     if let Some(owner) = managed(&here) {
         bail!(
@@ -62,25 +91,37 @@ pub fn run(unstable: Option<bool>) -> anyhow::Result<()> {
         None => ask_unstable()?,
     };
 
-    println!("  looking for a newer deck");
+    println!("  {}", dim("looking"));
     let releases = releases()?;
     let Some(release) = pick(&releases, unstable) else {
-        bail!("no release to install");
+        bail!("no release has a binary attached to it yet");
     };
 
     let there = release.tag.trim_start_matches('v');
     if !newer(there, RUNNING) {
-        println!("  deck {RUNNING} is already at least as new as {there}");
+        println!(
+            "  {} {}",
+            accent("✓"),
+            dim(&format!("deck {RUNNING} is the newest there is"))
+        );
+        println!();
         return Ok(());
     }
 
-    println!("  deck {there}, and this is {RUNNING}");
+    println!("  {}", dim(&format!("deck {there}, and this is {RUNNING}")));
     swap(&here, release)?;
-    println!("  deck {there} is in place. Open a deck and it will be the new one.");
-    if !release.notes.trim().is_empty() {
-        println!();
-        println!("{}", release.notes.trim());
-    }
+
+    println!("  {} deck {}", accent("✓"), bold(there));
+    println!("  {}", dim("Open a deck and it will be the new one."));
+    println!();
+    println!(
+        "  {}",
+        dim(&format!(
+            "What changed: https://github.com/henit-chobisa/deck/releases/tag/{}",
+            release.tag
+        ))
+    );
+    println!();
     Ok(())
 }
 
@@ -137,14 +178,13 @@ fn releases() -> anyhow::Result<Vec<Release>> {
             let find = |suffix: &str| {
                 it["assets"].as_array()?.iter().find_map(|asset| {
                     let name = asset["name"].as_str()?;
-                    name.ends_with(suffix)
+                    ours(name, suffix)
                         .then(|| asset["browser_download_url"].as_str())?
                         .map(ToString::to_string)
                 })
             };
             Some(Release {
                 tag: it["tag_name"].as_str()?.to_string(),
-                notes: it["body"].as_str().unwrap_or_default().to_string(),
                 prerelease: it["prerelease"].as_bool().unwrap_or(false),
                 tarball: find(".tar.gz"),
                 sums: find(".sha256"),
@@ -162,7 +202,7 @@ fn releases() -> anyhow::Result<Vec<Release>> {
 ///
 /// Anything that will not parse is not newer. A tag nobody can order is not a
 /// thing to replace a working deck with.
-fn newer(candidate: &str, running: &str) -> bool {
+pub(crate) fn newer(candidate: &str, running: &str) -> bool {
     use semver::Version;
 
     match (Version::parse(candidate), Version::parse(running)) {
@@ -196,8 +236,7 @@ fn swap(here: &Path, release: &Release) -> anyhow::Result<()> {
         .context("deck is not in a directory, which should not be possible")?;
     writable(beside)?;
 
-    println!("  downloading");
-    let archive = fetch(tarball)?;
+    let archive = carry(tarball)?;
     let wanted = fetch(sums)?;
     checked(&archive, &wanted)?;
 
@@ -314,6 +353,137 @@ fn fetch(url: &str) -> anyhow::Result<Vec<u8>> {
         .with_context(|| format!("the download of {url} stopped early"))
 }
 
+/// Get the bytes, and show them arriving.
+///
+/// Twenty-five megabytes behind the word *downloading* is a long silence, and a
+/// silence is indistinguishable from a hang. This reads the body in pieces and
+/// draws how far along it is.
+fn carry(url: &str) -> anyhow::Result<Vec<u8>> {
+    use std::io::{IsTerminal as _, Read as _, Write as _};
+
+    let mut body = ureq::get(url)
+        .config()
+        .timeout_global(Some(PATIENCE))
+        .build()
+        .header("User-Agent", concat!("deck/", env!("CARGO_PKG_VERSION")))
+        .call()
+        .with_context(|| format!("could not download {url}"))?;
+
+    let whole = body.body().content_length();
+    let mut reader = body.body_mut().as_reader();
+    let mut got: Vec<u8> =
+        Vec::with_capacity(usize::try_from(whole.unwrap_or(0)).unwrap_or(0).min(LIMIT));
+    let mut chunk = [0u8; 64 * 1024];
+
+    // A terminal, not a colour terminal. Somebody with `NO_COLOR` set still
+    // wants to see the download move; gating on colour put the silence back
+    // for exactly them.
+    let live = std::io::stdout().is_terminal();
+    let mut drawn = false;
+    // Redrawn on a clock rather than on every chunk: sixty-four kilobytes at a
+    // time is hundreds of writes a second, and a bar nobody can read flickering
+    // is worse than no bar.
+    let mut last = std::time::Instant::now() - std::time::Duration::from_secs(1);
+
+    // Whatever goes wrong mid-download, the next thing printed starts on its
+    // own line. Without this the error was written onto the end of the bar.
+    let off_the_bar = |drawn: bool| {
+        if drawn {
+            println!();
+        }
+    };
+
+    loop {
+        let read = match reader.read(&mut chunk) {
+            Ok(read) => read,
+            Err(err) => {
+                off_the_bar(drawn);
+                return Err(err).with_context(|| format!("the download of {url} stopped early"));
+            }
+        };
+        if read == 0 {
+            break;
+        }
+        // The cap the plain fetch has always had. A response that keeps coming
+        // is not a deck, and reading it to the end is how memory runs out.
+        if got.len() + read > LIMIT {
+            off_the_bar(drawn);
+            bail!("the download of {url} is larger than any deck should be, so it is not going in");
+        }
+        got.extend_from_slice(&chunk[..read]);
+        if live && last.elapsed() >= std::time::Duration::from_millis(80) {
+            draw(got.len() as u64, whole);
+            drawn = true;
+            last = std::time::Instant::now();
+        }
+    }
+
+    if live {
+        draw(got.len() as u64, whole);
+        println!();
+    }
+    let _ = std::io::stdout().flush();
+    Ok(got)
+}
+
+/// The most a download may be. Ten times the binary, and nowhere near a
+/// machine's memory.
+const LIMIT: usize = 256 * 1024 * 1024;
+
+/// Wide enough to read as movement, narrow enough that the whole line stays
+/// inside an 80 column terminal — the indent and `downloading` take 14, the bar
+/// 28, and `24.0 MB of 24.0 MB` another 20, which is 62. Wider and a terminal
+/// at its default size wraps the line, and a carriage return then redraws only
+/// the second half of it.
+const WIDE: usize = 28;
+
+/// One frame of the bar, over the top of the last one.
+fn draw(got: u64, whole: Option<u64>) {
+    use std::io::Write as _;
+
+    print!("\r  {} {}", dim("downloading"), frame(got, whole));
+    let _ = std::io::stdout().flush();
+}
+
+/// How many of the cells are filled, or `None` with nothing to measure against.
+///
+/// On its own so it can be asserted directly. Counting glyphs in the drawn
+/// frame proved nothing while filled and empty were the same glyph in two
+/// colours, and a colourless test cannot see colour.
+fn filled(got: u64, whole: Option<u64>) -> Option<usize> {
+    let whole = whole.filter(|whole| *whole > 0)?;
+    // Clamped, because a body longer than its promised length would otherwise
+    // ask for more cells than the track has and panic on the subtraction.
+    let along = (got as f64 / whole as f64).clamp(0., 1.);
+    #[expect(
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss,
+        reason = "a fraction of the track, clamped to it"
+    )]
+    Some((along * WIDE as f64).round() as usize)
+}
+
+/// What a frame says.
+///
+/// Filled and empty are different glyphs, not one glyph in two colours. With
+/// `NO_COLOR` set — or piped, or read by a screen reader — colour is all that
+/// would have told them apart, and a bar whose cells all look alike shows no
+/// progress at all.
+fn frame(got: u64, whole: Option<u64>) -> String {
+    let mb = |bytes: u64| format!("{:.1} MB", bytes as f64 / 1_048_576.0);
+    match (filled(got, whole), whole) {
+        (Some(cells), Some(whole)) => format!(
+            "{}{}  {}",
+            accent(&"━".repeat(cells)),
+            dim(&"─".repeat(WIDE - cells)),
+            dim(&format!("{} of {}", mb(got), mb(whole)))
+        ),
+        // No length to measure against, so no bar to draw — say what has
+        // arrived and leave it at that.
+        _ => dim(&mb(got)),
+    }
+}
+
 /// Refuse anything that is not byte for byte what was published.
 fn checked(archive: &[u8], sums: &[u8]) -> anyhow::Result<()> {
     use sha2::{Digest as _, Sha256};
@@ -359,7 +529,6 @@ mod tests {
     fn release(tag: &str, prerelease: bool, binary: bool) -> Release {
         Release {
             tag: tag.into(),
-            notes: String::new(),
             prerelease,
             tarball: binary.then(|| "https://example/deck.tar.gz".to_string()),
             sums: binary.then(|| "https://example/deck.tar.gz.sha256".to_string()),
@@ -431,6 +600,66 @@ mod tests {
             all
         });
         assert!(checked(b"deck", format!("{real}  deck.tar.gz").as_bytes()).is_ok());
+    }
+
+    /// The bar, with the colour taken out, so the shape is what is asserted.
+    fn bare(got: u64, whole: Option<u64>) -> String {
+        let line = frame(got, whole);
+        let mut out = String::new();
+        let mut chars = line.chars();
+        while let Some(c) = chars.next() {
+            if c == '\u{1b}' {
+                for c in chars.by_ref() {
+                    if c == 'm' {
+                        break;
+                    }
+                }
+            } else {
+                out.push(c);
+            }
+        }
+        out
+    }
+
+    #[test]
+    fn the_bar_fills_as_the_bytes_arrive() {
+        // Raised in review: the first version of this test counted 28 glyphs
+        // after stripping the colour that told filled from empty, so a broken
+        // fill would have passed. The count is asserted directly now.
+        let whole = 28 * 1_048_576;
+        assert_eq!(filled(0, Some(whole)), Some(0), "nothing yet");
+        assert_eq!(filled(whole / 2, Some(whole)), Some(14), "half");
+        assert_eq!(filled(whole, Some(whole)), Some(28), "all of it");
+
+        // And the drawn frame carries that split in its glyphs, so it reads
+        // with the colour gone — which is the point of using two glyphs.
+        let half = bare(whole / 2, Some(whole));
+        assert_eq!(half.matches('━').count(), 14, "filled: {half:?}");
+        assert_eq!(half.matches('─').count(), 14, "empty: {half:?}");
+        assert!(half.contains("14.0 MB of 28.0 MB"));
+    }
+
+    #[test]
+    fn with_nothing_to_measure_against_there_is_no_bar() {
+        assert_eq!(filled(1_048_576, None), None, "no length sent");
+        assert_eq!(filled(1_048_576, Some(0)), None, "a length of nothing");
+
+        let unknown = bare(1_048_576, None);
+        assert!(
+            !unknown.contains('━') && !unknown.contains('─'),
+            "{unknown:?}"
+        );
+        assert_eq!(unknown.trim(), "1.0 MB");
+    }
+
+    #[test]
+    fn a_download_longer_than_promised_does_not_overflow_the_bar() {
+        // Without the clamp this asks for 280 filled cells of a 28 cell track
+        // and panics on the subtraction for the empty ones.
+        assert_eq!(filled(100, Some(10)), Some(28));
+        let line = bare(100, Some(10));
+        assert_eq!(line.matches('━').count(), 28);
+        assert_eq!(line.matches('─').count(), 0);
     }
 
     #[test]

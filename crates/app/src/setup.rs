@@ -587,24 +587,30 @@ fn chose(what: &str) {
 /// Not when the output is a pipe — a log with escape codes in it is a log
 /// somebody has to clean — and not when `NO_COLOR` is set, which is the one
 /// convention every terminal program agrees on.
-fn ink() -> bool {
+pub(crate) fn ink() -> bool {
     std::io::stdout().is_terminal() && std::env::var_os("NO_COLOR").is_none()
 }
 
+// ─── the house voice ────────────────────────────────────────────────────────
+//
+// Shared with `upgrade`, which is the other thing that talks to a terminal.
+// A command that prints in its own style reads as a different program, and
+// `deck upgrade` did until it was told to borrow these.
+
 /// Deck's accent, and nothing else.
-fn accent(text: &str) -> String {
+pub(crate) fn accent(text: &str) -> String {
     paint(text, "\x1b[38;5;166m")
 }
 
-fn bold(text: &str) -> String {
+pub(crate) fn bold(text: &str) -> String {
     paint(text, "\x1b[1m")
 }
 
-fn dim(text: &str) -> String {
+pub(crate) fn dim(text: &str) -> String {
     paint(text, "\x1b[2m")
 }
 
-fn paint(text: &str, with: &str) -> String {
+pub(crate) fn paint(text: &str, with: &str) -> String {
     if ink() {
         format!("{with}{text}\x1b[0m")
     } else {
@@ -616,7 +622,7 @@ fn paint(text: &str, with: &str) -> String {
 ///
 /// The same two bars the bar in the corner of the screen wears, which is the
 /// only place deck has a logo at all.
-fn mark() -> String {
+pub(crate) fn mark() -> String {
     format!("{}{}", dim("▔"), accent("▁"))
 }
 
