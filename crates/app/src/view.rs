@@ -4673,8 +4673,8 @@ impl DeckView {
                         div()
                             .id("installed")
                             .cursor_pointer()
-                            .on_click(cx.listener(move |deck, _, _window, cx| {
-                                deck.show_notes(asked.clone(), cx);
+                            .on_click(cx.listener(move |deck, _, window, cx| {
+                                deck.show_notes(asked.clone(), window, cx);
                             }))
                             .h_flex()
                             .items_center()
