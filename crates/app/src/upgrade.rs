@@ -146,8 +146,34 @@ pub(crate) fn quietly() -> anyhow::Result<Option<String>> {
     if !newer(there, RUNNING) {
         return Ok(None);
     }
+    // Another deck may have put it there already — one started after this one,
+    // which asked first. Then it is installed, and fetching it again to rename
+    // it over itself would be twenty-five megabytes of nothing.
+    if let Some(disk) = on_disk(&here)
+        && !newer(there, &disk)
+    {
+        return Ok(newer(&disk, RUNNING).then_some(disk));
+    }
     swap(&here, release, Showing::Nothing)?;
     Ok(Some(there.to_string()))
+}
+
+/// The version of the deck at `exe` now, which is not always this one.
+fn on_disk(exe: &Path) -> Option<String> {
+    let said = std::process::Command::new(exe)
+        .arg("--version")
+        .output()
+        .ok()?;
+    said.status
+        .success()
+        .then(|| version_in(&String::from_utf8_lossy(&said.stdout)))
+        .flatten()
+}
+
+/// The version in `deck --version`'s answer: `deck 0.1.3` gives `0.1.3`.
+fn version_in(said: &str) -> Option<String> {
+    let word = said.split_whitespace().last()?;
+    semver::Version::parse(word).ok().map(|_| word.to_string())
 }
 
 /// Whether deck may replace this copy without being asked.
@@ -750,5 +776,13 @@ mod tests {
         // Tests are a debug build, which is never replaced either; a release
         // build in ~/.local/bin is the one that is.
         assert_eq!(replaceable(installed), !cfg!(debug_assertions));
+    }
+
+    #[test]
+    fn the_version_on_disk_is_read_from_its_own_answer() {
+        assert_eq!(version_in("deck 0.1.4\n"), Some("0.1.4".into()));
+        assert_eq!(version_in("deck 0.1.3-rc.2"), Some("0.1.3-rc.2".into()));
+        assert_eq!(version_in(""), None);
+        assert_eq!(version_in("deck: command not found"), None);
     }
 }
