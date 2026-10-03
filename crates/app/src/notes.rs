@@ -97,31 +97,51 @@ pub fn look_back() {
     ANNOUNCE.store(first_since_upgrade(), std::sync::atomic::Ordering::Relaxed);
 }
 
-/// Whether this window should open on the notes. True for one window only.
+/// Whether this window should open on the notes. True for one window only,
+/// and only then is the new version written down as seen.
+///
+/// Not at startup: deck often starts with no window at all — the pill, or a
+/// command that quits — and an announcement marked seen there would be gone
+/// before anybody could see it.
 #[must_use]
 pub fn announcing() -> bool {
-    ANNOUNCE.swap(false, std::sync::atomic::Ordering::Relaxed)
+    let due = ANNOUNCE.swap(false, std::sync::atomic::Ordering::Relaxed);
+    if due {
+        see();
+    }
+    due
 }
 
-/// Whether this is the first launch since deck was upgraded, and note that it
-/// has now been seen either way.
+/// Whether this is the first launch since deck was upgraded.
 ///
 /// A fresh install is not an upgrade: there is nothing it is newer than, and
 /// a modal before the reader has done anything would be in the way. Going
-/// back to an older version is not one either.
+/// back to an older version is not one either. Both of those are written down
+/// at once; an upgrade waits for [`announcing`].
 #[must_use]
 fn first_since_upgrade() -> bool {
-    let Some(path) = deck_core::home::deck().map(|deck| deck.join("seen")) else {
-        return false;
-    };
-    let before = std::fs::read_to_string(&path).ok();
-    if before.as_deref().map(str::trim) != Some(RUNNING) {
-        if let Some(dir) = path.parent() {
-            let _ = std::fs::create_dir_all(dir);
-        }
-        let _ = std::fs::write(&path, RUNNING);
+    let before = seen_file().and_then(|path| std::fs::read_to_string(path).ok());
+    let before = before.as_deref().map(str::trim);
+    let upgrade = upgraded(before, RUNNING);
+    if !upgrade && before != Some(RUNNING) {
+        see();
     }
-    upgraded(before.as_deref().map(str::trim), RUNNING)
+    upgrade
+}
+
+fn seen_file() -> Option<std::path::PathBuf> {
+    deck_core::home::deck().map(|deck| deck.join("seen"))
+}
+
+/// Write down that this version's notes have had their moment.
+fn see() {
+    let Some(path) = seen_file() else {
+        return;
+    };
+    if let Some(dir) = path.parent() {
+        let _ = std::fs::create_dir_all(dir);
+    }
+    let _ = std::fs::write(&path, RUNNING);
 }
 
 /// Whether going from `before` to `now` is an upgrade worth announcing.
@@ -186,7 +206,7 @@ pub fn blocks(markdown: &str) -> Vec<Block> {
             flush(&mut para, &mut out);
         } else if let Some(heading) = heading(trimmed) {
             flush(&mut para, &mut out);
-            out.push(Block::Heading(plain(heading)));
+            out.push(Block::Heading(unmarked(&plain(heading))));
         } else if let Some(item) = item(trimmed) {
             flush(&mut para, &mut out);
             out.push(Block::Item(plain(item)));
@@ -266,6 +286,15 @@ fn plain(text: &str) -> String {
     out.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
+/// A heading's words without their inline marks.
+///
+/// A heading is set in capitals in the accent, which a code chip or emphasis
+/// inside it would only interrupt — so the marks go and the words stay,
+/// rather than the backticks being drawn as backticks.
+fn unmarked(text: &str) -> String {
+    text.chars().filter(|ch| !matches!(ch, '`' | '*')).collect()
+}
+
 /// `[words](address)` at the start of `text`: the words, and what follows.
 fn link(text: &str) -> Option<(&str, &str)> {
     let close = text.find("](")?;
@@ -318,6 +347,11 @@ mod tests {
             vec![Block::Para("#14 is fixed".into())]
         );
         assert_eq!(blocks("### Small"), vec![Block::Heading("Small".into())]);
+        assert_eq!(
+            blocks("## Fix `deck open` **now**"),
+            vec![Block::Heading("Fix deck open now".into())],
+            "a heading's marks go, its words stay"
+        );
     }
 
     #[test]

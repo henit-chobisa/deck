@@ -86,6 +86,9 @@ pub fn bindings() -> Vec<KeyBinding> {
         // in a context deeper than this one and handles it itself, so ⌘⏎ is
         // picked up from the event it emits instead. See `open_composer`.
         KeyBinding::new("escape", Discard, Some("DeckComposer")),
+        // The notes card holds the keyboard while it is up, so escape reaches
+        // it whatever was focused before — the comment box included.
+        KeyBinding::new("escape", Unlight, Some("DeckNotes")),
     ]
 }
 
@@ -665,6 +668,8 @@ pub struct DeckView {
     notes: Option<(String, crate::notes::Notes)>,
     /// Where the notes have been read to. A new set starts at the top.
     notes_scroll: ScrollHandle,
+    /// The notes card's hold on the keyboard while it is up.
+    notes_focus: FocusHandle,
     /// The fetch of notes that were not cached. Replaced, and so dropped,
     /// when another version's notes are asked for.
     fetching_notes: Task<()>,
@@ -845,6 +850,7 @@ impl DeckView {
             band_scroll: ScrollHandle::new(),
             notes: None,
             notes_scroll: ScrollHandle::new(),
+            notes_focus: cx.focus_handle(),
             fetching_notes: Task::ready(()),
             voice: crate::speech::Voice::default(),
             folded,
@@ -877,8 +883,14 @@ impl DeckView {
         }
         view.picked_said = picked_said;
         view.band_scroll.set_offset(band_offset);
+        // A deck with automatic updates turned off makes no request by
+        // itself, and opening on notes nobody asked for is one. So it opens on
+        // them only if they are already kept; a click in the foot still asks.
         if crate::notes::announcing() {
-            view.show_notes(crate::notes::RUNNING.to_string(), cx);
+            let may_ask = crate::config::read().map_or(true, |config| config.updates.automatic);
+            if may_ask || crate::notes::cached(crate::notes::RUNNING).is_some() {
+                view.show_notes(crate::notes::RUNNING.to_string(), window, cx);
+            }
         }
         for place in reading {
             for pane in &mut view.panes {
@@ -2212,7 +2224,11 @@ impl DeckView {
 
     /// Lay `version`'s notes over the window, fetching them if they are not
     /// kept yet.
-    fn show_notes(&mut self, version: String, cx: &mut Context<Self>) {
+    fn show_notes(&mut self, version: String, window: &mut Window, cx: &mut Context<Self>) {
+        // Escape has to reach them. A window that opened on them has nothing
+        // focused for a key to start from, and a comment box that had the
+        // keyboard is under the card where nobody can see what they type.
+        self.notes_focus.focus(window, cx);
         let notes = crate::notes::cached(&version).unwrap_or(crate::notes::Notes::Reading);
         if notes == crate::notes::Notes::Reading {
             let asking = version.clone();
@@ -2240,8 +2256,14 @@ impl DeckView {
         cx.notify();
     }
 
-    fn hide_notes(&mut self, cx: &mut Context<Self>) {
+    /// Put the notes away, and give the keyboard back to whatever it is
+    /// for: the comment box if one is open, and the deck otherwise.
+    fn hide_notes(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.notes = None;
+        match self.composing.as_ref().map(|(_, state, _)| state.clone()) {
+            Some(state) => state.update(cx, |state, cx| state.focus(window, cx)),
+            None => self.focus.focus(window, cx),
+        }
         cx.notify();
     }
 
@@ -2334,6 +2356,9 @@ impl DeckView {
         Some(
             div()
                 .id("notes-shade")
+                .track_focus(&self.notes_focus)
+                .key_context("DeckNotes")
+                .on_action(cx.listener(Self::on_unlight))
                 .absolute()
                 .top_0()
                 .left_0()
@@ -2346,7 +2371,7 @@ impl DeckView {
                 .occlude()
                 .on_mouse_down(
                     MouseButton::Left,
-                    cx.listener(|deck, _, _window, cx| deck.hide_notes(cx)),
+                    cx.listener(|deck, _, window, cx| deck.hide_notes(window, cx)),
                 )
                 .child(
                     div()
@@ -2418,8 +2443,8 @@ impl DeckView {
                                                 .id("notes-close")
                                                 .cursor_pointer()
                                                 .hover(|this| this.text_color(paint(palette.fg)))
-                                                .on_click(cx.listener(|deck, _, _window, cx| {
-                                                    deck.hide_notes(cx);
+                                                .on_click(cx.listener(|deck, _, window, cx| {
+                                                    deck.hide_notes(window, cx);
                                                 }))
                                                 .child("esc"),
                                         ),
@@ -2451,10 +2476,10 @@ impl DeckView {
     /// the rail, the one picked in the narration, the lines picked in a pane,
     /// and the spotlight those raised. What the agent is pointing at is left
     /// alone — it is mid-sentence, and its light goes out by itself.
-    fn on_unlight(&mut self, _: &Unlight, _window: &mut Window, cx: &mut Context<Self>) {
+    fn on_unlight(&mut self, _: &Unlight, window: &mut Window, cx: &mut Context<Self>) {
         // Notes over the window are the nearest thing to put away.
         if self.notes.is_some() {
-            self.hide_notes(cx);
+            self.hide_notes(window, cx);
             return;
         }
         if let Some((_, _, light)) = &mut self.pressed {
@@ -3104,6 +3129,14 @@ impl DeckView {
     }
 
     fn on_discard(&mut self, _: &Discard, window: &mut Window, cx: &mut Context<Self>) {
+        // Escape inside the composer is this action, and the notes may be up
+        // over it — over a resumed draft, or opened from the foot. The notes
+        // are what the reader is looking at, so they go, and the remark
+        // underneath is kept.
+        if self.notes.is_some() {
+            self.hide_notes(window, cx);
+            return;
+        }
         self.composing = None;
         // Thrown away rather than saved, but the anchor still goes back: the
         // hold belongs to the composer, not to whether it produced anything.
@@ -4619,8 +4652,8 @@ impl DeckView {
                             .id("version")
                             .cursor_pointer()
                             .hover(|this| this.text_color(paint(self.palette.fg)))
-                            .on_click(cx.listener(|deck, _, _window, cx| {
-                                deck.show_notes(crate::notes::RUNNING.to_string(), cx);
+                            .on_click(cx.listener(|deck, _, window, cx| {
+                                deck.show_notes(crate::notes::RUNNING.to_string(), window, cx);
                             }))
                             .child(format!("deck {}", crate::notes::RUNNING)),
                     )
@@ -4633,8 +4666,8 @@ impl DeckView {
                         div()
                             .id("available")
                             .cursor_pointer()
-                            .on_click(cx.listener(move |deck, _, _window, cx| {
-                                deck.show_notes(asked.clone(), cx);
+                            .on_click(cx.listener(move |deck, _, window, cx| {
+                                deck.show_notes(asked.clone(), window, cx);
                             }))
                             .h_flex()
                             .items_center()
