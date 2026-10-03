@@ -240,4 +240,31 @@ mod tests {
 
         let _ = std::fs::remove_file(&path);
     }
+
+    #[test]
+    fn the_delivery_and_the_rest_leave_each_other_alone() {
+        use deck_core::When;
+
+        for when in [When::Interrupt, When::Queue, When::Defer] {
+            let path = scratch("delivery");
+            let _ = std::fs::remove_file(&path);
+
+            write_to(&path, Some(bounds(10., 20., 30., 40.)), Some(1));
+            edit(&path, |placement| placement.delivery = Some(when));
+            let back = read_from(&path);
+            assert_eq!(back.delivery, Some(when), "{when:?} is kept");
+            assert_eq!(back.turn, Some(1), "choosing {when:?} kept the turn");
+            assert!(back.bounds().is_some(), "and the shape");
+
+            write_to(&path, Some(bounds(11., 21., 31., 41.)), None);
+            write_to(&path, None, Some(3));
+            assert_eq!(
+                read_from(&path).delivery,
+                Some(when),
+                "{when:?} survived a resize and a turn"
+            );
+
+            let _ = std::fs::remove_file(&path);
+        }
+    }
 }

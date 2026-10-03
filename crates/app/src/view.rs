@@ -449,9 +449,9 @@ pub struct DeckView {
     ///
     /// Held beside the composer rather than inside `About`, because `About` is
     /// *what the remark is pinned to* and this is *what the reader wants done*.
-    /// Reset every time a composer opens: a must-fix should never be inherited
-    /// by the next remark.
-    /// Whether the remark being written wants the walk to stop.
+    /// Set every time a composer opens to the delivery the reader chose last
+    /// (see [`Self::delivery`]): how a reader wants remarks heard is a habit,
+    /// not a decision to make again on every one.
     composing_when: deck_core::When,
     /// Whether a voice is reading the deck aloud.
     aloud: bool,
