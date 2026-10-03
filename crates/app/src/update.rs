@@ -20,6 +20,14 @@
 //!
 //! Stable releases only. A prerelease is something somebody asks for with
 //! `deck upgrade --prerelease`; it is never offered to them unasked.
+//!
+//! # And then installed
+//!
+//! When the daily ask finds a newer release, it is installed in the same
+//! background task, the way `deck upgrade` would — checked, signed, tried, and
+//! renamed over the running binary, which carries on untouched. The next deck
+//! opened is the new one, and it opens on its notes. A copy Homebrew owns, or
+//! one somebody is building, is told about and left alone.
 
 use std::sync::Mutex;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -53,10 +61,25 @@ struct Known {
     checked: u64,
 }
 
-/// A newer stable deck, if one is known.
+/// A newer stable deck that has been installed, and is what opens next.
+static INSTALLED: Mutex<Option<String>> = Mutex::new(None);
+
+/// A newer stable deck, if one is known and not already installed.
 #[must_use]
 pub fn available() -> Option<String> {
+    if installed().is_some() {
+        return None;
+    }
     FOUND.lock().ok().and_then(|found| found.clone())
+}
+
+/// The newer deck installed while this one was running, if one was.
+#[must_use]
+pub fn installed() -> Option<String> {
+    INSTALLED
+        .lock()
+        .ok()
+        .and_then(|installed| installed.clone())
 }
 
 /// Show what is already known, and ask again if it is a day old.
@@ -80,21 +103,29 @@ pub fn look(cx: &mut gpui_kit::App) {
         // Another deck is asking. What it learns lands in the file, and this
         // one reads it next launch rather than asking the same question twice.
         let Some(_held) = store().and_then(|path| Held::take(&path.with_extension("lock"))) else {
-            return read();
+            return (read(), None);
         };
         // Read again now the lock is held: a deck that held it a moment ago
         // may have asked already, and the answer it wrote is good for a day.
         let before = read();
         if !due(before.checked, now()) {
-            return before;
+            return (before, None);
         }
         let known = settle(latest(), before, now());
         write(&known);
-        known
+        // Still under the lock, so two decks never install at once. Any
+        // failure leaves the deck that was there, and the foot still says a
+        // newer one is available for somebody to run `deck upgrade` by hand.
+        let installed = worth_showing(known.latest.as_deref(), RUNNING)
+            .and_then(|_| crate::upgrade::quietly().ok().flatten());
+        (known, installed)
     });
     cx.spawn(async move |cx| {
-        let known = asking.await;
+        let (known, installed) = asking.await;
         remember(&known);
+        if let (Some(version), Ok(mut slot)) = (installed, INSTALLED.lock()) {
+            *slot = Some(version);
+        }
         cx.update(gpui_kit::App::refresh_windows);
     })
     .detach();
@@ -173,25 +204,33 @@ fn installable(release: &serde_json::Value) -> Option<String> {
 ///
 /// A file created only if it does not exist, which the filesystem decides
 /// atomically, and removed when this is dropped. A deck killed while holding
-/// it leaves it behind, so one older than any ask could take is taken over.
-struct Held(std::path::PathBuf);
+/// it leaves it behind, so one older than any ask and install could take is
+/// taken over.
+///
+/// The file holds who took it, and is only removed by them. Otherwise a deck
+/// that ran past the limit and had its lock taken over would, on finishing,
+/// delete the lock of the deck that took it — and let a third one in.
+struct Held(std::path::PathBuf, String);
 
 impl Held {
-    /// Longer than the patience of a request, by a wide margin.
-    const STALE: Duration = Duration::from_secs(60);
+    /// As long as an abandoned upgrade, which this covers too.
+    const STALE: Duration = crate::upgrade::ABANDONED;
 
     fn take(path: &std::path::Path) -> Option<Self> {
         if let Some(dir) = path.parent() {
             let _ = std::fs::create_dir_all(dir);
         }
+        let mine = format!("{} {}", std::process::id(), now_nanos());
         let create = || {
+            use std::io::Write as _;
             std::fs::OpenOptions::new()
                 .write(true)
                 .create_new(true)
                 .open(path)
+                .and_then(|mut file| file.write_all(mine.as_bytes()))
         };
         if create().is_ok() {
-            return Some(Self(path.to_path_buf()));
+            return Some(Self(path.to_path_buf(), mine));
         }
         let abandoned = std::fs::metadata(path)
             .and_then(|meta| meta.modified())
@@ -199,7 +238,7 @@ impl Held {
             .and_then(|at| at.elapsed().ok())
             .is_some_and(|age| age >= Self::STALE);
         if abandoned && std::fs::remove_file(path).is_ok() && create().is_ok() {
-            return Some(Self(path.to_path_buf()));
+            return Some(Self(path.to_path_buf(), mine));
         }
         None
     }
@@ -207,8 +246,18 @@ impl Held {
 
 impl Drop for Held {
     fn drop(&mut self) {
-        let _ = std::fs::remove_file(&self.0);
+        if std::fs::read_to_string(&self.0).is_ok_and(|held| held == self.1) {
+            let _ = std::fs::remove_file(&self.0);
+        }
     }
+}
+
+/// A moment, finely enough that two decks taking the lock never write the
+/// same thing.
+fn now_nanos() -> u128 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |since| since.as_nanos())
 }
 
 fn store() -> Option<std::path::PathBuf> {
@@ -330,6 +379,13 @@ mod tests {
         assert!(!path.exists(), "letting go removes it");
         assert!(Held::take(&path).is_some(), "and the next deck can take it");
         assert!(!path.exists());
+
+        // A deck whose lock was taken over leaves the new holder's alone.
+        let late = Held::take(&path).expect("taken");
+        std::fs::write(&path, "somebody else").expect("taken over");
+        drop(late);
+        assert!(path.exists(), "the deck that took it over still holds it");
+        let _ = std::fs::remove_file(&path);
     }
 
     #[test]
