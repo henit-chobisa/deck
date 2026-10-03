@@ -789,8 +789,11 @@ mod tests {
             SKILL.contains("A remark interrupts you unless the reader says otherwise"),
             "the default is said where an agent will read it"
         );
+        // Read across the line breaks, so rewrapping the paragraph is not a
+        // failure and losing the sentence is.
+        let flat = SKILL.split_whitespace().collect::<Vec<_>>().join(" ");
         assert!(
-            SKILL.contains("a quiet\nwaiter is a reader reading, not a reader with nothing to say"),
+            flat.contains("a quiet waiter is a reader reading, not a reader with nothing to say"),
             "and silence is still a reader reading"
         );
     }

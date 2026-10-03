@@ -27,8 +27,23 @@ use crate::sheet::{Sheet, Slot};
 gpui_kit::actions!(
     deck,
     [
-        NextGroup, PrevGroup, Comment, Rotate, Walk, Follow, Hide, Submit, Discard, ZoomIn,
-        ZoomOut, ZoomReset, Zen, Close, Leave, Unlight
+        NextGroup,
+        PrevGroup,
+        Comment,
+        Rotate,
+        Walk,
+        Follow,
+        Hide,
+        Submit,
+        Discard,
+        ZoomIn,
+        ZoomOut,
+        ZoomReset,
+        Zen,
+        Close,
+        Leave,
+        Unlight,
+        AddToReview
     ]
 );
 
@@ -91,6 +106,9 @@ pub fn bindings() -> Vec<KeyBinding> {
         // in a context deeper than this one and handles it itself, so ⌘⏎ is
         // picked up from the event it emits instead. See `open_composer`.
         KeyBinding::new("escape", Discard, Some("DeckComposer")),
+        // The other way to finish a remark: hold it for the review. The input
+        // binds nothing to this chord, so it reaches the composer's context.
+        KeyBinding::new("shift-secondary-enter", AddToReview, Some("DeckComposer")),
     ]
 }
 
@@ -449,9 +467,8 @@ pub struct DeckView {
     ///
     /// Held beside the composer rather than inside `About`, because `About` is
     /// *what the remark is pinned to* and this is *what the reader wants done*.
-    /// Set every time a composer opens to the delivery the reader chose last
-    /// (see [`Self::delivery`]): how a reader wants remarks heard is a habit,
-    /// not a decision to make again on every one.
+    /// Decided when the remark is finished — *Ask now* or *Add to review* —
+    /// and kept here so a draft carried across hiding the window keeps it.
     composing_when: deck_core::When,
     /// Whether a voice is reading the deck aloud.
     aloud: bool,
@@ -803,7 +820,7 @@ impl DeckView {
             focus: cx.focus_handle(),
             remarks,
             composing: None,
-            composing_when: Self::delivery(),
+            composing_when: deck_core::When::Interrupt,
             aloud,
             unheard: 0,
             talking_task: None,
@@ -2837,17 +2854,6 @@ impl DeckView {
         true
     }
 
-    /// How a new comment asks to be heard, before anybody touches the choice.
-    ///
-    /// Whatever the reader chose last, and *interrupt* for somebody who has
-    /// never chosen. It used to be *with the review* every time, reset after
-    /// every comment — so somebody asking a question mid-walk had to pick
-    /// interrupt again on each one, and a reader who forgot sent a question
-    /// that would not be read until they submitted.
-    fn delivery() -> deck_core::When {
-        crate::state::remembered_delivery().unwrap_or(deck_core::When::Interrupt)
-    }
-
     fn on_comment(&mut self, _: &Comment, window: &mut Window, cx: &mut Context<Self>) {
         // With a comment already open, `c` is the way back into it. It used to
         // do nothing, which left the keyboard somewhere else and no key that
@@ -2889,7 +2895,7 @@ impl DeckView {
         let listen = Self::listen_composer(&state, window, cx);
 
         self.composing = Some((about, state, listen));
-        self.composing_when = Self::delivery();
+        self.composing_when = deck_core::When::Interrupt;
         cx.notify();
     }
 
@@ -2906,9 +2912,14 @@ impl DeckView {
                     ..
                 }
             ) {
-                deck.save_remark(window, cx);
+                deck.save_remark(deck_core::When::Interrupt, window, cx);
             }
         })
+    }
+
+    /// The composer's other ending: keep the remark for the review.
+    fn on_add_to_review(&mut self, _: &AddToReview, window: &mut Window, cx: &mut Context<Self>) {
+        self.save_remark(deck_core::When::Defer, window, cx);
     }
 
     fn on_discard(&mut self, _: &Discard, window: &mut Window, cx: &mut Context<Self>) {
@@ -2925,7 +2936,7 @@ impl DeckView {
     /// the remark; outside it, send the review back.
     fn on_submit(&mut self, _: &Submit, window: &mut Window, cx: &mut Context<Self>) {
         if self.composing.is_some() {
-            self.save_remark(window, cx);
+            self.save_remark(deck_core::When::Interrupt, window, cx);
         } else {
             self.submit_review(window, cx);
         }
@@ -3094,10 +3105,17 @@ impl DeckView {
         }
     }
 
-    fn save_remark(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    /// Save the remark being written, sent now or held for the review.
+    ///
+    /// Which one is decided by how it was finished — a button each, a key
+    /// each — rather than by a choice made beforehand and remembered. A
+    /// remembered choice was a mode: tick *hold* once, forget, and the next
+    /// question waited unanswered until the review went back.
+    fn save_remark(&mut self, when: deck_core::When, window: &mut Window, cx: &mut Context<Self>) {
         let Some((about, state, _listen)) = self.composing.take() else {
             return;
         };
+        self.composing_when = when;
         // The anchor goes back the moment the composer does. It is held so that
         // nothing moves under somebody who is writing, and that hold does not
         // lapse on its own — so failing to say this once left the agent unable
@@ -4165,6 +4183,7 @@ impl DeckView {
                 .v_flex()
                 .flex_none()
                 .key_context("DeckComposer")
+                .on_action(cx.listener(Self::on_add_to_review))
                 // Sized for whichever it is in. The panel can be two hundred
                 // points wide; window padding inside it leaves no room to type.
                 .pt(px(9.))
@@ -4215,86 +4234,77 @@ impl DeckView {
                                 .font_family(cx.theme().mono_font_family.clone())
                                 .text_size(px(10.))
                                 .text_color(paint(self.palette.muted))
-                                .h_flex()
-                                .gap(px(14.))
-                                .child("⌘⏎ save")
                                 .child("esc discard"),
                         )
-                        // Only while somebody is listening. Outside a live walk
-                        // there is nobody to interrupt, so offering the choice
-                        // would be a control that does nothing.
-                        .children(self.render_urgency(cx)),
+                        .child(self.render_endings(cx)),
                 ),
         )
     }
 
-    /// Whether this remark can wait, offered only when it can matter.
+    /// The two ways to finish a remark, as two buttons with a key each.
     ///
-    /// In the order they are reached for, the default first, and read as one
-    /// sentence: *send now*, *send at a pause*, *send with the review*. They
-    /// were *with the review*, *wait for a gap*, *interrupt* — three phrasings
-    /// of three grammars, with the default on the left and the one that
-    /// mattered on the right (#14).
+    /// *Ask now* sends it: the agent is woken out of `deck wait` with this one
+    /// question, which is the whole of the back-and-forth. *Add to review*
+    /// holds it, and it goes back with the review.
     ///
-    /// Interrupting is the default: the reader takes the floor and the agent
-    /// is woken out of `deck wait` with this one question, which is the whole
-    /// of the back-and-forth. Queueing hands it over in the next gap, while the
-    /// walk is still on. Deferring holds it until the review comes back.
-    ///
-    /// Whichever was chosen last is chosen next time — see [`Self::delivery`].
-    fn render_urgency(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
+    /// This was three chips, then three chips read as a sentence, then a
+    /// checkbox — and none of them made sense to the person using them (#14).
+    /// The middle chip was a timing rule nobody could predict, and a checkbox
+    /// is a setting, not an action: people tick a box and then look for the
+    /// button. Two buttons are what a code review already looks like — GitHub
+    /// has *Add single comment* and *Start a review* — and each one means the
+    /// same thing every time.
+    fn render_endings(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let palette = &self.palette;
-        let picked = self.composing_when;
-
-        Some(
+        let mono = cx.theme().mono_font_family.clone();
+        let button = |id: &'static str, label: &'static str, keys: &'static str, primary: bool| {
             div()
+                .id(id)
                 .h_flex()
-                .flex_none()
                 .items_center()
-                .gap(px(3.))
-                // Said as a sentence — *send now* — so the chips read as a
-                // choice of when, not three unrelated buttons.
+                .gap(px(6.))
+                .px(px(9.))
+                .py(px(4.))
+                .rounded(px(5.))
+                .cursor_pointer()
+                .text_size(px(10.5))
+                .when(primary, |this| {
+                    this.bg(paint(palette.accent))
+                        .text_color(paint(palette.on_accent))
+                })
+                .when(!primary, |this| {
+                    this.border_1()
+                        .border_color(paint(palette.edge))
+                        .text_color(paint(palette.fg))
+                        .hover(|style| style.bg(paint(palette.wash)))
+                })
+                .child(label)
                 .child(
                     div()
-                        .pr(px(3.))
-                        .text_size(px(10.5))
-                        .text_color(paint(palette.muted))
-                        .child("send"),
+                        .font_family(mono.clone())
+                        .text_size(px(9.5))
+                        .opacity(0.7)
+                        .child(keys),
                 )
-                .children(
-                    [
-                        (0usize, deck_core::When::Interrupt, "now", palette.accent),
-                        (1usize, deck_core::When::Queue, "at a pause", palette.muted),
-                        (
-                            2usize,
-                            deck_core::When::Defer,
-                            "with the review",
-                            palette.muted,
-                        ),
-                    ]
-                    .into_iter()
-                    .map(move |(ix, when, label, tone)| {
-                        let on = when == picked;
-                        div()
-                            .id(("urgency", ix))
-                            .px(px(9.))
-                            .py(px(4.))
-                            .rounded(px(999.))
-                            .cursor_pointer()
-                            .text_size(px(10.5))
-                            .text_color(paint(if on { palette.on_accent } else { palette.muted }))
-                            .when(on, |this| this.bg(paint(tone)))
-                            .hover(|style| style.bg(paint(palette.wash)))
-                            .on_click(cx.listener(move |deck, _, _window, cx| {
-                                deck.composing_when = when;
-                                crate::state::remember_delivery(when);
-                                cx.notify();
-                            }))
-                            .child(label)
-                    }),
-                )
-                .into_any_element(),
-        )
+        };
+        div()
+            .h_flex()
+            .flex_none()
+            .gap(px(6.))
+            .child(
+                button("add-to-review", "Add to review", "⇧⌘⏎", false).on_click(cx.listener(
+                    |deck, _, window, cx| {
+                        deck.save_remark(deck_core::When::Defer, window, cx);
+                    },
+                )),
+            )
+            .child(
+                button("ask-now", "Ask now", "⌘⏎", true).on_click(cx.listener(
+                    |deck, _, window, cx| {
+                        deck.save_remark(deck_core::When::Interrupt, window, cx);
+                    },
+                )),
+            )
     }
 
     /// The strip along the bottom: what is still coming, and which deck this

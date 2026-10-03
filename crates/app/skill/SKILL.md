@@ -563,9 +563,8 @@ is written, because somebody who stops to write something mid-walk usually wants
 an answer while they are still looking at it. Treat one as exactly that — they
 want it *now*, in the walk.
 
-The reader can also choose to hold a remark for the review, or to let it wait
-for a gap, and deck remembers which they chose last. A held remark never wakes
-you; you see it when they submit. So do not go looking for the others: a quiet
+The reader can instead *add it to the review*: a held remark never wakes you,
+and you see it when they submit. So do not go looking for the others: a quiet
 waiter is a reader reading, not a reader with nothing to say.
 
 **Answer fast. Being right slowly is worse than being useful now.** Somebody is

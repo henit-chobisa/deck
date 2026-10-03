@@ -1,15 +1,13 @@
 //! What the deck remembers between runs.
 //!
-//! The window's shape, which way the reader last turned the page, and when
-//! they last asked a comment to be heard. A deck is opened by an agent rather
-//! than by the reader, so the reader never gets to place the window or arrange
-//! it before it appears — the only way it can arrive the way they want it is
-//! to arrive the way they last left it.
+//! The window's shape, and which way the reader last turned the page. A deck is
+//! opened by an agent rather than by the reader, so the reader never gets to
+//! place the window or arrange it before it appears — the only way it can
+//! arrive the way they want it is to arrive the way they last left it.
 //!
-//! All three are written into one file, and each is written without
-//! disturbing the others: the shape is known when the window closes, the turn
-//! the moment it is asked for, and the delivery when a chip is pressed, so no
-//! two of them arrive together.
+//! Both are written into one file, and each is written without disturbing the
+//! other: the shape is known when the window closes and the turn is known the
+//! moment it is asked for, so the two never arrive together.
 //!
 //! Kept beside the config the app will read later, under `~/.deck`, so there is
 //! one place to look for anything deck has written about you.
@@ -34,9 +32,6 @@ pub struct Placement {
     /// Which quarter turn the page was on. See `view::quarter`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     turn: Option<u8>,
-    /// When the last comment was asked to be heard. See [`remembered_delivery`].
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    delivery: Option<deck_core::When>,
 }
 
 impl Placement {
@@ -79,23 +74,6 @@ pub fn remembered_turn() -> Option<u8> {
     path().and_then(|path| read_from(&path).turn)
 }
 
-/// When the reader last asked a comment to be heard.
-///
-/// Remembered because it is a habit, not a per-comment decision: somebody who
-/// wants every remark held for the review chose that once, and asking them to
-/// choose it again on every comment is what made the buttons feel like a form.
-#[must_use]
-pub fn remembered_delivery() -> Option<deck_core::When> {
-    path().and_then(|path| read_from(&path).delivery)
-}
-
-/// Remember how the reader wants comments heard.
-pub fn remember_delivery(when: deck_core::When) {
-    if let Some(path) = path() {
-        edit(&path, |placement| placement.delivery = Some(when));
-    }
-}
-
 /// Everything in the file, or nothing if it will not read.
 fn read_from(path: &std::path::Path) -> Placement {
     std::fs::read_to_string(path)
@@ -120,34 +98,26 @@ pub fn remember_turn(turn: u8) {
 
 /// Write what is given and leave the rest as it was.
 ///
-/// Read, change, write. The three things remembered here are learned at
-/// different moments — the turn when it is asked for, the delivery when a chip
-/// is pressed, the shape when the window closes — so a writer that put down
-/// everything it knew would put down a default over something another had just
-/// saved.
+/// Read, change, write. The two things remembered here are learned at different
+/// moments — the turn when it is asked for, the shape when the window closes —
+/// so a writer that put down everything it knew would put down a default over
+/// something the other one had just saved.
 ///
 /// Failure is silent on purpose. This runs while the window is closing, and a
 /// deck that refused to shut because it could not write a preference would be a
 /// worse thing than one that forgets where it was.
 fn write_to(path: &std::path::Path, bounds: Option<Bounds<Pixels>>, turn: Option<u8>) {
-    edit(path, |placement| {
-        if let Some(bounds) = bounds {
-            placement.x = Some(f32::from(bounds.origin.x));
-            placement.y = Some(f32::from(bounds.origin.y));
-            placement.width = Some(f32::from(bounds.size.width));
-            placement.height = Some(f32::from(bounds.size.height));
-        }
-        if turn.is_some() {
-            placement.turn = turn;
-        }
-    });
-}
-
-/// Read, change what `change` changes, write — and leave everything else as it
-/// was, for the reason above.
-fn edit(path: &std::path::Path, change: impl FnOnce(&mut Placement)) {
     let mut placement = read_from(path);
-    change(&mut placement);
+
+    if let Some(bounds) = bounds {
+        placement.x = Some(f32::from(bounds.origin.x));
+        placement.y = Some(f32::from(bounds.origin.y));
+        placement.width = Some(f32::from(bounds.size.width));
+        placement.height = Some(f32::from(bounds.size.height));
+    }
+    if turn.is_some() {
+        placement.turn = turn;
+    }
 
     let Ok(json) = serde_json::to_string_pretty(&placement) else {
         return;
@@ -239,32 +209,5 @@ mod tests {
         assert_eq!(read_from(&path).turn, Some(2), "the turn survived a resize");
 
         let _ = std::fs::remove_file(&path);
-    }
-
-    #[test]
-    fn the_delivery_and_the_rest_leave_each_other_alone() {
-        use deck_core::When;
-
-        for when in [When::Interrupt, When::Queue, When::Defer] {
-            let path = scratch("delivery");
-            let _ = std::fs::remove_file(&path);
-
-            write_to(&path, Some(bounds(10., 20., 30., 40.)), Some(1));
-            edit(&path, |placement| placement.delivery = Some(when));
-            let back = read_from(&path);
-            assert_eq!(back.delivery, Some(when), "{when:?} is kept");
-            assert_eq!(back.turn, Some(1), "choosing {when:?} kept the turn");
-            assert!(back.bounds().is_some(), "and the shape");
-
-            write_to(&path, Some(bounds(11., 21., 31., 41.)), None);
-            write_to(&path, None, Some(3));
-            assert_eq!(
-                read_from(&path).delivery,
-                Some(when),
-                "{when:?} survived a resize and a turn"
-            );
-
-            let _ = std::fs::remove_file(&path);
-        }
     }
 }
