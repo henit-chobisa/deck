@@ -4482,10 +4482,6 @@ impl DeckView {
         let open = self.rail_open.level();
         let palette = &self.palette;
         let mono = cx.theme().mono_font_family.clone();
-        // A pause that has lapsed is not holding anything, even before the next
-        // show request gets round to noticing — so the label says "following"
-        // as soon as the agent may move the reader again.
-        let following = !self.live.reader_holds();
         // What the reader has written and not yet handed over.
         let said = self.remarks.len();
 
@@ -4861,32 +4857,6 @@ impl DeckView {
                                                         "· {said} to send"
                                                     ))),
                                             )
-                                        }),
-                                )
-                                .child(
-                                    div()
-                                        .font_family(mono.clone())
-                                        .text_size(px(9.5))
-                                        .text_color(paint(if following {
-                                            palette.muted
-                                        } else {
-                                            palette.accent
-                                        }))
-                                        // The thing that was missing entirely: a
-                                        // reader could pause movement by clicking
-                                        // and had no way to know they had.
-                                        .id("resume-following")
-                                        .cursor_pointer()
-                                        .on_click(cx.listener(|deck, _, _window, cx| {
-                                            deck.live.follow();
-                                            cx.notify();
-                                        }))
-                                        .child(if !following {
-                                            "resume · f"
-                                        } else if speaking {
-                                            "reading"
-                                        } else {
-                                            "listening"
                                         }),
                                 ),
                         )
