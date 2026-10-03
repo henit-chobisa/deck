@@ -27,8 +27,23 @@ use crate::sheet::{Sheet, Slot};
 gpui_kit::actions!(
     deck,
     [
-        NextGroup, PrevGroup, Comment, Rotate, Walk, Follow, Hide, Submit, Discard, ZoomIn,
-        ZoomOut, ZoomReset, Zen, Close, Leave, Unlight
+        NextGroup,
+        PrevGroup,
+        Comment,
+        Rotate,
+        Walk,
+        Follow,
+        Hide,
+        Submit,
+        Discard,
+        ZoomIn,
+        ZoomOut,
+        ZoomReset,
+        Zen,
+        Close,
+        Leave,
+        Unlight,
+        AddToReview
     ]
 );
 
@@ -55,6 +70,20 @@ const KEYS: &[(&str, &str, &str)] = &[
     ("q", "close", "close"),
 ];
 
+/// A shortcut as it is labelled on this keyboard.
+///
+/// The bindings say `secondary`, which GPUI reads as ⌘ on a Mac and Ctrl
+/// everywhere else; a label has to say the same. Before, the bindings said
+/// `cmd` — the Windows key, on Windows — and the labels said ⌘, so on
+/// Windows neither the keys nor the hints were right.
+fn chord(mac: &'static str, elsewhere: &'static str) -> &'static str {
+    if cfg!(target_os = "macos") {
+        mac
+    } else {
+        elsewhere
+    }
+}
+
 /// The bindings, in the context the window claims.
 #[must_use]
 pub fn bindings() -> Vec<KeyBinding> {
@@ -71,26 +100,30 @@ pub fn bindings() -> Vec<KeyBinding> {
         // Bare `q` is its own action, not `Close`. It is one key with no
         // modifier, which is the kind that gets pressed by accident, and once
         // the deck's keys work beside an open comment it could take half a
-        // remark with it. `cmd-q` stays `Close`: somebody who holds a modifier
-        // to quit means it, and refusing them is worse than any comment.
+        // remark with it. ⌘Q (Ctrl+Q elsewhere) stays `Close`: somebody who
+        // holds a modifier to quit means it, and refusing them is worse than
+        // any comment.
         KeyBinding::new("q", Leave, Some("Deck")),
         // Escape is bound in the composer too, for discarding a remark. That
         // context is deeper than this one, so while somebody is writing it
         // takes the key and this never runs.
         KeyBinding::new("escape", Unlight, Some("Deck")),
-        KeyBinding::new("cmd-q", Close, None),
+        KeyBinding::new("secondary-q", Close, None),
         // Zoom is bound window-wide, not to the deck's context: needing the
         // text bigger is not a thing that should stop working because a
         // composer has the keyboard.
-        KeyBinding::new("cmd-=", ZoomIn, None),
-        KeyBinding::new("cmd-+", ZoomIn, None),
-        KeyBinding::new("cmd--", ZoomOut, None),
-        KeyBinding::new("cmd-0", ZoomReset, None),
+        KeyBinding::new("secondary-=", ZoomIn, None),
+        KeyBinding::new("secondary-+", ZoomIn, None),
+        KeyBinding::new("secondary--", ZoomOut, None),
+        KeyBinding::new("secondary-0", ZoomReset, None),
         // Escape reaches here because the input's own Escape handler ends in
         // `cx.propagate()`. Saving does not: the input binds `secondary-enter`
         // in a context deeper than this one and handles it itself, so ⌘⏎ is
         // picked up from the event it emits instead. See `open_composer`.
         KeyBinding::new("escape", Discard, Some("DeckComposer")),
+        // The other way to finish a remark: hold it for the review. The input
+        // binds nothing to this chord, so it reaches the composer's context.
+        KeyBinding::new("shift-secondary-enter", AddToReview, Some("DeckComposer")),
     ]
 }
 
@@ -449,9 +482,8 @@ pub struct DeckView {
     ///
     /// Held beside the composer rather than inside `About`, because `About` is
     /// *what the remark is pinned to* and this is *what the reader wants done*.
-    /// Reset every time a composer opens: a must-fix should never be inherited
-    /// by the next remark.
-    /// Whether the remark being written wants the walk to stop.
+    /// Decided when the remark is finished — *Ask now* or *Add to review* —
+    /// and kept here so a draft carried across hiding the window keeps it.
     composing_when: deck_core::When,
     /// Whether a voice is reading the deck aloud.
     aloud: bool,
@@ -803,7 +835,7 @@ impl DeckView {
             focus: cx.focus_handle(),
             remarks,
             composing: None,
-            composing_when: deck_core::When::default(),
+            composing_when: deck_core::When::Interrupt,
             aloud,
             unheard: 0,
             talking_task: None,
@@ -2878,7 +2910,7 @@ impl DeckView {
         let listen = Self::listen_composer(&state, window, cx);
 
         self.composing = Some((about, state, listen));
-        self.composing_when = deck_core::When::default();
+        self.composing_when = deck_core::When::Interrupt;
         cx.notify();
     }
 
@@ -2895,9 +2927,14 @@ impl DeckView {
                     ..
                 }
             ) {
-                deck.save_remark(window, cx);
+                deck.save_remark(deck_core::When::Interrupt, window, cx);
             }
         })
+    }
+
+    /// The composer's other ending: keep the remark for the review.
+    fn on_add_to_review(&mut self, _: &AddToReview, window: &mut Window, cx: &mut Context<Self>) {
+        self.save_remark(deck_core::When::Defer, window, cx);
     }
 
     fn on_discard(&mut self, _: &Discard, window: &mut Window, cx: &mut Context<Self>) {
@@ -2914,7 +2951,7 @@ impl DeckView {
     /// the remark; outside it, send the review back.
     fn on_submit(&mut self, _: &Submit, window: &mut Window, cx: &mut Context<Self>) {
         if self.composing.is_some() {
-            self.save_remark(window, cx);
+            self.save_remark(deck_core::When::Interrupt, window, cx);
         } else {
             self.submit_review(window, cx);
         }
@@ -3083,10 +3120,17 @@ impl DeckView {
         }
     }
 
-    fn save_remark(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    /// Save the remark being written, sent now or held for the review.
+    ///
+    /// Which one is decided by how it was finished — a button each, a key
+    /// each — rather than by a choice made beforehand and remembered. A
+    /// remembered choice was a mode: tick *hold* once, forget, and the next
+    /// question waited unanswered until the review went back.
+    fn save_remark(&mut self, when: deck_core::When, window: &mut Window, cx: &mut Context<Self>) {
         let Some((about, state, _listen)) = self.composing.take() else {
             return;
         };
+        self.composing_when = when;
         // The anchor goes back the moment the composer does. It is held so that
         // nothing moves under somebody who is writing, and that hold does not
         // lapse on its own — so failing to say this once left the agent unable
@@ -4154,6 +4198,7 @@ impl DeckView {
                 .v_flex()
                 .flex_none()
                 .key_context("DeckComposer")
+                .on_action(cx.listener(Self::on_add_to_review))
                 // Sized for whichever it is in. The panel can be two hundred
                 // points wide; window padding inside it leaves no room to type.
                 .pt(px(9.))
@@ -4204,78 +4249,81 @@ impl DeckView {
                                 .font_family(cx.theme().mono_font_family.clone())
                                 .text_size(px(10.))
                                 .text_color(paint(self.palette.muted))
-                                .h_flex()
-                                .gap(px(14.))
-                                .child("⌘⏎ save")
                                 .child("esc discard"),
                         )
-                        // Only while somebody is listening. Outside a live walk
-                        // there is nobody to interrupt, so offering the choice
-                        // would be a control that does nothing.
-                        .children(self.render_urgency(cx)),
+                        .child(self.render_endings(cx)),
                 ),
         )
     }
 
-    /// Whether this remark can wait, offered only when it can matter.
+    /// The two ways to finish a remark, as two buttons with a key each.
     ///
-    /// Deferring is the default and the common case: the author reads it when
-    /// the review comes back. Queueing hands it over in the next gap, while the
-    /// walk is still on. Interrupting is the reader taking the floor — it
-    /// wakes the agent out of `deck wait` with this one question, which is the
-    /// whole of the back-and-forth.
-    fn render_urgency(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
+    /// *Ask now* sends it: the agent is woken out of `deck wait` with this one
+    /// question, which is the whole of the back-and-forth. *Add to review*
+    /// holds it, and it goes back with the review.
+    ///
+    /// This was three chips, then three chips read as a sentence, then a
+    /// checkbox — and none of them made sense to the person using them (#14).
+    /// The middle chip was a timing rule nobody could predict, and a checkbox
+    /// is a setting, not an action: people tick a box and then look for the
+    /// button. Two buttons are what a code review already looks like — GitHub
+    /// has *Add single comment* and *Start a review* — and each one means the
+    /// same thing every time.
+    fn render_endings(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let palette = &self.palette;
-        let picked = self.composing_when;
-
-        Some(
+        let mono = cx.theme().mono_font_family.clone();
+        let button = |id: &'static str, label: &'static str, keys: &'static str, primary: bool| {
             div()
+                .id(id)
                 .h_flex()
-                .flex_none()
-                .gap(px(3.))
-                .children(
-                    [
-                        (
-                            0usize,
-                            deck_core::When::Defer,
-                            "with the review",
-                            palette.muted,
-                        ),
-                        (
-                            1usize,
-                            deck_core::When::Queue,
-                            "wait for a gap",
-                            palette.muted,
-                        ),
-                        (
-                            2usize,
-                            deck_core::When::Interrupt,
-                            "interrupt",
-                            palette.accent,
-                        ),
-                    ]
-                    .into_iter()
-                    .map(move |(ix, when, label, tone)| {
-                        let on = when == picked;
-                        div()
-                            .id(("urgency", ix))
-                            .px(px(9.))
-                            .py(px(4.))
-                            .rounded(px(999.))
-                            .cursor_pointer()
-                            .text_size(px(10.5))
-                            .text_color(paint(if on { palette.on_accent } else { palette.muted }))
-                            .when(on, |this| this.bg(paint(tone)))
-                            .hover(|style| style.bg(paint(palette.wash)))
-                            .on_click(cx.listener(move |deck, _, _window, cx| {
-                                deck.composing_when = when;
-                                cx.notify();
-                            }))
-                            .child(label)
-                    }),
+                .items_center()
+                .gap(px(6.))
+                .px(px(9.))
+                .py(px(4.))
+                .rounded(px(5.))
+                .cursor_pointer()
+                .text_size(px(10.5))
+                .when(primary, |this| {
+                    this.bg(paint(palette.accent))
+                        .text_color(paint(palette.on_accent))
+                })
+                .when(!primary, |this| {
+                    this.border_1()
+                        .border_color(paint(palette.edge))
+                        .text_color(paint(palette.fg))
+                        .hover(|style| style.bg(paint(palette.wash)))
+                })
+                .child(label)
+                .child(
+                    div()
+                        .font_family(mono.clone())
+                        .text_size(px(9.5))
+                        .opacity(0.7)
+                        .child(keys),
                 )
-                .into_any_element(),
-        )
+        };
+        div()
+            .h_flex()
+            .flex_none()
+            .gap(px(6.))
+            .child(
+                button(
+                    "add-to-review",
+                    "Add to review",
+                    chord("⇧⌘⏎", "Ctrl+Shift+Enter"),
+                    false,
+                )
+                .on_click(cx.listener(|deck, _, window, cx| {
+                    deck.save_remark(deck_core::When::Defer, window, cx);
+                })),
+            )
+            .child(
+                button("ask-now", "Ask now", chord("⌘⏎", "Ctrl+Enter"), true).on_click(
+                    cx.listener(|deck, _, window, cx| {
+                        deck.save_remark(deck_core::When::Interrupt, window, cx);
+                    }),
+                ),
+            )
     }
 
     /// The strip along the bottom: what is still coming, and which deck this
@@ -6163,7 +6211,12 @@ mod tests {
             Some("deck::Leave"),
             "bare q checks for words first"
         );
-        assert_eq!(action("cmd-q"), Some("deck::Close"), "cmd-q never refuses");
+        // `secondary` is ⌘ on a Mac and Ctrl elsewhere, so ask for it the way
+        // this platform spells it — the test runs on Windows too.
+        let quit = gpui_kit::Keystroke::parse("secondary-q")
+            .expect("a keystroke")
+            .unparse();
+        assert_eq!(action(&quit), Some("deck::Close"), "{quit} never refuses");
     }
 
     #[test]
