@@ -32,6 +32,9 @@ pub struct Placement {
     /// Which quarter turn the page was on. See `view::quarter`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     turn: Option<u8>,
+    /// When the last comment was asked to be heard. See [`remembered_delivery`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    delivery: Option<deck_core::When>,
 }
 
 impl Placement {
@@ -74,6 +77,23 @@ pub fn remembered_turn() -> Option<u8> {
     path().and_then(|path| read_from(&path).turn)
 }
 
+/// When the reader last asked a comment to be heard.
+///
+/// Remembered because it is a habit, not a per-comment decision: somebody who
+/// wants every remark held for the review chose that once, and asking them to
+/// choose it again on every comment is what made the buttons feel like a form.
+#[must_use]
+pub fn remembered_delivery() -> Option<deck_core::When> {
+    path().and_then(|path| read_from(&path).delivery)
+}
+
+/// Remember how the reader wants comments heard.
+pub fn remember_delivery(when: deck_core::When) {
+    if let Some(path) = path() {
+        edit(&path, |placement| placement.delivery = Some(when));
+    }
+}
+
 /// Everything in the file, or nothing if it will not read.
 fn read_from(path: &std::path::Path) -> Placement {
     std::fs::read_to_string(path)
@@ -107,17 +127,24 @@ pub fn remember_turn(turn: u8) {
 /// deck that refused to shut because it could not write a preference would be a
 /// worse thing than one that forgets where it was.
 fn write_to(path: &std::path::Path, bounds: Option<Bounds<Pixels>>, turn: Option<u8>) {
-    let mut placement = read_from(path);
+    edit(path, |placement| {
+        if let Some(bounds) = bounds {
+            placement.x = Some(f32::from(bounds.origin.x));
+            placement.y = Some(f32::from(bounds.origin.y));
+            placement.width = Some(f32::from(bounds.size.width));
+            placement.height = Some(f32::from(bounds.size.height));
+        }
+        if turn.is_some() {
+            placement.turn = turn;
+        }
+    });
+}
 
-    if let Some(bounds) = bounds {
-        placement.x = Some(f32::from(bounds.origin.x));
-        placement.y = Some(f32::from(bounds.origin.y));
-        placement.width = Some(f32::from(bounds.size.width));
-        placement.height = Some(f32::from(bounds.size.height));
-    }
-    if turn.is_some() {
-        placement.turn = turn;
-    }
+/// Read, change what `change` changes, write — and leave everything else as it
+/// was, for the reason above.
+fn edit(path: &std::path::Path, change: impl FnOnce(&mut Placement)) {
+    let mut placement = read_from(path);
+    change(&mut placement);
 
     let Ok(json) = serde_json::to_string_pretty(&placement) else {
         return;

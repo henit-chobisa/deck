@@ -782,9 +782,16 @@ mod tests {
             "they are listening, and cannot skim"
         );
         assert!(SKILL.contains("subagent"), "hand off the slow part");
+        // The default changed from *held for the review* to *interrupt*, on
+        // purpose (#14). What this pinned survives it: a remark held for the
+        // review still never wakes the agent, so silence still means reading.
         assert!(
-            SKILL.contains("Most remarks will not wake you"),
-            "a quiet waiter is a reader reading, not a reader with nothing to say"
+            SKILL.contains("A remark interrupts you unless the reader says otherwise"),
+            "the default is said where an agent will read it"
+        );
+        assert!(
+            SKILL.contains("a quiet\nwaiter is a reader reading, not a reader with nothing to say"),
+            "and silence is still a reader reading"
         );
     }
 

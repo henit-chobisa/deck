@@ -803,7 +803,7 @@ impl DeckView {
             focus: cx.focus_handle(),
             remarks,
             composing: None,
-            composing_when: deck_core::When::default(),
+            composing_when: Self::delivery(),
             aloud,
             unheard: 0,
             talking_task: None,
@@ -2837,6 +2837,17 @@ impl DeckView {
         true
     }
 
+    /// How a new comment asks to be heard, before anybody touches the choice.
+    ///
+    /// Whatever the reader chose last, and *interrupt* for somebody who has
+    /// never chosen. It used to be *with the review* every time, reset after
+    /// every comment — so somebody asking a question mid-walk had to pick
+    /// interrupt again on each one, and a reader who forgot sent a question
+    /// that would not be read until they submitted.
+    fn delivery() -> deck_core::When {
+        crate::state::remembered_delivery().unwrap_or(deck_core::When::Interrupt)
+    }
+
     fn on_comment(&mut self, _: &Comment, window: &mut Window, cx: &mut Context<Self>) {
         // With a comment already open, `c` is the way back into it. It used to
         // do nothing, which left the keyboard somewhere else and no key that
@@ -2878,7 +2889,7 @@ impl DeckView {
         let listen = Self::listen_composer(&state, window, cx);
 
         self.composing = Some((about, state, listen));
-        self.composing_when = deck_core::When::default();
+        self.composing_when = Self::delivery();
         cx.notify();
     }
 
@@ -4219,11 +4230,18 @@ impl DeckView {
 
     /// Whether this remark can wait, offered only when it can matter.
     ///
-    /// Deferring is the default and the common case: the author reads it when
-    /// the review comes back. Queueing hands it over in the next gap, while the
-    /// walk is still on. Interrupting is the reader taking the floor — it
-    /// wakes the agent out of `deck wait` with this one question, which is the
-    /// whole of the back-and-forth.
+    /// In the order they are reached for, the default first, and read as one
+    /// sentence: *send now*, *send at a pause*, *send with the review*. They
+    /// were *with the review*, *wait for a gap*, *interrupt* — three phrasings
+    /// of three grammars, with the default on the left and the one that
+    /// mattered on the right (#14).
+    ///
+    /// Interrupting is the default: the reader takes the floor and the agent
+    /// is woken out of `deck wait` with this one question, which is the whole
+    /// of the back-and-forth. Queueing hands it over in the next gap, while the
+    /// walk is still on. Deferring holds it until the review comes back.
+    ///
+    /// Whichever was chosen last is chosen next time — see [`Self::delivery`].
     fn render_urgency(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
         let palette = &self.palette;
         let picked = self.composing_when;
@@ -4232,26 +4250,26 @@ impl DeckView {
             div()
                 .h_flex()
                 .flex_none()
+                .items_center()
                 .gap(px(3.))
+                // Said as a sentence — *send now* — so the chips read as a
+                // choice of when, not three unrelated buttons.
+                .child(
+                    div()
+                        .pr(px(3.))
+                        .text_size(px(10.5))
+                        .text_color(paint(palette.muted))
+                        .child("send"),
+                )
                 .children(
                     [
+                        (0usize, deck_core::When::Interrupt, "now", palette.accent),
+                        (1usize, deck_core::When::Queue, "at a pause", palette.muted),
                         (
-                            0usize,
+                            2usize,
                             deck_core::When::Defer,
                             "with the review",
                             palette.muted,
-                        ),
-                        (
-                            1usize,
-                            deck_core::When::Queue,
-                            "wait for a gap",
-                            palette.muted,
-                        ),
-                        (
-                            2usize,
-                            deck_core::When::Interrupt,
-                            "interrupt",
-                            palette.accent,
                         ),
                     ]
                     .into_iter()
@@ -4269,6 +4287,7 @@ impl DeckView {
                             .hover(|style| style.bg(paint(palette.wash)))
                             .on_click(cx.listener(move |deck, _, _window, cx| {
                                 deck.composing_when = when;
+                                crate::state::remember_delivery(when);
                                 cx.notify();
                             }))
                             .child(label)
