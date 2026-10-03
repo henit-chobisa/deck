@@ -408,7 +408,11 @@ fn carry(url: &str) -> anyhow::Result<Vec<u8>> {
 /// machine's memory.
 const LIMIT: usize = 256 * 1024 * 1024;
 
-/// How many cells the bar has.
+/// Wide enough to read as movement, narrow enough that the whole line stays
+/// inside an 80 column terminal — the indent and `downloading` take 14, the bar
+/// 28, and `24.0 MB of 24.0 MB` another 20, which is 62. Wider and a terminal
+/// at its default size wraps the line, and a carriage return then redraws only
+/// the second half of it.
 const WIDE: usize = 28;
 
 /// One frame of the bar, over the top of the last one.
