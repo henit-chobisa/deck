@@ -32,6 +32,20 @@ use crate::setup::{accent, bold, dim, mark};
 /// rather than watching deck think about it.
 const PATIENCE: std::time::Duration = std::time::Duration::from_secs(10);
 
+/// How long the tarball itself may take.
+///
+/// The ten seconds above cover the whole body, which is right for a release
+/// list and wrong for twenty-five megabytes: anything slower than about twenty
+/// megabits failed every time, and the automatic install would then try again
+/// tomorrow and fail the same way, for ever.
+const DOWNLOAD: std::time::Duration = std::time::Duration::from_secs(10 * 60);
+
+/// How old a staging directory has to be before it is taken to be left over.
+///
+/// Longer than [`DOWNLOAD`] and everything after it, by a margin, so a live
+/// upgrade is never mistaken for an abandoned one.
+pub(crate) const ABANDONED: std::time::Duration = std::time::Duration::from_secs(20 * 60);
+
 /// Where the releases are.
 const RELEASES: &str = "https://api.github.com/repos/henit-chobisa/deck/releases";
 
@@ -181,10 +195,19 @@ fn version_in(said: &str) -> Option<String> {
 /// Not one Homebrew owns, for the reason [`managed`] gives. And not a build
 /// out of a cargo `target` directory, or any debug build: somebody working on
 /// deck would find the binary they just built swapped for a release.
+///
+/// Not one `cargo install` put in `~/.cargo/bin` either — that is somebody
+/// who builds deck themselves, and the two would take turns replacing each
+/// other. And not on Windows, where a running `.exe` cannot be renamed over.
 fn replaceable(exe: &Path) -> bool {
+    let cargo_home = std::env::var_os("CARGO_HOME").map(PathBuf::from);
     !cfg!(debug_assertions)
+        && !cfg!(windows)
         && managed(exe).is_none()
-        && !exe.components().any(|part| part.as_os_str() == "target")
+        && !exe
+            .components()
+            .any(|part| part.as_os_str() == "target" || part.as_os_str() == ".cargo")
+        && !cargo_home.is_some_and(|home| exe.starts_with(home))
 }
 
 /// Whether a download is drawn arriving.
@@ -289,7 +312,10 @@ pub(crate) fn newer(candidate: &str, running: &str) -> bool {
 fn pick(releases: &[Release], unstable: bool) -> Option<&Release> {
     releases
         .iter()
-        .filter(|it| it.tarball.is_some())
+        // Both, as `swap` needs both. A release whose checksum failed to
+        // upload would otherwise be picked, refused, and picked again every
+        // day, while a complete older one was never tried.
+        .filter(|it| it.tarball.is_some() && it.sums.is_some())
         .find(|it| unstable || !it.prerelease)
 }
 
@@ -309,9 +335,9 @@ fn swap(here: &Path, release: &Release, showing: Showing) -> anyhow::Result<()> 
 
     let archive = match showing {
         Showing::Bar => carry(tarball)?,
-        Showing::Nothing => fetch(tarball)?,
+        Showing::Nothing => fetch(tarball, DOWNLOAD)?,
     };
-    let wanted = fetch(sums)?;
+    let wanted = fetch(sums, PATIENCE)?;
     checked(&archive, &wanted)?;
 
     // Exclusive, and the lock as well as the workspace. `create_dir` fails if
@@ -319,10 +345,19 @@ fn swap(here: &Path, release: &Release, showing: Showing) -> anyhow::Result<()> 
     // delete each other's staged binary — which could otherwise install a file
     // the other one had not finished checking.
     //
-    // A directory left behind by a crash has to be cleared by hand. That is
-    // the right trade: the alternative is removing one that a live upgrade is
-    // halfway through using.
+    // One left behind by a deck that stopped partway is cleared once it is
+    // older than any upgrade could take. Before, it had to be cleared by
+    // hand, and the automatic install — which nobody watches — was blocked by
+    // it silently and for good.
     let staging = beside.join(".deck-upgrade");
+    let left_over = std::fs::metadata(&staging)
+        .and_then(|meta| meta.modified())
+        .ok()
+        .and_then(|at| at.elapsed().ok())
+        .is_some_and(|age| age >= ABANDONED);
+    if left_over {
+        let _ = std::fs::remove_dir_all(&staging);
+    }
     std::fs::create_dir(&staging).with_context(|| {
         format!(
             "{} already exists — another upgrade is running, or one stopped \
@@ -331,6 +366,14 @@ fn swap(here: &Path, release: &Release, showing: Showing) -> anyhow::Result<()> 
         )
     })?;
     let tidy = Tidy(staging.clone());
+
+    // Somebody may have got there first — a `deck upgrade` by hand while the
+    // automatic one was downloading. Renaming the same version over itself
+    // would also make `deck.prev` that version, and lose the real way back.
+    let there = release.tag.trim_start_matches('v');
+    if on_disk(here).is_some_and(|disk| !newer(there, &disk)) {
+        return Ok(());
+    }
 
     let holding = staging.join("deck.tar.gz");
     std::fs::write(&holding, &archive).context("could not write the download")?;
@@ -351,11 +394,13 @@ fn swap(here: &Path, release: &Release, showing: Showing) -> anyhow::Result<()> 
 
     // Ad-hoc, because an unsigned binary does not run on Apple Silicon at all,
     // and because extracting it is the step that drops whatever signature it
-    // arrived with.
-    run_it(
-        "codesign",
-        &["--force", "--sign", "-", &fresh.to_string_lossy()],
-    )?;
+    // arrived with. Only there: nowhere else has `codesign`, or needs it.
+    if cfg!(target_os = "macos") {
+        run_it(
+            "codesign",
+            &["--force", "--sign", "-", &fresh.to_string_lossy()],
+        )?;
+    }
 
     // The last check before it becomes the deck everybody gets: it has to run.
     // A release that cannot start its own binary should go no further than
@@ -411,11 +456,11 @@ fn writable(dir: &Path) -> anyhow::Result<()> {
     Ok(())
 }
 
-/// Get the bytes at a url.
-fn fetch(url: &str) -> anyhow::Result<Vec<u8>> {
+/// Get the bytes at a url, giving up after `patience`.
+fn fetch(url: &str, patience: std::time::Duration) -> anyhow::Result<Vec<u8>> {
     let mut body = ureq::get(url)
         .config()
-        .timeout_global(Some(PATIENCE))
+        .timeout_global(Some(patience))
         .build()
         .header("User-Agent", concat!("deck/", env!("CARGO_PKG_VERSION")))
         .call()
@@ -437,7 +482,7 @@ fn carry(url: &str) -> anyhow::Result<Vec<u8>> {
 
     let mut body = ureq::get(url)
         .config()
-        .timeout_global(Some(PATIENCE))
+        .timeout_global(Some(DOWNLOAD))
         .build()
         .header("User-Agent", concat!("deck/", env!("CARGO_PKG_VERSION")))
         .call()

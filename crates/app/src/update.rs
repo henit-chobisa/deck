@@ -204,25 +204,33 @@ fn installable(release: &serde_json::Value) -> Option<String> {
 ///
 /// A file created only if it does not exist, which the filesystem decides
 /// atomically, and removed when this is dropped. A deck killed while holding
-/// it leaves it behind, so one older than any ask could take is taken over.
-struct Held(std::path::PathBuf);
+/// it leaves it behind, so one older than any ask and install could take is
+/// taken over.
+///
+/// The file holds who took it, and is only removed by them. Otherwise a deck
+/// that ran past the limit and had its lock taken over would, on finishing,
+/// delete the lock of the deck that took it — and let a third one in.
+struct Held(std::path::PathBuf, String);
 
 impl Held {
-    /// Longer than the patience of a request, by a wide margin.
-    const STALE: Duration = Duration::from_secs(60);
+    /// As long as an abandoned upgrade, which this covers too.
+    const STALE: Duration = crate::upgrade::ABANDONED;
 
     fn take(path: &std::path::Path) -> Option<Self> {
         if let Some(dir) = path.parent() {
             let _ = std::fs::create_dir_all(dir);
         }
+        let mine = format!("{} {}", std::process::id(), now_nanos());
         let create = || {
+            use std::io::Write as _;
             std::fs::OpenOptions::new()
                 .write(true)
                 .create_new(true)
                 .open(path)
+                .and_then(|mut file| file.write_all(mine.as_bytes()))
         };
         if create().is_ok() {
-            return Some(Self(path.to_path_buf()));
+            return Some(Self(path.to_path_buf(), mine));
         }
         let abandoned = std::fs::metadata(path)
             .and_then(|meta| meta.modified())
@@ -230,7 +238,7 @@ impl Held {
             .and_then(|at| at.elapsed().ok())
             .is_some_and(|age| age >= Self::STALE);
         if abandoned && std::fs::remove_file(path).is_ok() && create().is_ok() {
-            return Some(Self(path.to_path_buf()));
+            return Some(Self(path.to_path_buf(), mine));
         }
         None
     }
@@ -238,8 +246,18 @@ impl Held {
 
 impl Drop for Held {
     fn drop(&mut self) {
-        let _ = std::fs::remove_file(&self.0);
+        if std::fs::read_to_string(&self.0).is_ok_and(|held| held == self.1) {
+            let _ = std::fs::remove_file(&self.0);
+        }
     }
+}
+
+/// A moment, finely enough that two decks taking the lock never write the
+/// same thing.
+fn now_nanos() -> u128 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |since| since.as_nanos())
 }
 
 fn store() -> Option<std::path::PathBuf> {
@@ -361,6 +379,13 @@ mod tests {
         assert!(!path.exists(), "letting go removes it");
         assert!(Held::take(&path).is_some(), "and the next deck can take it");
         assert!(!path.exists());
+
+        // A deck whose lock was taken over leaves the new holder's alone.
+        let late = Held::take(&path).expect("taken");
+        std::fs::write(&path, "somebody else").expect("taken over");
+        drop(late);
+        assert!(path.exists(), "the deck that took it over still holds it");
+        let _ = std::fs::remove_file(&path);
     }
 
     #[test]
