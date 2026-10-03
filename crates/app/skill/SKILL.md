@@ -557,12 +557,15 @@ been*. A paragraph of description gives them nothing to put a finger on, and the
 reader who wanted to argue with you scrolls past looking for the place to do it.
 One claim per sentence, said plainly enough to be wrong.
 
-**Most remarks will not wake you, and that is the default.** A comment is
-*deferred* unless the reader says otherwise: it goes into the review and you see
-it when they submit. `deck wait` returns `{"asked": …}` only when they chose to
-interrupt you or to wait for a gap — which means they want an answer *now*, in
-the walk. Treat one as exactly that, and do not go looking for the others: a
-quiet waiter is a reader reading, not a reader with nothing to say.
+**A remark interrupts you unless the reader says otherwise.** That is the
+default: a comment wakes you out of `deck wait` with `{"asked": …}` as soon as it
+is written, because somebody who stops to write something mid-walk usually wants
+an answer while they are still looking at it. Treat one as exactly that — they
+want it *now*, in the walk.
+
+The reader can instead *add it to the review*: a held remark never wakes you,
+and you see it when they submit. So do not go looking for the others: a quiet
+waiter is a reader reading, not a reader with nothing to say.
 
 **Answer fast. Being right slowly is worse than being useful now.** Somebody is
 sitting in front of a panel with nothing in it but a bar that is filling up. A

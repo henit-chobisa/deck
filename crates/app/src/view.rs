@@ -27,8 +27,23 @@ use crate::sheet::{Sheet, Slot};
 gpui_kit::actions!(
     deck,
     [
-        NextGroup, PrevGroup, Comment, Rotate, Walk, Follow, Hide, Submit, Discard, ZoomIn,
-        ZoomOut, ZoomReset, Zen, Close, Unlight
+        NextGroup,
+        PrevGroup,
+        Comment,
+        Rotate,
+        Walk,
+        Follow,
+        Hide,
+        Submit,
+        Discard,
+        ZoomIn,
+        ZoomOut,
+        ZoomReset,
+        Zen,
+        Close,
+        Leave,
+        Unlight,
+        AddToReview
     ]
 );
 
@@ -55,6 +70,20 @@ const KEYS: &[(&str, &str, &str)] = &[
     ("q", "close", "close"),
 ];
 
+/// A shortcut as it is labelled on this keyboard.
+///
+/// The bindings say `secondary`, which GPUI reads as ⌘ on a Mac and Ctrl
+/// everywhere else; a label has to say the same. Before, the bindings said
+/// `cmd` — the Windows key, on Windows — and the labels said ⌘, so on
+/// Windows neither the keys nor the hints were right.
+fn chord(mac: &'static str, elsewhere: &'static str) -> &'static str {
+    if cfg!(target_os = "macos") {
+        mac
+    } else {
+        elsewhere
+    }
+}
+
 /// How tall the comment box is, in lines: the fewest it shows and the most it
 /// grows to before it scrolls.
 ///
@@ -78,24 +107,36 @@ pub fn bindings() -> Vec<KeyBinding> {
         KeyBinding::new("z", Zen, Some("Deck")),
         KeyBinding::new("h", Hide, Some("Deck")),
         KeyBinding::new("s", Submit, Some("Deck")),
-        KeyBinding::new("q", Close, Some("Deck")),
+        // Bare `q` is its own action, not `Close`. It is one key with no
+        // modifier, which is the kind that gets pressed by accident, and once
+        // the deck's keys work beside an open comment it could take half a
+        // remark with it. ⌘Q (Ctrl+Q elsewhere) stays `Close`: somebody who
+        // holds a modifier to quit means it, and refusing them is worse than
+        // any comment.
+        KeyBinding::new("q", Leave, Some("Deck")),
         // Escape is bound in the composer too, for discarding a remark. That
         // context is deeper than this one, so while somebody is writing it
         // takes the key and this never runs.
         KeyBinding::new("escape", Unlight, Some("Deck")),
-        KeyBinding::new("cmd-q", Close, None),
+        KeyBinding::new("secondary-q", Close, None),
         // Zoom is bound window-wide, not to the deck's context: needing the
         // text bigger is not a thing that should stop working because a
         // composer has the keyboard.
-        KeyBinding::new("cmd-=", ZoomIn, None),
-        KeyBinding::new("cmd-+", ZoomIn, None),
-        KeyBinding::new("cmd--", ZoomOut, None),
-        KeyBinding::new("cmd-0", ZoomReset, None),
+        KeyBinding::new("secondary-=", ZoomIn, None),
+        KeyBinding::new("secondary-+", ZoomIn, None),
+        KeyBinding::new("secondary--", ZoomOut, None),
+        KeyBinding::new("secondary-0", ZoomReset, None),
         // Escape reaches here because the input's own Escape handler ends in
         // `cx.propagate()`. Saving does not: the input binds `secondary-enter`
         // in a context deeper than this one and handles it itself, so ⌘⏎ is
         // picked up from the event it emits instead. See `open_composer`.
         KeyBinding::new("escape", Discard, Some("DeckComposer")),
+        // The other way to finish a remark: hold it for the review. The input
+        // binds nothing to this chord, so it reaches the composer's context.
+        KeyBinding::new("shift-secondary-enter", AddToReview, Some("DeckComposer")),
+        // The notes card holds the keyboard while it is up, so escape reaches
+        // it whatever was focused before — the comment box included.
+        KeyBinding::new("escape", Unlight, Some("DeckNotes")),
     ]
 }
 
@@ -454,9 +495,8 @@ pub struct DeckView {
     ///
     /// Held beside the composer rather than inside `About`, because `About` is
     /// *what the remark is pinned to* and this is *what the reader wants done*.
-    /// Reset every time a composer opens: a must-fix should never be inherited
-    /// by the next remark.
-    /// Whether the remark being written wants the walk to stop.
+    /// Decided when the remark is finished — *Ask now* or *Add to review* —
+    /// and kept here so a draft carried across hiding the window keeps it.
     composing_when: deck_core::When,
     /// Whether a voice is reading the deck aloud.
     aloud: bool,
@@ -682,6 +722,15 @@ pub struct DeckView {
     /// reader has got to in this window, and a deck put away and brought back
     /// should start at the top of its prose.
     band_scroll: ScrollHandle,
+    /// A release's notes, laid over the window. See [`crate::notes`].
+    notes: Option<(String, crate::notes::Notes)>,
+    /// Where the notes have been read to. A new set starts at the top.
+    notes_scroll: ScrollHandle,
+    /// The notes card's hold on the keyboard while it is up.
+    notes_focus: FocusHandle,
+    /// The fetch of notes that were not cached. Replaced, and so dropped,
+    /// when another version's notes are asked for.
+    fetching_notes: Task<()>,
     /// The voice, and whatever it is currently reading.
     ///
     /// Held by the window rather than the app so that closing a deck takes its
@@ -819,7 +868,7 @@ impl DeckView {
             focus: cx.focus_handle(),
             remarks,
             composing: None,
-            composing_when: deck_core::When::default(),
+            composing_when: deck_core::When::Interrupt,
             aloud,
             unheard: 0,
             talking_task: None,
@@ -859,6 +908,10 @@ impl DeckView {
             sizing: None,
             band_height,
             band_scroll: ScrollHandle::new(),
+            notes: None,
+            notes_scroll: ScrollHandle::new(),
+            notes_focus: cx.focus_handle(),
+            fetching_notes: Task::ready(()),
             voice: crate::speech::Voice::default(),
             folded,
             drifting: None,
@@ -890,6 +943,17 @@ impl DeckView {
         }
         view.picked_said = picked_said;
         view.band_scroll.set_offset(band_offset);
+        // A deck with automatic updates turned off makes no request by
+        // itself, and opening on notes nobody asked for is one. So it opens on
+        // them only if they are already kept; a click in the foot still asks.
+        // Asked before the moment is taken, so a deck that may not ask keeps
+        // it for when the notes are kept.
+        let may_ask = crate::config::read().map_or(true, |config| config.updates.automatic);
+        if (may_ask || crate::notes::cached(crate::notes::RUNNING).is_some())
+            && crate::notes::announcing()
+        {
+            view.show_notes(crate::notes::RUNNING.to_string(), window, cx);
+        }
         for place in reading {
             for pane in &mut view.panes {
                 if let Some(code) = pane.code_mut()
@@ -2226,13 +2290,286 @@ impl DeckView {
         }
     }
 
+    /// Lay `version`'s notes over the window, fetching them if they are not
+    /// kept yet.
+    fn show_notes(&mut self, version: String, window: &mut Window, cx: &mut Context<Self>) {
+        // Escape has to reach them. A window that opened on them has nothing
+        // focused for a key to start from, and a comment box that had the
+        // keyboard is under the card where nobody can see what they type.
+        self.notes_focus.focus(window, cx);
+        let notes = crate::notes::cached(&version).unwrap_or(crate::notes::Notes::Reading);
+        if notes == crate::notes::Notes::Reading {
+            let asking = version.clone();
+            let fetch = cx
+                .background_executor()
+                .spawn(async move { crate::notes::fetch(&asking) });
+            let wanted = version.clone();
+            self.fetching_notes = cx.spawn(async move |view, cx| {
+                let notes = fetch.await;
+                view.update(cx, |view, cx| {
+                    // Only into the notes it was fetched for. Somebody who
+                    // closed them, or opened another version's, has moved on.
+                    if let Some((shown, state)) = &mut view.notes
+                        && *shown == wanted
+                    {
+                        *state = notes;
+                        cx.notify();
+                    }
+                })
+                .ok();
+            });
+        }
+        self.notes = Some((version, notes));
+        self.notes_scroll = ScrollHandle::new();
+        cx.notify();
+    }
+
+    /// Put the notes away, and give the keyboard back to whatever it is
+    /// for: the comment box if one is open, and the deck otherwise.
+    fn hide_notes(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.notes = None;
+        match self.composing.as_ref().map(|(_, state, _)| state.clone()) {
+            Some(state) => state.update(cx, |state, cx| state.focus(window, cx)),
+            None => self.focus.focus(window, cx),
+        }
+        cx.notify();
+    }
+
+    /// The notes, as a card over a dimmed window.
+    ///
+    /// Pressing anywhere off the card puts it away, and so does escape. The
+    /// card is the only thing that can be pressed while it is up: the deck
+    /// behind it is dimmed to say so, and occluded so that it is true.
+    fn render_notes(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
+        use crate::notes::{Block, Notes};
+
+        let (version, notes) = self.notes.as_ref()?;
+        let palette = &self.palette;
+        let mono = cx.theme().mono_font_family.clone();
+        let look = crate::prose::Look {
+            size: 13.,
+            leading: 20.5,
+            tone: palette.fg,
+        };
+        let prose = |text: &str| {
+            crate::prose::render_look(
+                crate::prose::parse(text),
+                palette,
+                mono.clone(),
+                &crate::prose::Picking::quiet(Vec::new()),
+                look,
+            )
+            .into_any_element()
+        };
+        let aside = |text: &'static str| {
+            div()
+                .text_size(px(12.5))
+                .line_height(px(19.))
+                .text_color(paint(palette.muted))
+                .child(text)
+                .into_any_element()
+        };
+
+        let body: Vec<AnyElement> = match notes {
+            Notes::Reading => vec![aside("Reading the notes…")],
+            Notes::Away => vec![aside(
+                "These notes are not kept here yet, and GitHub did not answer. \
+                 They are on the release page whenever you are back online.",
+            )],
+            Notes::Read(blocks) if blocks.is_empty() => {
+                vec![aside("This release came without notes.")]
+            }
+            Notes::Read(blocks) => blocks
+                .iter()
+                .enumerate()
+                .map(|(ix, block)| match block {
+                    Block::Heading(text) => div()
+                        .when(ix > 0, |this| this.pt(px(10.)))
+                        .text_size(px(11.))
+                        .font_weight(FontWeight::SEMIBOLD)
+                        .text_color(paint(palette.accent))
+                        .child(text.to_uppercase())
+                        .into_any_element(),
+                    Block::Para(text) => prose(text),
+                    Block::Item(text) => div()
+                        .h_flex()
+                        .items_start()
+                        .gap(px(10.))
+                        .child(
+                            div()
+                                .flex_none()
+                                .mt(px(8.))
+                                .size(px(4.))
+                                .rounded_full()
+                                .bg(paint(palette.accent)),
+                        )
+                        .child(div().flex_1().min_w_0().child(prose(text)))
+                        .into_any_element(),
+                    Block::Code(text) => div()
+                        .px(px(12.))
+                        .py(px(9.))
+                        .rounded(px(6.))
+                        .bg(paint(palette.wash))
+                        .font_family(mono.clone())
+                        .text_size(px(12.))
+                        .line_height(px(18.))
+                        .child(text.clone())
+                        .into_any_element(),
+                })
+                .collect(),
+        };
+
+        let page = crate::notes::page(version);
+        let running = version == crate::notes::RUNNING;
+        let waiting = crate::update::installed().as_deref() == Some(version.as_str());
+        Some(
+            div()
+                .id("notes-shade")
+                .track_focus(&self.notes_focus)
+                .key_context("DeckNotes")
+                .on_action(cx.listener(Self::on_unlight))
+                .absolute()
+                .top_0()
+                .left_0()
+                .right_0()
+                .bottom_0()
+                .flex()
+                .items_center()
+                .justify_center()
+                .bg(paint(palette.bg).opacity(0.72))
+                .occlude()
+                .on_mouse_down(
+                    MouseButton::Left,
+                    cx.listener(|deck, _, window, cx| deck.hide_notes(window, cx)),
+                )
+                .child(
+                    div()
+                        .id("notes")
+                        .relative()
+                        .w(px(560.))
+                        .max_w(relative(0.9))
+                        .max_h(relative(0.8))
+                        .v_flex()
+                        .rounded(px(10.))
+                        .border_1()
+                        .border_color(paint(palette.edge))
+                        .bg(paint(palette.bg))
+                        .shadow_lg()
+                        .on_mouse_down(MouseButton::Left, |_, _window, cx| cx.stop_propagation())
+                        .child(
+                            div()
+                                .h_flex()
+                                .items_end()
+                                .justify_between()
+                                .px(px(24.))
+                                .pt(px(20.))
+                                .pb(px(14.))
+                                .child(
+                                    div()
+                                        .v_flex()
+                                        .gap(px(4.))
+                                        .child(
+                                            div()
+                                                .text_size(px(11.))
+                                                .text_color(paint(palette.muted))
+                                                .child(if running {
+                                                    "what changed in this deck"
+                                                } else if waiting {
+                                                    "installed — what the next deck brings"
+                                                } else {
+                                                    "what a newer deck brings"
+                                                }),
+                                        )
+                                        .child(
+                                            div()
+                                                .text_size(px(18.))
+                                                .font_weight(FontWeight::SEMIBOLD)
+                                                .child(format!("deck {version}")),
+                                        ),
+                                )
+                                .child(
+                                    div()
+                                        .h_flex()
+                                        .gap(px(14.))
+                                        .text_size(px(11.5))
+                                        .text_color(paint(palette.muted))
+                                        .child(
+                                            div()
+                                                .id("notes-page")
+                                                .cursor_pointer()
+                                                .hover(|this| {
+                                                    this.text_color(paint(palette.accent))
+                                                })
+                                                .on_click(move |_, _window, cx| cx.open_url(&page))
+                                                .child("on GitHub ↗"),
+                                        )
+                                        .when(!running && !waiting, |this| {
+                                            this.child(
+                                                div()
+                                                    .font_family(mono.clone())
+                                                    .child("deck upgrade"),
+                                            )
+                                        }),
+                                ),
+                        )
+                        .child(div().h(px(1.)).mx(px(24.)).bg(paint(palette.edge)))
+                        .child(
+                            div()
+                                .id("notes-body")
+                                .flex_1()
+                                .min_h_0()
+                                .overflow_y_scroll()
+                                .track_scroll(&self.notes_scroll)
+                                .px(px(24.))
+                                .pt(px(16.))
+                                .pb(px(22.))
+                                .v_flex()
+                                .gap(px(10.))
+                                .children(body),
+                        )
+                        // A way out that needs no key. The words *esc* sat in
+                        // the corner, which told a keyboard user what they
+                        // already knew and gave everybody else nothing to
+                        // press. Escape and a click off the card still work.
+                        .child(
+                            div()
+                                .id("notes-close")
+                                .absolute()
+                                .top(px(12.))
+                                .right(px(12.))
+                                .size(px(24.))
+                                .flex()
+                                .items_center()
+                                .justify_center()
+                                .rounded(px(6.))
+                                .cursor_pointer()
+                                .text_size(px(13.))
+                                .text_color(paint(palette.muted))
+                                .hover(|this| {
+                                    this.bg(paint(palette.wash)).text_color(paint(palette.fg))
+                                })
+                                .on_click(cx.listener(|deck, _, window, cx| {
+                                    deck.hide_notes(window, cx);
+                                }))
+                                .child("✕"),
+                        ),
+                )
+                .into_any_element(),
+        )
+    }
+
     /// Put the reader's own light out.
     ///
     /// Everything on screen that a person put there: the sentence pressed in
     /// the rail, the one picked in the narration, the lines picked in a pane,
     /// and the spotlight those raised. What the agent is pointing at is left
     /// alone — it is mid-sentence, and its light goes out by itself.
-    fn on_unlight(&mut self, _: &Unlight, _window: &mut Window, cx: &mut Context<Self>) {
+    fn on_unlight(&mut self, _: &Unlight, window: &mut Window, cx: &mut Context<Self>) {
+        // Notes over the window are the nearest thing to put away.
+        if self.notes.is_some() {
+            self.hide_notes(window, cx);
+            return;
+        }
         if let Some((_, _, light)) = &mut self.pressed {
             light.set(false);
         }
@@ -2254,6 +2591,24 @@ impl DeckView {
         // moves on. Only the reader's own light is the reader's to put out.
         let _ = self.point_at(self.voice.pointing(), cx);
         cx.notify();
+    }
+
+    /// `q`: close, unless that would throw away words somebody wrote.
+    ///
+    /// With a comment open and the caret elsewhere, `q` would otherwise close
+    /// the window with the remark unsaved — and the remark is the one thing in
+    /// the window that cannot be got back. So it goes back to the box instead,
+    /// which also shows why nothing closed. An open box with nothing in it
+    /// holds nothing to lose, and closes like any other.
+    fn on_leave(&mut self, _: &Leave, window: &mut Window, cx: &mut Context<Self>) {
+        let unsaved = self
+            .composing
+            .as_ref()
+            .is_some_and(|(_, state, _)| !state.read(cx).value().trim().is_empty());
+        if unsaved && self.back_to_the_box(window, cx) {
+            return;
+        }
+        self.on_close(&Close, window, cx);
     }
 
     fn on_close(&mut self, _: &Close, window: &mut Window, cx: &mut Context<Self>) {
@@ -2821,8 +3176,35 @@ impl DeckView {
         cx.notify();
     }
 
+    /// Asked of the text area's own focus handle every frame rather than kept
+    /// here as a flag, because focus moves without this view being told: a
+    /// click anywhere hands it to the root, and that click is the moment the
+    /// deck's keys have to come back. A flag would be right until the first
+    /// click and wrong after it.
+    fn typing(&self, window: &Window, cx: &App) -> bool {
+        self.composing
+            .as_ref()
+            .is_some_and(|(_, state, _)| state.read(cx).focus_handle(cx).is_focused(window))
+    }
+
+    /// Shared by `c` and `q` because both are answering the same thing — there
+    /// are words here somebody has not finished — and the answer is the same:
+    /// put the reader back where the words are. For `q` that also shows why the
+    /// window did not close, which a refusal on its own would not.
+    fn back_to_the_box(&self, window: &mut Window, cx: &mut Context<Self>) -> bool {
+        let Some((_, state, _)) = self.composing.as_ref() else {
+            return false;
+        };
+        state.update(cx, |state, cx| state.focus(window, cx));
+        cx.notify();
+        true
+    }
+
     fn on_comment(&mut self, _: &Comment, window: &mut Window, cx: &mut Context<Self>) {
-        if self.composing.is_some() {
+        // With a comment already open, `c` is the way back into it. It used to
+        // do nothing, which left the keyboard somewhere else and no key that
+        // would bring it back to the words.
+        if self.back_to_the_box(window, cx) {
             return;
         }
         let about = if self.picked_said.is_some() || self.panes.is_empty() {
@@ -2863,7 +3245,7 @@ impl DeckView {
         let listen = Self::listen_composer(&state, window, cx);
 
         self.composing = Some((about, state, listen));
-        self.composing_when = deck_core::When::default();
+        self.composing_when = deck_core::When::Interrupt;
         cx.notify();
     }
 
@@ -2880,12 +3262,25 @@ impl DeckView {
                     ..
                 }
             ) {
-                deck.save_remark(window, cx);
+                deck.save_remark(deck_core::When::Interrupt, window, cx);
             }
         })
     }
 
+    /// The composer's other ending: keep the remark for the review.
+    fn on_add_to_review(&mut self, _: &AddToReview, window: &mut Window, cx: &mut Context<Self>) {
+        self.save_remark(deck_core::When::Defer, window, cx);
+    }
+
     fn on_discard(&mut self, _: &Discard, window: &mut Window, cx: &mut Context<Self>) {
+        // Escape inside the composer is this action, and the notes may be up
+        // over it — over a resumed draft, or opened from the foot. The notes
+        // are what the reader is looking at, so they go, and the remark
+        // underneath is kept.
+        if self.notes.is_some() {
+            self.hide_notes(window, cx);
+            return;
+        }
         self.composing = None;
         // Thrown away rather than saved, but the anchor still goes back: the
         // hold belongs to the composer, not to whether it produced anything.
@@ -2899,7 +3294,7 @@ impl DeckView {
     /// the remark; outside it, send the review back.
     fn on_submit(&mut self, _: &Submit, window: &mut Window, cx: &mut Context<Self>) {
         if self.composing.is_some() {
-            self.save_remark(window, cx);
+            self.save_remark(deck_core::When::Interrupt, window, cx);
         } else {
             self.submit_review(window, cx);
         }
@@ -3075,10 +3470,17 @@ impl DeckView {
         }
     }
 
-    fn save_remark(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    /// Save the remark being written, sent now or held for the review.
+    ///
+    /// Which one is decided by how it was finished — a button each, a key
+    /// each — rather than by a choice made beforehand and remembered. A
+    /// remembered choice was a mode: tick *hold* once, forget, and the next
+    /// question waited unanswered until the review went back.
+    fn save_remark(&mut self, when: deck_core::When, window: &mut Window, cx: &mut Context<Self>) {
         let Some((about, state, _listen)) = self.composing.take() else {
             return;
         };
+        self.composing_when = when;
         // The anchor goes back the moment the composer does. It is held so that
         // nothing moves under somebody who is writing, and that hold does not
         // lapse on its own — so failing to say this once left the agent unable
@@ -4146,6 +4548,7 @@ impl DeckView {
                 .v_flex()
                 .flex_none()
                 .key_context("DeckComposer")
+                .on_action(cx.listener(Self::on_add_to_review))
                 // Sized for whichever it is in. The panel can be two hundred
                 // points wide; window padding inside it leaves no room to type.
                 .pt(px(9.))
@@ -4202,78 +4605,81 @@ impl DeckView {
                                 .font_family(cx.theme().mono_font_family.clone())
                                 .text_size(px(10.))
                                 .text_color(paint(self.palette.muted))
-                                .h_flex()
-                                .gap(px(14.))
-                                .child("⌘⏎ save")
                                 .child("esc discard"),
                         )
-                        // Only while somebody is listening. Outside a live walk
-                        // there is nobody to interrupt, so offering the choice
-                        // would be a control that does nothing.
-                        .children(self.render_urgency(cx)),
+                        .child(self.render_endings(cx)),
                 ),
         )
     }
 
-    /// Whether this remark can wait, offered only when it can matter.
+    /// The two ways to finish a remark, as two buttons with a key each.
     ///
-    /// Deferring is the default and the common case: the author reads it when
-    /// the review comes back. Queueing hands it over in the next gap, while the
-    /// walk is still on. Interrupting is the reader taking the floor — it
-    /// wakes the agent out of `deck wait` with this one question, which is the
-    /// whole of the back-and-forth.
-    fn render_urgency(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
+    /// *Ask now* sends it: the agent is woken out of `deck wait` with this one
+    /// question, which is the whole of the back-and-forth. *Add to review*
+    /// holds it, and it goes back with the review.
+    ///
+    /// This was three chips, then three chips read as a sentence, then a
+    /// checkbox — and none of them made sense to the person using them (#14).
+    /// The middle chip was a timing rule nobody could predict, and a checkbox
+    /// is a setting, not an action: people tick a box and then look for the
+    /// button. Two buttons are what a code review already looks like — GitHub
+    /// has *Add single comment* and *Start a review* — and each one means the
+    /// same thing every time.
+    fn render_endings(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let palette = &self.palette;
-        let picked = self.composing_when;
-
-        Some(
+        let mono = cx.theme().mono_font_family.clone();
+        let button = |id: &'static str, label: &'static str, keys: &'static str, primary: bool| {
             div()
+                .id(id)
                 .h_flex()
-                .flex_none()
-                .gap(px(3.))
-                .children(
-                    [
-                        (
-                            0usize,
-                            deck_core::When::Defer,
-                            "with the review",
-                            palette.muted,
-                        ),
-                        (
-                            1usize,
-                            deck_core::When::Queue,
-                            "wait for a gap",
-                            palette.muted,
-                        ),
-                        (
-                            2usize,
-                            deck_core::When::Interrupt,
-                            "interrupt",
-                            palette.accent,
-                        ),
-                    ]
-                    .into_iter()
-                    .map(move |(ix, when, label, tone)| {
-                        let on = when == picked;
-                        div()
-                            .id(("urgency", ix))
-                            .px(px(9.))
-                            .py(px(4.))
-                            .rounded(px(999.))
-                            .cursor_pointer()
-                            .text_size(px(10.5))
-                            .text_color(paint(if on { palette.on_accent } else { palette.muted }))
-                            .when(on, |this| this.bg(paint(tone)))
-                            .hover(|style| style.bg(paint(palette.wash)))
-                            .on_click(cx.listener(move |deck, _, _window, cx| {
-                                deck.composing_when = when;
-                                cx.notify();
-                            }))
-                            .child(label)
-                    }),
+                .items_center()
+                .gap(px(6.))
+                .px(px(9.))
+                .py(px(4.))
+                .rounded(px(5.))
+                .cursor_pointer()
+                .text_size(px(10.5))
+                .when(primary, |this| {
+                    this.bg(paint(palette.accent))
+                        .text_color(paint(palette.on_accent))
+                })
+                .when(!primary, |this| {
+                    this.border_1()
+                        .border_color(paint(palette.edge))
+                        .text_color(paint(palette.fg))
+                        .hover(|style| style.bg(paint(palette.wash)))
+                })
+                .child(label)
+                .child(
+                    div()
+                        .font_family(mono.clone())
+                        .text_size(px(9.5))
+                        .opacity(0.7)
+                        .child(keys),
                 )
-                .into_any_element(),
-        )
+        };
+        div()
+            .h_flex()
+            .flex_none()
+            .gap(px(6.))
+            .child(
+                button(
+                    "add-to-review",
+                    "Add to review",
+                    chord("⇧⌘⏎", "Ctrl+Shift+Enter"),
+                    false,
+                )
+                .on_click(cx.listener(|deck, _, window, cx| {
+                    deck.save_remark(deck_core::When::Defer, window, cx);
+                })),
+            )
+            .child(
+                button("ask-now", "Ask now", chord("⌘⏎", "Ctrl+Enter"), true).on_click(
+                    cx.listener(|deck, _, window, cx| {
+                        deck.save_remark(deck_core::When::Interrupt, window, cx);
+                    }),
+                ),
+            )
     }
 
     /// The strip along the bottom: what is still coming, and which deck this
@@ -4407,7 +4813,64 @@ impl DeckView {
                     // to tell from inside the window, and the first thing
                     // anybody reporting a bug has to answer is which version
                     // they are on.
-                    .child(format!("deck {}", env!("CARGO_PKG_VERSION")))
+                    //
+                    // Pressed, it says what changed in it.
+                    .child(
+                        div()
+                            .id("version")
+                            .cursor_pointer()
+                            .hover(|this| this.text_color(paint(self.palette.fg)))
+                            .on_click(cx.listener(|deck, _, window, cx| {
+                                deck.show_notes(crate::notes::RUNNING.to_string(), window, cx);
+                            }))
+                            .child(format!("deck {}", crate::notes::RUNNING)),
+                    )
+                    // A newer stable release, when one is known. The same dot
+                    // the strip uses for *nobody is listening*, in the accent
+                    // rather than muted — by that rule, this is a thing asking
+                    // to be pressed rather than a fact about the room.
+                    // Installed already, by itself: there is nothing left to
+                    // do but open another deck, and the notes say what it is.
+                    .children(crate::update::installed().map(|newer| {
+                        let asked = newer.clone();
+                        div()
+                            .id("installed")
+                            .cursor_pointer()
+                            .on_click(cx.listener(move |deck, _, window, cx| {
+                                deck.show_notes(asked.clone(), window, cx);
+                            }))
+                            .h_flex()
+                            .items_center()
+                            .gap(px(6.))
+                            .text_color(paint(self.palette.accent))
+                            .child(
+                                div()
+                                    .size(px(5.))
+                                    .rounded_full()
+                                    .bg(paint(self.palette.accent)),
+                            )
+                            .child(format!("{newer} next time"))
+                    }))
+                    .children(crate::update::available().map(|newer| {
+                        let asked = newer.clone();
+                        div()
+                            .id("available")
+                            .cursor_pointer()
+                            .on_click(cx.listener(move |deck, _, window, cx| {
+                                deck.show_notes(asked.clone(), window, cx);
+                            }))
+                            .h_flex()
+                            .items_center()
+                            .gap(px(6.))
+                            .text_color(paint(self.palette.accent))
+                            .child(
+                                div()
+                                    .size(px(5.))
+                                    .rounded_full()
+                                    .bg(paint(self.palette.accent)),
+                            )
+                            .child(format!("{newer} available"))
+                    }))
                     // Putting the deck away has to be reachable without
                     // knowing a key. It sits at the quiet end of the strip
                     // rather than as a control in the header: it is a way out,
@@ -5456,6 +5919,7 @@ use crate::pane::SPINE;
 impl Render for DeckView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         self.settle_said_light();
+        let typing = self.typing(window, cx);
         // A page's own view is not deck's to paint, so it is moved here, before
         // anything is drawn: to where the last frame measured its hole, or off
         // the screen if the room is in the middle of moving.
@@ -5775,20 +6239,36 @@ impl Render for DeckView {
             .rounded(px(WINDOW_CORNER))
             .overflow_hidden()
             .track_focus(&self.focus)
-            // Only while nothing is being typed.
+            // Only while nothing is being typed — which is a question about
+            // where the keyboard is, not about whether the box is open.
             //
             // GPUI matches a key against every context up the focus chain, so
             // an ancestor that always claimed "Deck" kept `q` bound to quit
             // even with the caret inside the composer — typing the letter shut
-            // the window and threw the remark away. The deck's keys are only
-            // the deck's keys when the deck has the keyboard.
-            .when(self.composing.is_none(), |this| this.key_context("Deck"))
+            // the window and threw the remark away. So the deck stopped
+            // claiming its keys while a composer existed at all, and that went
+            // too far the other way: click back onto the code with a comment
+            // half written and every key was dead, with nothing to say why.
+            // It read as deck having hung.
+            //
+            // Clicking anywhere outside the box already takes the keyboard out
+            // of it — this root tracks focus, and GPUI hands focus to a tracked
+            // element on mouse down. So the keys come back exactly when the
+            // caret leaves the box, and go away exactly when it returns.
+            //
+            // Nor while the notes are up. They are a card over the deck, and a
+            // key matched up the focus chain would otherwise reach through it:
+            // `s` sent the review, `c` opened a comment under the card.
+            .when(!typing && self.notes.is_none(), |this| {
+                this.key_context("Deck")
+            })
             .on_action(cx.listener(Self::on_next))
             .on_action(cx.listener(Self::on_prev))
             .on_action(cx.listener(Self::on_walk))
             .on_action(cx.listener(Self::on_follow))
             .on_action(cx.listener(Self::on_unlight))
             .on_action(cx.listener(Self::on_close))
+            .on_action(cx.listener(Self::on_leave))
             .on_action(cx.listener(Self::on_comment))
             .on_action(cx.listener(Self::on_rotate))
             .on_action(cx.listener(Self::on_zen))
@@ -5917,6 +6397,7 @@ impl Render for DeckView {
                         .border_color(paint(self.palette.accent)),
                 )
             })
+            .children(self.render_notes(cx))
     }
 }
 
@@ -6117,6 +6598,36 @@ mod tests {
             .filter(|(at, fold)| *at != 1 && !fold.on())
             .count();
         assert_eq!(others_open, 0, "so folding the second is refused");
+    }
+
+    #[test]
+    fn bare_q_cannot_take_a_comment_with_it_and_cmd_q_still_quits() {
+        // `q` is one key with no modifier — the kind pressed by accident — and
+        // with the deck's keys working beside an open comment it would close
+        // the window on half a remark. So it is its own action, which checks.
+        // `cmd-q` is a person meaning to quit, and stays the unconditional one.
+        let action = |key: &str| {
+            bindings()
+                .into_iter()
+                .find(|binding| {
+                    binding
+                        .keystrokes()
+                        .first()
+                        .is_some_and(|stroke| stroke.unparse() == key)
+                })
+                .map(|binding| binding.action().name())
+        };
+        assert_eq!(
+            action("q"),
+            Some("deck::Leave"),
+            "bare q checks for words first"
+        );
+        // `secondary` is ⌘ on a Mac and Ctrl elsewhere, so ask for it the way
+        // this platform spells it — the test runs on Windows too.
+        let quit = gpui_kit::Keystroke::parse("secondary-q")
+            .expect("a keystroke")
+            .unparse();
+        assert_eq!(action(&quit), Some("deck::Close"), "{quit} never refuses");
     }
 
     #[test]
