@@ -23,6 +23,7 @@ mod hook;
 mod icon;
 mod live;
 mod load;
+mod notes;
 mod page;
 mod palette;
 mod pane;
@@ -136,6 +137,7 @@ fn show(decks: Vec<Deck>, opening: &cli::Opening) {
             // Before any window, so an update that is already known is in the
             // foot from the first frame. It returns at once either way.
             update::look(cx);
+            notes::look_back();
             icon::wear_the_mark();
 
             cx.bind_keys(view::bindings());
