@@ -18,6 +18,7 @@ use std::time::Duration;
 
 use deck_core::theme::Palette;
 use gpui_kit::component::{ActiveTheme as _, Icon, IconName, StyledExt as _};
+use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 
 use crate::palette::{current, paint};
@@ -116,6 +117,14 @@ pub struct Pill {
     settled: bool,
     /// The loop watching the deck fill, while there is more coming.
     tailing: Task<()>,
+    /// Whether the bar's keys are live: only once somebody has pressed on it.
+    ///
+    /// Putting a deck away with `h` closes its window and leaves the bar as
+    /// the application's only one — and the application is still in front,
+    /// so the platform hands the bar the keyboard. Whatever the reader typed
+    /// next landed here: a `q` meant for the deck put it away for good. The
+    /// bar is something you reach for, so its keys wait until you have.
+    armed: bool,
 }
 
 impl Pill {
@@ -139,6 +148,7 @@ impl Pill {
             opened: std::time::Instant::now(),
             settled: false,
             tailing: Task::ready(()),
+            armed: false,
         };
         pill.tail(cx);
         pill
@@ -602,7 +612,14 @@ impl Render for Pill {
             .flex()
             .items_center()
             .track_focus(&self.focus)
-            .key_context("Pill")
+            .when(self.armed, |this| this.key_context("Pill"))
+            .on_mouse_down(
+                MouseButton::Left,
+                cx.listener(|pill, _, _window, cx| {
+                    pill.armed = true;
+                    cx.notify();
+                }),
+            )
             .on_action(cx.listener(Self::on_open))
             .on_action(cx.listener(Self::on_later))
             .on_action(cx.listener(Self::on_walk))
