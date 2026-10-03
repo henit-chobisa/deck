@@ -336,12 +336,8 @@ fn fetch(url: &str) -> anyhow::Result<Vec<u8>> {
 /// Twenty-five megabytes behind the word *downloading* is a long silence, and a
 /// silence is indistinguishable from a hang. This reads the body in pieces and
 /// draws how far along it is.
-///
-/// The bar is the mark's own glyph — the lit line deck wears in the corner of
-/// the screen — filled in the accent and unfilled in the dim. Nothing else in
-/// this program draws a box.
 fn carry(url: &str) -> anyhow::Result<Vec<u8>> {
-    use std::io::{Read as _, Write as _};
+    use std::io::{IsTerminal as _, Read as _, Write as _};
 
     let mut body = ureq::get(url)
         .config()
@@ -353,38 +349,67 @@ fn carry(url: &str) -> anyhow::Result<Vec<u8>> {
 
     let whole = body.body().content_length();
     let mut reader = body.body_mut().as_reader();
-    let mut got: Vec<u8> = Vec::with_capacity(
-        usize::try_from(whole.unwrap_or(0))
-            .unwrap_or(0)
-            .min(64 * 1024 * 1024),
-    );
+    let mut got: Vec<u8> =
+        Vec::with_capacity(usize::try_from(whole.unwrap_or(0)).unwrap_or(0).min(LIMIT));
     let mut chunk = [0u8; 64 * 1024];
+
+    // A terminal, not a colour terminal. Somebody with `NO_COLOR` set still
+    // wants to see the download move; gating on colour put the silence back
+    // for exactly them.
+    let live = std::io::stdout().is_terminal();
+    let mut drawn = false;
     // Redrawn on a clock rather than on every chunk: sixty-four kilobytes at a
     // time is hundreds of writes a second, and a bar nobody can read flickering
     // is worse than no bar.
     let mut last = std::time::Instant::now() - std::time::Duration::from_secs(1);
 
+    // Whatever goes wrong mid-download, the next thing printed starts on its
+    // own line. Without this the error was written onto the end of the bar.
+    let off_the_bar = |drawn: bool| {
+        if drawn {
+            println!();
+        }
+    };
+
     loop {
-        let read = reader
-            .read(&mut chunk)
-            .with_context(|| format!("the download of {url} stopped early"))?;
+        let read = match reader.read(&mut chunk) {
+            Ok(read) => read,
+            Err(err) => {
+                off_the_bar(drawn);
+                return Err(err).with_context(|| format!("the download of {url} stopped early"));
+            }
+        };
         if read == 0 {
             break;
         }
+        // The cap the plain fetch has always had. A response that keeps coming
+        // is not a deck, and reading it to the end is how memory runs out.
+        if got.len() + read > LIMIT {
+            off_the_bar(drawn);
+            bail!("the download of {url} is larger than any deck should be, so it is not going in");
+        }
         got.extend_from_slice(&chunk[..read]);
-        if crate::setup::ink() && last.elapsed() >= std::time::Duration::from_millis(80) {
+        if live && last.elapsed() >= std::time::Duration::from_millis(80) {
             draw(got.len() as u64, whole);
+            drawn = true;
             last = std::time::Instant::now();
         }
     }
 
-    if crate::setup::ink() {
+    if live {
         draw(got.len() as u64, whole);
         println!();
     }
     let _ = std::io::stdout().flush();
     Ok(got)
 }
+
+/// The most a download may be. Ten times the binary, and nowhere near a
+/// machine's memory.
+const LIMIT: usize = 256 * 1024 * 1024;
+
+/// How many cells the bar has.
+const WIDE: usize = 28;
 
 /// One frame of the bar, over the top of the last one.
 fn draw(got: u64, whole: Option<u64>) {
@@ -394,31 +419,39 @@ fn draw(got: u64, whole: Option<u64>) {
     let _ = std::io::stdout().flush();
 }
 
-/// What that frame says.
+/// How many of the cells are filled, or `None` with nothing to measure against.
 ///
-/// Separate from printing it so it can be tested. A bar only draws to a
-/// terminal, which means it is invisible to everything that could otherwise
-/// check it — including whoever wrote it.
-fn frame(got: u64, whole: Option<u64>) -> String {
-    const WIDE: usize = 28;
+/// On its own so it can be asserted directly. Counting glyphs in the drawn
+/// frame proved nothing while filled and empty were the same glyph in two
+/// colours, and a colourless test cannot see colour.
+fn filled(got: u64, whole: Option<u64>) -> Option<usize> {
+    let whole = whole.filter(|whole| *whole > 0)?;
+    // Clamped, because a body longer than its promised length would otherwise
+    // ask for more cells than the track has and panic on the subtraction.
+    let along = (got as f64 / whole as f64).clamp(0., 1.);
+    #[expect(
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss,
+        reason = "a fraction of the track, clamped to it"
+    )]
+    Some((along * WIDE as f64).round() as usize)
+}
 
+/// What a frame says.
+///
+/// Filled and empty are different glyphs, not one glyph in two colours. With
+/// `NO_COLOR` set — or piped, or read by a screen reader — colour is all that
+/// would have told them apart, and a bar whose cells all look alike shows no
+/// progress at all.
+fn frame(got: u64, whole: Option<u64>) -> String {
     let mb = |bytes: u64| format!("{:.1} MB", bytes as f64 / 1_048_576.0);
-    match whole {
-        Some(whole) if whole > 0 => {
-            let along = (got as f64 / whole as f64).clamp(0., 1.);
-            #[expect(
-                clippy::cast_possible_truncation,
-                clippy::cast_sign_loss,
-                reason = "a fraction of 28, clamped"
-            )]
-            let filled = (along * WIDE as f64).round() as usize;
-            format!(
-                "{}{}  {}",
-                accent(&"▁".repeat(filled)),
-                dim(&"▁".repeat(WIDE - filled)),
-                dim(&format!("{} of {}", mb(got), mb(whole)))
-            )
-        }
+    match (filled(got, whole), whole) {
+        (Some(cells), Some(whole)) => format!(
+            "{}{}  {}",
+            accent(&"━".repeat(cells)),
+            dim(&"─".repeat(WIDE - cells)),
+            dim(&format!("{} of {}", mb(got), mb(whole)))
+        ),
         // No length to measure against, so no bar to draw — say what has
         // arrived and leave it at that.
         _ => dim(&mb(got)),
@@ -564,43 +597,43 @@ mod tests {
 
     #[test]
     fn the_bar_fills_as_the_bytes_arrive() {
-        // It only draws to a terminal, so nothing that runs in CI — or that
-        // captures output, which is everything I check with — can see it. The
-        // shape is asserted here instead.
+        // Raised in review: the first version of this test counted 28 glyphs
+        // after stripping the colour that told filled from empty, so a broken
+        // fill would have passed. The count is asserted directly now.
         let whole = 28 * 1_048_576;
+        assert_eq!(filled(0, Some(whole)), Some(0), "nothing yet");
+        assert_eq!(filled(whole / 2, Some(whole)), Some(14), "half");
+        assert_eq!(filled(whole, Some(whole)), Some(28), "all of it");
 
-        let empty = bare(0, Some(whole));
-        assert_eq!(
-            empty.matches('▁').count(),
-            28,
-            "the track is always 28 wide"
-        );
-        assert!(empty.contains("0.0 MB of 28.0 MB"));
-
+        // And the drawn frame carries that split in its glyphs, so it reads
+        // with the colour gone — which is the point of using two glyphs.
         let half = bare(whole / 2, Some(whole));
-        assert_eq!(half.matches('▁').count(), 28, "and stays 28 when half full");
+        assert_eq!(half.matches('━').count(), 14, "filled: {half:?}");
+        assert_eq!(half.matches('─').count(), 14, "empty: {half:?}");
         assert!(half.contains("14.0 MB of 28.0 MB"));
+    }
 
-        let full = bare(whole, Some(whole));
-        assert!(full.contains("28.0 MB of 28.0 MB"));
+    #[test]
+    fn with_nothing_to_measure_against_there_is_no_bar() {
+        assert_eq!(filled(1_048_576, None), None, "no length sent");
+        assert_eq!(filled(1_048_576, Some(0)), None, "a length of nothing");
 
-        // A server that sends no length leaves nothing to measure against, so
-        // there is no bar to draw and it says what arrived instead.
         let unknown = bare(1_048_576, None);
         assert!(
-            !unknown.contains('▁'),
-            "no track without a total: {unknown:?}"
+            !unknown.contains('━') && !unknown.contains('─'),
+            "{unknown:?}"
         );
         assert_eq!(unknown.trim(), "1.0 MB");
     }
 
     #[test]
     fn a_download_longer_than_promised_does_not_overflow_the_bar() {
-        // `clamp` rather than trust: a content-length that undersells the body
-        // would otherwise ask for a repeat count past the end of the track and
-        // panic on the subtraction.
+        // Without the clamp this asks for 280 filled cells of a 28 cell track
+        // and panics on the subtraction for the empty ones.
+        assert_eq!(filled(100, Some(10)), Some(28));
         let line = bare(100, Some(10));
-        assert_eq!(line.matches('▁').count(), 28);
+        assert_eq!(line.matches('━').count(), 28);
+        assert_eq!(line.matches('─').count(), 0);
     }
 
     #[test]
