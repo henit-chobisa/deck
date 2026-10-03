@@ -28,7 +28,7 @@ gpui_kit::actions!(
     deck,
     [
         NextGroup, PrevGroup, Comment, Rotate, Walk, Follow, Hide, Submit, Discard, ZoomIn,
-        ZoomOut, ZoomReset, Zen, Close, Unlight
+        ZoomOut, ZoomReset, Zen, Close, Leave, Unlight
     ]
 );
 
@@ -68,7 +68,12 @@ pub fn bindings() -> Vec<KeyBinding> {
         KeyBinding::new("z", Zen, Some("Deck")),
         KeyBinding::new("h", Hide, Some("Deck")),
         KeyBinding::new("s", Submit, Some("Deck")),
-        KeyBinding::new("q", Close, Some("Deck")),
+        // Bare `q` is its own action, not `Close`. It is one key with no
+        // modifier, which is the kind that gets pressed by accident, and once
+        // the deck's keys work beside an open comment it could take half a
+        // remark with it. `cmd-q` stays `Close`: somebody who holds a modifier
+        // to quit means it, and refusing them is worse than any comment.
+        KeyBinding::new("q", Leave, Some("Deck")),
         // Escape is bound in the composer too, for discarding a remark. That
         // context is deeper than this one, so while somebody is writing it
         // takes the key and this never runs.
@@ -2227,6 +2232,24 @@ impl DeckView {
         cx.notify();
     }
 
+    /// `q`: close, unless that would throw away words somebody wrote.
+    ///
+    /// With a comment open and the caret elsewhere, `q` would otherwise close
+    /// the window with the remark unsaved — and the remark is the one thing in
+    /// the window that cannot be got back. So it goes back to the box instead,
+    /// which also shows why nothing closed. An open box with nothing in it
+    /// holds nothing to lose, and closes like any other.
+    fn on_leave(&mut self, _: &Leave, window: &mut Window, cx: &mut Context<Self>) {
+        let unsaved = self
+            .composing
+            .as_ref()
+            .is_some_and(|(_, state, _)| !state.read(cx).value().trim().is_empty());
+        if unsaved && self.back_to_the_box(window, cx) {
+            return;
+        }
+        self.on_close(&Close, window, cx);
+    }
+
     fn on_close(&mut self, _: &Close, window: &mut Window, cx: &mut Context<Self>) {
         // The platform's should-close hook does not run when the window is
         // taken away from inside, so the shape is written here.
@@ -2790,8 +2813,28 @@ impl DeckView {
         cx.notify();
     }
 
+    /// Whether the caret is in the comment box right now.
+    fn typing(&self, window: &Window, cx: &App) -> bool {
+        self.composing
+            .as_ref()
+            .is_some_and(|(_, state, _)| state.read(cx).focus_handle(cx).is_focused(window))
+    }
+
+    /// Put the caret back in the open comment box. Says whether there was one.
+    fn back_to_the_box(&self, window: &mut Window, cx: &mut Context<Self>) -> bool {
+        let Some((_, state, _)) = self.composing.as_ref() else {
+            return false;
+        };
+        state.update(cx, |state, cx| state.focus(window, cx));
+        cx.notify();
+        true
+    }
+
     fn on_comment(&mut self, _: &Comment, window: &mut Window, cx: &mut Context<Self>) {
-        if self.composing.is_some() {
+        // With a comment already open, `c` is the way back into it. It used to
+        // do nothing, which left the keyboard somewhere else and no key that
+        // would bring it back to the words.
+        if self.back_to_the_box(window, cx) {
             return;
         }
         let about = if self.picked_said.is_some() || self.panes.is_empty() {
@@ -5417,6 +5460,7 @@ use crate::pane::SPINE;
 impl Render for DeckView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         self.settle_said_light();
+        let typing = self.typing(window, cx);
         // A page's own view is not deck's to paint, so it is moved here, before
         // anything is drawn: to where the last frame measured its hole, or off
         // the screen if the room is in the middle of moving.
@@ -5736,20 +5780,30 @@ impl Render for DeckView {
             .rounded(px(WINDOW_CORNER))
             .overflow_hidden()
             .track_focus(&self.focus)
-            // Only while nothing is being typed.
+            // Only while nothing is being typed — which is a question about
+            // where the keyboard is, not about whether the box is open.
             //
             // GPUI matches a key against every context up the focus chain, so
             // an ancestor that always claimed "Deck" kept `q` bound to quit
             // even with the caret inside the composer — typing the letter shut
-            // the window and threw the remark away. The deck's keys are only
-            // the deck's keys when the deck has the keyboard.
-            .when(self.composing.is_none(), |this| this.key_context("Deck"))
+            // the window and threw the remark away. So the deck stopped
+            // claiming its keys while a composer existed at all, and that went
+            // too far the other way: click back onto the code with a comment
+            // half written and every key was dead, with nothing to say why.
+            // It read as deck having hung.
+            //
+            // Clicking anywhere outside the box already takes the keyboard out
+            // of it — this root tracks focus, and GPUI hands focus to a tracked
+            // element on mouse down. So the keys come back exactly when the
+            // caret leaves the box, and go away exactly when it returns.
+            .when(!typing, |this| this.key_context("Deck"))
             .on_action(cx.listener(Self::on_next))
             .on_action(cx.listener(Self::on_prev))
             .on_action(cx.listener(Self::on_walk))
             .on_action(cx.listener(Self::on_follow))
             .on_action(cx.listener(Self::on_unlight))
             .on_action(cx.listener(Self::on_close))
+            .on_action(cx.listener(Self::on_leave))
             .on_action(cx.listener(Self::on_comment))
             .on_action(cx.listener(Self::on_rotate))
             .on_action(cx.listener(Self::on_zen))
@@ -6078,6 +6132,31 @@ mod tests {
             .filter(|(at, fold)| *at != 1 && !fold.on())
             .count();
         assert_eq!(others_open, 0, "so folding the second is refused");
+    }
+
+    #[test]
+    fn bare_q_cannot_take_a_comment_with_it_and_cmd_q_still_quits() {
+        // `q` is one key with no modifier — the kind pressed by accident — and
+        // with the deck's keys working beside an open comment it would close
+        // the window on half a remark. So it is its own action, which checks.
+        // `cmd-q` is a person meaning to quit, and stays the unconditional one.
+        let action = |key: &str| {
+            bindings()
+                .into_iter()
+                .find(|binding| {
+                    binding
+                        .keystrokes()
+                        .first()
+                        .is_some_and(|stroke| stroke.unparse() == key)
+                })
+                .map(|binding| binding.action().name())
+        };
+        assert_eq!(
+            action("q"),
+            Some("deck::Leave"),
+            "bare q checks for words first"
+        );
+        assert_eq!(action("cmd-q"), Some("deck::Close"), "cmd-q never refuses");
     }
 
     #[test]
