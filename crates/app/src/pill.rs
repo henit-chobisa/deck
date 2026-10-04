@@ -28,6 +28,11 @@ use crate::palette::{current, paint};
 // to a deck the reader had not meant to touch. After `h` the bar is the
 // application's only window and the platform hands it the keyboard, so a
 // `q` aimed at the deck dismissed it for good.
+//
+// The window-wide bindings in `view` — quit, zoom — do match here, but their
+// handlers live on the deck window's own elements, so in this window they
+// find nothing to run. An application-level handler for one of them would
+// change that; add one and the bar types again.
 
 /// How big the window holding the bar is.
 ///
@@ -200,6 +205,19 @@ impl Pill {
             window.remove_window();
         } else {
             self.at = self.at.min(crate::queue::len(cx) - 1);
+            cx.notify();
+        }
+    }
+
+    /// Go to the next deck waiting, wrapping.
+    ///
+    /// Wrapping, unlike walking a deck's groups: a queue has no story in it and
+    /// no beginning to have lost your place in, so three decks that stopped
+    /// dead at the third would need a second control to get back.
+    fn next(&mut self, cx: &mut Context<Self>) {
+        let pending = crate::queue::len(cx);
+        if pending > 0 {
+            self.at = (self.at + 1) % pending;
             cx.notify();
         }
     }
@@ -519,16 +537,24 @@ impl Render for Pill {
         // title, where the reader's eye already is, because *2 of 3* changes
         // what the title means: it stops being the deck and becomes the first
         // of several.
+        // Pressed, it goes to the next deck waiting. With no keys, this is
+        // the only way to see the others without opening or dismissing the
+        // one in front — and dismissing is for good.
         let queued = (pending > 1).then(|| {
             div()
+                .id("pill-next")
                 .flex_none()
                 .px(px(6.))
                 .py(px(2.))
                 .rounded_full()
+                .cursor_pointer()
                 .bg(paint(palette.focus))
+                .hover(|style| style.bg(paint(palette.focus.mix(palette.accent, 0.25))))
                 .font_family(cx.theme().mono_font_family.clone())
                 .text_size(px(10.))
                 .text_color(paint(palette.accent))
+                .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                .on_click(cx.listener(|pill, _, _window, cx| pill.next(cx)))
                 .child(format!("{} of {pending}", self.at + 1))
         });
 
