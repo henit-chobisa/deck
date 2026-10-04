@@ -211,6 +211,10 @@ impl Pill {
 
     /// Go to the next deck waiting, wrapping.
     ///
+    /// A deck arriving, or one being put away with `h`, still brings the bar
+    /// back to the newest (`show_last`) — the newest is what the bar is for,
+    /// and somebody stepping through the queue can step again.
+    ///
     /// Wrapping, unlike walking a deck's groups: a queue has no story in it and
     /// no beginning to have lost your place in, so three decks that stopped
     /// dead at the third would need a second control to get back.
@@ -527,8 +531,9 @@ impl Render for Pill {
             .opacity(tail)
             .text_color(paint(palette.muted.mix(palette.bg, 0.35)))
             .hover(|this| this.bg(paint(palette.wash)).text_color(paint(palette.fg)))
-            // Stopped here, or the bar underneath would take the same click
-            // and open the very thing being put away.
+            // The press stops here. Nothing under it acts on a click any
+            // more — the bar itself opens nothing — and this keeps it that
+            // way if something ever does.
             .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
             .on_click(cx.listener(|pill, _, window, cx| pill.later(window, cx)))
             .child(Icon::new(IconName::Close).size(px(12.)));
@@ -553,7 +558,6 @@ impl Render for Pill {
                 .font_family(cx.theme().mono_font_family.clone())
                 .text_size(px(10.))
                 .text_color(paint(palette.accent))
-                .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
                 .on_click(cx.listener(|pill, _, _window, cx| pill.next(cx)))
                 .child(format!("{} of {pending}", self.at + 1))
         });
