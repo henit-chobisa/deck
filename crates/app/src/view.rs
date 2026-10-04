@@ -4305,9 +4305,12 @@ impl DeckView {
         self.rail_width = Some(wide);
         // The placeholder is one line that never wraps, so it is told how
         // much room it has: dragged narrow, the long one was cut mid-word.
+        // Only when it changes: this runs on every move of the drag.
         if let Some((about, state, _)) = self.composing.as_ref() {
             let asking = Self::asking(about, wide);
-            state.update(cx, |state, cx| state.set_placeholder(asking, window, cx));
+            if asking != Self::asking(about, from) {
+                state.update(cx, |state, cx| state.set_placeholder(asking, window, cx));
+            }
         }
         cx.notify();
     }
@@ -4854,8 +4857,8 @@ impl DeckView {
                 .flex_none()
                 .key_context("DeckComposer")
                 .on_action(cx.listener(Self::on_add_to_review))
-                // Sized for whichever it is in. The panel can be two hundred
-                // points wide; window padding inside it leaves no room to type.
+                // Sized for whichever it is in. The rail can be dragged down to
+                // 150 points; window padding inside it leaves no room to type.
                 .pt(px(9.))
                 .pb(px(2.))
                 // The handlers live here, not only on the root. An action
