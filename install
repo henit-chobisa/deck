@@ -1,0 +1,444 @@
+#!/bin/sh
+echo `# <#` >/dev/null
+# ─────────────────────────────────────────────────────────────────────────────
+# deck, installed by one command.
+#
+#   macOS, Linux:   curl -fsSL https://raw.githubusercontent.com/henit-chobisa/deck/main/install | sh
+#   Windows:        irm https://raw.githubusercontent.com/henit-chobisa/deck/main/install | iex
+#
+# One file, read by two shells. To `sh` the second line is an `echo` of nothing
+# and everything down to `exit` is this script. To PowerShell the same line
+# opens a block comment, `<#`, that runs until the `#>` below the `exit`, and
+# what follows it is the Windows installer. Neither shell ever reads the
+# other's half.
+#
+# Either way: the newest deck built for this machine is downloaded from the
+# GitHub release, checked against the checksum published beside it, put on
+# your PATH, and then `deck setup` runs. Nothing is compiled and nothing else
+# is installed.
+#
+#   DECK_VERSION=v0.1.3   install that release rather than the newest
+#   DECK_INSTALL=<dir>    where to put it (default ~/.local/bin)
+#   DECK_NO_SETUP=1       stop before `deck setup`
+#   NO_COLOR=1            plain text
+# ─────────────────────────────────────────────────────────────────────────────
+
+set -u
+
+REPO="henit-chobisa/deck"
+
+# Colour only for a person: a terminal, and nobody asking for none.
+if [ -t 1 ] && [ -z "${NO_COLOR:-}" ]; then
+  O="$(printf '\033[38;5;208m')" # deck's orange
+  D="$(printf '\033[2m')"
+  B="$(printf '\033[1m')"
+  R="$(printf '\033[31m')"
+  X="$(printf '\033[0m')"
+else
+  O="" D="" B="" R="" X=""
+fi
+
+say() { printf '  %s◆%s %s\n' "$O" "$X" "$*"; }
+note() { printf '    %s%s%s\n' "$D" "$*" "$X"; }
+die() {
+  printf '\n  %s✕ %s%s\n' "$R" "$*" "$X" >&2
+  printf '    %sNothing was changed. Ask at https://github.com/%s/issues%s\n\n' "$D" "$REPO" "$X" >&2
+  exit 1
+}
+
+banner() {
+  printf '\n%s' "$O"
+  cat <<'ART'
+  ██████╗ ███████╗ ██████╗██╗  ██╗
+  ██╔══██╗██╔════╝██╔════╝██║ ██╔╝
+  ██║  ██║█████╗  ██║     █████╔╝
+  ██║  ██║██╔══╝  ██║     ██╔═██╗
+  ██████╔╝███████╗╚██████╗██║  ██╗
+  ╚═════╝ ╚══════╝ ╚═════╝╚═╝  ╚═╝
+ART
+  printf '%s\n  %sbridge the gap — argue, decide, lock.%s\n\n' "$X" "$B" "$X"
+}
+
+fetch() { # url → stdout
+  if command -v curl >/dev/null 2>&1; then
+    curl -fsSL -H "User-Agent: deck-installer" "$1"
+  elif command -v wget >/dev/null 2>&1; then
+    wget -qO- --header="User-Agent: deck-installer" "$1"
+  else
+    die "this needs curl or wget, and found neither"
+  fi
+}
+
+download() { # url file — with a bar, for the one download big enough to want one
+  if command -v curl >/dev/null 2>&1; then
+    if [ -t 2 ]; then curl -fL --progress-bar -o "$2" "$1"; else curl -fsSL -o "$2" "$1"; fi
+  else
+    wget -q --show-progress -O "$2" "$1" 2>/dev/null || wget -qO "$2" "$1"
+  fi
+}
+
+sha256() {
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "$1" | cut -d' ' -f1
+  else
+    shasum -a 256 "$1" | cut -d' ' -f1
+  fi
+}
+
+# Which build runs here, as release assets name it.
+platform() {
+  os="$(uname -s)"
+  arch="$(uname -m)"
+  case "$os" in
+    Darwin)
+      # One binary for both chips.
+      PLATFORM="macos-universal"
+      case "$arch" in arm64) WHAT="macOS · Apple silicon" ;; *) WHAT="macOS · Intel" ;; esac
+      ;;
+    Linux)
+      case "$arch" in
+        x86_64 | amd64) PLATFORM="linux-x86_64" ;;
+        aarch64 | arm64) PLATFORM="linux-aarch64" ;;
+        *) die "there is no deck built for Linux on $arch yet" ;;
+      esac
+      WHAT="Linux · $arch"
+      ;;
+    MINGW* | MSYS* | CYGWIN*)
+      die "on Windows, run this in PowerShell instead:  irm https://raw.githubusercontent.com/$REPO/main/install | iex"
+      ;;
+    *) die "there is no deck built for $os yet" ;;
+  esac
+}
+
+# The release to install: the one asked for, or the newest stable release
+# that carries a build for this machine — and failing that, the newest
+# candidate that does. Read without jq, which not every machine has: the
+# fields come one per line once the JSON is split at its commas, and a
+# release's `tag_name` and `prerelease` always come before its assets.
+choose() {
+  if [ -n "${DECK_VERSION:-}" ]; then
+    tag="$DECK_VERSION"
+    case "$tag" in v*) ;; *) tag="v$tag" ;; esac
+    URL="https://github.com/$REPO/releases/download/$tag/deck-$tag-$PLATFORM.tar.gz"
+    TAG="$tag"
+    return
+  fi
+  json="$(fetch "https://api.github.com/repos/$REPO/releases?per_page=30")" ||
+    die "GitHub did not answer. Are you online?"
+  found="$(printf '%s' "$json" | tr ',' '\n' | awk -v want="-$PLATFORM.tar.gz\"" '
+    /"tag_name":/ { tag = $0; sub(/.*"tag_name": *"/, "", tag); sub(/".*/, "", tag) }
+    /"prerelease":/ { pre = ($0 ~ /true/) }
+    /"browser_download_url":/ && index($0, want) {
+      url = $0; sub(/.*"browser_download_url": *"/, "", url); sub(/".*/, "", url)
+      if (!pre && stable == "") stable = tag " " url
+      if (first == "") first = tag " " url
+    }
+    END { if (stable != "") print stable; else print first }
+  ')"
+  [ -n "$found" ] || die "no release carries a deck for $WHAT yet"
+  TAG="${found%% *}"
+  URL="${found#* }"
+}
+
+# Where it goes, and whether the shell will find it there.
+place() {
+  DIR="${DECK_INSTALL:-$HOME/.local/bin}"
+  mkdir -p "$DIR" || die "could not make $DIR"
+}
+
+on_path() {
+  case ":$PATH:" in *":$DIR:"*) return 0 ;; esac
+  # Said once, in the file this shell reads at start, and never twice.
+  shell="$(basename "${SHELL:-sh}")"
+  case "$shell" in
+    zsh) rc="$HOME/.zshrc"; line="export PATH=\"$DIR:\$PATH\"" ;;
+    bash)
+      if [ "$(uname -s)" = Darwin ]; then rc="$HOME/.bash_profile"; else rc="$HOME/.bashrc"; fi
+      line="export PATH=\"$DIR:\$PATH\""
+      ;;
+    fish) rc="$HOME/.config/fish/config.fish"; line="fish_add_path \"$DIR\"" ;;
+    *) rc="$HOME/.profile"; line="export PATH=\"$DIR:\$PATH\"" ;;
+  esac
+  mkdir -p "$(dirname "$rc")"
+  if ! grep -qsF "$line" "$rc"; then
+    printf '\n# deck\n%s\n' "$line" >>"$rc"
+  fi
+  ADDED="$rc"
+}
+
+# Anything a Linux deck needs from the system that is not there. Only the
+# window needs these — the commands an agent runs work without them — so a
+# missing one is said, with how to get it, rather than refused.
+libraries() {
+  [ "$(uname -s)" = Linux ] || return 0
+  command -v ldd >/dev/null 2>&1 || return 0
+  missing="$(ldd "$1" 2>/dev/null | awk '/not found/ { print $1 }')"
+  [ -n "$missing" ] || return 0
+  printf '\n'
+  say "${B}deck's window needs a few libraries this system does not have:${X}"
+  for lib in $missing; do note "$lib"; done
+  if command -v apt-get >/dev/null 2>&1; then
+    note "sudo apt-get install libwebkit2gtk-4.1-0 libxkbcommon-x11-0 libvulkan1"
+  elif command -v dnf >/dev/null 2>&1; then
+    note "sudo dnf install webkit2gtk4.1 libxkbcommon-x11 vulkan-loader"
+  elif command -v pacman >/dev/null 2>&1; then
+    note "sudo pacman -S webkit2gtk-4.1 libxkbcommon-x11 vulkan-icd-loader"
+  fi
+}
+
+# Whether the program at $1 is this deck, and not something else that happens
+# to be called deck — Kong's decK is one. It has to say its name the way this
+# one does, and describe itself the way this one does.
+ours() {
+  [ -x "$1" ] || return 1
+  "$1" --version 2>/dev/null | grep -q '^deck [0-9]' || return 1
+  "$1" --help 2>/dev/null | grep -q 'Present code for review'
+}
+
+# Every deck this machine already had, taken away — now that the new one is
+# in place and has been seen to start, so a failed download never leaves a
+# machine with less than it had. Homebrew's goes through Homebrew, cargo's
+# through cargo, and a binary somebody was handed is simply removed, with the
+# copy `deck upgrade` keeps beside it. What deck keeps in ~/.deck — your
+# settings, your decks, your reviews — is not touched.
+previous() {
+  seen=" "
+  old_ifs="$IFS"
+  IFS=:
+  # shellcheck disable=SC2086
+  set -- $PATH /usr/local/bin /opt/homebrew/bin "$HOME/bin" "$HOME/.cargo/bin"
+  IFS="$old_ifs"
+  for d in "$@"; do
+    [ -n "$d" ] || continue
+    f="$d/deck"
+    [ "$f" = "$DIR/deck" ] && continue
+    case "$seen" in *" $f "*) continue ;; esac
+    seen="$seen$f "
+    ours "$f" || continue
+
+    target="$f"
+    if [ -L "$f" ]; then target="$(readlink "$f")"; fi
+    case "$f $target" in
+      *Cellar/deck/* | */homebrew/* | */linuxbrew/*)
+        if command -v brew >/dev/null 2>&1; then
+          brew uninstall --force henit-chobisa/deck/deck >/dev/null 2>&1 ||
+            brew uninstall --force deck >/dev/null 2>&1
+          brew untap henit-chobisa/deck >/dev/null 2>&1
+        fi
+        if [ -e "$f" ]; then
+          note "Homebrew's deck is still at $f — brew uninstall deck"
+        else
+          say "removed  ${D}Homebrew's deck, and its tap${X}"
+        fi
+        continue
+        ;;
+      */.cargo/bin/*)
+        if command -v cargo >/dev/null 2>&1; then
+          cargo uninstall deck-app >/dev/null 2>&1
+        fi
+        ;;
+    esac
+    if [ -e "$f" ]; then
+      rm -f "$f" "$d/deck.prev" 2>/dev/null
+    fi
+    if [ -e "$f" ]; then
+      note "an older deck at $f could not be removed — sudo rm $f"
+    else
+      say "removed  ${D}an older deck at $f${X}"
+    fi
+  done
+}
+
+main() {
+  banner
+  platform
+  say "$WHAT"
+
+  choose
+  say "deck ${B}${TAG#v}${X}"
+
+  work="$(mktemp -d 2>/dev/null || mktemp -d -t deck)" || die "could not make a place to work"
+  trap 'rm -rf "$work"' EXIT INT TERM
+
+  download "$URL" "$work/deck.tar.gz" || die "the download did not finish"
+  want="$(fetch "$URL.sha256" | cut -d' ' -f1)" || die "the checksum could not be fetched, so the download cannot be trusted"
+  got="$(sha256 "$work/deck.tar.gz")"
+  [ -n "$want" ] && [ "$want" = "$got" ] || die "the download does not match its checksum, so it is not going in"
+  say "checked  ${D}sha256 ${got%"${got#????????????}"}…${X}"
+
+  tar -xzf "$work/deck.tar.gz" -C "$work" || die "the download would not unpack"
+  [ -f "$work/deck" ] || die "the download held no deck"
+  chmod +x "$work/deck"
+  # Apple silicon runs nothing unsigned, and unpacking can drop the signature.
+  if [ "$(uname -s)" = Darwin ] && command -v codesign >/dev/null 2>&1; then
+    codesign --force --sign - "$work/deck" 2>/dev/null
+  fi
+  "$work/deck" --version >/dev/null 2>&1 || die "the new deck would not start on this machine"
+
+  place
+  # Beside it first and then over it in one rename, so a deck already open
+  # keeps running and the old one is never half replaced.
+  cp "$work/deck" "$DIR/.deck.new" && mv -f "$DIR/.deck.new" "$DIR/deck" || die "could not write to $DIR"
+  say "installed  ${D}$DIR/deck${X}"
+
+  ADDED=""
+  on_path
+  if [ -n "$ADDED" ]; then
+    note "added $DIR to your PATH in $ADDED — new terminals will find it"
+  fi
+
+  previous
+
+  libraries "$DIR/deck"
+
+  if [ -n "${DECK_NO_SETUP:-}" ]; then
+    printf '\n  Run %sdeck setup%s when you are ready.\n\n' "$B" "$X"
+    return
+  fi
+  # The script itself is arriving on standard input, so setup's questions
+  # are asked at the terminal instead.
+  if ! (exec </dev/tty) 2>/dev/null; then
+    printf '\n  No terminal to ask in. Run %sdeck setup%s when you are.\n\n' "$B" "$X"
+    return
+  fi
+  printf '\n  %sNow, how deck looks — and telling your agents it exists.%s\n\n' "$B" "$X"
+  "$DIR/deck" setup </dev/tty
+}
+
+main "$@"
+exit
+#> > $null
+
+# ─────────────────────────────────────────────────────────────────────────────
+# The Windows half. Run by `irm … | iex`, so it never says `exit` — that would
+# close the reader's PowerShell — and keeps its variables to itself.
+# ─────────────────────────────────────────────────────────────────────────────
+& {
+  $ErrorActionPreference = 'Stop'
+  $ProgressPreference = 'SilentlyContinue' # Windows PowerShell's bar is slower than the download
+  [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+  $repo = 'henit-chobisa/deck'
+
+  function Say($text) { Write-Host '  ◆ ' -ForegroundColor DarkYellow -NoNewline; Write-Host $text }
+  function Note($text) { Write-Host "    $text" -ForegroundColor DarkGray }
+  function Fail($text) {
+    Write-Host ''
+    Write-Host "  ✕ $text" -ForegroundColor Red
+    Write-Host "    Nothing was changed. Ask at https://github.com/$repo/issues" -ForegroundColor DarkGray
+    Write-Host ''
+  }
+
+  Write-Host ''
+  @(
+    '  ██████╗ ███████╗ ██████╗██╗  ██╗'
+    '  ██╔══██╗██╔════╝██╔════╝██║ ██╔╝'
+    '  ██║  ██║█████╗  ██║     █████╔╝'
+    '  ██║  ██║██╔══╝  ██║     ██╔═██╗'
+    '  ██████╔╝███████╗╚██████╗██║  ██╗'
+    '  ╚═════╝ ╚══════╝ ╚═════╝╚═╝  ╚═╝'
+  ) | ForEach-Object { Write-Host $_ -ForegroundColor DarkYellow }
+  Write-Host ''
+  Write-Host '  bridge the gap — argue, decide, lock.' -ForegroundColor White
+  Write-Host ''
+
+  $arch = if ($env:PROCESSOR_ARCHITECTURE -eq 'ARM64' -or $env:PROCESSOR_ARCHITEW6432 -eq 'ARM64') { 'aarch64' } else { 'x86_64' }
+  $platform = "windows-$arch"
+  Say "Windows · $arch"
+
+  # The newest stable release with a build for this machine, else the newest
+  # candidate with one — the same rule as the other half.
+  try {
+    if ($env:DECK_VERSION) {
+      $tag = if ($env:DECK_VERSION.StartsWith('v')) { $env:DECK_VERSION } else { "v$($env:DECK_VERSION)" }
+      $url = "https://github.com/$repo/releases/download/$tag/deck-$tag-$platform.tar.gz"
+    } else {
+      $releases = Invoke-RestMethod "https://api.github.com/repos/$repo/releases?per_page=30" -Headers @{ 'User-Agent' = 'deck-installer' }
+      $with = @($releases | Where-Object { $_.assets | Where-Object { $_.name -like "*-$platform.tar.gz" } })
+      $pick = @($with | Where-Object { -not $_.prerelease }) + $with | Select-Object -First 1
+      if (-not $pick) { Fail "no release carries a deck for Windows on $arch yet"; return }
+      $tag = $pick.tag_name
+      $url = ($pick.assets | Where-Object { $_.name -like "*-$platform.tar.gz" } | Select-Object -First 1).browser_download_url
+    }
+  } catch { Fail 'GitHub did not answer. Are you online?'; return }
+  Say "deck $($tag.TrimStart('v'))"
+
+  $work = Join-Path ([IO.Path]::GetTempPath()) ("deck-" + [Guid]::NewGuid().ToString('N'))
+  New-Item -ItemType Directory -Path $work | Out-Null
+  try {
+    $archive = Join-Path $work 'deck.tar.gz'
+    try { Invoke-WebRequest $url -OutFile $archive -UseBasicParsing } catch { Fail 'the download did not finish'; return }
+    try {
+      $sums = Invoke-WebRequest "$url.sha256" -UseBasicParsing
+      $want = ([Text.Encoding]::ASCII.GetString($sums.Content)).Split(' ')[0].Trim().ToLower()
+    } catch { Fail 'the checksum could not be fetched, so the download cannot be trusted'; return }
+    $got = (Get-FileHash $archive -Algorithm SHA256).Hash.ToLower()
+    if ($want -ne $got) { Fail 'the download does not match its checksum, so it is not going in'; return }
+    Say "checked  sha256 $($got.Substring(0, 12))…"
+
+    tar -xzf $archive -C $work
+    $fresh = Join-Path $work 'deck.exe'
+    if (-not (Test-Path $fresh)) { Fail 'the download held no deck'; return }
+    & $fresh --version *> $null
+    if ($LASTEXITCODE -ne 0) { Fail 'the new deck would not start on this machine'; return }
+
+    $dir = if ($env:DECK_INSTALL) { $env:DECK_INSTALL } else { Join-Path $env:LOCALAPPDATA 'Programs\deck' }
+    New-Item -ItemType Directory -Force -Path $dir | Out-Null
+    $exe = Join-Path $dir 'deck.exe'
+    # A deck that is open cannot be overwritten on Windows, but it can be
+    # renamed out of the way while it runs.
+    if (Test-Path $exe) {
+      Remove-Item "$exe.old" -Force -ErrorAction SilentlyContinue
+      Rename-Item $exe 'deck.exe.old' -Force
+    }
+    Move-Item $fresh $exe -Force
+    Say "installed  $exe"
+
+    # Every deck this machine already had: a `cargo install`, a binary
+    # somebody was handed. Only one that answers as this deck — other tools
+    # are called deck too — and never what deck keeps in ~\.deck.
+    $places = @($env:Path -split ';') + @((Join-Path $env:USERPROFILE '.cargo\bin'), (Join-Path $env:USERPROFILE 'bin'))
+    $seen = @{}
+    foreach ($place in $places) {
+      if (-not $place) { continue }
+      $old = Join-Path $place 'deck.exe'
+      if ($seen[$old.ToLower()] -or ($old -eq $exe) -or -not (Test-Path $old)) { continue }
+      $seen[$old.ToLower()] = $true
+      $version = (& $old --version 2>$null | Out-String)
+      $help = (& $old --help 2>$null | Out-String)
+      if ($version -notmatch '^deck \d' -or $help -notmatch 'Present code for review') { continue }
+      if ($old -like '*\.cargo\bin\*' -and (Get-Command cargo -ErrorAction SilentlyContinue)) {
+        cargo uninstall deck-app *> $null
+      }
+      if (Test-Path $old) {
+        try { Remove-Item $old -Force -ErrorAction Stop }
+        catch {
+          # Open, so Windows will not let it go; out of the way will do.
+          try { Rename-Item $old 'deck.exe.old' -Force -ErrorAction Stop } catch {}
+        }
+        Remove-Item (Join-Path $place 'deck.prev') -Force -ErrorAction SilentlyContinue
+      }
+      if (Test-Path $old) { Note "an older deck at $old could not be removed" }
+      else { Say "removed  an older deck at $old" }
+    }
+
+    $user = [Environment]::GetEnvironmentVariable('Path', 'User')
+    if (-not (($user -split ';') -contains $dir)) {
+      [Environment]::SetEnvironmentVariable('Path', ($(if ($user) { "$user;" } else { '' }) + $dir), 'User')
+      Note "added $dir to your PATH — new terminals will find it"
+    }
+    if (-not (($env:Path -split ';') -contains $dir)) { $env:Path = "$env:Path;$dir" }
+
+    if ($env:DECK_NO_SETUP) {
+      Write-Host ''
+      Write-Host '  Run deck setup when you are ready.'
+      Write-Host ''
+      return
+    }
+    Write-Host ''
+    Write-Host '  Now, how deck looks — and telling your agents it exists.' -ForegroundColor White
+    Write-Host ''
+    & $exe setup
+  } finally {
+    Remove-Item $work -Recurse -Force -ErrorAction SilentlyContinue
+  }
+}
