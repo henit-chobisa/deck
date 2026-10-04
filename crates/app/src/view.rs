@@ -141,6 +141,8 @@ pub fn bindings() -> Vec<KeyBinding> {
         // the answer, escape is changing your mind.
         KeyBinding::new("q", Close, Some("DeckQuit")),
         KeyBinding::new("escape", Unlight, Some("DeckQuit")),
+        // The card that says why Ask now is off: escape puts it away.
+        KeyBinding::new("escape", Unlight, Some("DeckUnheard")),
     ]
 }
 
@@ -495,6 +497,10 @@ pub struct Session {
     shares: Vec<f32>,
     widths: Vec<f32>,
     folded: std::collections::HashSet<usize>,
+    /// How long nobody has been listening, so a window taken back off the
+    /// bar does not spend four seconds believing somebody is.
+    unheard: u8,
+    asked_someone: bool,
 }
 
 impl Session {
@@ -524,6 +530,8 @@ impl Session {
             shares: Vec::new(),
             widths: Vec::new(),
             folded: std::collections::HashSet::new(),
+            unheard: 0,
+            asked_someone: false,
         }
     }
 
@@ -581,6 +589,11 @@ pub struct DeckView {
     /// and a panel that said so immediately would say so about all of them.
     /// Four seconds of nothing is a fact; one is a race.
     unheard: u8,
+    /// Whether the last question asked now went to an agent that was there.
+    ///
+    /// One asked in the first seconds of a deck nobody is waiting on reached
+    /// no one, and must not count as an answer on its way.
+    asked_someone: bool,
     /// The timer that advances the voice, while there is anything to advance.
     talking_task: Option<Task<()>>,
     /// When the view last carried a pane back to the lit lines.
@@ -821,6 +834,14 @@ pub struct DeckView {
     notes_fade: crate::pane::Fade,
     /// The same, for the warning before quitting.
     quit_fade: crate::pane::Fade,
+    /// The card that says why *Ask now* is off, while it is up.
+    ///
+    /// Shown when the reader presses the button, or its keys, with no agent
+    /// on the other end. See [`Self::render_unheard`].
+    explaining: bool,
+    /// That card's hold on the keyboard, and how far it has come in.
+    explain_focus: FocusHandle,
+    explain_fade: crate::pane::Fade,
     /// The fetch of notes that were not cached. Replaced, and so dropped,
     /// when another version's notes are asked for.
     fetching_notes: Task<()>,
@@ -924,6 +945,8 @@ impl DeckView {
             shares,
             widths,
             folded,
+            unheard,
+            asked_someone,
         } = session;
 
         // Nothing in hand means this deck is being opened rather than taken
@@ -952,6 +975,13 @@ impl DeckView {
         }
 
         live.ready();
+        // Nobody counted while the window was away. An agent that came back
+        // meanwhile is there now, not in a second.
+        let unheard = if deck_cli::is_heard(&deck.root) {
+            0
+        } else {
+            unheard
+        };
         let mut view = Self {
             deck,
             live,
@@ -977,7 +1007,8 @@ impl DeckView {
             composing: None,
             composing_when: deck_core::When::Interrupt,
             aloud,
-            unheard: 0,
+            unheard,
+            asked_someone,
             talking_task: None,
             followed: None,
             ahead: 0,
@@ -1021,6 +1052,9 @@ impl DeckView {
             quit_focus: cx.focus_handle(),
             notes_fade: Self::card_fade(),
             quit_fade: Self::card_fade(),
+            explaining: false,
+            explain_focus: cx.focus_handle(),
+            explain_fade: Self::card_fade(),
             fetching_notes: Task::ready(()),
             voice: crate::speech::Voice::default(),
             folded,
@@ -2495,11 +2529,202 @@ impl DeckView {
         cx.notify();
     }
 
-    /// The notes, as a card over a dimmed window.
+    /// Why *Ask now* is off, and what to do instead.
     ///
-    /// Pressing anywhere off the card puts it away, and so does escape. The
-    /// card is the only thing that can be pressed while it is up: the deck
-    /// behind it is dimmed to say so, and occluded so that it is true.
+    /// The card the disabled button opens. Set as the other two cards are —
+    /// the same panel over the same dimmed window, the same cross — so it
+    /// reads as one of them. Escape, the cross and a click off the card put
+    /// it away with the words still in the box.
+    fn render_unheard(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
+        /// Where the fix for this will be announced.
+        const RELEASES: &str = "https://github.com/henit-chobisa/deck/releases";
+
+        if !self.explaining && !self.explain_fade.moving() {
+            return None;
+        }
+        let open = self.explaining;
+        let shown = self.explain_fade.level();
+        let palette = &self.palette;
+        let mono = cx.theme().mono_font_family.clone();
+        let para = |text: &'static str| {
+            div()
+                .text_size(px(13.))
+                .line_height(px(20.5))
+                .text_color(paint(palette.fg))
+                .child(text)
+        };
+        Some(
+            div()
+                .id("unheard-shade")
+                .when(open, |this| {
+                    this.track_focus(&self.explain_focus)
+                        .key_context("DeckUnheard")
+                        .on_action(cx.listener(Self::on_unlight))
+                        .occlude()
+                        .on_mouse_down(
+                            MouseButton::Left,
+                            cx.listener(|deck, _, window, cx| deck.understood(window, cx)),
+                        )
+                })
+                .absolute()
+                .top_0()
+                .left_0()
+                .right_0()
+                .bottom_0()
+                .flex()
+                .items_center()
+                .justify_center()
+                .opacity(shown)
+                .bg(paint(palette.bg).opacity(0.72))
+                .child(
+                    div()
+                        .id("unheard-card")
+                        .relative()
+                        .w(px(460.))
+                        .max_w(relative(0.9))
+                        .v_flex()
+                        .rounded(px(10.))
+                        .border_1()
+                        .border_color(paint(palette.edge))
+                        .bg(paint(palette.bg))
+                        .shadow_lg()
+                        .on_mouse_down(MouseButton::Left, |_, _window, cx| cx.stop_propagation())
+                        .child(
+                            div()
+                                .v_flex()
+                                .gap(px(4.))
+                                .px(px(24.))
+                                .pt(px(20.))
+                                .pb(px(14.))
+                                .child(
+                                    div()
+                                        .text_size(px(11.))
+                                        .text_color(paint(palette.muted))
+                                        .child("ask now is off"),
+                                )
+                                .child(
+                                    div()
+                                        .text_size(px(18.))
+                                        .font_weight(FontWeight::SEMIBOLD)
+                                        .child("Your agent isn't listening"),
+                                ),
+                        )
+                        .child(div().h(px(1.)).mx(px(24.)).bg(paint(palette.edge)))
+                        .child(
+                            div()
+                                .v_flex()
+                                .gap(px(10.))
+                                .px(px(24.))
+                                .pt(px(16.))
+                                .child(para(
+                                    "Deck's skill asks your agent to keep listening for what \
+                                     you say here, but no waiter process is running for this \
+                                     deck. A question sent now would reach nobody.",
+                                ))
+                                .child(para(
+                                    "Add it to the review instead. It goes back with \
+                                     everything else when you submit.",
+                                ))
+                                .child(
+                                    div()
+                                        .h_flex()
+                                        .flex_wrap()
+                                        .gap(px(6.))
+                                        .text_size(px(12.))
+                                        .line_height(px(19.))
+                                        .text_color(paint(palette.muted))
+                                        .child("The deck team is making this more robust.")
+                                        .child(
+                                            div()
+                                                .id("unheard-releases")
+                                                .cursor_pointer()
+                                                .text_color(paint(palette.accent))
+                                                .hover(|this| this.opacity(0.8))
+                                                .on_click(|_, _window, cx| cx.open_url(RELEASES))
+                                                .child("Follow the releases ↗"),
+                                        ),
+                                ),
+                        )
+                        .child(
+                            div()
+                                .h_flex()
+                                .justify_end()
+                                .gap(px(8.))
+                                .px(px(24.))
+                                .pt(px(18.))
+                                .pb(px(20.))
+                                .child(
+                                    div()
+                                        .id("unheard-close")
+                                        .h_flex()
+                                        .items_center()
+                                        .gap(px(6.))
+                                        .px(px(10.))
+                                        .py(px(5.))
+                                        .rounded(px(5.))
+                                        .cursor_pointer()
+                                        .text_size(px(11.5))
+                                        .border_1()
+                                        .border_color(paint(palette.edge))
+                                        .text_color(paint(palette.fg))
+                                        .hover(|style| style.bg(paint(palette.wash)))
+                                        .child("Keep writing")
+                                        .child(
+                                            div()
+                                                .font_family(mono.clone())
+                                                .text_size(px(10.))
+                                                .opacity(0.7)
+                                                .child("esc"),
+                                        )
+                                        .on_click(cx.listener(|deck, _, window, cx| {
+                                            deck.understood(window, cx);
+                                        })),
+                                )
+                                .child(
+                                    div()
+                                        .id("unheard-add")
+                                        .px(px(10.))
+                                        .py(px(5.))
+                                        .rounded(px(5.))
+                                        .cursor_pointer()
+                                        .text_size(px(11.5))
+                                        .bg(paint(palette.accent))
+                                        .text_color(paint(palette.on_accent))
+                                        .child("Add to review")
+                                        .on_click(cx.listener(|deck, _, window, cx| {
+                                            deck.explaining = false;
+                                            deck.explain_fade.set(false);
+                                            deck.save_remark(deck_core::When::Defer, window, cx);
+                                        })),
+                                ),
+                        )
+                        .child(
+                            div()
+                                .id("unheard-cross")
+                                .absolute()
+                                .top(px(12.))
+                                .right(px(12.))
+                                .size(px(24.))
+                                .flex()
+                                .items_center()
+                                .justify_center()
+                                .rounded(px(6.))
+                                .cursor_pointer()
+                                .text_size(px(13.))
+                                .text_color(paint(palette.muted))
+                                .hover(|this| {
+                                    this.bg(paint(palette.wash)).text_color(paint(palette.fg))
+                                })
+                                .on_click(
+                                    cx.listener(|deck, _, window, cx| deck.understood(window, cx)),
+                                )
+                                .child("✕"),
+                        ),
+                )
+                .into_any_element(),
+        )
+    }
+
     /// Before quitting over a comment with words in it: what happens to them.
     ///
     /// Set as the release notes are — the same card over the same dimmed
@@ -2661,6 +2886,11 @@ impl DeckView {
         )
     }
 
+    /// The notes, as a card over a dimmed window.
+    ///
+    /// Pressing anywhere off the card puts it away, and so does escape. The
+    /// card is the only thing that can be pressed while it is up: the deck
+    /// behind it is dimmed to say so, and occluded so that it is true.
     fn render_notes(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
         let (version, body) = self.notes.as_ref()?;
         let open = self.notes_fade.on();
@@ -2806,6 +3036,10 @@ impl DeckView {
     fn on_unlight(&mut self, _: &Unlight, window: &mut Window, cx: &mut Context<Self>) {
         if self.quitting {
             self.stay(window, cx);
+            return;
+        }
+        if self.explaining {
+            self.understood(window, cx);
             return;
         }
         // Notes over the window are the nearest thing to put away.
@@ -3564,9 +3798,66 @@ impl DeckView {
                     ..
                 }
             ) {
-                deck.save_remark(deck_core::When::Interrupt, window, cx);
+                deck.ask_now(window, cx);
             }
         })
+    }
+
+    /// Whether an agent is on the other end to hear a question asked now.
+    ///
+    /// Before the deck is sealed the agent is plainly there — it is still
+    /// writing — and the count never starts.
+    ///
+    /// An agent that was just asked something is there too. Its waiter ends
+    /// the moment a question reaches it and does not come back until the
+    /// answer is said, so for the whole of that turn nothing is marked as
+    /// listening — and a second question asked meanwhile is kept and handed
+    /// over when it returns. That is not nobody.
+    fn heard(&self) -> bool {
+        self.unheard < UNHEARD_FOR || self.owed()
+    }
+
+    /// Whether an agent that was there has been asked and has yet to answer.
+    fn owed(&self) -> bool {
+        self.asked_someone
+            && self
+                .conversation
+                .latest_sign()
+                .is_some_and(|sign| sign.elapsed() < PATIENCE)
+    }
+
+    /// Send what is in the box to the agent now — if there is an agent.
+    ///
+    /// With nobody listening the words would be published to no one and sit
+    /// under a pulse that never ends. So the box keeps them, and a card says
+    /// why and what to do instead.
+    fn ask_now(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        // An empty box has nothing to explain: it closes, as it always did.
+        if self.unsent(cx).is_none() {
+            self.save_remark(deck_core::When::Interrupt, window, cx);
+        } else if self.heard() {
+            self.asked_someone =
+                !self.deck.sealed() || deck_cli::is_heard(&self.deck.root) || self.owed();
+            self.save_remark(deck_core::When::Interrupt, window, cx);
+        } else {
+            self.explaining = true;
+            self.explain_fade.set(true);
+            self.explain_focus.focus(window, cx);
+            cx.notify();
+        }
+    }
+
+    /// Put the card away, and the keyboard back in the comment box.
+    fn understood(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.explaining = false;
+        self.explain_fade.set(false);
+        match self.composing.as_ref().map(|(_, state, _)| state.clone()) {
+            Some(state) if self.rail_open.on() => {
+                state.update(cx, |state, cx| state.focus(window, cx));
+            }
+            _ => self.focus.focus(window, cx),
+        }
+        cx.notify();
     }
 
     /// The composer's other ending: keep the remark for the review.
@@ -3908,6 +4199,8 @@ impl DeckView {
             shares: self.shares.clone(),
             widths: self.widths.clone(),
             folded: self.folded.clone(),
+            unheard: self.unheard,
+            asked_someone: self.asked_someone,
         }
     }
 
@@ -4969,6 +5262,9 @@ impl DeckView {
     /// question, which is the whole of the back-and-forth. *Add to review*
     /// holds it, and it goes back with the review.
     ///
+    /// With nobody listening *Ask now* is off and *Add to review* is the
+    /// bright one: see [`Self::ask_now`].
+    ///
     /// This was three chips, then three chips read as a sentence, then a
     /// checkbox — and none of them made sense to the person using them (#14).
     /// The middle chip was a timing rule nobody could predict, and a checkbox
@@ -5036,19 +5332,66 @@ impl DeckView {
                     "add-to-review",
                     "Add to review",
                     chord("⇧⌘⏎", "Ctrl+Shift+Enter"),
-                    false,
+                    // The one thing left to do with the words, when nobody
+                    // is there to ask: it takes the accent Ask now gave up.
+                    !self.heard(),
                 )
                 .on_click(cx.listener(|deck, _, window, cx| {
                     deck.save_remark(deck_core::When::Defer, window, cx);
                 })),
             )
-            .child(
-                button("ask-now", "Ask now", chord("⌘⏎", "Ctrl+Enter"), true).on_click(
-                    cx.listener(|deck, _, window, cx| {
-                        deck.save_remark(deck_core::When::Interrupt, window, cx);
-                    }),
-                ),
-            )
+            .child(if self.heard() {
+                button("ask-now", "Ask now", chord("⌘⏎", "Ctrl+Enter"), true)
+                    .on_click(cx.listener(|deck, _, window, cx| deck.ask_now(window, cx)))
+                    .into_any_element()
+            } else {
+                // Off, and saying so. Nobody is on the other end, so asking
+                // now would send the words nowhere. It still answers a click —
+                // with the reason, which is the thing the reader is missing.
+                div()
+                    .id("ask-now")
+                    .flex_none()
+                    .h_flex()
+                    .items_center()
+                    .gap(px(6.))
+                    .px(px(9.))
+                    .py(px(4.))
+                    .rounded(px(5.))
+                    .border_1()
+                    .border_color(paint(palette.edge))
+                    .text_size(px(10.5))
+                    .text_color(paint(palette.muted))
+                    .cursor_pointer()
+                    .hover(|style| style.bg(paint(palette.wash)))
+                    .tooltip(|_window, cx| {
+                        cx.new(|_| {
+                            gpui_kit::component::tooltip::Tooltip::new("Your agent isn't listening")
+                        })
+                        .into()
+                    })
+                    .on_click(cx.listener(|deck, _, window, cx| deck.ask_now(window, cx)))
+                    .child("Ask now")
+                    // Drawn, not typed: the circled letter is not in every
+                    // system's fonts.
+                    .child(
+                        div()
+                            .flex_none()
+                            .size(px(12.))
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .rounded_full()
+                            .border_1()
+                            .border_color(paint(palette.accent))
+                            .font_family(mono.clone())
+                            .text_size(px(8.))
+                            .line_height(px(8.))
+                            .font_weight(FontWeight::BOLD)
+                            .text_color(paint(palette.accent))
+                            .child("i"),
+                    )
+                    .into_any_element()
+            })
     }
 
     /// The strip along the bottom: what is still coming, and which deck this
@@ -5061,7 +5404,9 @@ impl DeckView {
         // What the deck says it will be, never less than what it already is: a
         // count that a group can arrive and make a lie of is worse than none.
         let writing = !self.deck.sealed();
-        let unheard = self.unheard >= UNHEARD_FOR;
+        // The same answer the Ask now button goes by, so the two never
+        // disagree: an agent away answering is not nobody.
+        let unheard = !self.heard();
         // Being walked through a deck is the best thing this window does, and
         // it says so with the frame round the whole window rather than here. A
         // strip that also changed colour was two answers to one question.
@@ -5333,7 +5678,8 @@ impl DeckView {
     ///
     /// Follows the group rather than a clock. It changes as they walk and holds
     /// still while they read — a line that rewrites itself under somebody is a
-    /// line they end up watching instead of the code.
+    /// line they end up watching instead of the code. The one exception is the
+    /// line that says the agent is listening, which gives way when it is not.
     ///
     /// FNV-1a over the group's own words, so another deck lands somewhere else
     /// without needing a source of randomness or anything kept between frames.
@@ -5346,8 +5692,13 @@ impl DeckView {
             hash ^= u64::from(byte);
             hash = hash.wrapping_mul(0x0100_0000_01b3);
         }
-        let at = hash % NOTHING_YET.len() as u64;
-        NOTHING_YET[usize::try_from(at).unwrap_or(0)]
+        let at = usize::try_from(hash % NOTHING_YET.len() as u64).unwrap_or(0);
+        // One of them says the agent is listening. Not beside a strip that
+        // says nobody is.
+        if NOTHING_YET[at] == "The agent is listening" && !self.heard() {
+            return NOTHING_YET[(at + 1) % NOTHING_YET.len()];
+        }
+        NOTHING_YET[at]
     }
 
     /// The rail: everything you have said, in the order you said it.
@@ -6208,6 +6559,12 @@ impl Render for DeckView {
         if self.notes.is_some() && !self.notes_fade.on() && !self.notes_fade.moving() {
             self.notes = None;
         }
+        // Somebody is there again: a card still saying otherwise would be
+        // wrong for as long as it stayed up. Put away here, where there is a
+        // window to hand the keyboard back through.
+        if self.explaining && self.heard() {
+            self.understood(window, cx);
+        }
         let typing = self.typing(window, cx);
         let corner = window_corner(window);
         // A page's own view is not deck's to paint, so it is moved here, before
@@ -6246,6 +6603,7 @@ impl Render for DeckView {
             || self.rail_open.moving()
             || self.notes_fade.moving()
             || self.quit_fade.moving()
+            || self.explain_fade.moving()
             || self
                 .showing
                 .as_ref()
@@ -6552,9 +6910,10 @@ impl Render for DeckView {
             // Nor while the notes are up. They are a card over the deck, and a
             // key matched up the focus chain would otherwise reach through it:
             // `s` sent the review, `c` opened a comment under the card.
-            .when(!typing && !self.notes_fade.on() && !self.quitting, |this| {
-                this.key_context("Deck")
-            })
+            .when(
+                !typing && !self.notes_fade.on() && !self.quitting && !self.explaining,
+                |this| this.key_context("Deck"),
+            )
             .on_action(cx.listener(Self::on_next))
             .on_action(cx.listener(Self::on_prev))
             .on_action(cx.listener(Self::on_walk))
@@ -6692,6 +7051,7 @@ impl Render for DeckView {
             })
             .children(self.render_notes(cx))
             .children(self.render_quitting(cx))
+            .children(self.render_unheard(cx))
     }
 }
 

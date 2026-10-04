@@ -200,7 +200,9 @@ Drag across lines and press `c`. Drag across the narration itself to answer a
 sentence rather than a line, which is where *this whole approach is wrong* goes.
 Finish it one of two ways: **Ask now** (`⌘↩`, or `Ctrl+Enter` on Windows and
 Linux) puts the question to the agent straight away, and **Add to review**
-(`⇧⌘↩` / `Ctrl+Shift+Enter`) holds it until you submit. `esc` discards. Every
+(`⇧⌘↩` / `Ctrl+Shift+Enter`) holds it until you submit. `esc` discards. When
+the agent is not listening, **Ask now** is off and says why; the review still
+takes the comment. Every
 comment is pinned to the lines it was about, with the text it was written
 against — so it survives the file moving underneath it.
 
