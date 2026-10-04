@@ -61,9 +61,9 @@ ART
 
 fetch() { # url → stdout
   if command -v curl >/dev/null 2>&1; then
-    curl -fsSL -H "User-Agent: deck-installer" "$1"
+    curl --proto '=https' --tlsv1.2 -fsSL -H "User-Agent: deck-installer" "$1"
   elif command -v wget >/dev/null 2>&1; then
-    wget -qO- --header="User-Agent: deck-installer" "$1"
+    wget --https-only -qO- --header="User-Agent: deck-installer" "$1"
   else
     die "this needs curl or wget, and found neither"
   fi
@@ -71,9 +71,13 @@ fetch() { # url → stdout
 
 download() { # url file — with a bar, for the one download big enough to want one
   if command -v curl >/dev/null 2>&1; then
-    if [ -t 2 ]; then curl -fL --progress-bar -o "$2" "$1"; else curl -fsSL -o "$2" "$1"; fi
+    if [ -t 2 ]; then
+      curl --proto '=https' --tlsv1.2 -fL --progress-bar -o "$2" "$1"
+    else
+      curl --proto '=https' --tlsv1.2 -fsSL -o "$2" "$1"
+    fi
   else
-    wget -q --show-progress -O "$2" "$1" 2>/dev/null || wget -qO "$2" "$1"
+    wget --https-only -q --show-progress -O "$2" "$1" 2>/dev/null || wget --https-only -qO "$2" "$1"
   fi
 }
 
@@ -123,8 +127,8 @@ choose() {
     TAG="$tag"
     return
   fi
-  json="$(fetch "https://api.github.com/repos/$REPO/releases?per_page=30")" ||
-    die "GitHub did not answer. Are you online?"
+  json="$(fetch "https://api.github.com/repos/$REPO/releases?per_page=30" 2>/dev/null)" ||
+    die "GitHub did not answer — offline, or asked too often from this address. DECK_VERSION=v0.1.3 skips the question"
   found="$(printf '%s' "$json" | tr ',' '\n' | awk -v want="-$PLATFORM.tar.gz\"" '
     /"tag_name":/ { tag = $0; sub(/.*"tag_name": *"/, "", tag); sub(/".*/, "", tag) }
     /"prerelease":/ { pre = ($0 ~ /true/) }
@@ -144,6 +148,9 @@ choose() {
 place() {
   DIR="${DECK_INSTALL:-$HOME/.local/bin}"
   mkdir -p "$DIR" || die "could not make $DIR"
+  # As the filesystem spells it: no trailing slash, nothing relative, no
+  # link in the way. Everything after this compares against it.
+  DIR="$(cd "$DIR" && pwd -P)" || die "could not find $DIR"
 }
 
 on_path() {
@@ -151,7 +158,7 @@ on_path() {
   # Said once, in the file this shell reads at start, and never twice.
   shell="$(basename "${SHELL:-sh}")"
   case "$shell" in
-    zsh) rc="$HOME/.zshrc"; line="export PATH=\"$DIR:\$PATH\"" ;;
+    zsh) rc="${ZDOTDIR:-$HOME}/.zshrc"; line="export PATH=\"$DIR:\$PATH\"" ;;
     bash)
       if [ "$(uname -s)" = Darwin ]; then rc="$HOME/.bash_profile"; else rc="$HOME/.bashrc"; fi
       line="export PATH=\"$DIR:\$PATH\""
@@ -162,8 +169,8 @@ on_path() {
   mkdir -p "$(dirname "$rc")"
   if ! grep -qsF "$line" "$rc"; then
     printf '\n# deck\n%s\n' "$line" >>"$rc"
+    ADDED="$rc"
   fi
-  ADDED="$rc"
 }
 
 # What a Linux deck needs from the system that is not there. Deck is one
@@ -205,27 +212,35 @@ libraries() {
 # one does, and describe itself the way this one does.
 ours() {
   [ -x "$1" ] || return 1
-  "$1" --version 2>/dev/null | grep -q '^deck [0-9]' || return 1
-  "$1" --help 2>/dev/null | grep -q 'Present code for review'
+  "$1" --version </dev/null 2>/dev/null | grep -q '^deck [0-9]' || return 1
+  "$1" --help </dev/null 2>/dev/null | grep -q 'Present code for review'
 }
 
 # Every deck this machine already had, taken away — now that the new one is
 # in place and has been seen to start, so a failed download never leaves a
 # machine with less than it had. Homebrew's goes through Homebrew, cargo's
 # through cargo, and a binary somebody was handed is simply removed, with the
-# copy `deck upgrade` keeps beside it. What deck keeps in ~/.deck — your
-# settings, your decks, your reviews — is not touched.
+# copy `deck upgrade` keeps beside it. Only where your shell looks — the
+# PATH, and the two places in your home a deck is usually put — and never
+# what deck keeps in ~/.deck: your settings, your decks, your reviews.
 previous() {
   seen=" "
   old_ifs="$IFS"
   IFS=:
+  set -f # a PATH entry is a name, never a pattern
   # shellcheck disable=SC2086
-  set -- $PATH /usr/local/bin /opt/homebrew/bin "$HOME/bin" "$HOME/.cargo/bin"
+  set -- $PATH "$HOME/bin" "$HOME/.cargo/bin"
+  set +f
   IFS="$old_ifs"
   for d in "$@"; do
-    [ -n "$d" ] || continue
+    # Only a place named in full. An empty or relative entry means "wherever
+    # I happen to be standing", and nothing there is this script's to judge.
+    case "$d" in /*) ;; *) continue ;; esac
     f="$d/deck"
-    [ "$f" = "$DIR/deck" ] && continue
+    [ -e "$f" ] || continue
+    # The deck just installed, however its directory is spelled: the same
+    # file, asked of the filesystem rather than compared as text.
+    [ "$f" -ef "$DIR/deck" ] && continue
     case "$seen" in *" $f "*) continue ;; esac
     seen="$seen$f "
     ours "$f" || continue
@@ -234,13 +249,16 @@ previous() {
     if [ -L "$f" ]; then target="$(readlink "$f")"; fi
     case "$f $target" in
       *Cellar/deck/* | */homebrew/* | */linuxbrew/*)
+        # By its full name only. Homebrew's own collection has a different
+        # program called deck, and a bare name would mean that one.
         if command -v brew >/dev/null 2>&1; then
-          brew uninstall --force henit-chobisa/deck/deck >/dev/null 2>&1 ||
-            brew uninstall --force deck >/dev/null 2>&1
-          brew untap henit-chobisa/deck >/dev/null 2>&1
+          brew uninstall --force henit-chobisa/deck/deck </dev/null >/dev/null 2>&1
+          brew untap henit-chobisa/deck </dev/null >/dev/null 2>&1
         fi
+        # Inside Homebrew's own tree nothing is removed by hand. What brew
+        # would not take away is said, and left exactly as it is.
         if [ -e "$f" ]; then
-          note "Homebrew's deck is still at $f — brew uninstall deck"
+          note "a Homebrew deck is still at $f — brew uninstall henit-chobisa/deck/deck"
         else
           say "removed  ${D}Homebrew's deck, and its tap${X}"
         fi
@@ -248,7 +266,7 @@ previous() {
         ;;
       */.cargo/bin/*)
         if command -v cargo >/dev/null 2>&1; then
-          cargo uninstall deck-app >/dev/null 2>&1
+          cargo uninstall deck-app </dev/null >/dev/null 2>&1
         fi
         ;;
     esac
@@ -272,12 +290,14 @@ main() {
   say "deck ${B}${TAG#v}${X}"
 
   work="$(mktemp -d 2>/dev/null || mktemp -d -t deck)" || die "could not make a place to work"
-  trap 'rm -rf "$work"' EXIT INT TERM
+  trap 'rm -rf "$work"' EXIT
+  trap 'exit 130' INT TERM
 
   download "$URL" "$work/deck.tar.gz" || die "the download did not finish"
-  want="$(fetch "$URL.sha256" | cut -d' ' -f1)" || die "the checksum could not be fetched, so the download cannot be trusted"
+  want="$(fetch "$URL.sha256" 2>/dev/null | cut -d' ' -f1)"
+  [ -n "$want" ] || die "the checksum could not be fetched, so the download cannot be trusted"
   got="$(sha256 "$work/deck.tar.gz")"
-  [ -n "$want" ] && [ "$want" = "$got" ] || die "the download does not match its checksum, so it is not going in"
+  [ "$want" = "$got" ] || die "the download does not match its checksum, so it is not going in"
   say "checked  ${D}sha256 ${got%"${got#????????????}"}…${X}"
 
   tar -xzf "$work/deck.tar.gz" -C "$work" || die "the download would not unpack"
@@ -288,7 +308,7 @@ main() {
     codesign --force --sign - "$work/deck" 2>/dev/null
   fi
   libraries "$work/deck"
-  "$work/deck" --version >/dev/null 2>&1 || die "the new deck would not start on this machine"
+  "$work/deck" --version </dev/null >/dev/null 2>&1 || die "the new deck would not start on this machine"
 
   place
   # Beside it first and then over it in one rename, so a deck already open
@@ -318,8 +338,11 @@ main() {
   "$DIR/deck" setup </dev/tty
 }
 
-main "$@"
-exit
+# One line, and nothing for a child to read. Bash takes a piped script a line
+# at a time, so while `main` runs the `exit` is still unread — and anything
+# main starts that reads standard input would eat it, leaving sh to carry on
+# into the PowerShell below.
+main "$@" </dev/null; exit
 #> > $null
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -329,7 +352,7 @@ exit
 & {
   $ErrorActionPreference = 'Stop'
   $ProgressPreference = 'SilentlyContinue' # Windows PowerShell's bar is slower than the download
-  [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+  [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
   $repo = 'henit-chobisa/deck'
 
   # deck's own orange where the terminal can draw it — Windows Terminal can —
@@ -341,6 +364,17 @@ exit
   }
   function Say($text) { Orange '  ◆ '; Write-Host $text }
   function Note($text) { Write-Host "    $text" -ForegroundColor DarkGray }
+  # What a program says when run, or nothing. Windows PowerShell turns a
+  # native program's stderr into a terminating error under `Stop`, and
+  # cargo and strangers called deck both write there.
+  function Said {
+    param([string]$program, [Parameter(ValueFromRemainingArguments = $true)][string[]]$words)
+    $was = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+    try { (& $program @words 2>$null | Out-String) } catch { '' } finally { $ErrorActionPreference = $was }
+  }
+  function Same([string]$a, [string]$b) {
+    try { [IO.Path]::GetFullPath($a).TrimEnd('\') -ieq [IO.Path]::GetFullPath($b).TrimEnd('\') } catch { $false }
+  }
   function Fail($text) {
     Write-Host ''
     Write-Host "  ✕ $text" -ForegroundColor Red
@@ -389,7 +423,8 @@ exit
     try { Invoke-WebRequest $url -OutFile $archive -UseBasicParsing } catch { Fail 'the download did not finish'; return }
     try {
       $sums = Invoke-WebRequest "$url.sha256" -UseBasicParsing
-      $want = ([Text.Encoding]::ASCII.GetString($sums.Content)).Split(' ')[0].Trim().ToLower()
+      $text = if ($sums.Content -is [byte[]]) { [Text.Encoding]::ASCII.GetString($sums.Content) } else { [string]$sums.Content }
+      $want = $text.Split(' ')[0].Trim().ToLower()
     } catch { Fail 'the checksum could not be fetched, so the download cannot be trusted'; return }
     $got = (Get-FileHash $archive -Algorithm SHA256).Hash.ToLower()
     if ($want -ne $got) { Fail 'the download does not match its checksum, so it is not going in'; return }
@@ -398,8 +433,7 @@ exit
     tar -xzf $archive -C $work
     $fresh = Join-Path $work 'deck.exe'
     if (-not (Test-Path $fresh)) { Fail 'the download held no deck'; return }
-    & $fresh --version *> $null
-    if ($LASTEXITCODE -ne 0) { Fail 'the new deck would not start on this machine'; return }
+    if ((Said $fresh '--version') -notmatch '^deck \d') { Fail 'the new deck would not start on this machine'; return }
 
     $dir = if ($env:DECK_INSTALL) { $env:DECK_INSTALL } else { Join-Path $env:LOCALAPPDATA 'Programs\deck' }
     New-Item -ItemType Directory -Force -Path $dir | Out-Null
@@ -408,7 +442,9 @@ exit
     # renamed out of the way while it runs.
     if (Test-Path $exe) {
       Remove-Item "$exe.old" -Force -ErrorAction SilentlyContinue
-      Rename-Item $exe 'deck.exe.old' -Force
+      # Under a name of its own if the last one out is still running too.
+      $aside = if (Test-Path "$exe.old") { "deck.exe.$([Guid]::NewGuid().ToString('N').Substring(0, 6)).old" } else { 'deck.exe.old' }
+      try { Rename-Item $exe $aside -Force } catch { Fail "could not move the deck at $exe out of the way"; return }
     }
     Move-Item $fresh $exe -Force
     Say "installed  $exe"
@@ -421,13 +457,14 @@ exit
     foreach ($place in $places) {
       if (-not $place) { continue }
       $old = Join-Path $place 'deck.exe'
-      if ($seen[$old.ToLower()] -or ($old -eq $exe) -or -not (Test-Path $old)) { continue }
+      # Only a place named in full, and never the deck just installed —
+      # however its folder is spelled.
+      if (-not [IO.Path]::IsPathRooted($place)) { continue }
+      if ($seen[$old.ToLower()] -or (Same $old $exe) -or -not (Test-Path $old)) { continue }
       $seen[$old.ToLower()] = $true
-      $version = (& $old --version 2>$null | Out-String)
-      $help = (& $old --help 2>$null | Out-String)
-      if ($version -notmatch '^deck \d' -or $help -notmatch 'Present code for review') { continue }
+      if ((Said $old '--version') -notmatch '^deck \d' -or (Said $old '--help') -notmatch 'Present code for review') { continue }
       if ($old -like '*\.cargo\bin\*' -and (Get-Command cargo -ErrorAction SilentlyContinue)) {
-        cargo uninstall deck-app *> $null
+        [void](Said 'cargo' 'uninstall' 'deck-app')
       }
       if (Test-Path $old) {
         try { Remove-Item $old -Force -ErrorAction Stop }
@@ -441,9 +478,16 @@ exit
       else { Say "removed  an older deck at $old" }
     }
 
-    $user = [Environment]::GetEnvironmentVariable('Path', 'User')
-    if (-not (($user -split ';') -contains $dir)) {
-      [Environment]::SetEnvironmentVariable('Path', ($(if ($user) { "$user;" } else { '' }) + $dir), 'User')
+    # Read and written unexpanded. The usual call hands back %VARIABLES%
+    # already filled in and writes them back that way, which quietly breaks
+    # every entry that was written in terms of one.
+    $key = Get-Item 'HKCU:\Environment'
+    $user = [string]$key.GetValue('Path', '', 'DoNotExpandEnvironmentNames')
+    if (-not (($user -split ';' | ForEach-Object { $_.TrimEnd('\') }) -contains $dir.TrimEnd('\'))) {
+      $kind = if ($user) { $key.GetValueKind('Path') } else { 'ExpandString' }
+      Set-ItemProperty 'HKCU:\Environment' -Name Path -Value ($(if ($user) { "$($user.TrimEnd(';'));" } else { '' }) + $dir) -Type $kind
+      # Tell running programs the environment changed, as the usual call does.
+      [Environment]::SetEnvironmentVariable('DECK_INSTALLED', $null, 'User')
       Note "added $dir to your PATH — new terminals will find it"
     }
     if (-not (($env:Path -split ';') -contains $dir)) { $env:Path = "$env:Path;$dir" }

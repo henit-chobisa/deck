@@ -451,7 +451,21 @@ fn swap(here: &Path, release: &Release, showing: Showing) -> anyhow::Result<()> 
     std::fs::hard_link(here, &previous)
         .context("could not keep a copy of the deck being replaced")?;
 
-    std::fs::rename(&fresh, here).context("could not put the new deck in place")?;
+    // Windows will not rename over a program that is running — and this one
+    // is — but it will let a running program be renamed. So the old deck
+    // steps aside under another name first, and is put back if the new one
+    // cannot take its place.
+    if cfg!(windows) {
+        let aside = beside.join("deck.exe.old");
+        let _ = std::fs::remove_file(&aside);
+        std::fs::rename(here, &aside).context("could not move the running deck aside")?;
+        if let Err(err) = std::fs::rename(&fresh, here) {
+            let _ = std::fs::rename(&aside, here);
+            return Err(err).context("could not put the new deck in place");
+        }
+    } else {
+        std::fs::rename(&fresh, here).context("could not put the new deck in place")?;
+    }
     drop(tidy);
     Ok(())
 }

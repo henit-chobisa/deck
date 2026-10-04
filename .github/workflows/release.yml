@@ -82,11 +82,13 @@ jobs:
 
       - name: Wrap it
         id: wrap
+        env:
+          TAG: ${{ inputs.tag || github.event.release.tag_name }}
         run: |
           # A pull request has no tag, and `github.ref_name` there is `52/merge`
           # — a slash, which is not a filename. The name only matters for the
           # upload, which a pull request does not do.
-          tag="${{ inputs.tag || github.event.release.tag_name }}"
+          tag="$TAG"
           [ -n "$tag" ] || tag=dev
           name="deck-${tag}-macos-universal.tar.gz"
           tar -czf "$name" -C out deck
@@ -166,8 +168,12 @@ jobs:
       - name: Wrap it
         id: wrap
         shell: bash
+        # The tag arrives as data, not as script: handed in through the
+        # environment, a tag with a quote in it stays a tag.
+        env:
+          TAG: ${{ inputs.tag || github.event.release.tag_name }}
         run: |
-          tag="${{ inputs.tag || github.event.release.tag_name }}"
+          tag="$TAG"
           [ -n "$tag" ] || tag=dev
           name="deck-${tag}-${{ matrix.platform }}.tar.gz"
           tar -czf "$name" -C target/release "${{ matrix.exe }}"

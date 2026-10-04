@@ -126,7 +126,8 @@ irm https://raw.githubusercontent.com/henit-chobisa/deck/main/install | iex
 ```
 
 Nothing is compiled and nothing else is installed. Your settings and decks in
-`~/.deck` are kept. After that, deck keeps itself current.
+`~/.deck` are kept. After that, deck keeps itself current on macOS and Linux;
+on Windows, `deck upgrade` brings in the next release when you ask.
 
 <details>
 <summary>Choices, and building it yourself</summary>
