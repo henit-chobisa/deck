@@ -2439,9 +2439,10 @@ impl DeckView {
     ) {
         use crate::notes::Notes;
 
-        // Escape has to reach them. A window that opened on them has nothing
-        // focused for a key to start from, and a comment box that had the
-        // keyboard is under the card where nobody can see what they type.
+        // Escape has to reach them. The deck itself holds the keyboard from
+        // the moment it opens, and its keys must not act under the card; a
+        // comment box that had the keyboard is under it too, where nobody
+        // can see what they type.
         self.notes_focus.focus(window, cx);
         let cached = crate::notes::cached(&version);
         let fetch_words = cached.is_none() && may_ask;
