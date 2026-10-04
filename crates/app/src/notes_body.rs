@@ -1,10 +1,13 @@
 //! The words and pictures of a release's notes, as a view of their own.
 //!
-//! The card around them belongs to the deck window; this does not. It is its
-//! own entity so that scrolling it redraws it and nothing else. Drawn as part
-//! of the window, every tick of a scroll repainted the whole deck — every
-//! pane, the rail, the band — and parsed every paragraph of the notes again,
-//! to move a list by a few points. Scrolling the card lagged, and felt broken.
+//! The card around them belongs to the deck window; this holds what scrolls
+//! inside it — the version, the notes as they arrive, the scroll position —
+//! so the fetch can hand its result straight to the card it was meant for.
+//!
+//! Being its own view does not, on its own, keep a scroll from redrawing the
+//! whole deck: GPUI marks every view above it dirty too, and the deck window
+//! is drawn uncached. What made scrolling smooth was not reading each picture
+//! from disk on every frame (see `notes::image`).
 
 use deck_core::theme::Palette;
 use gpui_kit::component::{ActiveTheme as _, StyledExt as _};
