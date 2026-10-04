@@ -592,6 +592,26 @@ Notes are not turns: they are not read aloud, they are not in the review, and
 they do not answer the question. Do not use one to say the thing — that is
 `deck say`.
 
+**The walk is for talking. Do not start the work.** While the deck is open,
+nothing they say is an instruction to go and change something — not *"do it"*,
+not *"yes, let's go with the second one"*, not a decision the two of you just
+locked in. Every one of those is a point in the review. Agree in a sentence,
+say when it will happen — *"agreed — I'll make that change once you submit"* —
+and call `deck wait` again.
+
+The reason is what it looks like from their side. An agent that goes off to
+edit files mid-walk has stopped answering: the panel says *no answer yet*, the
+next question goes nowhere, and the deck they were reading is now about code
+that is changing under it. They came to argue and decide; the doing comes after,
+from the review, all of it at once.
+
+So: answer questions, look things up, show them more — `deck show`, `deck bring`,
+a page or a picture to settle it. Never write to the project. If they insist it
+happens now, say that submitting the review is how they hand it over, and that
+you start the moment it arrives. A decision locked in the conversation goes in
+your own list of things to do; when the review comes, do those along with the
+comments.
+
 **Hand the slow part to a subagent if you must.** If answering means real
 digging, spawn one with the context you already have and let it work while you
 keep the conversation alive. Do not make them wait on your whole investigation.
@@ -1778,7 +1798,10 @@ intent — `interrupt` meant *answer me now*, `defer` meant *this can wait for t
 A comment with **no `ref` and no `range`** is about the group's claim rather than any
 line — often the most important one in the review.
 
-Act on every comment. Answer the questions, fix what they objected to. Their comments are
+Act on every comment, and on everything you agreed to during the walk — the
+changes they asked for in the conversation and the decisions you locked in
+together are part of this review even though they are not in `comments`. Answer
+the questions, fix what they objected to. Their comments are
 often the real "but why" — a question in a comment means the deck did not carry the model
 far enough, so answer it fully, not thinly. If the review changes your plan materially,
 present the revised plan as a new deck rather than describing the change in prose.

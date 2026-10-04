@@ -712,6 +712,22 @@ mod tests {
     }
 
     #[test]
+    fn the_walk_is_for_talking_and_the_work_comes_after() {
+        // #36: asked in the conversation to change something, or after
+        // locking in a decision, agents went off and edited files mid-walk —
+        // and the reader sat in front of a panel that had stopped answering.
+        assert!(SKILL.contains("The walk is for talking. Do not start the work."));
+        assert!(
+            SKILL.contains("Never write to the project."),
+            "said as a rule, not a preference"
+        );
+        assert!(
+            SKILL.contains("everything you agreed to during the walk"),
+            "and what was agreed is carried into the review, not lost"
+        );
+    }
+
+    #[test]
     fn the_skill_says_who_is_talking() {
         // The complaint that started this: decks read as a narrator rather
         // than a person, so nobody wanted to open a second one. A persona has
