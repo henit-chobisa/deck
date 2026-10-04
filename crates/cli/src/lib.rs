@@ -723,6 +723,41 @@ fn write_atomically(path: &Path, bytes: &[u8]) -> anyhow::Result<()> {
     write().with_context(|| format!("cannot write {}", path.display()))
 }
 
+/// Prose as it was meant, when the line breaks arrived as the two characters
+/// `\n`.
+///
+/// An agent writing `--say "one.\n\nTwo."` in double quotes sends a backslash
+/// and an `n`: the shell does not turn that into a line break, and the deck
+/// showed it to the reader as `\n\n` in the middle of a sentence (#4). So they
+/// become the breaks they were written as.
+///
+/// Not inside backticks. There somebody is quoting code, and `"\n"` in code is
+/// a backslash and an `n`.
+///
+/// The cost is a Windows path written bare — `C:\new` — which loses its
+/// `\n`. A path in prose belongs in backticks, where it is safe; the escaped
+/// break is by far the commoner thing to find outside them.
+#[must_use]
+pub fn real_breaks(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut code = false;
+    let mut chars = text.chars().peekable();
+    while let Some(ch) = chars.next() {
+        match ch {
+            '`' => {
+                code = !code;
+                out.push(ch);
+            }
+            '\\' if !code && chars.peek() == Some(&'n') => {
+                chars.next();
+                out.push('\n');
+            }
+            _ => out.push(ch),
+        }
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     #[test]
@@ -1079,5 +1114,28 @@ mod tests {
         assert_eq!(path.parent(), root.parent());
         assert!(path.extension().is_some_and(|end| end == "review"));
         assert!(review(&root).unwrap().is_none(), "none written yet");
+    }
+
+    #[test]
+    fn a_break_written_as_two_characters_is_a_break() {
+        assert_eq!(real_breaks(r"One.\n\nTwo."), "One.\n\nTwo.");
+        assert_eq!(real_breaks("Already\n\nreal."), "Already\n\nreal.");
+        // Inside backticks it is code, and stays as written.
+        assert_eq!(
+            real_breaks(r"Split on `\n` and join.\nNext."),
+            "Split on `\\n` and join.\nNext."
+        );
+        assert_eq!(
+            real_breaks(r"```\nlet a = 1;\n```"),
+            r"```\nlet a = 1;\n```",
+            "a fence is backticks too, and is refused elsewhere anyway"
+        );
+        // Only breaks. A tab written that way stays as written.
+        assert_eq!(real_breaks(r"a\tb"), r"a\tb");
+        // The cost, pinned so it is a decision: a Windows path outside
+        // backticks loses its `\n`. In backticks, where a path belongs, it
+        // does not.
+        assert_eq!(real_breaks(r"see C:\new"), "see C:\new");
+        assert_eq!(real_breaks(r"see `C:\new`"), r"see `C:\new`");
     }
 }

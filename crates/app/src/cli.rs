@@ -106,7 +106,7 @@ enum What {
         deck: PathBuf,
         /// What you want to say. Markdown: `**bold**`, `*look here*`,
         /// `` `code` ``, blank line between paragraphs.
-        #[arg(long)]
+        #[arg(long, value_parser = prose)]
         say: String,
         /// A file and the lines to light up, and optionally a note after a
         /// space: `src/batch.ts:140-148 decremented *twice*`.
@@ -191,7 +191,7 @@ enum What {
         /// `[point 106-110]` inside it lights those lines of the code on
         /// screen, from the moment the words after it are said. The reader
         /// never sees the direction, and neither does the voice.
-        #[arg(long)]
+        #[arg(long, value_parser = prose)]
         text: String,
         /// Record it without reading it aloud.
         #[arg(long)]
@@ -375,6 +375,15 @@ enum What {
         #[arg(long, default_value_t = 0)]
         timeout: u64,
     },
+}
+
+/// A `--say` or `--text`, with breaks written as `\n` made into breaks.
+///
+/// As clap's value parser, so every command that takes prose gets it and
+/// nothing downstream has to know. See [`deck_cli::real_breaks`].
+#[allow(clippy::unnecessary_wraps)]
+fn prose(text: &str) -> Result<String, std::convert::Infallible> {
+    Ok(deck_cli::real_breaks(text))
 }
 
 /// Where decks go when nobody says otherwise.
