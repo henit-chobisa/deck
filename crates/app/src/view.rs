@@ -808,6 +808,19 @@ pub struct DeckView {
     quitting: bool,
     /// That warning's hold on the keyboard, so `q` and escape reach it.
     quit_focus: FocusHandle,
+    /// How far the notes card has come in, or gone out.
+    ///
+    /// A card that appeared and vanished in a frame read as a glitch; this
+    /// eases it in and lets it go, and it stays drawn until it has gone.
+    ///
+    /// Opacity only. It also rose a few points, through its margin, and that
+    /// judders: layout snaps to whole pixels, so the slow start and end of
+    /// the curve stepped the card — and every line of text in it — one pixel
+    /// at a time. This version of GPUI has no way to move a box without
+    /// laying it out again.
+    notes_fade: crate::pane::Fade,
+    /// The same, for the warning before quitting.
+    quit_fade: crate::pane::Fade,
     /// The fetch of notes that were not cached. Replaced, and so dropped,
     /// when another version's notes are asked for.
     fetching_notes: Task<()>,
@@ -994,6 +1007,8 @@ impl DeckView {
             notes_focus: cx.focus_handle(),
             quitting: false,
             quit_focus: cx.focus_handle(),
+            notes_fade: Self::card_fade(),
+            quit_fade: Self::card_fade(),
             fetching_notes: Task::ready(()),
             voice: crate::speech::Voice::default(),
             folded,
@@ -2381,6 +2396,16 @@ impl DeckView {
         }
     }
 
+    /// How a card over the window comes and goes: in quick enough to feel
+    /// like the press caused it, out a little slower, so closing is something
+    /// you see happen rather than something that already has.
+    fn card_fade() -> crate::pane::Fade {
+        crate::pane::Fade::default().paced(
+            std::time::Duration::from_millis(200),
+            std::time::Duration::from_millis(160),
+        )
+    }
+
     /// Lay `version`'s notes over the window, because somebody asked.
     fn show_notes(&mut self, version: String, window: &mut Window, cx: &mut Context<Self>) {
         self.open_notes(version, true, window, cx);
@@ -2444,6 +2469,7 @@ impl DeckView {
             });
         }
         self.notes = Some((version, body));
+        self.notes_fade.set(true);
         cx.notify();
     }
 
@@ -2454,7 +2480,9 @@ impl DeckView {
     /// Not to a box folded away with the rail. Typing would go into words
     /// nobody can see, and the next escape would discard them.
     fn hide_notes(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        self.notes = None;
+        // Not dropped yet: it fades out first, and render lets it go once it
+        // has (see the top of `render`).
+        self.notes_fade.set(false);
         match self.composing.as_ref().map(|(_, state, _)| state.clone()) {
             Some(state) if self.rail_open.on() => {
                 state.update(cx, |state, cx| state.focus(window, cx));
@@ -2475,9 +2503,13 @@ impl DeckView {
     /// window, the same cross — so the two read as one kind of thing. Escape,
     /// the cross and a click off the card keep you here; `q` again quits.
     fn render_quitting(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
-        if !self.quitting {
+        if !self.quitting && !self.quit_fade.moving() {
             return None;
         }
+        // Only the card that is up takes the keyboard and the mouse; one on
+        // its way out is just a picture of itself.
+        let open = self.quitting;
+        let shown = self.quit_fade.level();
         let palette = &self.palette;
         let mono = cx.theme().mono_font_family.clone();
         let button = |id: &'static str, label: &'static str, key: &'static str, primary: bool| {
@@ -2513,10 +2545,17 @@ impl DeckView {
         Some(
             div()
                 .id("quit-shade")
-                .track_focus(&self.quit_focus)
-                .key_context("DeckQuit")
-                .on_action(cx.listener(Self::on_unlight))
-                .on_action(cx.listener(Self::on_close))
+                .when(open, |this| {
+                    this.track_focus(&self.quit_focus)
+                        .key_context("DeckQuit")
+                        .on_action(cx.listener(Self::on_unlight))
+                        .on_action(cx.listener(Self::on_close))
+                        .occlude()
+                        .on_mouse_down(
+                            MouseButton::Left,
+                            cx.listener(|deck, _, window, cx| deck.stay(window, cx)),
+                        )
+                })
                 .absolute()
                 .top_0()
                 .left_0()
@@ -2525,12 +2564,8 @@ impl DeckView {
                 .flex()
                 .items_center()
                 .justify_center()
+                .opacity(shown)
                 .bg(paint(palette.bg).opacity(0.72))
-                .occlude()
-                .on_mouse_down(
-                    MouseButton::Left,
-                    cx.listener(|deck, _, window, cx| deck.stay(window, cx)),
-                )
                 .child(
                     div()
                         .id("quit-card")
@@ -2590,6 +2625,7 @@ impl DeckView {
                                     // the draft was folded away in it.
                                     cx.listener(|deck, _, window, cx| {
                                         deck.quitting = false;
+                                        deck.quit_fade.set(false);
                                         deck.back_to_the_box(window, cx);
                                     }),
                                 ))
@@ -2624,6 +2660,8 @@ impl DeckView {
 
     fn render_notes(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
         let (version, body) = self.notes.as_ref()?;
+        let open = self.notes_fade.on();
+        let shown = self.notes_fade.level();
         let palette = &self.palette;
         let mono = cx.theme().mono_font_family.clone();
 
@@ -2633,9 +2671,16 @@ impl DeckView {
         Some(
             div()
                 .id("notes-shade")
-                .track_focus(&self.notes_focus)
-                .key_context("DeckNotes")
-                .on_action(cx.listener(Self::on_unlight))
+                .when(open, |this| {
+                    this.track_focus(&self.notes_focus)
+                        .key_context("DeckNotes")
+                        .on_action(cx.listener(Self::on_unlight))
+                        .occlude()
+                        .on_mouse_down(
+                            MouseButton::Left,
+                            cx.listener(|deck, _, window, cx| deck.hide_notes(window, cx)),
+                        )
+                })
                 .absolute()
                 .top_0()
                 .left_0()
@@ -2644,12 +2689,8 @@ impl DeckView {
                 .flex()
                 .items_center()
                 .justify_center()
+                .opacity(shown)
                 .bg(paint(palette.bg).opacity(0.72))
-                .occlude()
-                .on_mouse_down(
-                    MouseButton::Left,
-                    cx.listener(|deck, _, window, cx| deck.hide_notes(window, cx)),
-                )
                 .child(
                     div()
                         .id("notes")
@@ -2765,7 +2806,7 @@ impl DeckView {
             return;
         }
         // Notes over the window are the nearest thing to put away.
-        if self.notes.is_some() {
+        if self.notes_fade.on() {
             self.hide_notes(window, cx);
             return;
         }
@@ -2800,6 +2841,7 @@ impl DeckView {
     fn on_leave(&mut self, _: &Leave, window: &mut Window, cx: &mut Context<Self>) {
         if self.unsent(cx).is_some() {
             self.quitting = true;
+            self.quit_fade.set(true);
             self.quit_focus.focus(window, cx);
             cx.notify();
             return;
@@ -2810,6 +2852,7 @@ impl DeckView {
     /// Put the warning away, and the keyboard back where it was.
     fn stay(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.quitting = false;
+        self.quit_fade.set(false);
         match self.composing.as_ref().map(|(_, state, _)| state.clone()) {
             Some(state) if self.rail_open.on() => {
                 state.update(cx, |state, cx| state.focus(window, cx));
@@ -3517,7 +3560,7 @@ impl DeckView {
         // over it — over a resumed draft, or opened from the foot. The notes
         // are what the reader is looking at, so they go, and the remark
         // underneath is kept.
-        if self.notes.is_some() {
+        if self.notes_fade.on() {
             self.hide_notes(window, cx);
             return;
         }
@@ -6187,6 +6230,10 @@ use crate::pane::SPINE;
 impl Render for DeckView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         self.settle_said_light();
+        // Notes that have finished fading out are let go.
+        if self.notes.is_some() && !self.notes_fade.on() && !self.notes_fade.moving() {
+            self.notes = None;
+        }
         let typing = self.typing(window, cx);
         // A page's own view is not deck's to paint, so it is moved here, before
         // anything is drawn: to where the last frame measured its hole, or off
@@ -6222,6 +6269,8 @@ impl Render for DeckView {
             || self.pressed.is_some_and(|(_, _, light)| light.moving())
             || self.said_lit.is_some_and(|(_, light)| light.moving())
             || self.rail_open.moving()
+            || self.notes_fade.moving()
+            || self.quit_fade.moving()
             || self
                 .showing
                 .as_ref()
@@ -6527,7 +6576,7 @@ impl Render for DeckView {
             // Nor while the notes are up. They are a card over the deck, and a
             // key matched up the focus chain would otherwise reach through it:
             // `s` sent the review, `c` opened a comment under the card.
-            .when(!typing && self.notes.is_none() && !self.quitting, |this| {
+            .when(!typing && !self.notes_fade.on() && !self.quitting, |this| {
                 this.key_context("Deck")
             })
             .on_action(cx.listener(Self::on_next))
