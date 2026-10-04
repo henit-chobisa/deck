@@ -961,10 +961,13 @@ impl DeckView {
             panes: Vec::new(),
             group_ix,
             // Holding the keyboard from the start. Nothing else gave it to the
-            // deck until the reader clicked somewhere in it, and on Windows
-            // that left every key dead on a deck that had just been opened:
-            // with nothing focused, a key is offered to the window's root and
-            // never reaches the deck's own bindings.
+            // deck until the reader clicked somewhere in it, which left every
+            // key dead on a deck that had just been opened — most visibly on
+            // Windows: with nothing focused, a key is offered to the window's
+            // root and never reaches the deck's own bindings.
+            //
+            // First, so that whatever opens further down — the notes card, a
+            // comment kept from last time — takes the keyboard from it.
             focus: {
                 let focus = cx.focus_handle();
                 focus.focus(window, cx);
