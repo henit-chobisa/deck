@@ -4943,12 +4943,15 @@ impl DeckView {
     fn render_endings(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let palette = &self.palette;
         let mono = cx.theme().mono_font_family.clone();
-        let roomy = self.rail_width.unwrap_or(RAIL)
-            >= if cfg!(target_os = "macos") {
-                190.
-            } else {
-                270.
-            };
+        // The narrowest rail in which the wider button still fits with its
+        // keys beside it: the button's own width plus the rail's padding. The
+        // keys are glyphs on a Mac and words elsewhere, hence the two.
+        const ROOM_FOR_KEYS: f32 = if cfg!(target_os = "macos") {
+            190.
+        } else {
+            270.
+        };
+        let roomy = self.rail_width.unwrap_or(RAIL) >= ROOM_FOR_KEYS;
         let button = |id: &'static str, label: &'static str, keys: &'static str, primary: bool| {
             div()
                 .id(id)
@@ -7130,5 +7133,29 @@ mod tests {
             assert_eq!(there, back);
             assert!(!forwards && reversed);
         }
+    }
+
+    #[test]
+    fn the_placeholder_is_cut_to_the_rail() {
+        // One line that never wraps, so it is chosen by how wide the rail is.
+        // The default rail has to stay wide enough for the whole sentence:
+        // it sits only a few points above the cut-off.
+        let about = About::Drawn {
+            group: "g".into(),
+            ref_id: "r".into(),
+            quote: String::new(),
+        };
+        assert_eq!(DeckView::asking(&about, 150.), "your comment");
+        assert_eq!(DeckView::asking(&about, 219.9), "your comment");
+        assert_eq!(DeckView::asking(&about, 220.), "what you want to say");
+        assert_eq!(DeckView::asking(&about, 299.9), "what you want to say");
+        assert_eq!(
+            DeckView::asking(&about, 300.),
+            "what you want to say about this"
+        );
+        assert_eq!(
+            DeckView::asking(&about, RAIL),
+            "what you want to say about this"
+        );
     }
 }
