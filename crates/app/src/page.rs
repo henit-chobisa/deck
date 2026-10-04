@@ -70,6 +70,11 @@ pub struct Paper {
     hole: Rc<Cell<Option<Bounds<Pixels>>>>,
     /// Whether it is on screen right now.
     shown: bool,
+    /// The window the view lives in, on Windows, where it cannot be a child
+    /// of the deck's. After `view`, so the view is dropped before the window
+    /// it was built in.
+    #[cfg(target_os = "windows")]
+    host: Option<crate::win::PageHost>,
 }
 
 impl Paper {
@@ -94,6 +99,8 @@ impl Paper {
             at: None,
             hole: Rc::new(Cell::new(None)),
             shown: false,
+            #[cfg(target_os = "windows")]
+            host: None,
         }
     }
 
@@ -203,6 +210,10 @@ impl Paper {
         if let Some(view) = self.view.as_ref() {
             let _ = view.set_visible(false);
         }
+        #[cfg(target_os = "windows")]
+        if let Some(host) = self.host.as_ref() {
+            host.show(false);
+        }
         self.shown = false;
     }
 
@@ -224,18 +235,58 @@ impl Paper {
         }
         if self.view.is_none() {
             let document = dressed(&self.html, palette);
-            self.view = build(window, &document, at);
+            #[cfg(not(target_os = "windows"))]
+            {
+                self.view = build(window, &document, at);
+            }
+            #[cfg(target_os = "windows")]
+            {
+                self.host = crate::win::PageHost::new(window);
+                self.view = self
+                    .host
+                    .as_ref()
+                    .and_then(|host| build(host, &document, palette));
+            }
             self.dressed = Some(document);
         }
         let Some(view) = self.view.as_ref() else {
             return;
         };
+        #[cfg(not(target_os = "windows"))]
         if self.at != Some(at) {
             let _ = view.set_bounds(rect(at));
             self.at = Some(at);
         }
+        // Asked every frame, not only when the hole has moved: the host is a
+        // window of its own, and the deck moving across the screen moves the
+        // hole without changing it. The host knows when there is nothing to do.
+        #[cfg(target_os = "windows")]
+        if let Some(host) = self.host.as_ref() {
+            /// How far the *again* button hangs into the hole. On a Mac the
+            /// view is see-through and the button shows through it; this
+            /// window is not, so it starts below the button instead.
+            const UNDER_AGAIN: f32 = 14.;
+            let scale = window.scale_factor();
+            let (wide, tall) = host.place(
+                f32::from(at.origin.x) * scale,
+                (f32::from(at.origin.y) + UNDER_AGAIN) * scale,
+                f32::from(at.size.width) * scale,
+                (f32::from(at.size.height) - UNDER_AGAIN) * scale,
+            );
+            if self.at != Some(at) {
+                let _ = view.set_bounds(wry::Rect {
+                    position: wry::dpi::PhysicalPosition::new(0, 0).into(),
+                    size: wry::dpi::PhysicalSize::new(wide, tall).into(),
+                });
+                self.at = Some(at);
+            }
+        }
         if !self.shown {
             let _ = view.set_visible(true);
+            #[cfg(target_os = "windows")]
+            if let Some(host) = self.host.as_ref() {
+                host.show(true);
+            }
             self.shown = true;
         }
     }
@@ -433,6 +484,7 @@ const SHIM: &str = "window.deck=window.deck||{at:null};\
     });";
 
 /// Where a page sits, in the coordinates a webview wants.
+#[cfg(not(target_os = "windows"))]
 fn rect(at: Bounds<Pixels>) -> wry::Rect {
     wry::Rect {
         position: wry::dpi::LogicalPosition::new(f64::from(at.origin.x), f64::from(at.origin.y))
@@ -443,7 +495,40 @@ fn rect(at: Bounds<Pixels>) -> wry::Rect {
 }
 
 /// Make the view, as a child of the window deck is already drawing in.
+#[cfg(not(target_os = "windows"))]
 fn build(window: &Window, html: &str, at: Bounds<Pixels>) -> Option<wry::WebView> {
+    builder(html)
+        .with_transparent(true)
+        .with_bounds(rect(at))
+        .build_as_child(&window)
+        .inspect_err(refused)
+        .ok()
+}
+
+/// Make the view, filling the window that stands over the pane for it.
+///
+/// Not see-through, as it is on a Mac: there is nothing of deck's behind this
+/// window to see, only the desktop. It is given the pane's own colour instead,
+/// which is what would have shown.
+#[cfg(target_os = "windows")]
+fn build(host: &crate::win::PageHost, html: &str, palette: &Palette) -> Option<wry::WebView> {
+    let Rgb { r, g, b } = palette.wash;
+    builder(html)
+        .with_background_color((r, g, b, 255))
+        .build_as_child(host)
+        .inspect_err(refused)
+        .ok()
+}
+
+/// Said once, out loud. A pane that is silently empty is worse than one that
+/// explains itself: the reader would be looking at a hole wondering whether
+/// the agent forgot to draw anything.
+fn refused(err: &wry::Error) {
+    eprintln!("deck: this window would not take a page: {err}");
+}
+
+/// Everything about the view that is the same wherever it stands.
+fn builder(html: &str) -> wry::WebViewBuilder<'_> {
     wry::WebViewBuilder::new()
         .with_html(html)
         // Nothing is loaded from anywhere. A page is markup the agent wrote,
@@ -460,16 +545,6 @@ fn build(window: &Window, html: &str, at: Bounds<Pixels>) -> Option<wry::WebView
             let url = url.trim().to_ascii_lowercase();
             url.is_empty() || url.starts_with("about:") || url.starts_with("data:")
         })
-        .with_transparent(true)
-        .with_bounds(rect(at))
-        .build_as_child(&window)
-        .inspect_err(|err| {
-            // Said once, out loud. A pane that is silently empty is worse than
-            // one that explains itself: the reader would be looking at a hole
-            // wondering whether the agent forgot to draw anything.
-            eprintln!("deck: this window would not take a page: {err}");
-        })
-        .ok()
 }
 
 /// A string, as a script may safely receive it.
