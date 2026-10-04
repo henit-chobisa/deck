@@ -617,8 +617,8 @@ review's `transcript`, so a promise made there arrives with the comments even
 if you have lost track of it by then.
 
 **Hand the slow part to a subagent if you must.** If answering means real
-digging, spawn one to read and report back — not to edit — with the context you already have and let it work while you
-keep the conversation alive. Do not make them wait on your whole investigation.
+digging, spawn one to read and report back — not to edit — with the context
+you already have, and let it work while you keep the conversation alive. Do not make them wait on your whole investigation.
 
 **Two or three sentences.** They are listening, not reading — they cannot skim
 and they cannot glance back. Say the thing, stop, and let them ask the next one.
@@ -1211,7 +1211,7 @@ a question nobody asked. They wanted to see the change. Both flags exist so that
 you always have one.
 
 If you have not edited yet, prefer `--after`: write the group against the code
-as it stands, seal it, and make the edit afterwards. You lose nothing by that
+as it stands, seal it, and make the edit once their review is in. You lose nothing by that
 order and they get to argue before it lands, which is the whole point of handing
 it over.
 
@@ -1788,13 +1788,13 @@ The payload is the review:
       "range": [122, 124], "source": "diff", "kind": "must-fix",
       "quote": "if (--pending === 0) finish()",   // use this to relocate if lines moved
       "text": "why does this assume sorted input?" } ],
-  // only after a live walk: what was said, in order — yours included
+  // only after a live walk: what was shown and said, in order — yours included
   "transcript": [
-    { "at_ms": 41200, "what": "said", "group": "g2",
+    { "at_ms": 41200, "what": "said", "group": "g2", "when": "queue",
       "text": "agreed — I'll make the retry bounded once you submit." } ] }
 ```
 
-`range` is where the comment sits *now* (deck tracked it through any edits made while they
+`range` is where the comment sits *now* (deck tracked it through any edits to the file while they
 were reading). `quote` is the text it was pinned to when they wrote it. If the two
 disagree, trust `quote` — search for it. `source` says how far to trust `range`: `extmark`
 and `diff` are exact, `fingerprint` is a good guess, `stale` means the line moved and could
@@ -1809,9 +1809,8 @@ line — often the most important one in the review.
 Act on every comment, and on everything you agreed to during the walk — the
 changes they asked for in the conversation and the decisions you locked in
 together are part of this review even though they are not in `comments`. Read
-`transcript` for what you said you would do: every *"agreed"* there is a comment
-too. Answer
-the questions, fix what they objected to. Their comments are
+`transcript` for what you said you would do: every promise there is a comment
+too. Answer the questions, fix what they objected to. Their comments are
 often the real "but why" — a question in a comment means the deck did not carry the model
 far enough, so answer it fully, not thinly. If the review changes your plan materially,
 present the revised plan as a new deck rather than describing the change in prose.
