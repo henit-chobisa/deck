@@ -382,54 +382,14 @@ impl Paper {
     }
 }
 
-/// The names a document answers to, in the order they appear.
-///
-/// A scan rather than a parse. Deck needs to know which page owns `[point
-/// rows]` before anything has been rendered, so it reads two things out of the
-/// markup: every `id`, and anything listed in
-///
-/// ```html
-/// <meta name="deck-points" content="make link attach wrong">
-/// ```
-///
-/// The meta tag exists because the interesting names are usually *states* and
-/// not elements. A page about putting a box into a chain answers to `attach`,
-/// and there is no element called that — there is a row of boxes that arranges
-/// itself differently when the reader gets to that sentence. Without a way to
-/// say so, the point found no pane, the page never heard, and the code lit up
-/// beside a picture that had not moved.
+/// The names a document answers to, as the command line reads them — see
+/// [`deck_cli::answered_by`]. Read from the markup rather than asked of the
+/// document, because the answer is needed before there is a view to ask.
 fn declared(html: &str) -> Vec<SharedString> {
-    let mut out = Vec::new();
-    if let Some(at) = html.find("name=\"deck-points\"") {
-        let after = &html[at..];
-        if let Some(from) = after.find("content=\"")
-            && let Some(end) = after[from + 9..].find('"')
-        {
-            for name in after[from + 9..from + 9 + end].split_whitespace() {
-                out.push(SharedString::from(name.to_string()));
-            }
-        }
-    }
-    let mut rest = html;
-    while let Some(at) = rest.find("id=") {
-        rest = &rest[at + 3..];
-        let Some(quote) = rest.chars().next().filter(|ch| *ch == '"' || *ch == '\'') else {
-            continue;
-        };
-        let Some(end) = rest[1..].find(quote) else {
-            break;
-        };
-        let id = &rest[1..=end];
-        if !id.is_empty()
-            && id
-                .chars()
-                .all(|ch| ch.is_alphanumeric() || ch == '-' || ch == '_')
-        {
-            out.push(SharedString::from(id.to_string()));
-        }
-        rest = &rest[end + 2..];
-    }
-    out
+    deck_cli::answered_by(html)
+        .into_iter()
+        .map(SharedString::from)
+        .collect()
 }
 
 /// The page, wearing deck's colours.
@@ -473,8 +433,28 @@ fn dressed(html: &str, palette: &Palette) -> String {
 /// now, and `deck:point` fires whenever that changes — including once more when
 /// the document finishes loading, so a page that arrives mid-walk is not left
 /// showing its first frame while the narration is three sentences in.
+///
+/// And the declarative half, so most pages need no script at all: an element
+/// with `data-on="hop settle"` wears `on` while the point is either of those;
+/// `data-show="hop"` is there only then; `data-from="hop"` arrives at `hop`
+/// and stays for every point after it, in the order `deck-points` lists them.
+/// At rest — no point — nothing is on and nothing shown is showing, which is
+/// the still first frame a page must open on.
 const SHIM: &str = "window.deck=window.deck||{at:null};\
+    function deckApply(at){\
+      var meta=document.querySelector('meta[name=deck-points]');\
+      var order=meta?meta.content.split(/\\s+/):[];\
+      var here=order.indexOf(at);\
+      var has=function(e,k){return at!==null&&e.getAttribute(k).split(/\\s+/).indexOf(at)>=0;};\
+      document.querySelectorAll('[data-on]').forEach(function(e){e.classList.toggle('on',has(e,'data-on'));});\
+      document.querySelectorAll('[data-show]').forEach(function(e){e.classList.toggle('deck-off',!has(e,'data-show'));});\
+      document.querySelectorAll('[data-from]').forEach(function(e){\
+        var from=order.indexOf(e.getAttribute('data-from'));\
+        e.classList.toggle('deck-off',!(at!==null&&here>=0&&from>=0&&here>=from));});\
+    }\
+    addEventListener('deck:point',function(e){deckApply(e.detail);});\
     addEventListener('DOMContentLoaded',function(){\
+      deckApply(window.deck.at);\
       if(window.deck.at!==null){\
         window.dispatchEvent(new CustomEvent('deck:point',{detail:window.deck.at}));\
       }\

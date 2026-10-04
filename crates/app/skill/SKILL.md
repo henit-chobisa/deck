@@ -1103,8 +1103,8 @@ sentence, so a place you name is often wrong by the time it is read. A name is r
 at every width, and the reader can put the pointer on it to see which pane it means.
 Name every pane you mention in the prose.
 - `--diagram <file.json>` adds a picture. See §4.
-- `--page <file.html>` adds a page: markup you write, for the thing that only
-  makes sense moving. See §5.
+- `--page <file.html>` adds a page: markup you write, for the thing they should
+  watch happen — never for boxes and arrows, which are a picture. See §5.
 
 ### A code pane is a highlight or a diff, and you need both
 
@@ -1290,8 +1290,9 @@ noticing:
 - **A file**, when the evidence is code that exists. Most groups.
 - **A picture**, when answering means naming three or more places and the order they run
   in. See §4.
-- **A page**, when you would have to draw it **twice** to show what happens — a before and
-  an after — because the thing being explained is the bit in between. See §5.
+- **A page**, when the answer is something they should watch happen — a race on a
+  timeline, a queue filling, a structure changing, a chart bending. When you would have
+  to draw it **twice**, because the thing being explained is the bit in between. See §5.
 
 **A picture or a page almost always wants a file beside it.** The picture says *where* in
 the flow you are, the refs say *what* the code does there; the page shows the movement,
@@ -1299,9 +1300,10 @@ the ref shows the line that causes it. §4 and §5 both pair them, and a group t
 with a shape and no code has left the reader to find the code themselves.
 
 That last test is the one that makes the difference, because a page is the pane everybody
-forgets. Rows merging on a key, a queue filling until the producer is told to stop, a node
-coming out of the middle of a chain, a pointer walking a list: draw any of those once and
-you have drawn the start, or the end, and not the thing. Those are pages, and a deck that
+forgets — and, when it is remembered, the one written as boxes, which is a picture's job.
+Two requests racing for one row, a queue filling until the producer is told to stop, a
+node coming out of the middle of a chain, a pointer walking a list: draw any of those once
+and you have drawn the start, or the end, and not the thing. Those are pages, and a deck that
 answers one with a static picture has handed the reader the two frames either side of the
 only frame they wanted.
 
@@ -1444,18 +1446,22 @@ picture has to be read first, it needs a group of its own.
 
 ## 5. When the answer only makes sense moving
 
-**If you would have to draw it twice, it is a page.** A before and an after, with the
-interesting part in the gap between them — that gap is the whole answer, and a picture
-cannot hold it. Two rows merging on the same key, a queue filling until the producer is
-told to stop, a node coming out of the middle of a chain: draw any of those once and you
-have drawn a start, or an end, and not the thing being asked about.
+**A page is something they watch happen.** A race between two workers on a time axis.
+A queue filling until the producer is told to stop. A pointer walking a list and the
+node it unlinks. A latency chart that bends when the cache goes cold. The reader sees
+the thing happen, in time with the sentence that describes it, and understands it
+the way they would if they had stepped through it in a debugger themselves.
 
-That is the test, and it is worth applying deliberately, because this is the pane that
-gets forgotten. An agent reaches for a file without thinking and a picture when prompted;
-a page it has to decide on.
+It is not a diagram drawn in HTML. **Boxes and arrows are a picture (§4) — always.**
+Deck draws pictures itself, laid out, themed, folding, with blocks a point can light.
+A page that is a row of rounded rectangles with labels in them is a worse picture,
+and it is the page agents write by default. Do not write it.
 
-That is what a page is for: HTML you write, rendered in a pane of the deck, wearing the
-deck's own colours and hearing the same points the code does.
+**If you would have to draw it twice, it is a page.** That is the test. A before and
+an after, with the interesting part in the gap between them — that gap is the whole
+answer, and a still picture cannot hold it. If the drawing would look the same at
+every sentence, it is structure, and structure is a picture. If something moves,
+grows, fills, races or changes value when you point, it is a page.
 
 ```bash
 deck group <path> \
@@ -1468,28 +1474,28 @@ which field actually survives it.' \
 
 `--page` takes the same shape `--ref` and `--diagram` do: the file, then an optional
 `[name]`, then a note. It is a pane like any other — it takes a name the prose can say,
-it folds, and a point can land in it.
+it folds, and a point can land in it. An agent reaches for a file without thinking and
+a picture when prompted; this is the pane that
+gets forgotten, so ask the question on purpose.
 
-**Reach for a picture first.** A diagram costs you eight lines of JSON, deck draws every
-pixel of it, and it folds and animates for free. A page is markup you own end to end and
-a native view composited above everything deck paints, which is why it hides itself while
-the room is moving. If boxes and arrows can say the thing, say it with boxes and arrows.
-A page is for what a still picture genuinely cannot hold.
+### What pages are for
 
-### Forty words, and that is the whole rule
+Each of these is a page, and each says what moves:
 
-`deck group` counts the words a page shows and refuses it over forty. Not a style note —
-the command fails and you write it again.
-
-The prose carries the argument. Words on the page are a second narration competing with
-the band, read at a different speed by the same reader, and that is the one bad decision
-this pane is always one step away from. **Labels, numbers, a field name.** Not sentences,
-not a heading and three bullets, not an explanation of what they are looking at. If the
-page needs a paragraph to make sense, the paragraph belongs in the `say`.
+- **A timeline.** Lanes for the actors — threads, requests, services — on a time axis
+  in real units. Concurrency, races, deadlocks, retries and backoff, where the latency
+  went. Bars grow as time runs; the sentence decides how far it has run.
+- **Something filling.** A queue, a buffer, a pool, a token bucket, a rate limit.
+  Items arrive and leave; the level is the story; the moment it is full is the point.
+- **A structure changing.** An array with an index walking it, a linked list being
+  spliced, a tree rebalancing, a cache evicting its oldest entry, a hash table
+  resizing. The same elements, moved — never redrawn.
+- **A chart that bends.** Before and after a change: latency, memory, a distribution,
+  a counter over time. The axes stay put and the data moves between them.
+- **A value through time.** Every variable that matters as a track, and the moment one
+  goes wrong — the count that should be 7 and is 6.
 
 ### It starts at rest, and moves when you point
-
-This is the rule that is most often got wrong, and getting it wrong ruins the pane.
 
 A page must come up still. No autoplay, no timer, no `setTimeout` chain that starts on
 load. The reader is listening to a sentence; if the animation is running on its own clock
@@ -1520,22 +1526,79 @@ So write the page as a **function of the point**, not as a sequence that plays. 
 be walked forwards, walked backwards, and re-entered in the middle, which is what the
 reader will actually do to it.
 
+For a page that only lights or reveals parts, no script is needed: `data-on="hop
+settle"` puts the class `on` on an element while the point is either name,
+`data-show="hop"` shows it only then, and `data-from="hop"` shows it from `hop` onward
+in the order `deck-points` lists. Style `.on` yourself.
+
 `deck:remark` is the other half: the reader pressing a comment in the rail, saying *this
 part*, about something that moves. Nothing else they could have written it against can
 hear them.
 
+### Move it so they can follow it
+
+How motion explains, and how it stops explaining, is well studied. Four rules:
+
+- **The same thing stays the same thing.** The request that was in the queue at one
+  sentence is the same dot at the next — it moves there. Redraw the whole scene with
+  new shapes and the reader has to find everything again; move the shapes they already
+  know and their eye follows by itself.
+- **One kind of change per sentence.** Time advancing, *or* a value changing, *or*
+  something arriving — not all three at once. Staged changes are measurably easier to
+  follow, and people prefer them slower than whoever made them expects: 400 to 900
+  milliseconds a change, eased, never a snap.
+- **Stop just before it goes wrong.** Give the moment before the outcome its own
+  point and the outcome the next one. The reader predicts what happens, and then
+  watches whether they were right.
+- **Light the one thing the sentence is about.** In `--deck-accent`, and only that;
+  everything else in `--deck-edge` and `--deck-muted`. When the sentence moves on, the
+  light moves with it.
+
+And honour `prefers-reduced-motion`: jump straight to the state instead of moving there.
+
+### Real numbers, in real units
+
+Use the numbers the code uses — the 30-second timeout, the queue of 64, the 2 ms the
+read takes — and put them on the axis in their units. A timeline with no scale is a
+cartoon of the bug; one with `0ms … 12ms` under it is the bug. Numbers and units are
+free against the word limit below.
+
+### Draw for the room you have
+
+A page gets a whole pane, and a pane is whatever shape the window left it — often tall
+and narrow, sometimes wide and short. **Measure it and draw for it**: read the size of
+the drawing area and lay out from that, on every frame and on `resize`.
+
+**Never scale text with a `viewBox`.** An SVG stretched to fill the pane scales its text
+with it, so the labels come out three times the size of everything else in deck, too
+wide for the boxes they were written to fit — the page that started this section's
+rewrite looked exactly like that. Text is 11 to 13 pixels, set in CSS, always; the
+geometry grows to the room, and the words stay the size of the window's words.
+
+### Forty words, and that is the whole rule
+
+`deck group` counts the words a page shows and refuses it over forty. Numbers and
+measurements — `200ms`, `64`, `-12%` — are not counted. Not a style note — the command
+fails and you write it again.
+
+The prose carries the argument. Words on the page are a second narration competing with
+the band, read at a different speed by the same reader. **Labels, numbers, a field name.**
+Not sentences, not a heading and three bullets, not an explanation of what they are
+looking at. If the page needs a paragraph to make sense, the paragraph belongs in the
+`say`.
+
 ### Say what you answer to
 
-A point finds its pane by name, and a page answers to two things: the `id` of any element
-in it, and whatever it declares here.
+A point finds its pane by name, and a page answers to the `id` of any element in it, any
+name in a `data-on`, `data-show` or `data-from`, and whatever it declares here:
 
 ```html
 <meta name="deck-points" content="rest merge hop settle">
 ```
 
-Declare them whenever the interesting names are arrangements rather than things on screen
-— states, steps, moments. Most good pages are like this: `hop` is not an element, it is
-what the page looks like at a moment.
+Declare them whenever the interesting names are moments rather than things on screen —
+and on a page that moves, they nearly always are: `hop` is not an element, it is what
+the page looks like at a moment.
 
 Without that, `[point hop]` names nothing, and `deck group` says so while you are still
 running and can fix it. The failure it was added for is worth knowing, because it is
@@ -1552,52 +1615,21 @@ Deck hands every page its palette as CSS variables, before your markup:
 
 Use them and nothing else. **Never write a literal colour.** The reader chose their
 editor's theme and the rest of the window is honouring it; one page with `#1e1e1e` hard
-coded in it is the pane that looks like it came from somewhere else — which is exactly how
-it feels to read.
+coded in it is the pane that looks like it came from somewhere else. `--deck-add` and
+`--deck-del` are for good and bad outcomes — the write that was lost, the request that
+got through.
 
 The background is transparent and the font is already set to the window's mono. Build on
 that rather than reasserting it.
 
 ### Nothing loads from anywhere
 
-There is no network behind a page. No CDN, no Google Fonts, no `fetch`, no image URL.
-Every script and style is inline in the file you write.
+There is no network behind a page. No CDN, no chart library, no Google Fonts, no `fetch`,
+no image URL. Every script and style is inline in the file you write.
 
 This is deliberate and not a limitation to work around: a surface for reading your own
-code should not be making requests while you read it. Write SVG and CSS transitions by
-hand. Forty words of content does not need a framework.
-
-### Fill the room you were given
-
-A page gets a whole pane, and a pane is whatever shape the window's width left
-it — often tall and narrow, sometimes wide and short. The drawing has to answer
-that shape, and this is the rule that gets missed, because a page written against
-a browser looks fine in a browser and lost in a pane.
-
-```html
-<style>
-  body { margin: 0; display: grid; place-items: center; height: 100vh }
-  svg  { width: 100%; height: auto }
-</style>
-<svg viewBox="0 0 240 120">
-```
-
-`100vh` and `place-items: center` put it in the middle of whatever it is given;
-a `viewBox` with no fixed width lets it grow to the room instead of sitting at
-whatever size you happened to type. **A drawing a quarter of the way up a tall
-pane with empty space under it reads as something that failed to load**, and no
-amount of correctness in the part that did draw makes up for it.
-
-### Everything you name gets an edge
-
-If the prose says four actors, the picture joins four actors. A box sitting to
-one side with no line into it is the reader stopping to work out what it is doing
-there — and they stop *while you are still talking*, so they lose the next
-sentence too.
-
-That applies hardest to the thing you mention last. It is the one most likely to
-have been added to the drawing after the layout was settled, and the one most
-likely to be floating.
+code should not be making requests while you read it. SVG, a canvas, and
+`requestAnimationFrame` are the whole toolkit, and they are enough for every page above.
 
 ### Do it again, in the same place
 
@@ -1614,30 +1646,97 @@ which is worse than the first drawing was.
 
 ### What a good page looks like
 
+The race behind a lost increment: two workers on a timeline, and the count as a track
+under them. Each sentence runs time forward to its moment — the same bars grow, the
+playhead moves, and the one bar the sentence is about is lit — until the count reads 6
+where it should read 7.
+
+```bash
+deck group <path> \
+  --say '[point read-a] Worker A reads the count: 5. [point read-b] Before A is done,
+worker B reads it too, and also sees 5. [point write-a] A writes 6. [point write-b] Then
+B writes 6 over it, and one increment is gone. That is [race].' \
+  --page 'race.html [race] two workers, one count'
+```
+
 ```html
-<meta name="deck-points" content="rest arrive hop settle">
+<meta name="deck-points" content="read-a read-b write-a write-b">
 <style>
-  body { margin: 0; display: grid; place-items: center; height: 100vh }
-  .row { transition: transform .45s ease, opacity .45s ease }
-  .row.gone { opacity: .25 }
-  .win { fill: var(--deck-accent) }
+  body { margin: 0; height: 100vh }
+  svg  { display: block; width: 100%; height: 100% }
+  text { font: 11px ui-monospace, monospace; fill: var(--deck-muted) }
+  .name { fill: var(--deck-fg); font-size: 12px }
+  .bar { fill: var(--deck-edge) }  .bar.lit { fill: var(--deck-accent) }
+  .on { fill: var(--deck-on-accent) }
+  .lost { fill: var(--deck-del); font-weight: 600 }
 </style>
-<svg viewBox="0 0 240 120" width="100%">
-  <g id="old" class="row"><rect width="200" height="34" fill="var(--deck-wash)"/>
-    <text x="8" y="22" fill="var(--deck-fg)">qty 3</text></g>
-  <g id="new" class="row"><rect width="200" height="34" class="win"/>
-    <text x="8" y="22" fill="var(--deck-on-accent)">qty 7</text></g>
-</svg>
+<svg id="s"></svg>
 <script>
-  const at = { rest: 0, arrive: 1, hop: 2, settle: 3 }
-  addEventListener('deck:point', (e) => draw(at[e.detail] ?? 0))
-  function draw(step) { /* position the two rows for that step */ }
+// Milliseconds, from the code: a read takes 2, the work 6, the write 2.
+const lanes = { 'worker A': [[0, 2, 'read 5'], [2, 8, ''], [8, 10, 'write 6']],
+                'worker B': [[2, 4, 'read 5'], [4, 10, ''], [10, 12, 'write 6']] }
+const at  = { 'read-a': 2, 'read-b': 4, 'write-a': 10, 'write-b': 12 }
+const lit = { 'read-a': ['worker A0'], 'read-b': ['worker A0', 'worker B0'],
+              'write-a': ['worker A2'], 'write-b': ['worker B2'] }
+const svg = document.getElementById('s')
+let shown = 0, target = 0, point = null
+
+function add(tag, attrs, text) {
+  const e = document.createElementNS('http://www.w3.org/2000/svg', tag)
+  for (const k in attrs) e.setAttribute(k, attrs[k])
+  if (text != null) e.textContent = text
+  return svg.appendChild(e)
+}
+
+function draw(t) {                       // the scene at time t, for this pane's size
+  const W = svg.clientWidth, H = svg.clientHeight, lane = Math.max(26, H / 9)
+  const x = ms => 104 + (W - 144) * ms / 12, top = (H - lane * 4) / 2
+  svg.innerHTML = ''
+  for (let ms = 0; ms <= 12; ms += 2)
+    add('text', { x: x(ms), y: top + lane * 3.4, 'text-anchor': 'middle' }, ms + 'ms')
+  Object.entries(lanes).forEach(([name, spans], row) => {
+    const y = top + lane * row
+    add('text', { x: 16, y: y + 16, class: 'name' }, name)
+    spans.forEach(([from, to, label], i) => {
+      if (from >= t) return
+      const end = Math.min(to, t), on = (lit[point] || []).includes(name + i) && end === to
+      add('rect', { x: x(from) + 1, y, width: x(end) - x(from) - 2, height: 22, rx: 4,
+                    class: on ? 'bar lit' : 'bar' })
+      if (label && end === to) add('text', { x: x(from) + 6, y: y + 15, class: on ? 'on' : '' }, label)
+    })
+  })
+  const y = top + lane * 2.5
+  add('text', { x: 16, y: y + 4, class: 'name' }, 'count')
+  add('text', { x: x(t >= 10 ? 10 : 0), y: y + 4, class: 'name' }, t >= 10 ? '6' : '5')
+  if (point === 'write-b' && t > 11.9) add('text', { x: x(12), y: y + 22,
+    'text-anchor': 'end', class: 'lost' }, 'should be 7')
+  add('line', { x1: x(t), x2: x(t), y1: top - 12, y2: top + lane * 3,
+                stroke: 'var(--deck-accent)' })
+}
+
+function run() {                         // time runs forward to the sentence, eased
+  shown += (target - shown) * 0.14
+  if (Math.abs(target - shown) < 0.02) shown = target
+  draw(shown)
+  if (shown !== target) requestAnimationFrame(run)
+}
+
+addEventListener('deck:point', (e) => {
+  point = e.detail in at ? e.detail : null
+  target = point ? at[point] : 0
+  if (!point || target < shown) shown = target
+  if (matchMedia('(prefers-reduced-motion: reduce)').matches) shown = target
+  run()
+})
+addEventListener('resize', () => draw(shown))
+draw(0)
 </script>
 ```
 
-Two shapes, four states, one transition, and every colour borrowed. That is the size of
-thing that works. A page with a legend, a title and six controls is a small web app, and
-the reader did not open deck to use a small web app.
+Two lanes, a track, four moments, and every colour borrowed. Nothing in it is a box with
+a label for a box's sake: every shape is something happening, at the time it happens.
+That is the size and the kind of thing that works. A page with a legend, a title and six
+controls is a small web app, and the reader did not open deck to use a small web app.
 
 ### Bringing one mid-walk
 
