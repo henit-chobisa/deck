@@ -297,6 +297,8 @@ pub struct Chart {
     /// diagram's own, so the agent points at `[point checkout]` with the same
     /// word it wrote into the file.
     pub pointed: Vec<SharedString>,
+    /// Whether the agent is talking about this pane. See [`Self::heed`].
+    heeded: crate::pane::Fade,
     /// The node the reader has picked, if any.
     ///
     /// A diagram has no lines, so a remark about one is pinned to a node
@@ -373,6 +375,7 @@ impl Chart {
             ref_id: spec.id.clone().into(),
             name: spec.name.clone().map(SharedString::from),
             pointed: Vec::new(),
+            heeded: crate::pane::Fade::default(),
             diagram: spec.diagram.clone(),
             plan,
             scroll: ScrollHandle::new(),
@@ -408,8 +411,20 @@ impl Chart {
     }
 
     /// The pane, label and all.
+    /// Outline this pane, or stop: the agent is talking about it, or is not.
+    pub fn heed(&mut self, on: bool) {
+        self.heeded.set(on);
+    }
+
+    /// Whether the outline is still coming up or going out.
+    #[must_use]
+    pub fn fading(&self) -> bool {
+        self.heeded.moving()
+    }
+
     pub fn render(&self, slot: &Slot, cx: &App) -> impl IntoElement {
         let palette = slot.palette;
+        let heeded = self.heeded.level();
 
         div()
             .v_flex()
@@ -438,6 +453,19 @@ impl Chart {
             .child(self.render_drawing(slot.ix, palette, slot.view))
             .children(self.render_flows(slot.ix, palette, slot.view))
             .children(self.render_pace(slot.ix, palette, slot.view, slot.pace))
+            // The pane being talked about, outlined — as a code pane is. A
+            // point lit the block inside the picture and left the pane itself
+            // unmarked, so with two panes side by side there was nothing to
+            // say which one the sentence meant (#49).
+            .when(heeded > 0., |pane| {
+                pane.child(
+                    div()
+                        .absolute()
+                        .inset_0()
+                        .border_2()
+                        .border_color(paint(palette.wash.mix(palette.accent, 0.9 * heeded))),
+                )
+            })
     }
 
     /// The buttons that play this diagram's flows.

@@ -2039,10 +2039,13 @@ impl DeckView {
     /// state changes. There are five of those, and a light left on by the one
     /// that was forgotten is worse than no light.
     fn heed(&mut self) {
-        let pointed = self
-            .panes
-            .iter()
-            .position(|pane| pane.code().is_some_and(|code| code.pointed().is_some()));
+        // Whichever kind of pane the point landed in: lines of a file, a
+        // block of a picture, an element of a page.
+        let pointed = self.panes.iter().position(|pane| {
+            pane.code().is_some_and(|code| code.pointed().is_some())
+                || pane.chart().is_some_and(|chart| !chart.pointed.is_empty())
+                || pane.paper().is_some_and(|paper| !paper.pointed.is_empty())
+        });
         let staged = self
             .live
             .stage()
@@ -2066,8 +2069,13 @@ impl DeckView {
             .is_some_and(|until| std::time::Instant::now() < until);
         let about = asked.or(pointed.or(shown).filter(|_| attending));
         for (ix, pane) in self.panes.iter_mut().enumerate() {
+            let on = Some(ix) == about;
             if let Some(code) = pane.code_mut() {
-                code.heed(Some(ix) == about);
+                code.heed(on);
+            } else if let Some(chart) = pane.chart_mut() {
+                chart.heed(on);
+            } else if let Some(paper) = pane.paper_mut() {
+                paper.heed(on);
             }
         }
     }
@@ -6276,10 +6284,11 @@ impl Render for DeckView {
                 .as_ref()
                 .is_some_and(|(_, light)| light.moving())
             || self.folds.iter().any(crate::pane::Fade::moving)
-            || self
-                .panes
-                .iter()
-                .any(|pane| pane.code().is_some_and(Pane::fading))
+            || self.panes.iter().any(|pane| {
+                pane.code().is_some_and(Pane::fading)
+                    || pane.chart().is_some_and(crate::chart::Chart::fading)
+                    || pane.paper().is_some_and(crate::page::Paper::fading)
+            })
         {
             window.request_animation_frame();
         }
