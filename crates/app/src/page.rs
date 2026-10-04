@@ -240,7 +240,10 @@ impl Paper {
     pub fn render_folded(&self, slot: &Slot, cx: &App) -> AnyElement {
         let (title, under) =
             crate::pane::spine_words(self.name.as_ref(), &self.label, self.note.as_ref());
-        let said = under.clone().unwrap_or_else(|| title.clone());
+        let said = under.as_ref().map_or_else(
+            || title.clone(),
+            |under| format!("{title} — {under}").into(),
+        );
         crate::pane::spine(slot, &title, under.as_ref(), said, cx)
     }
 

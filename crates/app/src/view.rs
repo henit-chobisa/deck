@@ -3006,6 +3006,13 @@ impl DeckView {
                 .folds
                 .get(ix)
                 .is_some_and(|fold| fold.moving() || fold.on());
+            // Kept away for a movement, it has to be looked at again once the
+            // movement is over. The frame that draws the last step may be
+            // asked for before the fold stops and drawn after, and then
+            // nothing else would come round to put the view back.
+            if self.folds.get(ix).is_some_and(crate::pane::Fade::moving) {
+                window.request_animation_frame();
+            }
             let still = !spread && !folding;
             let Some(paper) = self.panes.get_mut(ix).and_then(Sheet::paper_mut) else {
                 continue;
