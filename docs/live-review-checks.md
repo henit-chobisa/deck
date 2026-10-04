@@ -28,8 +28,8 @@ native window; passing tests do not establish visual quality or input latency.
 - Queue a comment and hide or change groups before speech finishes. It must
   still reach the agent; cancellation is also a gap.
 - With voice disabled, comments reach the agent without an audio timer.
-- A comment sent with *Ask now* shows one slow, wordless pulse under the
-  conversation until the answer arrives. No bar, no countdown, and no label when
+- A comment sent with *Ask now* shows one slow, wordless pulse beside
+  *Latest ↓* until the answer arrives. No bar, no countdown, and no label when
   it has been a long time: after ten minutes the pulse simply stops. Deck must
   not claim that the agent is thinking or connected merely because a comment
   exists.

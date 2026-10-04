@@ -800,7 +800,7 @@ mod tests {
         assert!(SKILL.contains(r#"{"asked": …}"#));
         assert!(
             SKILL.contains("Answer fast"),
-            "somebody is watching a panel with a bar filling up in it"
+            "somebody is watching a panel with a pulse in it"
         );
         assert!(
             SKILL.contains("Two or three sentences"),

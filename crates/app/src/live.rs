@@ -749,7 +749,7 @@ mod tests {
     }
 
     #[test]
-    fn a_note_about_what_the_agent_is_doing_reaches_the_visible_view() {
+    fn a_note_about_what_the_agent_is_doing_is_still_taken() {
         // It goes down the same queue as a turn, because it has to arrive in
         // the order the agent sent it relative to what it says — but it is a
         // separate request so the view can tell the two apart.

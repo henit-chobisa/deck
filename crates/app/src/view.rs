@@ -3767,9 +3767,8 @@ impl DeckView {
     fn watch_answer(&self, sign: std::time::Instant, cx: &mut Context<Self>) {
         let remaining = PATIENCE.saturating_sub(sign.elapsed());
         // The pulse ends at one deadline, and somebody has to draw the frame
-        // in which it is gone. An older deadline cannot expire a newer question — or a
-        // newer note, which is a sign of life the same way an answer is and
-        // owns the deadline from the moment it arrives.
+        // in which it is gone. An older deadline cannot expire a newer question,
+        // which owns the deadline from the moment it is asked.
         cx.spawn(async move |deck, cx| {
             cx.background_executor().timer(remaining).await;
             let _ = deck.update(cx, |deck, cx| {
@@ -6054,19 +6053,9 @@ impl DeckView {
         )
     }
 
-    /// A question on its way to an answer: a slow breath, and no words.
+    /// A question still held for a gap in the agent's turn: say so.
     ///
-    /// This was a bar filling over two minutes, the agent's own notes about
-    /// what it was doing, and then *no answer yet*. Every part of that asked
-    /// something of somebody. The notes cost the agent a tool call a step,
-    /// which made the answer slower to say it was coming (#23); the bar put a
-    /// deadline on screen that an honest answer often outlived, and the label
-    /// at the end of it read as a verdict (#24).
-    ///
-    /// What the reader needs is smaller than any of that: *it went, and
-    /// something is happening*. One dot, breathing slowly enough to be looked
-    /// away from. Whether anybody is there at all is the strip's to say, not
-    /// this panel's.
+    /// The pulse for one that has gone is [`Self::render_pulse`].
     fn render_pending(&self) -> Option<AnyElement> {
         let palette = &self.palette;
         self.conversation.latest_sign()?;
@@ -6088,7 +6077,21 @@ impl DeckView {
         None
     }
 
-    /// The pulse itself: one dot, beside *Latest*, while an answer is owed.
+    /// A question on its way to an answer: a slow breath, and no words.
+    ///
+    /// This was a bar filling over two minutes, the agent's own notes about
+    /// what it was doing, and then *no answer yet*. Every part of that asked
+    /// something of somebody. The notes cost the agent a tool call a step,
+    /// which made the answer slower to say it was coming (#23); the bar put a
+    /// deadline on screen that an honest answer often outlived, and the label
+    /// at the end of it read as a verdict (#24).
+    ///
+    /// What the reader needs is smaller than any of that: *it went, and
+    /// something is happening*. One dot, breathing slowly enough to be looked
+    /// away from. Whether anybody is there at all is the strip's to say, not
+    /// this panel's.
+    ///
+    /// It sits beside *Latest*, while an answer is owed.
     fn render_pulse(&self) -> Option<AnyElement> {
         /// One breath, in and out. Slow on purpose: a pulse at a heartbeat's
         /// pace reads as urgency, and this is the opposite of that.
