@@ -176,14 +176,46 @@ pub fn missing_images(version: &str, blocks: &[Block]) -> bool {
 }
 
 /// A kept image, and its size in pixels when it can be read from the file.
+///
+/// Asked on every frame the card is drawn — sixty a second while it is
+/// scrolled — so the size is read once, from the header alone, and
+/// remembered. Reading the whole file each time is what made scrolling the
+/// card lag.
 #[must_use]
 pub fn image(version: &str, url: &str) -> Option<(std::path::PathBuf, Option<(u32, u32)>)> {
+    use std::collections::HashMap;
+    use std::sync::{LazyLock, Mutex};
+
+    type Known = HashMap<std::path::PathBuf, Option<(u32, u32)>>;
+    static SIZES: LazyLock<Mutex<Known>> = LazyLock::new(Mutex::default);
+
     let path = image_file(version, url)?;
+    if let Some(size) = SIZES
+        .lock()
+        .ok()
+        .and_then(|sizes| sizes.get(&path).copied())
+    {
+        return Some((path, size));
+    }
     if !path.exists() {
         return None;
     }
-    let size = std::fs::read(&path).ok().and_then(|bytes| png_size(&bytes));
+    let size = header(&path).and_then(|bytes| png_size(&bytes));
+    if let Ok(mut sizes) = SIZES.lock() {
+        sizes.insert(path.clone(), size);
+    }
     Some((path, size))
+}
+
+/// The first bytes of a file: enough for a PNG to say how big it is.
+fn header(path: &std::path::Path) -> Option<Vec<u8>> {
+    use std::io::Read as _;
+    let mut bytes = vec![0; 24];
+    std::fs::File::open(path)
+        .ok()?
+        .read_exact(&mut bytes)
+        .ok()?;
+    Some(bytes)
 }
 
 /// Where an image from `url` is kept. Named by a hash of the address, which
