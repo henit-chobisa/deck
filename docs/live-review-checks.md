@@ -28,14 +28,13 @@ native window; passing tests do not establish visual quality or input latency.
 - Queue a comment and hide or change groups before speech finishes. It must
   still reach the agent; cancellation is also a gap.
 - With voice disabled, comments reach the agent without an audio timer.
-- A silent agent produces a waiting label, then `no answer yet` after two
-  minutes. Deck must not claim that the agent is thinking or connected merely
-  because a comment exists.
-- Send `deck doing <deck> --text "reading the retry loop"` while a comment is
-  unanswered. The panel shows those words, and a second note replaces them. The
-  waiting bar starts again from each one, so an agent sending notes never
-  reaches `no answer yet`; once one does go stale the label returns and the note
-  is kept below it in the past tense. `deck say` clears both.
+- A comment sent with *Ask now* shows one slow, wordless pulse beside
+  *Latest ↓* until the answer arrives. No bar, no countdown, and no label when
+  it has been a long time: after ten minutes the pulse simply stops. Deck must
+  not claim that the agent is thinking or connected merely because a comment
+  exists.
+- A comment held behind speech says *waiting for a gap* instead of pulsing.
+- `deck doing <deck> --text "…"` is accepted and changes nothing on screen.
 
 ## Reading while the agent presents
 

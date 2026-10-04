@@ -202,13 +202,11 @@ enum What {
         timeout: u64,
     },
 
-    /// Say what you are doing, while you are doing it.
+    /// No longer shown, and not worth sending.
     ///
-    /// A few words in the present tense, shown in the panel until the next one
-    /// replaces it or your answer lands. Send one whenever an answer is going
-    /// to take more than a moment: it is the only thing that tells the reader
-    /// somebody is still there, and without it the panel eventually has to
-    /// admit it has no idea.
+    /// It used to put a line of your words in the panel while you worked. The
+    /// panel shows a pulse by itself now. This is still accepted, so an older
+    /// skill that sends it does not fail, and it changes nothing on screen.
     Doing {
         /// The `.deck` directory owned by the native window.
         deck: PathBuf,

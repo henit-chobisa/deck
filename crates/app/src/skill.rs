@@ -302,7 +302,6 @@ mod tests {
             "deck next",
             "deck show",
             "deck say",
-            "deck doing",
             "deck bring",
             "deck fold",
             "deck clear",
@@ -801,7 +800,7 @@ mod tests {
         assert!(SKILL.contains(r#"{"asked": …}"#));
         assert!(
             SKILL.contains("Answer fast"),
-            "somebody is watching a panel with a bar filling up in it"
+            "somebody is watching a panel with a pulse in it"
         );
         assert!(
             SKILL.contains("Two or three sentences"),
@@ -825,20 +824,19 @@ mod tests {
     }
 
     #[test]
-    fn the_skill_tells_an_agent_to_say_what_it_is_doing() {
-        // The window has no way to know an agent is working, so a silence and
-        // a crash look the same to it and it eventually has to say so. An
-        // agent that has never heard of this verb is one whose reader watches
-        // `no answer yet` while it is halfway through the answer.
-        assert!(SKILL.contains("Say what you are doing while you do it"));
-        assert!(SKILL.contains("deck doing"));
+    fn the_skill_asks_for_the_answer_and_no_running_commentary() {
+        // The agent used to be told to send a note before every step, so the
+        // panel had something to show. It made answers slower to say they
+        // were coming (#23). The panel shows a pulse by itself now, and the
+        // skill must not send an agent back to narrating its own work.
+        assert!(SKILL.contains("Do not report on your progress."));
         assert!(
-            SKILL.contains("Every note restarts that clock"),
-            "why sending them is worth the tool call"
+            !SKILL.contains("deck doing"),
+            "the verb still exists for old agents, and is no longer taught"
         );
         assert!(
-            SKILL.contains("Notes are not turns"),
-            "or the answer arrives as a status line nobody hears"
+            !SKILL.contains("no answer yet"),
+            "a label deck no longer shows"
         );
     }
 

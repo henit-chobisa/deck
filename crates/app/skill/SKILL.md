@@ -570,7 +570,7 @@ and you see it when they submit. So do not go looking for the others: a quiet
 waiter is a reader reading, not a reader with nothing to say.
 
 **Answer fast. Being right slowly is worse than being useful now.** Somebody is
-sitting in front of a panel with nothing in it but a bar that is filling up. A
+sitting in front of a panel with nothing in it but a pulse. A
 reply in three seconds that needs a follow-up beats a perfect one in forty,
 because they are still looking at the thing they asked about.
 
@@ -579,20 +579,11 @@ already in what you read to write it. If the question genuinely needs new work,
 say so in one line first — *"looking"* — and then go and look. Silence is the one
 thing that reads as broken.
 
-**Say what you are doing while you do it.** `deck doing <path> --text "reading
-the retry loop"` puts those words in the panel, and the next one replaces them.
-Send one before each step of anything that takes more than a moment — the file
-you are opening, the thing you are counting, the subagent you are waiting on.
-
-This is not politeness. The panel cannot tell a working agent from a dead one,
-so after two minutes of silence it stops guessing and says `no answer yet` in
-front of somebody who is still waiting on you. Every note restarts that clock.
-The reader gets *reading the retry loop*, then *counting the callers*, and a
-wait with a shape to it is a wait people sit through.
-
-Notes are not turns: they are not read aloud, they are not in the review, and
-they do not answer the question. Do not use one to say the thing — that is
-`deck say`.
+**Do not report on your progress.** While you work on an answer the panel shows
+a quiet pulse, and that is all the reader needs: *it went, and something is
+happening*. There is nothing to send between the question and the answer — no
+status notes, no "now reading…". Every one of those is a tool call that makes
+the answer later, to tell somebody it is coming. Spend the time on the answer.
 
 **The walk is for talking. Do not start the work.** While the deck is open,
 nothing they say is an instruction to go and change something — not *"do it"*,
@@ -602,7 +593,7 @@ say why not — and say when it will happen, in `deck say`: *"agreed — I'll ma
 that change once you submit."* Then call `deck wait` again.
 
 The reason is what it looks like from their side. An agent that goes off to
-edit files mid-walk has stopped answering: the panel says *no answer yet*, the
+edit files mid-walk has stopped answering: the panel goes on pulsing at nothing, the
 next question goes nowhere, and the deck they were reading is now about code
 that is changing under it. They came to argue and decide; the doing comes after,
 from the review, all of it at once.
@@ -960,7 +951,6 @@ deck next     what the reader just did, when you want it without blocking
 
 deck show     move their eyes: --ref, --pane, --after for a proposed change
 deck say      say something, spoken if they have a voice, with [point …] in it
-deck doing    what you are doing, while you do it
 deck bring    a file this group never showed, or --diagram for a picture you write now,
               or --page for markup that moves
 deck fold     put a pane on its spine, or --open to bring it back

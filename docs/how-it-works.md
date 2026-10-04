@@ -51,11 +51,10 @@ request returns the recorded outcome, while different content is a conflict.
 A request file landing is never success. Later `say` and reader-event commands
 will use the same generation-scoped mailbox.
 
-`deck doing <deck> --text …` goes down that mailbox too, and is the only message
-in it that changes nothing durable: it replaces one line in the panel and is
-discarded when the next note or the answer arrives. It exists because the window
-has no other evidence that an agent is working — a busy agent and a dead one are
-the same silence from here — and so it is what the waiting label measures from.
+`deck doing <deck> --text …` goes down that mailbox too. It used to put a line
+of the agent's own words in the panel; the panel shows a pulse by itself now and
+the note is no longer drawn, or taught. The verb is still accepted, so an agent
+running an older skill does not fail on it.
 
 ## Four crates
 
