@@ -591,10 +591,6 @@ pub struct DeckView {
     /// otherwise have to sit through all of it again to get there. `↺` reads
     /// it again when they want it.
     heard_groups: std::collections::HashSet<usize>,
-    /// Whether the voice is reading the group's prose, as opposed to an answer
-    /// or nothing. What decides between stop and play at the top of the
-    /// narration.
-    reading_prose: bool,
     /// How many beats the deck has been finished with nobody waiting.
     ///
     /// Counted rather than asked once, because the right order is open, write,
@@ -1022,7 +1018,6 @@ impl DeckView {
             composing_when: deck_core::When::Interrupt,
             aloud,
             heard_groups,
-            reading_prose: false,
             unheard,
             asked_someone,
             talking_task: None,
@@ -1280,8 +1275,10 @@ impl DeckView {
                 aloud: speech.aloud && self.aloud,
                 ..speech
             };
-            if speech.aloud {
-                self.reading_prose = false;
+            // Prose held paused is prose the reader stopped. The answer to
+            // what they said is not made to wait behind it.
+            if speech.aloud && self.voice.paused() {
+                self.voice.hush();
             }
             self.narrate(text, of, &speech, cx);
         }
@@ -1690,19 +1687,6 @@ impl DeckView {
         cx.notify();
     }
 
-    /// Stop reading the prose, and stay in the walk (#17).
-    ///
-    /// Leaving the walk is `w`. This is the other thing a reader wants
-    /// mid-paragraph: quiet, while the walk goes on — the answers to what they
-    /// say are still read to them.
-    fn stop_prose(&mut self, cx: &mut Context<Self>) {
-        self.voice.hush();
-        self.reading_prose = false;
-        self.flush_held();
-        self.rest(cx);
-        cx.notify();
-    }
-
     fn toggle_walk(&mut self, cx: &mut Context<Self>) {
         self.aloud = !self.aloud;
         if self.aloud {
@@ -1713,7 +1697,6 @@ impl DeckView {
             self.said_from = None;
             self.speak_unheard(cx);
         } else {
-            self.reading_prose = false;
             self.voice.hush();
             self.flush_held();
             self.rest(cx);
@@ -2307,9 +2290,13 @@ impl DeckView {
                     deck.follow_point(cx);
                     let heard = deck.listen();
                     let now = deck.voice.talking();
-                    if !deck.voice.has_work() && deck.reading_prose {
-                        deck.reading_prose = false;
-                        cx.notify();
+                    // Heard once it is being heard, not once it is asked for: a
+                    // voice that failed to arrive has read nothing.
+                    let prose = crate::speech::Narration::Group(deck.group_ix);
+                    let reading =
+                        deck.aloud && deck.voice.progress().is_some_and(|(of, _, _)| of == prose);
+                    if reading {
+                        deck.heard_groups.insert(deck.group_ix);
                     }
                     // Speech holds attention. Once it stops, the frame and the
                     // lit lines stay for a breath and then go.
@@ -2323,7 +2310,8 @@ impl DeckView {
                             .attending
                             .is_some_and(|until| std::time::Instant::now() >= until)
                         && deck.rest(cx);
-                    if was != now || delivered || moved || heard || rested {
+                    // The track under the prose moves while it is read.
+                    if was != now || delivered || moved || heard || rested || reading {
                         cx.notify();
                     }
                     // The inverted queue check kept an idle task alive forever,
@@ -2435,8 +2423,6 @@ impl DeckView {
         }
         let say = group.say.clone();
         let of = crate::speech::Narration::Group(self.group_ix);
-        self.heard_groups.insert(self.group_ix);
-        self.reading_prose = true;
         self.narrate(&say, Some(of), &speech, cx);
     }
 
@@ -4484,7 +4470,6 @@ impl DeckView {
         // And stops talking, because what it is saying belongs to the group
         // that just left the screen.
         self.voice.hush();
-        self.reading_prose = false;
         self.flush_held();
         self.picked_said = None;
         // Names belong to a group. The next group may use the same word for a
@@ -4588,38 +4573,33 @@ impl DeckView {
                         // restores — so the `on_click` below only ever runs on
                         // other platforms: on Windows the caption's clicks
                         // never reach the deck.
-                        div()
-                            .h_flex()
-                            .flex_none()
-                            .items_start()
-                            .child(
-                                div()
-                                    .id("deck-titlebar")
-                                    .h_flex()
-                                    .items_baseline()
-                                    .gap(px(14.))
-                                    .pt(px(15.))
-                                    .pl(px(18.))
-                                    .pr(px(18.))
-                                    .when(cfg!(target_os = "windows"), |this| {
-                                        this.window_control_area(WindowControlArea::Drag)
-                                    })
-                                    .on_click(|event, window, _| {
-                                        if event.click_count() >= 2 {
-                                            window.zoom_window();
-                                        }
-                                    })
-                                    .child(
-                                        div()
-                                            .text_size(px(15.5))
-                                            .font_weight(FontWeight::SEMIBOLD)
-                                            .text_color(paint(self.palette.fg))
-                                            .child(self.deck.title()),
-                                    )
-                                    .flex_1()
-                                    .min_w_0(),
-                            )
-                            .children(self.render_walk_controls(cx)),
+                        div().h_flex().flex_none().items_start().child(
+                            div()
+                                .id("deck-titlebar")
+                                .h_flex()
+                                .items_baseline()
+                                .gap(px(14.))
+                                .pt(px(15.))
+                                .pl(px(18.))
+                                .pr(px(18.))
+                                .when(cfg!(target_os = "windows"), |this| {
+                                    this.window_control_area(WindowControlArea::Drag)
+                                })
+                                .on_click(|event, window, _| {
+                                    if event.click_count() >= 2 {
+                                        window.zoom_window();
+                                    }
+                                })
+                                .child(
+                                    div()
+                                        .text_size(px(15.5))
+                                        .font_weight(FontWeight::SEMIBOLD)
+                                        .text_color(paint(self.palette.fg))
+                                        .child(self.deck.title()),
+                                )
+                                .flex_1()
+                                .min_w_0(),
+                        ),
                     )
                     .child(
                         // The prose is pickable too. An objection to what the
@@ -4698,7 +4678,8 @@ impl DeckView {
                                     },
                                 },
                             )),
-                    ),
+                    )
+                    .children(self.render_track(cx)),
             )
             .child(self.render_legend(cx))
     }
@@ -5689,62 +5670,146 @@ impl DeckView {
             )
     }
 
-    /// The prose as a track inside the walk: stop it, play it, hear it again
-    /// (#17).
+    /// The prose as a track, under the prose, while walking (#17).
     ///
-    /// Only while walking. The walk is the one mode; `w` goes in and out of
-    /// it, and these are what can be done with the prose once inside —
-    /// stopping it does not leave the walk, so the answers to what the reader
-    /// says are still read to them (#18).
-    fn render_walk_controls(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
+    /// A hairline that fills as the group is read, with a mark where each
+    /// sentence starts. Press a mark and it is read from there; press the line
+    /// and it holds, or carries on, or — read already — starts again. Nothing
+    /// else on screen, and nothing at all outside the walk.
+    fn render_track(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
         if !self.aloud || !crate::speech::asked(cx).offered() {
             return None;
         }
+        let group = self.group()?;
         let palette = &self.palette;
-        let playing = self.reading_prose;
-        let control = |id: &'static str, tip: &'static str| {
-            div()
-                .id(id)
-                .flex_none()
-                .size(px(26.))
-                .flex()
-                .items_center()
-                .justify_center()
-                .rounded(px(6.))
-                .border_1()
-                .border_color(paint(palette.edge))
-                .cursor_pointer()
-                .text_size(px(12.))
-                .text_color(paint(palette.fg))
-                .hover(|style| style.bg(paint(palette.wash)))
-                .tooltip(move |_window, cx| {
-                    cx.new(|_| gpui_kit::component::tooltip::Tooltip::new(tip))
-                        .into()
-                })
+        let prose = crate::speech::Narration::Group(self.group_ix);
+        let (starts, words) = crate::prose::sentence_starts(&group.say);
+        let words = words.max(1);
+        #[allow(clippy::cast_precision_loss)]
+        let by_words = |word: usize| word as f32 / words as f32;
+        let progress = self.voice.progress().filter(|(of, _, _)| *of == prose);
+        let paused = progress.is_some() && self.voice.paused();
+        let (shown, marks): (f32, Vec<(usize, f32)>) = match progress {
+            Some((_, at, length)) => {
+                let length = length.as_secs_f32().max(0.001);
+                let marks = starts
+                    .iter()
+                    .map(|start| {
+                        let when = self
+                            .voice
+                            .time_of_word(*start)
+                            .map_or_else(|| by_words(*start), |at| at.as_secs_f32() / length);
+                        (*start, when)
+                    })
+                    .collect();
+                (at.as_secs_f32() / length, marks)
+            }
+            None => {
+                let done = if self.heard_groups.contains(&self.group_ix) {
+                    1.
+                } else {
+                    0.
+                };
+                (
+                    done,
+                    starts
+                        .iter()
+                        .map(|start| (*start, by_words(*start)))
+                        .collect(),
+                )
+            }
         };
+        let shown = shown.clamp(0., 1.);
         Some(
             div()
-                .h_flex()
+                .id("prose-track")
+                .relative()
                 .flex_none()
-                .items_center()
-                .gap(px(6.))
-                .pt(px(11.))
-                .pr(px(14.))
-                .child(if playing {
-                    // Drawn: a square, which no font can get wrong.
-                    control("prose-stop", "Stop reading · still walking")
-                        .child(div().size(px(8.)).rounded(px(1.)).bg(paint(palette.fg)))
-                        .on_click(cx.listener(|deck, _, _window, cx| deck.stop_prose(cx)))
-                } else {
-                    control("prose-play", "Read this group")
-                        .child(div().text_size(px(9.)).child("▶"))
-                        .on_click(cx.listener(|deck, _, _window, cx| deck.again(cx)))
-                })
+                .mx(px(18.))
+                .mt(px(6.))
+                .mb(px(10.))
+                .h(px(14.))
+                .cursor_pointer()
+                .on_click(cx.listener(move |deck, _, _window, cx| {
+                    if deck.voice.progress().is_some_and(|(of, _, _)| of == prose) {
+                        if deck.voice.paused() {
+                            deck.voice.resume();
+                        } else {
+                            deck.voice.pause();
+                        }
+                        cx.notify();
+                    } else {
+                        deck.again(cx);
+                    }
+                }))
                 .child(
-                    control("prose-again", "Hear it again from the top")
-                        .child("↺")
-                        .on_click(cx.listener(|deck, _, _window, cx| deck.again(cx))),
+                    div()
+                        .absolute()
+                        .left_0()
+                        .right_0()
+                        .top(px(6.))
+                        .h(px(2.))
+                        .rounded_full()
+                        .bg(paint(palette.edge)),
                 )
+                .child(
+                    div()
+                        .absolute()
+                        .left_0()
+                        .top(px(6.))
+                        .h(px(2.))
+                        .w(relative(shown))
+                        .rounded_full()
+                        .bg(paint(palette.accent)),
+                )
+                .children(marks.into_iter().enumerate().map(|(ix, (word, at))| {
+                    div()
+                        .id(("sentence-mark", ix))
+                        .absolute()
+                        .top_0()
+                        .left(relative(at.clamp(0., 1.)))
+                        .ml(px(-6.))
+                        .w(px(12.))
+                        .h(px(14.))
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .child(
+                            div()
+                                .w(px(2.))
+                                .h(px(8.))
+                                .rounded_full()
+                                .bg(paint(if at <= shown {
+                                    palette.accent
+                                } else {
+                                    palette.muted
+                                })),
+                        )
+                        .on_click(cx.listener(move |deck, _, _window, cx| {
+                            cx.stop_propagation();
+                            if !deck.voice.seek(prose, word) {
+                                deck.again(cx);
+                                deck.voice.seek(prose, word);
+                            }
+                            cx.notify();
+                        }))
+                }))
+                // Where the voice has got to: solid while it reads, a ring
+                // while it is held.
+                .when(progress.is_some(), |this| {
+                    this.child(
+                        div()
+                            .absolute()
+                            .top(px(3.))
+                            .left(relative(shown))
+                            .ml(px(-4.))
+                            .size(px(8.))
+                            .rounded_full()
+                            .border_1()
+                            .border_color(paint(palette.accent))
+                            .bg(paint(if paused { palette.band } else { palette.accent })),
+                    )
+                })
                 .into_any_element(),
         )
     }
@@ -6359,7 +6424,6 @@ impl DeckView {
             return;
         };
         self.voice.hush();
-        self.reading_prose = false;
         let speech = crate::speech::asked(cx);
         self.narrate(
             &text,

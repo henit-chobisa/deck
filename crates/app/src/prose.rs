@@ -192,6 +192,27 @@ pub fn sentence_around(say: &str, at: usize) -> Option<(usize, usize)> {
     Some((first, of_it.next_back().unwrap_or(first)))
 }
 
+/// The first word of each sentence, and how many words there are in all.
+///
+/// What the walk's track puts its marks at.
+#[must_use]
+pub fn sentence_starts(say: &str) -> (Vec<usize>, usize) {
+    let tokens: Vec<(usize, usize)> = parse(say)
+        .into_iter()
+        .flat_map(|para| para.tokens)
+        .map(|token| (token.at, token.said))
+        .collect();
+    let mut starts = Vec::new();
+    let mut last = None;
+    for (at, said) in &tokens {
+        if last != Some(*said) {
+            starts.push(*at);
+            last = Some(*said);
+        }
+    }
+    (starts, tokens.len())
+}
+
 fn ends_a_sentence(word: &str) -> bool {
     word.trim_end().ends_with(['.', '!', '?'])
 }

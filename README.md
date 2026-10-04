@@ -267,11 +267,11 @@ sentence being said — sentence by sentence, from the sound's own clock — and
 panes fold down to a spine when they are not the point, unfolding again when
 something points at them. `w` again leaves the walk.
 
-Inside the walk the prose is a track: **■** at the top of the narration stops
-it and keeps you walking, so the agent's answers are still read to you; **↺**
-hears the group again from its first word. A group already read in
-this walk is not read again when you come back to it — walk to follow the
-conversation without hearing the deck twice.
+While walking, a thin track under the narration fills as it is read, with a
+mark where each sentence starts. Press a mark to hear it from there; press the
+line to hold it, and again to carry on. A group already read is not read again
+when you come back to it, so you can walk just to follow the conversation —
+press the track to hear it once more.
 
 The voice wants a Google API key, set once:
 
