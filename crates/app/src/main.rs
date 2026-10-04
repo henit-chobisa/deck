@@ -24,6 +24,7 @@ mod icon;
 mod live;
 mod load;
 mod notes;
+mod notes_body;
 mod page;
 mod palette;
 mod pane;
