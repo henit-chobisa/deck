@@ -53,6 +53,11 @@ pub struct Paper {
     pub pointed: Vec<SharedString>,
     /// Whether the agent is talking about this pane. See [`Self::heed`].
     heeded: crate::pane::Fade,
+    /// The last name the page was told, which it is still showing.
+    ///
+    /// Apart from `pointed`, which is whether the narration is in this page
+    /// right now and so whether its pane wears the frame.
+    told: Option<SharedString>,
     /// What the reader has picked inside the page, if anything.
     ///
     /// A page has no lines, so a remark about one is pinned to whichever region
@@ -92,6 +97,7 @@ impl Paper {
             html: spec.page.clone().into(),
             dressed: None,
             pointed: Vec::new(),
+            told: None,
             heeded: crate::pane::Fade::default(),
             selected: None,
             view: None,
@@ -129,6 +135,7 @@ impl Paper {
         // has never heard of the point that was held on the old one.
         let _ = view.evaluate_script("window.deck && (window.deck.at = null)");
         self.pointed.clear();
+        self.told = None;
     }
 
     /// Light these elements, and tell the page it happened.
@@ -137,20 +144,28 @@ impl Paper {
     /// document and highlight something without knowing what the document
     /// meant by it. What deck can do is say *the reader is on this now* — and
     /// that event is the difference between a page and a picture of a page. It
-    /// arrives as `deck:point` with the id, or with `null` when the finger has
-    /// lifted, and the page decides whether that means a glow, an animation, or
-    /// a simulation stepping forward.
+    /// arrives as `deck:point` with the id, and the page decides whether that
+    /// means a glow, an animation, or a simulation stepping forward.
+    ///
+    /// Only ever forward. The page is told a name of its own, and never that
+    /// the finger left: when the narration moves into another pane, or the
+    /// voice stops, the page keeps the moment it was showing. Told *nothing*
+    /// each time, it snapped back to its first frame and played its way up
+    /// again on the next point — a walk that went between code and a page
+    /// shuddered from rest to the step and back, sentence after sentence.
+    /// `again` is the one way back to the start.
     pub fn point_at(&mut self, ids: Vec<SharedString>) {
-        if self.pointed == ids {
+        self.pointed = ids;
+        let Some(first) = self.pointed.first().cloned() else {
+            return;
+        };
+        // No view yet — a page that was folded until this point unfolded it.
+        // Not marked as told: the view is handed the point as it is made.
+        if self.view.is_none() || self.told.as_ref() == Some(&first) {
             return;
         }
-        self.pointed = ids;
-        self.tell(
-            "point",
-            self.pointed
-                .first()
-                .map_or_else(|| "null".to_string(), |id| quoted(id)),
-        );
+        self.told = Some(first.clone());
+        self.tell("point", quoted(&first));
     }
 
     /// Say that a remark was pressed, so the page can move with the thread.
@@ -224,12 +239,31 @@ impl Paper {
         }
         if self.view.is_none() {
             let document = dressed(&self.html, palette);
-            self.view = build(window, &document, at);
+            // A point that landed before there was a view, handed over as the
+            // first thing the document knows — the shim replays it once the
+            // page has loaded. Not kept in `dressed`: `again` opens at rest.
+            let first = self.pointed.first().cloned();
+            let opening = first.as_ref().map_or_else(
+                || document.clone(),
+                |id| {
+                    format!(
+                        "<script>window.deck={{at:{}}};</script>{document}",
+                        quoted(id)
+                    )
+                },
+            );
+            self.view = build(window, &opening, at);
+            if self.view.is_some() {
+                self.told = first;
+            }
             self.dressed = Some(document);
         }
         let Some(view) = self.view.as_ref() else {
             return;
         };
+        // Whole device pixels: a flex share puts the hole on a fraction, and
+        // a native view standing on a fraction is drawn soft.
+        let at = snapped(at, window.scale_factor());
         if self.at != Some(at) {
             let _ = view.set_bounds(rect(at));
             self.at = Some(at);
@@ -382,54 +416,14 @@ impl Paper {
     }
 }
 
-/// The names a document answers to, in the order they appear.
-///
-/// A scan rather than a parse. Deck needs to know which page owns `[point
-/// rows]` before anything has been rendered, so it reads two things out of the
-/// markup: every `id`, and anything listed in
-///
-/// ```html
-/// <meta name="deck-points" content="make link attach wrong">
-/// ```
-///
-/// The meta tag exists because the interesting names are usually *states* and
-/// not elements. A page about putting a box into a chain answers to `attach`,
-/// and there is no element called that — there is a row of boxes that arranges
-/// itself differently when the reader gets to that sentence. Without a way to
-/// say so, the point found no pane, the page never heard, and the code lit up
-/// beside a picture that had not moved.
+/// The names a document answers to, as the command line reads them — see
+/// [`deck_cli::answered_by`]. Read from the markup rather than asked of the
+/// document, because the answer is needed before there is a view to ask.
 fn declared(html: &str) -> Vec<SharedString> {
-    let mut out = Vec::new();
-    if let Some(at) = html.find("name=\"deck-points\"") {
-        let after = &html[at..];
-        if let Some(from) = after.find("content=\"")
-            && let Some(end) = after[from + 9..].find('"')
-        {
-            for name in after[from + 9..from + 9 + end].split_whitespace() {
-                out.push(SharedString::from(name.to_string()));
-            }
-        }
-    }
-    let mut rest = html;
-    while let Some(at) = rest.find("id=") {
-        rest = &rest[at + 3..];
-        let Some(quote) = rest.chars().next().filter(|ch| *ch == '"' || *ch == '\'') else {
-            continue;
-        };
-        let Some(end) = rest[1..].find(quote) else {
-            break;
-        };
-        let id = &rest[1..=end];
-        if !id.is_empty()
-            && id
-                .chars()
-                .all(|ch| ch.is_alphanumeric() || ch == '-' || ch == '_')
-        {
-            out.push(SharedString::from(id.to_string()));
-        }
-        rest = &rest[end + 2..];
-    }
-    out
+    deck_cli::answered_by(html)
+        .into_iter()
+        .map(SharedString::from)
+        .collect()
 }
 
 /// The page, wearing deck's colours.
@@ -453,6 +447,9 @@ fn dressed(html: &str, palette: &Palette) -> String {
          }}\
          html,body{{background:transparent;color:var(--deck-fg);\
            font:12px ui-monospace,SFMono-Regular,Menlo,monospace;}}\
+         [data-show],[data-from]{{transition:opacity .35s}}\
+         [data-show]:not(.deck-seen),[data-from]:not(.deck-seen)\
+           {{opacity:0!important;pointer-events:none!important}}\
          </style>{html}",
         bg = hex(palette.bg),
         fg = hex(palette.fg),
@@ -473,12 +470,51 @@ fn dressed(html: &str, palette: &Palette) -> String {
 /// now, and `deck:point` fires whenever that changes — including once more when
 /// the document finishes loading, so a page that arrives mid-walk is not left
 /// showing its first frame while the narration is three sentences in.
+///
+/// And the declarative half, so most pages need no script at all: an element
+/// with `data-on="hop settle"` wears `on` while the point is either of those;
+/// `data-show="hop"` is there only then; `data-from="hop"` arrives at `hop`
+/// and stays for every step after it, in the order `deck-points` lists them —
+/// a point at a plain element in between does not take it away.
+/// At rest — no point — nothing is on and nothing shown is showing, which is
+/// the still first frame a page must open on.
 const SHIM: &str = "window.deck=window.deck||{at:null};\
+    (function(){\
+    var step=null;\
+    function apply(at){\
+      var meta=document.querySelector('meta[name=deck-points]');\
+      var order=meta?meta.content.split(/\\s+/):[];\
+      if(at===null){step=null;}else if(order.indexOf(at)>=0){step=at;}\
+      var here=order.indexOf(step);\
+      var names=function(e,k){var v=e.getAttribute(k);return v===null?null:v.split(/\\s+/);};\
+      document.querySelectorAll('[data-on]').forEach(function(e){\
+        e.classList.toggle('on',at!==null&&names(e,'data-on').indexOf(at)>=0);});\
+      document.querySelectorAll('[data-show],[data-from]').forEach(function(e){\
+        var show=names(e,'data-show'),from=names(e,'data-from'),seen=true;\
+        if(show){seen=at!==null&&show.indexOf(at)>=0;}\
+        if(from){var f=order.indexOf(from[0]);seen=seen&&here>=0&&f>=0&&here>=f;}\
+        e.classList.toggle('deck-seen',seen);});\
+    }\
+    addEventListener('deck:point',function(e){apply(e.detail);});\
     addEventListener('DOMContentLoaded',function(){\
+      apply(window.deck.at);\
       if(window.deck.at!==null){\
         window.dispatchEvent(new CustomEvent('deck:point',{detail:window.deck.at}));\
       }\
-    });";
+    });\
+    })();";
+
+/// `at`, moved to the nearest whole device pixels on every edge.
+fn snapped(at: Bounds<Pixels>, scale: f32) -> Bounds<Pixels> {
+    let whole = |v: Pixels| px((f32::from(v) * scale).round() / scale);
+    let (left, top) = (whole(at.origin.x), whole(at.origin.y));
+    let right = whole(at.origin.x + at.size.width);
+    let bottom = whole(at.origin.y + at.size.height);
+    Bounds {
+        origin: point(left, top),
+        size: size(right - left, bottom - top),
+    }
+}
 
 /// Where a page sits, in the coordinates a webview wants.
 fn rect(at: Bounds<Pixels>) -> wry::Rect {
@@ -535,4 +571,29 @@ fn quoted(text: &str) -> String {
     }
     out.push('"');
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{SHIM, dressed};
+
+    /// What `data-show` and `data-from` switch has to look like something.
+    /// The script toggled a class nothing styled, and both did nothing.
+    #[test]
+    fn what_the_shim_hides_is_hidden() {
+        let page = dressed(
+            "<p>x</p>",
+            &crate::palette::current_on(true, Default::default()),
+        );
+        // Hidden by deck's own stylesheet from the first paint, not by the
+        // script once the document has loaded — so nothing flashes, and a
+        // page rule cannot quietly show it again.
+        assert!(page.contains(":not(.deck-seen)"));
+        assert!(page.contains("opacity:0!important"));
+        assert!(SHIM.contains("'deck-seen'"));
+        assert!(
+            SHIM.contains("(function(){"),
+            "and the script keeps its names to itself"
+        );
+    }
 }
