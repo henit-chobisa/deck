@@ -485,6 +485,10 @@ pub fn open_deck(session: Session, cx: &mut App) {
         }
     };
 
+    // Where the reader came from, so they can be put back there when the
+    // deck is put away.
+    #[cfg(target_os = "macos")]
+    mac::remember_front();
     cx.activate(true);
 
     // Closing by any route the platform knows about. `q` writes it too, on its
