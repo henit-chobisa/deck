@@ -500,6 +500,7 @@ pub struct Session {
     /// How long nobody has been listening, so a window taken back off the
     /// bar does not spend four seconds believing somebody is.
     unheard: u8,
+    asked_someone: bool,
 }
 
 impl Session {
@@ -530,6 +531,7 @@ impl Session {
             widths: Vec::new(),
             folded: std::collections::HashSet::new(),
             unheard: 0,
+            asked_someone: false,
         }
     }
 
@@ -587,6 +589,11 @@ pub struct DeckView {
     /// and a panel that said so immediately would say so about all of them.
     /// Four seconds of nothing is a fact; one is a race.
     unheard: u8,
+    /// Whether the last question asked now went to an agent that was there.
+    ///
+    /// One asked in the first seconds of a deck nobody is waiting on reached
+    /// no one, and must not count as an answer on its way.
+    asked_someone: bool,
     /// The timer that advances the voice, while there is anything to advance.
     talking_task: Option<Task<()>>,
     /// When the view last carried a pane back to the lit lines.
@@ -939,6 +946,7 @@ impl DeckView {
             widths,
             folded,
             unheard,
+            asked_someone,
         } = session;
 
         // Nothing in hand means this deck is being opened rather than taken
@@ -967,6 +975,13 @@ impl DeckView {
         }
 
         live.ready();
+        // Nobody counted while the window was away. An agent that came back
+        // meanwhile is there now, not in a second.
+        let unheard = if deck_cli::is_heard(&deck.root) {
+            0
+        } else {
+            unheard
+        };
         let mut view = Self {
             deck,
             live,
@@ -993,6 +1008,7 @@ impl DeckView {
             composing_when: deck_core::When::Interrupt,
             aloud,
             unheard,
+            asked_someone,
             talking_task: None,
             followed: None,
             ahead: 0,
@@ -2533,11 +2549,6 @@ impl DeckView {
         cx.notify();
     }
 
-    /// The notes, as a card over a dimmed window.
-    ///
-    /// Pressing anywhere off the card puts it away, and so does escape. The
-    /// card is the only thing that can be pressed while it is up: the deck
-    /// behind it is dimmed to say so, and occluded so that it is true.
     /// Why *Ask now* is off, and what to do instead.
     ///
     /// The card the disabled button opens. Set as the other two cards are —
@@ -2627,8 +2638,8 @@ impl DeckView {
                                 .pt(px(16.))
                                 .child(para(
                                     "Deck's skill asks your agent to keep listening for what \
-                                     you say here, and this one did not start anything to \
-                                     listen with. A question sent now would reach nobody.",
+                                     you say here, but no waiter process is running for this \
+                                     deck. A question sent now would reach nobody.",
                                 ))
                                 .child(para(
                                     "Add it to the review instead. It goes back with \
@@ -2895,6 +2906,11 @@ impl DeckView {
         )
     }
 
+    /// The notes, as a card over a dimmed window.
+    ///
+    /// Pressing anywhere off the card puts it away, and so does escape. The
+    /// card is the only thing that can be pressed while it is up: the deck
+    /// behind it is dimmed to say so, and occluded so that it is true.
     fn render_notes(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
         let (version, body) = self.notes.as_ref()?;
         let open = self.notes_fade.on();
@@ -3818,8 +3834,13 @@ impl DeckView {
     /// listening — and a second question asked meanwhile is kept and handed
     /// over when it returns. That is not nobody.
     fn heard(&self) -> bool {
-        self.unheard < UNHEARD_FOR
-            || self
+        self.unheard < UNHEARD_FOR || self.owed()
+    }
+
+    /// Whether an agent that was there has been asked and has yet to answer.
+    fn owed(&self) -> bool {
+        self.asked_someone
+            && self
                 .conversation
                 .latest_sign()
                 .is_some_and(|sign| sign.elapsed() < PATIENCE)
@@ -3832,7 +3853,11 @@ impl DeckView {
     /// why and what to do instead.
     fn ask_now(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         // An empty box has nothing to explain: it closes, as it always did.
-        if self.heard() || self.unsent(cx).is_none() {
+        if self.unsent(cx).is_none() {
+            self.save_remark(deck_core::When::Interrupt, window, cx);
+        } else if self.heard() {
+            self.asked_someone =
+                !self.deck.sealed() || deck_cli::is_heard(&self.deck.root) || self.owed();
             self.save_remark(deck_core::When::Interrupt, window, cx);
         } else {
             self.explaining = true;
@@ -4196,6 +4221,7 @@ impl DeckView {
             widths: self.widths.clone(),
             folded: self.folded.clone(),
             unheard: self.unheard,
+            asked_someone: self.asked_someone,
         }
     }
 
@@ -5377,6 +5403,7 @@ impl DeckView {
                             .border_color(paint(palette.accent))
                             .font_family(mono.clone())
                             .text_size(px(8.))
+                            .line_height(px(8.))
                             .font_weight(FontWeight::BOLD)
                             .text_color(paint(palette.accent))
                             .child("i"),
@@ -5395,7 +5422,9 @@ impl DeckView {
         // What the deck says it will be, never less than what it already is: a
         // count that a group can arrive and make a lie of is worse than none.
         let writing = !self.deck.sealed();
-        let unheard = self.unheard >= UNHEARD_FOR;
+        // The same answer the Ask now button goes by, so the two never
+        // disagree: an agent away answering is not nobody.
+        let unheard = !self.heard();
         // Being walked through a deck is the best thing this window does, and
         // it says so with the frame round the whole window rather than here. A
         // strip that also changed colour was two answers to one question.
@@ -5667,7 +5696,8 @@ impl DeckView {
     ///
     /// Follows the group rather than a clock. It changes as they walk and holds
     /// still while they read — a line that rewrites itself under somebody is a
-    /// line they end up watching instead of the code.
+    /// line they end up watching instead of the code. The one exception is the
+    /// line that says the agent is listening, which gives way when it is not.
     ///
     /// FNV-1a over the group's own words, so another deck lands somewhere else
     /// without needing a source of randomness or anything kept between frames.
