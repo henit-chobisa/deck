@@ -1084,6 +1084,8 @@ you never need to tell them to press anything.
 
 - `--say` is Markdown, inline only: `**bold**`, `*emphasis*` (painted in the accent, so it
   means *look at this word*), `` `code` ``, and a blank line between paragraphs.
+  Write the blank line as a real one. A `\n` typed as two characters is read as
+  a break too, outside backticks — so a `\n` you mean literally goes in backticks.
   **Never a fenced code block.** The band cannot draw one — it comes out as a
   wrapped paragraph with the backticks still in it, and deck refuses the group.
   Code that exists goes in a `--ref`; code that does not exist yet goes in

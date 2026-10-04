@@ -723,6 +723,111 @@ fn write_atomically(path: &Path, bytes: &[u8]) -> anyhow::Result<()> {
     write().with_context(|| format!("cannot write {}", path.display()))
 }
 
+/// Prose as it was meant, when the line breaks arrived as the two characters
+/// `\n`.
+///
+/// An agent writing `--say "one.\n\nTwo."` in double quotes sends a backslash
+/// and an `n`: the shell does not turn that into a line break, and the deck
+/// showed it to the reader as `\n\n` in the middle of a sentence (#4). So they
+/// become the breaks they were written as — `\r\n` too.
+///
+/// Three things are left as written:
+///
+/// - **Inside backticks.** There somebody is quoting code, and `"\n"` in code
+///   is a backslash and an `n`. A backtick only opens code if another closes
+///   it, as the renderer has it: one on its own is just a character, and must
+///   not switch this off for the rest of the text.
+/// - **`\\n`**, which is how to write a literal `\n` outside backticks.
+/// - **A Windows path.** In `C:\new` and `C:\Users\name` the `\n` belongs to
+///   a word that began with a drive — one letter and a colon — and is followed
+///   by a small letter or a digit. Only a drive: `Note:\nnext` is a label and
+///   a break, and any other backslash in a word proves nothing. A relative
+///   `src\new.rs` and a share `\\nas\new` are not saved by this, and belong
+///   in backticks.
+#[must_use]
+pub fn real_breaks(text: &str) -> String {
+    let chars: Vec<char> = text.chars().collect();
+    let mut out = String::with_capacity(text.len());
+    let mut code = false;
+    // Whether the word being read already looks like a path.
+    let mut path = false;
+    let mut at = 0;
+    while at < chars.len() {
+        let ch = chars[at];
+        let next = chars.get(at + 1).copied();
+        match ch {
+            '`' if code || closes(&chars[at + 1..]) => {
+                code = !code;
+                out.push(ch);
+            }
+            '\\' if !code && next == Some('\\') && chars.get(at + 2) == Some(&'n') => {
+                // `\\n`: a literal backslash and an `n`, asked for.
+                out.push_str("\\n");
+                at += 2;
+            }
+            '\\' if !code
+                && next == Some('r')
+                && chars.get(at + 2) == Some(&'\\')
+                && chars.get(at + 3) == Some(&'n') =>
+            {
+                out.push('\n');
+                path = false;
+                at += 3;
+            }
+            '\\' if !code && next == Some('n') => {
+                // A sentence that ends on a path ends the path: in
+                // `C:\Users\name.\nNext` the break is a break.
+                let ended = at.checked_sub(1).is_some_and(|before| {
+                    matches!(chars[before], '.' | ',' | ';' | ')' | '!' | '?')
+                });
+                let in_path = (path || drive(&chars[..at])) && !ended;
+                let goes_on = chars
+                    .get(at + 2)
+                    .is_some_and(|after| after.is_ascii_lowercase() || after.is_ascii_digit());
+                if in_path && goes_on {
+                    out.push('\\');
+                    path = true;
+                } else {
+                    out.push('\n');
+                    path = false;
+                    at += 1;
+                }
+            }
+            '\\' => {
+                path = path || drive(&chars[..at]);
+                out.push(ch);
+            }
+            _ => {
+                if ch.is_whitespace() {
+                    path = false;
+                }
+                out.push(ch);
+            }
+        }
+        at += 1;
+    }
+    out
+}
+
+/// Whether what was just read is a drive: one letter and a colon, starting
+/// a word. `Note:` and `10:` end in a colon too, and are not drives.
+fn drive(read: &[char]) -> bool {
+    match read {
+        [.., before, letter, ':'] => letter.is_ascii_alphabetic() && !before.is_alphanumeric(),
+        [letter, ':'] => letter.is_ascii_alphabetic(),
+        _ => false,
+    }
+}
+
+/// Whether a backtick closes the one just read, before the paragraph ends:
+/// the renderer pairs them a paragraph at a time.
+fn closes(rest: &[char]) -> bool {
+    rest.iter()
+        .zip(rest.iter().skip(1).chain(std::iter::once(&' ')))
+        .take_while(|(a, b)| !(**a == '\n' && **b == '\n'))
+        .any(|(a, _)| *a == '`')
+}
+
 #[cfg(test)]
 mod tests {
     #[test]
@@ -1079,5 +1184,102 @@ mod tests {
         assert_eq!(path.parent(), root.parent());
         assert!(path.extension().is_some_and(|end| end == "review"));
         assert!(review(&root).unwrap().is_none(), "none written yet");
+    }
+
+    #[test]
+    fn a_break_written_as_two_characters_is_a_break() {
+        assert_eq!(real_breaks(r"One.\n\nTwo."), "One.\n\nTwo.");
+        assert_eq!(real_breaks("Already\n\nreal."), "Already\n\nreal.");
+        assert_eq!(real_breaks(r"One.\r\n\r\nTwo."), "One.\n\nTwo.");
+        assert_eq!(
+            real_breaks(r"Changed. [point 1-6]\n\nWhy."),
+            "Changed. [point 1-6]\n\nWhy."
+        );
+        assert_eq!(
+            real_breaks(r"then.\nnext"),
+            "then.\nnext",
+            "a small letter after"
+        );
+        // Only breaks. A tab written that way stays, and so does a backslash
+        // at the very end.
+        assert_eq!(real_breaks(r"a\tb"), r"a\tb");
+        assert_eq!(
+            real_breaks(r"a\tb\nc"),
+            "a\\tb\nc",
+            "and the break after it is one"
+        );
+        assert_eq!(real_breaks(r"a\nb\nc"), "a\nb\nc");
+        // A label is not a drive.
+        assert_eq!(real_breaks(r"Note:\nnext line"), "Note:\nnext line");
+        assert_eq!(
+            real_breaks(r"Steps:\n1. first\n2. second"),
+            "Steps:\n1. first\n2. second"
+        );
+        assert_eq!(real_breaks(r"at 10:\n5 items"), "at 10:\n5 items");
+        assert_eq!(real_breaks("ends in \\"), "ends in \\");
+    }
+
+    #[test]
+    fn code_keeps_its_backslashes() {
+        assert_eq!(
+            real_breaks(r"Split on `\n` and join.\nNext."),
+            "Split on `\\n` and join.\nNext."
+        );
+        assert_eq!(
+            real_breaks(r"```\nlet a = 1;\n```"),
+            r"```\nlet a = 1;\n```",
+            "a fence is backticks too, and is refused elsewhere anyway"
+        );
+        // One backtick on its own opens nothing — the renderer draws it as a
+        // character — so it must not stop the breaks after it.
+        assert_eq!(
+            real_breaks(r"The ` key opens a chip.\n\nNext."),
+            "The ` key opens a chip.\n\nNext."
+        );
+    }
+
+    #[test]
+    fn a_backtick_is_closed_within_its_paragraph() {
+        // The stray one in the first paragraph must not pair with the opener
+        // in the second and turn the code inside out.
+        assert_eq!(
+            real_breaks("The ` key.\n\nSplit on `\\n` here.\\nLast."),
+            "The ` key.\n\nSplit on `\\n` here.\nLast."
+        );
+    }
+
+    #[test]
+    fn a_literal_backslash_n_can_be_asked_for() {
+        assert_eq!(
+            real_breaks(r"write \\n for a break"),
+            r"write \n for a break"
+        );
+    }
+
+    #[test]
+    fn a_windows_path_keeps_its_backslashes() {
+        assert_eq!(
+            real_breaks(r"see C:\new\notes.txt"),
+            r"see C:\new\notes.txt"
+        );
+        assert_eq!(real_breaks(r"in C:\Users\name."), r"in C:\Users\name.");
+        assert_eq!(real_breaks(r"see `C:\new`"), r"see `C:\new`");
+        // A path does not swallow the break after it.
+        assert_eq!(
+            real_breaks(r"in C:\Users\henit.\n\nNext."),
+            "in C:\\Users\\henit.\n\nNext."
+        );
+        // Nor does the sentence it ends.
+        assert_eq!(
+            real_breaks(r"in C:\Users\henit.\nnext"),
+            "in C:\\Users\\henit.\nnext"
+        );
+        assert_eq!(
+            real_breaks(r"(see C:\Users\x).\nnext"),
+            "(see C:\\Users\\x).\nnext"
+        );
+        // The cost that is left, pinned so it is a decision: a relative path
+        // outside backticks.
+        assert_eq!(real_breaks(r"see src\new.rs"), "see src\new.rs");
     }
 }
