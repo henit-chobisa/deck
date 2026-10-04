@@ -226,14 +226,15 @@ or not anybody is listening.
 
 ### Arrange it the way you read
 
-Drag a seam to resize a pane, `r` to turn the panes a quarter, and the shape is
+Drag a seam to resize a pane, `t` to turn the panes a quarter, and the shape is
 remembered for next time.
 
 | key | does |
 | --- | --- |
 | `n` `p` | next / previous group |
 | `c` | comment on the selection, or on the group |
-| `r` | turn the panes |
+| `w` | walk: read the deck aloud, and its answers |
+| `t` | turn the panes |
 | `h` | put the deck away |
 | `s` | submit the review |
 | `q` | close without answering |
@@ -257,14 +258,20 @@ have drifted.
 
 ## The walk
 
-There is no mode to enter. The rail sits beside the panes with everything that
-has been said in it, and the agent that wrote the deck can move your eyes while
-it talks, whether or not anybody is listening.
+The rail sits beside the panes with everything that has been said in it, and
+the agent that wrote the deck can move your eyes while it talks, whether or not
+anybody is listening.
 
 `w` adds the voice. The narration is read out loud, the code lights up under the
 sentence being said — sentence by sentence, from the sound's own clock — and
 panes fold down to a spine when they are not the point, unfolding again when
-something points at them. `w` again stops it.
+something points at them. `w` again leaves the walk.
+
+While walking, a thin track under the narration fills as it is read, cut where
+each sentence starts. Hover a stretch of it and its sentence lights up above;
+press it to hear the prose from there. On its left, **▶ / ❚❚** reads or holds,
+and **↺** starts again from the top. A group already read is not read again
+when you come back to it, so you can walk just to follow the conversation.
 
 The voice wants a Google API key, set once:
 

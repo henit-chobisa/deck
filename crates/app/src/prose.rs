@@ -113,6 +113,10 @@ pub struct Picking {
     /// rail was folded, none at all. A reader could write one and have no way
     /// of telling whether it had landed.
     pub remarked: Vec<(usize, usize)>,
+    /// Sentences lit from somewhere else — the walk's track, under the
+    /// pointer — each with how far up its light has come. Painted exactly as a
+    /// pressed sentence is, because it is the same promise: *this one*.
+    pub lit_also: Vec<((usize, usize), f32)>,
 }
 
 impl Picking {
@@ -147,6 +151,7 @@ impl Picking {
             pickable: false,
             shown: 1.,
             remarked: Vec::new(),
+            lit_also: Vec::new(),
         }
     }
 }
@@ -190,6 +195,27 @@ pub fn sentence_around(say: &str, at: usize) -> Option<(usize, usize)> {
     let mut of_it = tokens.iter().filter(|(_, s)| *s == said).map(|(ix, _)| *ix);
     let first = of_it.next()?;
     Some((first, of_it.next_back().unwrap_or(first)))
+}
+
+/// The first word of each sentence, and how many words there are in all.
+///
+/// What the walk's track puts its marks at.
+#[must_use]
+pub fn sentence_starts(say: &str) -> (Vec<usize>, usize) {
+    let tokens: Vec<(usize, usize)> = parse(say)
+        .into_iter()
+        .flat_map(|para| para.tokens)
+        .map(|token| (token.at, token.said))
+        .collect();
+    let mut starts = Vec::new();
+    let mut last = None;
+    for (at, said) in &tokens {
+        if last != Some(*said) {
+            starts.push(*at);
+            last = Some(*said);
+        }
+    }
+    (starts, tokens.len())
 }
 
 fn ends_a_sentence(word: &str) -> bool {
@@ -700,6 +726,12 @@ impl Token {
         } else {
             0.
         };
+        let lit = picking
+            .lit_also
+            .iter()
+            .filter(|((from, to), _)| at >= *from && at <= *to)
+            .map(|(_, level)| *level)
+            .fold(lit, f32::max);
         // Being heard: a soft ground under the sentence the voice is on, which
         // rises and falls rather than jumping from one sentence to the next.
         let heard = picking

@@ -101,6 +101,8 @@ pub struct Voice {
     /// Kept when the passage ends: an argument that finished on line 118 did
     /// not stop being about line 118 because the voice went quiet.
     now: Option<crate::prose::Spot>,
+    /// Where to start the passage being made, once it is ready.
+    seek_on_start: Option<usize>,
 }
 
 impl Voice {
@@ -118,7 +120,83 @@ impl Voice {
         }
         self.playing
             .as_mut()
-            .is_some_and(|playing| !playing.quiet && !playing.over())
+            .is_some_and(|playing| !playing.quiet && !playing.paused() && !playing.over())
+    }
+
+    /// Whether the passage in hand is held, mid-way.
+    #[must_use]
+    pub fn paused(&self) -> bool {
+        self.playing.as_ref().is_some_and(Playing::paused)
+    }
+
+    /// Let go of a passage held part-way, keeping what is queued after it.
+    ///
+    /// Prose the reader stopped is not something an answer should wait
+    /// behind; the answers already waiting are still to be heard.
+    pub fn drop_held(&mut self, speech: &Speech) {
+        if self.paused()
+            && let Some(playing) = self.playing.take()
+        {
+            self.now = playing.pointing();
+        }
+        self.pump(speech);
+    }
+
+    /// Hold the passage where it is. Nothing after it starts meanwhile.
+    pub fn pause(&mut self) {
+        if let Some(playing) = self.playing.as_mut() {
+            playing.pause();
+        }
+    }
+
+    /// Carry on from where it was held.
+    pub fn resume(&mut self) {
+        if let Some(playing) = self.playing.as_mut() {
+            let at = playing.elapsed();
+            playing.play_from(at);
+        }
+    }
+
+    /// How far through its passage the voice is, and the passage's length.
+    #[must_use]
+    pub fn progress(&self) -> Option<(Narration, Duration, Duration)> {
+        let playing = self.playing.as_ref()?;
+        Some((
+            playing.of?,
+            playing.elapsed().min(playing.length),
+            playing.length,
+        ))
+    }
+
+    /// When the page's word `word` is heard, in the passage being heard.
+    #[must_use]
+    pub fn time_of_word(&self, word: usize) -> Option<Duration> {
+        self.playing
+            .as_ref()
+            .map(|playing| playing.time_of_word(word))
+    }
+
+    /// Hear the passage in hand from the page's word `word`, paused or not.
+    ///
+    /// Says whether there was a passage of `of` to move in. When it is still
+    /// being made, the move waits for it.
+    pub fn seek(&mut self, of: Narration, word: usize) -> bool {
+        if let Some(playing) = self.playing.as_mut()
+            && playing.of == Some(of)
+        {
+            let at = playing.time_of_word(word);
+            playing.play_from(at);
+            return true;
+        }
+        if self
+            .fetching
+            .as_ref()
+            .is_some_and(|(_, made)| *made == Some(of))
+        {
+            self.seek_on_start = Some(word);
+            return true;
+        }
+        false
     }
 
     /// Whether anything is queued, on its way, or still being walked.
@@ -215,9 +293,13 @@ impl Voice {
                     eprintln!("deck: {why}");
                     self.fetching = None;
                     self.next.clear();
+                    self.seek_on_start = None;
                     return;
                 }
-                Err(TryRecvError::Disconnected) => self.fetching = None,
+                Err(TryRecvError::Disconnected) => {
+                    self.fetching = None;
+                    self.seek_on_start = None;
+                }
             }
         }
 
@@ -251,12 +333,19 @@ impl Voice {
     /// Start hearing a passage that is ready.
     fn begin(&mut self, ready: Ready, of: Option<Narration>, speech: &Speech) {
         match Playing::start(ready, of, speech) {
-            Some(playing) => {
+            Some(mut playing) => {
+                if let Some(word) = self.seek_on_start.take() {
+                    let at = playing.time_of_word(word);
+                    playing.play_from(at);
+                }
                 self.now = playing.pointing();
                 self.playing = Some(playing);
             }
             // Nothing can speak it, so draining the rest would only stall.
-            None => self.next.clear(),
+            None => {
+                self.next.clear();
+                self.seek_on_start = None;
+            }
         }
     }
 
@@ -267,6 +356,7 @@ impl Voice {
     /// voice that ignored them.
     pub fn hush(&mut self) {
         self.next.clear();
+        self.seek_on_start = None;
         // Whatever is in flight is abandoned. Its thread will finish and find
         // nobody listening, which is cheaper than making it cancellable.
         self.fetching = None;
@@ -319,6 +409,12 @@ struct Playing {
     child: Option<Child>,
     /// The rendered sound, removed once it has been heard.
     file: Option<PathBuf>,
+    /// The rendered sound, kept or not: what a jump or a resume plays from.
+    sound: Option<PathBuf>,
+    /// A copy of the sound from some way in, made for a jump or a resume.
+    from: Option<PathBuf>,
+    /// Where it was held, while it is held.
+    held: Option<Duration>,
     quiet: bool,
     since: Instant,
     marks: Vec<(Duration, Option<crate::prose::Spot>)>,
@@ -337,13 +433,21 @@ const LEAD: Duration = Duration::from_millis(220);
 impl Playing {
     /// Start a ready passage, or say that nothing here can.
     fn start(ready: Ready, of: Option<Narration>, _speech: &Speech) -> Option<Self> {
-        let (child, file, quiet) = match ready.sound {
-            Sound::File { at, keep } => (Some(play(&at)?), (!keep).then_some(at), false),
-            Sound::Quiet => (None, None, true),
+        let (child, file, sound, quiet) = match ready.sound {
+            Sound::File { at, keep } => (
+                Some(play(&at)?),
+                (!keep).then(|| at.clone()),
+                Some(at),
+                false,
+            ),
+            Sound::Quiet => (None, None, None, true),
         };
         Some(Self {
             child,
             file,
+            sound,
+            from: None,
+            held: None,
             quiet,
             since: Instant::now(),
             marks: ready.marks,
@@ -355,15 +459,80 @@ impl Playing {
 
     /// Whether the passage has been heard to its end.
     fn over(&mut self) -> bool {
+        if self.held.is_some() {
+            return false;
+        }
         match self.child.as_mut() {
             Some(child) => !matches!(child.try_wait(), Ok(None)),
-            None => self.since.elapsed() >= self.length,
+            None => self.elapsed() >= self.length,
         }
+    }
+
+    fn paused(&self) -> bool {
+        self.held.is_some()
+    }
+
+    /// How far into the passage the reader is, held or not.
+    fn elapsed(&self) -> Duration {
+        self.held.unwrap_or_else(|| self.since.elapsed())
+    }
+
+    fn pause(&mut self) {
+        if self.held.is_some() {
+            return;
+        }
+        self.held = Some(self.elapsed().min(self.length));
+        self.stop_player();
+    }
+
+    fn stop_player(&mut self) {
+        if let Some(mut child) = self.child.take() {
+            let _ = child.kill();
+            let _ = child.wait();
+        }
+    }
+
+    /// Hear it from `at`: a copy of the sound from there, played, with the
+    /// clock set so the light and the words agree with it.
+    ///
+    /// A copy rather than a seek, because the players deck uses cannot seek —
+    /// but every one of them plays a WAV from its first byte.
+    fn play_from(&mut self, at: Duration) {
+        self.stop_player();
+        let at = at.min(self.length);
+        self.held = None;
+        // The clock is set once the player is going, not before the copy is
+        // made: reading and writing a long passage takes long enough to put
+        // the light ahead of the voice.
+        if let Some(copy) = self.sound.as_ref().and_then(|sound| from(sound, at)) {
+            self.child = play(&copy);
+            if let Some(old) = self.from.replace(copy) {
+                let _ = std::fs::remove_file(old);
+            }
+        }
+        self.since = Instant::now().checked_sub(at).unwrap_or_else(Instant::now);
+    }
+
+    /// When the page's word `word` of this passage is heard: the inverse of
+    /// [`Self::hearing`], spread evenly inside a piece the same way.
+    #[allow(clippy::cast_precision_loss)]
+    fn time_of_word(&self, word: usize) -> Duration {
+        let mut before = 0;
+        for (piece, count) in self.words.iter().enumerate() {
+            if word < before + count {
+                let start = self.marks.get(piece).map_or(Duration::ZERO, |(at, _)| *at);
+                let end = self.marks.get(piece + 1).map_or(self.length, |(at, _)| *at);
+                let along = (word - before) as f32 / (*count).max(1) as f32;
+                return start + end.saturating_sub(start).mul_f32(along);
+            }
+            before += count;
+        }
+        self.length
     }
 
     /// Where the passage points at this moment.
     fn pointing(&self) -> Option<crate::prose::Spot> {
-        let heard = self.since.elapsed() + LEAD;
+        let heard = self.elapsed() + LEAD;
         self.marks
             .iter()
             .take_while(|(from, _)| *from <= heard)
@@ -379,7 +548,7 @@ impl Playing {
     #[allow(clippy::cast_possible_truncation, clippy::cast_precision_loss)]
     fn hearing(&self) -> Option<(Narration, usize)> {
         let of = self.of?;
-        let heard = self.since.elapsed() + LEAD;
+        let heard = self.elapsed() + LEAD;
         let piece = self.marks.iter().rposition(|(from, _)| *from <= heard)?;
         let start = self.marks[piece].0;
         let end = self
@@ -397,9 +566,9 @@ impl Playing {
 
 impl Drop for Playing {
     fn drop(&mut self) {
-        if let Some(mut child) = self.child.take() {
-            let _ = child.kill();
-            let _ = child.wait();
+        self.stop_player();
+        if let Some(at) = self.from.take() {
+            let _ = std::fs::remove_file(at);
         }
         if let Some(at) = self.file.take() {
             let _ = std::fs::remove_file(at);
@@ -965,6 +1134,40 @@ fn ssml(text: &str, pause: u16) -> String {
     format!("<speak>{body}</speak>")
 }
 
+/// A copy of the sound in `wav`, from `at` on, as a file a player can open.
+fn from(wav: &Path, at: Duration) -> Option<PathBuf> {
+    let bytes = std::fs::read(wav).ok()?;
+    let pcm = samples(&bytes).ok()?;
+    let skip =
+        usize::try_from(at.as_micros().saturating_mul(u128::from(BYTES_A_SECOND)) / 1_000_000)
+            .unwrap_or(usize::MAX)
+            & !1;
+    let rest = pcm.get(skip.min(pcm.len())..)?;
+    let copy = scratch("wav");
+    std::fs::write(&copy, wav_of(rest)).ok()?;
+    Some(copy)
+}
+
+/// A plain WAV around these samples, in the one shape deck writes.
+fn wav_of(pcm: &[u8]) -> Vec<u8> {
+    let length = u32::try_from(pcm.len()).unwrap_or(u32::MAX);
+    let mut out = Vec::with_capacity(pcm.len() + 44);
+    out.extend_from_slice(b"RIFF");
+    out.extend_from_slice(&length.saturating_add(36).to_le_bytes());
+    out.extend_from_slice(b"WAVEfmt ");
+    out.extend_from_slice(&16u32.to_le_bytes());
+    out.extend_from_slice(&1u16.to_le_bytes());
+    out.extend_from_slice(&1u16.to_le_bytes());
+    out.extend_from_slice(&RATE.to_le_bytes());
+    out.extend_from_slice(&(RATE * 2).to_le_bytes());
+    out.extend_from_slice(&2u16.to_le_bytes());
+    out.extend_from_slice(&16u16.to_le_bytes());
+    out.extend_from_slice(b"data");
+    out.extend_from_slice(&length.to_le_bytes());
+    out.extend_from_slice(pcm);
+    out
+}
+
 /// Play a file, with whatever this machine plays files with.
 fn play(at: &Path) -> Option<Child> {
     let (program, args): (&str, &[&str]) = if cfg!(target_os = "macos") {
@@ -991,6 +1194,66 @@ fn play(at: &Path) -> Option<Child> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_word_is_found_at_the_moment_it_is_heard() {
+        // The track's marks and its jumps go by this. Two pieces: three words
+        // over the first second, one word over the next.
+        let playing = Playing {
+            child: None,
+            file: None,
+            sound: None,
+            from: None,
+            held: None,
+            quiet: true,
+            since: Instant::now(),
+            marks: vec![(Duration::ZERO, None), (Duration::from_secs(1), None)],
+            length: Duration::from_secs(2),
+            words: vec![3, 1],
+            of: Some(Narration::Group(0)),
+        };
+        assert_eq!(playing.time_of_word(0), Duration::ZERO);
+        assert_eq!(playing.time_of_word(3), Duration::from_secs(1));
+        let second = playing.time_of_word(1).as_secs_f32();
+        assert!((second - 1. / 3.).abs() < 0.01, "spread evenly: {second}");
+        assert_eq!(
+            playing.time_of_word(9),
+            Duration::from_secs(2),
+            "past the end"
+        );
+    }
+
+    #[test]
+    fn a_held_passage_stays_where_it_was_held_and_is_not_over() {
+        let mut playing = Playing {
+            child: None,
+            file: None,
+            sound: None,
+            from: None,
+            held: None,
+            quiet: true,
+            since: Instant::now() - Duration::from_millis(500),
+            marks: vec![(Duration::ZERO, None)],
+            length: Duration::from_millis(600),
+            words: vec![4],
+            of: Some(Narration::Group(0)),
+        };
+        playing.pause();
+        let at = playing.elapsed();
+        std::thread::sleep(Duration::from_millis(150));
+        assert_eq!(playing.elapsed(), at, "the clock stops with the voice");
+        assert!(!playing.over(), "held is not finished");
+        playing.play_from(at);
+        assert!(!playing.paused());
+    }
+
+    #[test]
+    fn the_copy_from_part_way_is_a_wav_of_what_is_left() {
+        let pcm = vec![0u8; 48_000]; // one second
+        let copy = wav_of(&pcm[24_000..]);
+        assert_eq!(&copy[..4], b"RIFF");
+        assert_eq!(samples(&copy).expect("readable").len(), 24_000);
+    }
 
     /// A passage of one piece, pointing nowhere.
     fn one(text: &str) -> Vec<Said> {
@@ -1183,6 +1446,9 @@ mod tests {
         let playing = Playing {
             child: None,
             file: None,
+            sound: None,
+            from: None,
+            held: None,
             quiet: true,
             since: Instant::now() - Duration::from_millis(2_000),
             marks: vec![
@@ -1204,6 +1470,9 @@ mod tests {
         let playing = Playing {
             child: None,
             file: None,
+            sound: None,
+            from: None,
+            held: None,
             quiet: true,
             since: Instant::now() - Duration::from_millis(3_000) + LEAD,
             marks: vec![(Duration::ZERO, None), (Duration::from_millis(2_000), None)],
@@ -1226,6 +1495,9 @@ mod tests {
         let playing = Playing {
             child: None,
             file: None,
+            sound: None,
+            from: None,
+            held: None,
             quiet: true,
             since: Instant::now() - Duration::from_millis(1_000),
             marks: vec![
