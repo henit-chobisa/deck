@@ -53,6 +53,11 @@ pub struct Paper {
     pub pointed: Vec<SharedString>,
     /// Whether the agent is talking about this pane. See [`Self::heed`].
     heeded: crate::pane::Fade,
+    /// The last name the page was told, which it is still showing.
+    ///
+    /// Apart from `pointed`, which is whether the narration is in this page
+    /// right now and so whether its pane wears the frame.
+    told: Option<SharedString>,
     /// What the reader has picked inside the page, if anything.
     ///
     /// A page has no lines, so a remark about one is pinned to whichever region
@@ -92,6 +97,7 @@ impl Paper {
             html: spec.page.clone().into(),
             dressed: None,
             pointed: Vec::new(),
+            told: None,
             heeded: crate::pane::Fade::default(),
             selected: None,
             view: None,
@@ -129,6 +135,7 @@ impl Paper {
         // has never heard of the point that was held on the old one.
         let _ = view.evaluate_script("window.deck && (window.deck.at = null)");
         self.pointed.clear();
+        self.told = None;
     }
 
     /// Light these elements, and tell the page it happened.
@@ -140,17 +147,24 @@ impl Paper {
     /// arrives as `deck:point` with the id, or with `null` when the finger has
     /// lifted, and the page decides whether that means a glow, an animation, or
     /// a simulation stepping forward.
+    ///
+    /// Only ever forward. The page is told a name of its own, and never that
+    /// the finger left: when the narration moves into another pane, or the
+    /// voice stops, the page keeps the moment it was showing. Told *nothing*
+    /// each time, it snapped back to its first frame and played its way up
+    /// again on the next point — a walk that went between code and a page
+    /// shuddered from rest to the step and back, sentence after sentence.
+    /// `again` is the one way back to the start.
     pub fn point_at(&mut self, ids: Vec<SharedString>) {
-        if self.pointed == ids {
+        self.pointed = ids;
+        let Some(first) = self.pointed.first().cloned() else {
+            return;
+        };
+        if self.told.as_ref() == Some(&first) {
             return;
         }
-        self.pointed = ids;
-        self.tell(
-            "point",
-            self.pointed
-                .first()
-                .map_or_else(|| "null".to_string(), |id| quoted(id)),
-        );
+        self.told = Some(first.clone());
+        self.tell("point", quoted(&first));
     }
 
     /// Say that a remark was pressed, so the page can move with the thread.
@@ -230,6 +244,9 @@ impl Paper {
         let Some(view) = self.view.as_ref() else {
             return;
         };
+        // Whole device pixels: a flex share puts the hole on a fraction, and
+        // a native view standing on a fraction is drawn soft.
+        let at = snapped(at, window.scale_factor());
         if self.at != Some(at) {
             let _ = view.set_bounds(rect(at));
             self.at = Some(at);
@@ -469,6 +486,19 @@ const SHIM: &str = "window.deck=window.deck||{at:null};\
       }\
     });\
     })();";
+
+/// `at`, moved to the nearest whole device pixels on every edge.
+#[cfg(not(target_os = "windows"))]
+fn snapped(at: Bounds<Pixels>, scale: f32) -> Bounds<Pixels> {
+    let whole = |v: Pixels| px((f32::from(v) * scale).round() / scale);
+    let (left, top) = (whole(at.origin.x), whole(at.origin.y));
+    let right = whole(at.origin.x + at.size.width);
+    let bottom = whole(at.origin.y + at.size.height);
+    Bounds {
+        origin: point(left, top),
+        size: size(right - left, bottom - top),
+    }
+}
 
 /// Where a page sits, in the coordinates a webview wants.
 fn rect(at: Bounds<Pixels>) -> wry::Rect {

@@ -401,6 +401,12 @@ mod tests {
             "Move it so they can follow it",
             "Real numbers, in real units",
             "What pages are for",
+            "Move it smoothly",
+            "Build once, then only change.",
+            "Ease over time, not over frames.",
+            "Never animate an HTML element's layout.",
+            "Make the thing travel.",
+            "It only ever moves forward.",
             "Do it again, in the same place",
             "Every node needs an edge",
         ] {

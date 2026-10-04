@@ -1508,7 +1508,7 @@ What moves it is a point:
 window.deck = window.deck || { at: null }   // deck installs this before your script runs
 
 addEventListener('deck:point', (e) => {
-  render(e.detail)        // e.detail is the id you pointed at, or null
+  render(e.detail)        // e.detail is one of your names: the one pointed at
 })
 
 addEventListener('deck:remark', (e) => {
@@ -1516,13 +1516,17 @@ addEventListener('deck:remark', (e) => {
 })
 ```
 
-`window.deck.at` holds the point the reader is on right now, and `deck:point` fires every
-time it changes — including once more when the document finishes loading, so a page
-brought in halfway through a walk comes up on the step the narration is actually on rather
-than its first frame.
+`window.deck.at` holds the last name the page was told, and `deck:point` fires each time
+the narration points at a new one of *yours* — including once more when the document
+finishes loading, so a page brought in halfway through a walk comes up on the step the
+narration is actually on rather than its first frame.
+
+It only ever moves forward. When the narration points into another pane, or the voice
+stops, the page is told nothing and keeps the moment it is showing — so do not reset on
+anything but a name you know. `again` reloads the page, which is the way back to rest.
 
 So write the page as a **function of the point**, not as a sequence that plays. Given
-`hop`, draw the state at `hop`. Given `null`, go back to rest. A page written that way can
+`hop`, draw the state at `hop`. A page written that way can
 be walked forwards, walked backwards, and re-entered in the middle, which is what the
 reader will actually do to it.
 
@@ -1556,7 +1560,33 @@ How motion explains, and how it stops explaining, is well studied. Four rules:
   everything else in `--deck-edge` and `--deck-muted`. When the sentence moves on, the
   light moves with it.
 
+- **Make the thing travel.** When an element changes place — a pane sliding from slot 3
+  to slot 2, an entry leaving the cache — animate it from where it was to where it goes.
+  Swapping the label in a box that stays still is a redraw, and the reader has to work
+  out what moved.
+
 And honour `prefers-reduced-motion`: jump straight to the state instead of moving there.
+
+### Move it smoothly
+
+Motion that jitters reads as broken, and these are the ways it does:
+
+- **Build once, then only change.** Make the elements when the page loads and keep them;
+  each frame sets attributes on what is already there. Clearing the drawing and building
+  it again every frame is the commonest jitter there is.
+- **Ease over time, not over frames.** Take `now` from `requestAnimationFrame`, start the
+  clock on the first frame you draw, and run a smoothstep from where you were to where
+  you are going over 400 to 900 milliseconds. `x += (target - x) * 0.1` each frame snaps
+  on the first frame, runs twice as fast on a 120 Hz screen, and stalls on a dropped one.
+- **Carry on from where it is.** A point that arrives mid-movement starts from the
+  current state, never from zero and never from the last target.
+- **Whole pixels.** Round every position to the device pixel; put a 1-pixel line on the
+  half pixel. Text never slides continuously — it fades in place, or moves by a whole
+  pixel at a time.
+- **Never animate an HTML element's layout.** Not `left`, `top`, `width`, `height` or a
+  margin — each frame of those re-lays out the page. Move an element with `transform`,
+  fade it with `opacity`. On SVG or a canvas, anything goes: change any attribute of an
+  element that persists, or repaint the canvas every frame.
 
 ### Real numbers, in real units
 
@@ -1569,7 +1599,12 @@ free against the word limit below.
 
 A page gets a whole pane, and a pane is whatever shape the window left it — often tall
 and narrow, sometimes wide and short. **Measure it and draw for it**: read the size of
-the drawing area and lay out from that, on every frame and on `resize`.
+the drawing area in a `ResizeObserver`, and lay out from that — never by measuring inside
+the animation loop.
+
+**Fill it.** The drawing should take most of the pane: lanes as tall as the room allows,
+the axis across the whole width. A strip of drawing along the top of a tall, empty pane
+reads as something that has not finished loading.
 
 **Never scale text with a `viewBox`.** An SVG stretched to fill the pane scales its text
 with it, so the labels come out three times the size of everything else in deck, too
@@ -1668,79 +1703,86 @@ where it happens: a read and a write with nothing holding them together.' \
 <style>
   body { margin: 0; height: 100vh }
   svg  { display: block; width: 100%; height: 100% }
-  text { font: 11px ui-monospace, monospace; fill: var(--deck-muted) }
-  .name { fill: var(--deck-fg); font-size: 12px }
-  .bar { fill: var(--deck-edge) }  .bar.lit { fill: var(--deck-accent) }
-  .on-bar { fill: var(--deck-on-accent) }
-  .lost { fill: var(--deck-del); font-weight: 600 }
+  text { font: 12px ui-monospace, monospace; fill: var(--deck-muted) }
+  .name { fill: var(--deck-fg) }
+  .bar { fill: var(--deck-edge); transition: fill .4s }
+  .bar.lit { fill: var(--deck-accent) }
+  .label { transition: opacity .4s, fill .4s }  .label.lit { fill: var(--deck-on-accent) }
+  .lost { fill: var(--deck-del); font-weight: 600; transition: opacity .4s }
 </style>
 <svg id="s"></svg>
 <script>
 // Milliseconds, from the code: a read takes 2, the work 6, the write 2.
-const lanes = { 'worker A': [[0, 2, 'read 5'], [2, 8, ''], [8, 10, 'write 6']],
-                'worker B': [[2, 4, 'read 5'], [4, 10, ''], [10, 12, 'write 6']] }
+const spans = [['A', 0, 2, 'read 5'], ['A', 2, 8, ''], ['A', 8, 10, 'write 6'],
+               ['B', 2, 4, 'read 5'], ['B', 4, 10, ''], ['B', 10, 12, 'write 6']]
 const at  = { 'read-a': 2, 'read-b': 4, 'write-a': 10, 'write-b': 12 }
-const lit = { 'read-a': 'worker A0', 'read-b': 'worker B0',      // one thing each
-              'write-a': 'worker A2', 'write-b': 'worker B2' }
-const svg = document.getElementById('s')
-let shown = 0, target = 0, point = null, frame = 0
-
-function add(tag, attrs, text) {
-  const e = document.createElementNS('http://www.w3.org/2000/svg', tag)
-  for (const k in attrs) e.setAttribute(k, attrs[k])
-  if (text != null) e.textContent = text
+const lit = { 'read-a': 0, 'read-b': 3, 'write-a': 2, 'write-b': 5 }   // one thing each
+const svg = document.getElementById('s'), NS = 'http://www.w3.org/2000/svg'
+const make = (tag, cls, text) => {
+  const e = document.createElementNS(NS, tag)
+  if (cls) e.setAttribute('class', cls)
+  if (text) e.textContent = text
   return svg.appendChild(e)
 }
 
-function draw(t) {                       // the scene at time t, for this pane's size
-  const W = svg.clientWidth, H = svg.clientHeight, lane = Math.max(26, H / 9)
-  const x = ms => 104 + (W - 144) * ms / 12, top = (H - lane * 4) / 2
-  svg.innerHTML = ''
-  for (let ms = 0; ms <= 12; ms += 2)
-    add('text', { x: x(ms), y: top + lane * 3.4, 'text-anchor': 'middle' }, ms + 'ms')
-  Object.entries(lanes).forEach(([name, spans], row) => {
-    const y = top + lane * row
-    add('text', { x: 16, y: y + 16, class: 'name' }, name)
-    spans.forEach(([from, to, label], i) => {
-      if (from >= t) return
-      const end = Math.min(to, t), on = lit[point] === name + i && end === to
-      const width = Math.max(0, x(end) - x(from) - 2)
-      add('rect', { x: x(from) + 1, y, width, height: 22, rx: 4, class: on ? 'bar lit' : 'bar' })
-      // A label that does not fit its bar is left off, never spilled over it.
-      if (label && end === to && label.length * 7 + 12 < width)
-        add('text', { x: x(from) + 6, y: y + 15, class: on ? 'on-bar' : '' }, label)
-    })
+// Built once. Every frame after this only moves what is already here.
+const ticks = [0, 2, 4, 6, 8, 10, 12].map(ms => make('text', '', ms + 'ms'))
+const names = ['worker A', 'worker B', 'count'].map(n => make('text', 'name', n))
+const bars = spans.map(() => make('rect', 'bar'))
+const labels = spans.map(s => make('text', 'label', s[3]))
+const count = make('text', 'name', '5'), lost = make('text', 'lost', 'should be 7')
+const head = make('line'); head.setAttribute('stroke', 'var(--deck-accent)')
+
+let W = 0, H = 0, shown = 0, point = null, from = 0, to = 0, t0 = null, frame = 0
+const px = v => Math.round(v * devicePixelRatio) / devicePixelRatio  // whole pixels
+
+function place(t) {                        // the scene at time t, in the room there is
+  const lane = Math.max(28, Math.min(48, H / 8)), x = ms => px(110 + (W - 150) * ms / 12)
+  const top = px((H - lane * 3.4) / 2), row = { A: top, B: top + lane }
+  ticks.forEach((e, i) => { e.setAttribute('x', x(i * 2) - 12); e.setAttribute('y', top + lane * 3.4) })
+  names.forEach((e, i) => { e.setAttribute('x', 16); e.setAttribute('y', top + lane * (i === 2 ? 2.5 : i) + 16) })
+  spans.forEach(([who, a, b, label], i) => {
+    const end = Math.max(a, Math.min(b, t)), done = t >= b, on = lit[point] === i && done
+    const width = Math.max(0, x(end) - x(a) - 2)
+    bars[i].setAttribute('x', x(a) + 1); bars[i].setAttribute('y', row[who])
+    bars[i].setAttribute('width', width); bars[i].setAttribute('height', 24)
+    bars[i].setAttribute('class', on ? 'bar lit' : 'bar')
+    labels[i].setAttribute('x', x(a) + 7); labels[i].setAttribute('y', row[who] + 16)
+    labels[i].setAttribute('class', on ? 'label lit' : 'label')
+    // A label fades in once its bar is whole, and only if it fits inside it.
+    labels[i].style.opacity = done && label.length * 7.5 + 14 < width ? 1 : 0
   })
-  const y = top + lane * 2.5
-  add('text', { x: 16, y: y + 4, class: 'name' }, 'count')
-  add('text', { x: x(t >= 10 ? 10 : 0), y: y + 4, class: 'name' }, t >= 10 ? '6' : '5')
-  if (point === 'write-b' && t > 11.9) add('text', { x: x(12), y: y + 22,
-    'text-anchor': 'end', class: 'lost' }, 'should be 7')
-  add('line', { x1: x(t), x2: x(t), y1: top - 12, y2: top + lane * 3,
-                stroke: 'var(--deck-accent)' })
+  count.textContent = t >= 10 ? '6' : '5'
+  count.setAttribute('x', 110); count.setAttribute('y', top + lane * 2.5 + 16)
+  lost.setAttribute('x', 140); lost.setAttribute('y', top + lane * 2.5 + 16)
+  lost.style.opacity = point === 'write-b' && t >= 12 ? 1 : 0
+  const h = x(t) + 0.5                     // a 1px line on the half pixel stays sharp
+  head.setAttribute('x1', h); head.setAttribute('x2', h)
+  head.setAttribute('y1', top - 12); head.setAttribute('y2', top + lane * 3)
 }
 
-function run() {                         // time runs forward to the sentence, eased
-  shown += (target - shown) * 0.14
-  if (Math.abs(target - shown) < 0.02) shown = target
-  draw(shown)
-  frame = shown === target ? 0 : requestAnimationFrame(run)
+function run(now) {                        // eased over time, never over frames
+  if (t0 === null) t0 = now                // starts on the first frame it draws
+  const k = Math.min(1, (now - t0) / 700), e = k * k * (3 - 2 * k)
+  shown = from + (to - from) * e
+  place(shown)
+  frame = k < 1 ? requestAnimationFrame(run) : 0
 }
 
 addEventListener('deck:point', (e) => {
-  point = e.detail in at ? e.detail : null
-  target = point ? at[point] : 0
-  if (!point || target < shown) shown = target
-  if (matchMedia('(prefers-reduced-motion: reduce)').matches) shown = target
-  cancelAnimationFrame(frame)            // one clock, however fast the points come
-  run()
+  if (!(e.detail in at)) return            // not one of ours: keep the moment
+  point = e.detail
+  from = shown; to = at[point]; t0 = null  // carry on from wherever it is
+  cancelAnimationFrame(frame)
+  if (matchMedia('(prefers-reduced-motion: reduce)').matches) { shown = to; place(to) }
+  else frame = requestAnimationFrame(run)
 })
-addEventListener('resize', () => draw(shown))
-draw(0)
+new ResizeObserver(() => { W = svg.clientWidth; H = svg.clientHeight; place(shown) }).observe(svg)
 </script>
 ```
 
-Two lanes, a track, four moments, one thing lit at each, and every colour borrowed —
+Two lanes, a track, four moments, one thing lit at each, built once and eased over time,
+and every colour borrowed —
 with the three lines that cause it beside it, so the reader sees the race and the code
 that allows it in the same breath. Nothing in it is a box with
 a label for a box's sake: every shape is something happening, at the time it happens.
