@@ -41,6 +41,8 @@ mod update;
 mod upgrade;
 mod view;
 mod waiting;
+#[cfg(target_os = "windows")]
+mod win;
 
 use std::process::ExitCode;
 
@@ -426,7 +428,17 @@ pub fn open_deck(session: Session, cx: &mut App) {
         // A panel rather than a document window, so a tiling window manager
         // leaves it alone and the deck keeps the size it asked for — which is
         // the shape the whole design assumes.
-        kind: WindowKind::PopUp,
+        //
+        // Not on Windows. There a gpui pop-up is a window with no frame at
+        // all — no edges to resize from and no caption to drag — so the deck
+        // could only be resized from its top edge, and not moved (#50, #69).
+        // An ordinary window keeps its frame, invisible like the rest of the
+        // chrome; `win::keep_on_top` puts back the floating.
+        kind: if cfg!(target_os = "windows") {
+            WindowKind::Normal
+        } else {
+            WindowKind::PopUp
+        },
         window_decorations: Some(WindowDecorations::Client),
         is_movable: true,
         // A borderless window has no frame to grab, so the ability to resize
@@ -443,6 +455,8 @@ pub fn open_deck(session: Session, cx: &mut App) {
     };
 
     let handle = match cx.open_window(options, |window, cx| {
+        #[cfg(target_os = "windows")]
+        win::keep_on_top(window);
         let view = cx.new(|cx| DeckView::resume(session, window, cx));
         cx.new(|cx| Root::new(view, window, cx))
     }) {

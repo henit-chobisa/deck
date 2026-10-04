@@ -4188,6 +4188,13 @@ impl DeckView {
                         // where a titlebar would be landed on the band and did
                         // nothing — while every other window on the machine
                         // zooms.
+                        //
+                        // On Windows it is also where the window is dragged
+                        // from. There the platform only moves a window from an
+                        // area the window says is a caption, and with the real
+                        // one hidden nothing said so — the deck could not be
+                        // moved at all (#50). The platform's caption also
+                        // brings its own double-click to maximise.
                         div()
                             .id("deck-titlebar")
                             .h_flex()
@@ -4197,6 +4204,9 @@ impl DeckView {
                             .pt(px(15.))
                             .pl(px(18.))
                             .pr(px(18.))
+                            .when(cfg!(target_os = "windows"), |this| {
+                                this.window_control_area(WindowControlArea::Drag)
+                            })
                             .on_click(|event, window, _| {
                                 if event.click_count() >= 2 {
                                     window.zoom_window();
