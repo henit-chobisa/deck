@@ -360,6 +360,13 @@ pub fn what_will_not_light(say: &str, pointing: &[Pointing]) -> Vec<String> {
     }
     for page in &written {
         answers.extend(answered_by(&page.html));
+        notes.extend(unordered(&page.html).into_iter().map(|name| {
+            format!(
+                "`data-from=\"{name}\"` is not in the page's `deck-points`, so it never \
+                 shows: `data-from` arrives at a step in that list and stays for the \
+                 ones after it"
+            )
+        }));
     }
     for block in blocks(say) {
         // `106` and `106-110` are lines, not blocks, and belong to a file.
@@ -397,6 +404,38 @@ pub fn what_will_not_light(say: &str, pointing: &[Pointing]) -> Vec<String> {
     notes
 }
 
+/// The `data-from` names a page uses and never lists in `deck-points`.
+///
+/// `data-from` counts steps in that list's order, so a name outside it has
+/// no place in the order and the element stays hidden for the whole walk.
+fn unordered(html: &str) -> Vec<String> {
+    let listed: Vec<&str> = html
+        .find("name=\"deck-points\"")
+        .and_then(|at| {
+            let after = &html[at..];
+            let from = after.find("content=\"")? + 9;
+            let end = after[from..].find('"')?;
+            Some(after[from..from + end].split_whitespace().collect())
+        })
+        .unwrap_or_default();
+    let mut missing = Vec::new();
+    let mut rest = html;
+    while let Some(at) = rest.find("data-from=\"") {
+        rest = &rest[at + 11..];
+        let Some(end) = rest.find('"') else {
+            break;
+        };
+        if let Some(name) = rest[..end].split_whitespace().next()
+            && !listed.contains(&name)
+            && !missing.iter().any(|known: &String| known == name)
+        {
+            missing.push(name.to_string());
+        }
+        rest = &rest[end + 1..];
+    }
+    missing
+}
+
 /// Every payload a `[point ...]` in `say` carries, block names and all.
 fn blocks(say: &str) -> Vec<String> {
     let mut out = Vec::new();
@@ -417,8 +456,14 @@ fn blocks(say: &str) -> Vec<String> {
     out
 }
 
-/// The names a page answers to: its ids, and whatever it declares.
-fn answered_by(html: &str) -> Vec<String> {
+/// The names a page answers to: its ids, whatever it declares in
+/// `deck-points`, and every name its elements light or show on —
+/// `data-on`, `data-show`, `data-from`.
+///
+/// Shared with the window, which needs the same answer before a page has a
+/// view to ask, so the two can never disagree about which page a point is in.
+#[must_use]
+pub fn answered_by(html: &str) -> Vec<String> {
     let mut out = Vec::new();
     if let Some(at) = html.find("name=\"deck-points\"")
         && let Some(from) = html[at..].find("content=\"")
@@ -431,19 +476,30 @@ fn answered_by(html: &str) -> Vec<String> {
                 .map(str::to_string),
         );
     }
-    let mut rest = html;
-    while let Some(at) = rest.find("id=\"") {
-        rest = &rest[at + 4..];
-        let Some(end) = rest.find('"') else {
-            break;
-        };
-        out.push(rest[..end].to_string());
-        rest = &rest[end + 1..];
+    for attribute in ["id=\"", "data-on=\"", "data-show=\"", "data-from=\""] {
+        let mut rest = html;
+        while let Some(at) = rest.find(attribute) {
+            // `data-id="…"` is not an id, nor `grid="…"` one of these.
+            let whole =
+                at == 0 || !rest[..at].ends_with(|ch: char| ch.is_alphanumeric() || ch == '-');
+            rest = &rest[at + attribute.len()..];
+            let Some(end) = rest.find('"') else {
+                break;
+            };
+            if whole {
+                out.extend(rest[..end].split_whitespace().map(str::to_string));
+            }
+            rest = &rest[end + 1..];
+        }
     }
+    out.sort();
+    out.dedup();
     out
 }
 
 /// The words a page shows, which is the only thing it is rationed on.
+///
+/// Numbers and measurements are free; see [`counted`].
 ///
 /// Markup, so this is a scan and not a parse: tags come out, the contents of
 /// `script` and `style` come out with them, and what is left is what a reader
@@ -469,7 +525,7 @@ pub fn shown_words(html: &str) -> usize {
             };
             match closes(rest, tag) {
                 Some(end) => rest = &rest[end..],
-                None => return text.split_whitespace().count(),
+                None => return counted(&text),
             }
         }
         match rest.find('>') {
@@ -478,7 +534,25 @@ pub fn shown_words(html: &str) -> usize {
         }
     }
     text.push_str(rest);
-    text.split_whitespace().count()
+    counted(&text)
+}
+
+/// The words in `text` that are words. A number is not, and nor is a number
+/// with its unit — `200ms`, `3.5k`, `-12%` — so the axis of an honest chart
+/// costs nothing: the limit is there to stop sentences, and ticks are not
+/// sentences.
+fn counted(text: &str) -> usize {
+    text.split_whitespace()
+        .filter(|token| {
+            // A word unless it starts, once its punctuation is set aside,
+            // with a digit: `(200ms)` and `~5ms` are numbers, `.gitignore`
+            // and `--force` are words.
+            token
+                .chars()
+                .find(|ch| ch.is_alphanumeric())
+                .is_some_and(char::is_alphabetic)
+        })
+        .count()
 }
 
 /// How many words a page may show before it has become a document.
@@ -862,6 +936,47 @@ mod tests {
     // somebody who has just been refused by it.
 
     use super::*;
+
+    #[test]
+    fn an_axis_is_not_words() {
+        assert_eq!(
+            shown_words("<text>0ms</text> <text>200ms</text> <text>1.5s</text>"),
+            0
+        );
+        assert_eq!(
+            shown_words("<b>-12%</b> 3.5k $40 p99 retry"),
+            2,
+            "p99 and retry are words"
+        );
+        assert_eq!(shown_words("queue full"), 2);
+        assert_eq!(shown_words("(200ms) ~5ms"), 0);
+        assert_eq!(
+            shown_words(".gitignore --force"),
+            2,
+            "words in punctuation are words"
+        );
+    }
+
+    #[test]
+    fn a_step_a_page_counts_from_has_to_be_in_its_order() {
+        let page = r#"<meta name="deck-points" content="one two">
+            <i data-from="two"></i><i data-from="three"></i>"#;
+        assert_eq!(unordered(page), ["three"]);
+    }
+
+    #[test]
+    fn a_page_answers_to_what_its_parts_light_on() {
+        let page = r#"<meta name="deck-points" content="rest hop">
+            <div id="box" class="node" data-on="hop settle">a</div>
+            <div data-show="arrive" data-from="leave">b</div>
+            <div data-id="not-a-name" grid="nor-this">c</div>"#;
+        let names = answered_by(page);
+        for name in ["rest", "hop", "box", "settle", "arrive", "leave"] {
+            assert!(names.contains(&name.to_string()), "{name}");
+        }
+        assert!(!names.contains(&"not-a-name".to_string()));
+        assert!(!names.contains(&"nor-this".to_string()));
+    }
 
     /// A code ref, from the syntax an agent would write.
     fn pointing(refs: &[&str]) -> Vec<Pointing> {
