@@ -960,7 +960,19 @@ impl DeckView {
             grid: layout,
             panes: Vec::new(),
             group_ix,
-            focus: cx.focus_handle(),
+            // Holding the keyboard from the start. Nothing else gave it to the
+            // deck until the reader clicked somewhere in it, which left every
+            // key dead on a deck that had just been opened — most visibly on
+            // Windows: with nothing focused, a key is offered to the window's
+            // root and never reaches the deck's own bindings.
+            //
+            // First, so that whatever opens further down — the notes card, a
+            // comment kept from last time — takes the keyboard from it.
+            focus: {
+                let focus = cx.focus_handle();
+                focus.focus(window, cx);
+                focus
+            },
             remarks,
             composing: None,
             composing_when: deck_core::When::Interrupt,
@@ -2437,9 +2449,10 @@ impl DeckView {
     ) {
         use crate::notes::Notes;
 
-        // Escape has to reach them. A window that opened on them has nothing
-        // focused for a key to start from, and a comment box that had the
-        // keyboard is under the card where nobody can see what they type.
+        // Escape has to reach them. The deck itself holds the keyboard from
+        // the moment it opens, and its keys must not act under the card; a
+        // comment box that had the keyboard is under it too, where nobody
+        // can see what they type.
         self.notes_focus.focus(window, cx);
         let cached = crate::notes::cached(&version);
         let fetch_words = cached.is_none() && may_ask;
@@ -3007,11 +3020,23 @@ impl DeckView {
         let spread = self.spread;
         let palette = self.palette;
         for ix in 0..self.panes.len() {
-            // Shaded or mid-turn: a native view cannot join in with either, so
-            // it steps out rather than sitting on top of the movement. Whether
-            // it is folded is not asked here — the pane's own rectangle says
-            // that, and it is the one thing that cannot be out of date.
-            let still = !spread;
+            // Shaded, mid-turn or folding: a native view cannot join in with
+            // any of them, so it steps out rather than sitting on top of the
+            // movement. A fold in particular it trails by a frame, drawn over
+            // the seam and the pane beside it, and the last frame of one could
+            // leave it standing where the pane had been.
+            let folding = self
+                .folds
+                .get(ix)
+                .is_some_and(|fold| fold.moving() || fold.on());
+            // Kept away for a movement, it has to be looked at again once the
+            // movement is over. The frame that draws the last step may be
+            // asked for before the fold stops and drawn after, and then
+            // nothing else would come round to put the view back.
+            if self.folds.get(ix).is_some_and(crate::pane::Fade::moving) {
+                window.request_animation_frame();
+            }
+            let still = !spread && !folding;
             let Some(paper) = self.panes.get_mut(ix).and_then(Sheet::paper_mut) else {
                 continue;
             };
@@ -3511,11 +3536,7 @@ impl DeckView {
         // The composer lives in the rail. Writing into a folded one would be
         // typing into a box nobody can see.
         self.rail_open.set(true);
-        let asking = match about {
-            About::Lines { .. } => "what you want to say about these lines",
-            About::Drawn { .. } => "what you want to say about this",
-            About::Claim { .. } => "what you want to say about this group",
-        };
+        let asking = Self::asking(&about, self.rail_width.unwrap_or(RAIL));
         let state = cx.new(|cx| {
             TextareaState::new(window, cx)
                 .placeholder(asking)
@@ -4310,13 +4331,35 @@ impl DeckView {
     ///
     /// Dragging left makes it wider, which is why the delta is subtracted: the
     /// seam is on the rail's left edge and the rail grows toward the pointer.
-    fn resize_rail(&mut self, by: Pixels, cx: &mut Context<Self>) {
+    fn resize_rail(&mut self, by: Pixels, window: &mut Window, cx: &mut Context<Self>) {
         const LEAST: f32 = 150.;
         const MOST: f32 = 560.;
 
         let from = self.rail_width.unwrap_or(RAIL);
-        self.rail_width = Some((from - f32::from(by)).clamp(LEAST, MOST));
+        let wide = (from - f32::from(by)).clamp(LEAST, MOST);
+        self.rail_width = Some(wide);
+        // The placeholder is one line that never wraps, so it is told how
+        // much room it has: dragged narrow, the long one was cut mid-word.
+        // Only when it changes: this runs on every move of the drag.
+        if let Some((about, state, _)) = self.composing.as_ref() {
+            let asking = Self::asking(about, wide);
+            if asking != Self::asking(about, from) {
+                state.update(cx, |state, cx| state.set_placeholder(asking, window, cx));
+            }
+        }
         cx.notify();
+    }
+
+    /// What the comment box asks, in the words a rail `wide` points across
+    /// has room for. A placeholder is one line and does not wrap.
+    fn asking(about: &About, wide: f32) -> &'static str {
+        match about {
+            _ if wide < 220. => "your comment",
+            _ if wide < 300. => "what you want to say",
+            About::Lines { .. } => "what you want to say about these lines",
+            About::Drawn { .. } => "what you want to say about this",
+            About::Claim { .. } => "what you want to say about this group",
+        }
     }
 
     fn resize_band(&mut self, by: Pixels, cx: &mut Context<Self>) {
@@ -4849,8 +4892,8 @@ impl DeckView {
                 .flex_none()
                 .key_context("DeckComposer")
                 .on_action(cx.listener(Self::on_add_to_review))
-                // Sized for whichever it is in. The panel can be two hundred
-                // points wide; window padding inside it leaves no room to type.
+                // Sized for whichever it is in. The rail can be dragged down to
+                // 150 points; window padding inside it leaves no room to type.
                 .pt(px(9.))
                 .pb(px(2.))
                 // The handlers live here, not only on the root. An action
@@ -4871,8 +4914,10 @@ impl DeckView {
                         .font_family(cx.theme().mono_font_family.clone())
                         .text_size(px(10.5))
                         .text_color(paint(self.palette.muted))
-                        .child(where_at)
-                        .children(ref_id),
+                        // Cut short with an ellipsis when the rail is narrow,
+                        // rather than running out past the window's edge.
+                        .child(div().flex_1().min_w_0().truncate().child(where_at))
+                        .children(ref_id.map(|id| div().flex_none().child(id))),
                 )
                 // Sized against the narration it answers, not against the
                 // labels around it. What the reader types here is prose, and
@@ -4925,12 +4970,27 @@ impl DeckView {
     /// button. Two buttons are what a code review already looks like — GitHub
     /// has *Add single comment* and *Start a review* — and each one means the
     /// same thing every time.
+    ///
+    /// They wrap rather than run off the edge: in a rail dragged narrow the
+    /// second button drops under the first. Narrower still — the rail goes
+    /// down to 150 points, and Windows spells its keys out — the keys inside
+    /// them go, and the words stay. The keys themselves still work.
     fn render_endings(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let palette = &self.palette;
         let mono = cx.theme().mono_font_family.clone();
+        // The narrowest rail in which the wider button still fits with its
+        // keys beside it: the button's own width plus the rail's padding. The
+        // keys are glyphs on a Mac and words elsewhere, hence the two.
+        const ROOM_FOR_KEYS: f32 = if cfg!(target_os = "macos") {
+            190.
+        } else {
+            270.
+        };
+        let roomy = self.rail_width.unwrap_or(RAIL) >= ROOM_FOR_KEYS;
         let button = |id: &'static str, label: &'static str, keys: &'static str, primary: bool| {
             div()
                 .id(id)
+                .flex_none()
                 .h_flex()
                 .items_center()
                 .gap(px(6.))
@@ -4950,17 +5010,20 @@ impl DeckView {
                         .hover(|style| style.bg(paint(palette.wash)))
                 })
                 .child(label)
-                .child(
-                    div()
-                        .font_family(mono.clone())
-                        .text_size(px(9.5))
-                        .opacity(0.7)
-                        .child(keys),
-                )
+                .when(roomy, |this| {
+                    this.child(
+                        div()
+                            .font_family(mono.clone())
+                            .text_size(px(9.5))
+                            .opacity(0.7)
+                            .child(keys),
+                    )
+                })
         };
         div()
             .h_flex()
-            .flex_none()
+            .flex_wrap()
+            .min_w_0()
             .gap(px(6.))
             .child(
                 button(
@@ -6623,7 +6686,7 @@ impl Render for DeckView {
                     let by = along - from;
                     match what {
                         Divide::Band => deck.resize_band(by, cx),
-                        Divide::Rail => deck.resize_rail(by, cx),
+                        Divide::Rail => deck.resize_rail(by, window, cx),
                         Divide::Panes(ix) => {
                             deck.resize_panes(ix, by, window.viewport_size().height, cx);
                         }
@@ -7143,5 +7206,29 @@ mod tests {
             assert_eq!(there, back);
             assert!(!forwards && reversed);
         }
+    }
+
+    #[test]
+    fn the_placeholder_is_cut_to_the_rail() {
+        // One line that never wraps, so it is chosen by how wide the rail is.
+        // The default rail has to stay wide enough for the whole sentence:
+        // it sits only a few points above the cut-off.
+        let about = About::Drawn {
+            group: "g".into(),
+            ref_id: "r".into(),
+            quote: String::new(),
+        };
+        assert_eq!(DeckView::asking(&about, 150.), "your comment");
+        assert_eq!(DeckView::asking(&about, 219.9), "your comment");
+        assert_eq!(DeckView::asking(&about, 220.), "what you want to say");
+        assert_eq!(DeckView::asking(&about, 299.9), "what you want to say");
+        assert_eq!(
+            DeckView::asking(&about, 300.),
+            "what you want to say about this"
+        );
+        assert_eq!(
+            DeckView::asking(&about, RAIL),
+            "what you want to say about this"
+        );
     }
 }

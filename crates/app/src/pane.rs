@@ -980,16 +980,7 @@ impl Pane {
             self.name.clone(),
             self.label.clone(),
             self.note.clone(),
-            Controls {
-                focus_button,
-                // A borrowed pane offers no fold, only a close. Folding one
-                // would leave a spine for something that is not part of the
-                // deck, and when it is the only thing open the fold has to be
-                // refused anyway — which reads as the way back being barred.
-                fold: (fold <= 0. && slot.foldable && !slot.temporary)
-                    .then(|| self.render_fold(slot, cx)),
-                close: (fold <= 0. && slot.temporary).then(|| self.render_close(slot)),
-            },
+            controls(slot, focus_button),
             palette,
             cx,
         );
@@ -1422,12 +1413,6 @@ impl Pane {
     ///
     /// Clicking anywhere on it opens the pane again.
     pub fn render_folded(&self, slot: &Slot, cx: &App) -> AnyElement {
-        let palette = slot.palette;
-        let mono = cx.theme().mono_font_family.clone();
-        let ix = slot.ix;
-        let fold = slot.fold;
-        let left = slot.fold_left;
-        let view = slot.view.clone();
         // Its name if the agent gave it one, and the file's own name if not:
         // `protocol` says more than `protocol.rs` does, and far more than `p`.
         let title: SharedString = self.name.clone().unwrap_or_else(|| {
@@ -1445,118 +1430,7 @@ impl Pane {
         let file: SharedString = self.file.display().to_string().into();
         let said = self.label.clone();
 
-        div()
-            .flex_none()
-            // The spine grows as the pane gives up its place in the grid, so
-            // the two movements are the one movement.
-            .w(px(SPINE * fold))
-            .h_full()
-            .overflow_hidden()
-            .child(
-                div()
-                    .id(("pane-spine", ix))
-                    .w(px(SPINE))
-                    .h_full()
-                    .v_flex()
-                    .items_center()
-                    .pt(px(12.))
-                    .pb(px(14.))
-                    .bg(paint(palette.wash))
-                    .cursor_pointer()
-                    .hover(|style| style.bg(paint(palette.wash.mix(palette.band, 0.55))))
-                    .tooltip(move |_window, cx| {
-                        cx.new(|_| gpui_kit::component::tooltip::Tooltip::new(said.clone()))
-                            .into()
-                    })
-                    .on_mouse_down(MouseButton::Left, {
-                        let view = view.clone();
-                        move |_, _window, cx| {
-                            let _ = view.update(cx, |deck, cx| deck.fold_pane(ix, false, cx));
-                        }
-                    })
-                    .child(
-                        div()
-                            .size(px(18.))
-                            .flex()
-                            .items_center()
-                            .justify_center()
-                            .text_size(px(12.))
-                            .text_color(paint(palette.muted))
-                            // Pointing the way the pane will open.
-                            .child(if left { "›" } else { "‹" }),
-                    )
-                    // The name the prose calls it, and the file underneath, both
-                    // turned on their side — which the panel could not do until the
-                    // words went through a picture.
-                    .child(
-                        div()
-                            .mt(px(10.))
-                            .flex_none()
-                            .flex()
-                            .justify_center()
-                            .child(sideways(&title, &mono, 12.5, 700, palette.accent, left)),
-                    )
-                    .child(
-                        div()
-                            .mt(px(2.))
-                            .flex_none()
-                            .flex()
-                            .justify_center()
-                            .child(sideways(&file, &mono, 11.5, 500, palette.fg, left)),
-                    )
-                    // The spine itself: a line down the rest of the pane, which is what
-                    // the word means and all the room there is for it.
-                    .child(div().mt(px(12.)).w(px(1.)).flex_1().bg(paint(palette.edge))),
-            )
-            .into_any_element()
-    }
-
-    /// The control that closes a pane brought in to answer a question.
-    fn render_close(&self, slot: &Slot) -> AnyElement {
-        let palette = slot.palette;
-        let ix = slot.ix;
-        let view = slot.view.clone();
-        div()
-            .id(("close-pane", ix))
-            .size(px(18.))
-            .flex_none()
-            .rounded(px(5.))
-            .flex()
-            .items_center()
-            .justify_center()
-            .cursor_pointer()
-            .text_size(px(12.))
-            .text_color(paint(palette.muted))
-            .hover(|style| style.bg(paint(palette.band)).text_color(paint(palette.fg)))
-            .on_mouse_down(MouseButton::Left, move |_, _window, cx| {
-                let _ = view.update(cx, |deck, cx| deck.close_brought(ix, cx));
-            })
-            .child("×")
-            .into_any_element()
-    }
-
-    /// The control that folds this pane away.
-    fn render_fold(&self, slot: &Slot, _cx: &App) -> AnyElement {
-        let palette = slot.palette;
-        let ix = slot.ix;
-        let view = slot.view.clone();
-        div()
-            .id(("fold-pane", ix))
-            .size(px(18.))
-            .flex_none()
-            .rounded(px(5.))
-            .flex()
-            .items_center()
-            .justify_center()
-            .cursor_pointer()
-            .text_size(px(12.))
-            .text_color(paint(palette.muted))
-            .hover(|style| style.bg(paint(palette.band)))
-            .on_mouse_down(MouseButton::Left, move |_, _window, cx| {
-                let _ = view.update(cx, |deck, cx| deck.fold_pane(ix, true, cx));
-            })
-            .child(if slot.fold_left { "‹" } else { "›" })
-            .into_any_element()
+        spine(slot, &title, Some(&file), said, cx)
     }
 
     /// The remark cards, placed against the code they belong to.
@@ -1747,6 +1621,175 @@ fn highlight(source: &str, lines: &[&str], file: &std::path::Path, cx: &App) -> 
     rows
 }
 
+/// The controls any pane wears in its header: a fold for one the deck put
+/// there, a close for one that was brought in.
+///
+/// Every kind of pane, not only a file. A picture or a page with neither was
+/// a pane the reader could not get out of the way (#31), and one brought in to
+/// answer a question could not be sent back (#32).
+///
+/// A borrowed pane offers no fold, only a close. Folding one would leave a
+/// spine for something that is not part of the deck, and when it is the only
+/// thing open the fold has to be refused anyway — which reads as the way back
+/// being barred.
+pub(crate) fn controls(slot: &Slot, focus_button: Option<AnyElement>) -> Controls {
+    let open = slot.fold <= 0.;
+    Controls {
+        focus_button,
+        fold: (open && slot.foldable && !slot.temporary).then(|| fold_button(slot)),
+        close: (open && slot.temporary).then(|| close_button(slot)),
+    }
+}
+
+/// The control that closes a pane brought in to answer a question.
+fn close_button(slot: &Slot) -> AnyElement {
+    let palette = slot.palette;
+    let ix = slot.ix;
+    let view = slot.view.clone();
+    div()
+        .id(("close-pane", ix))
+        .size(px(18.))
+        .flex_none()
+        .rounded(px(5.))
+        .flex()
+        .items_center()
+        .justify_center()
+        .cursor_pointer()
+        .text_size(px(12.))
+        .text_color(paint(palette.muted))
+        .hover(|style| style.bg(paint(palette.band)).text_color(paint(palette.fg)))
+        .on_mouse_down(MouseButton::Left, move |_, _window, cx| {
+            let _ = view.update(cx, |deck, cx| deck.close_brought(ix, cx));
+        })
+        .child("×")
+        .into_any_element()
+}
+
+/// The control that folds a pane away.
+fn fold_button(slot: &Slot) -> AnyElement {
+    let palette = slot.palette;
+    let ix = slot.ix;
+    let view = slot.view.clone();
+    div()
+        .id(("fold-pane", ix))
+        .size(px(18.))
+        .flex_none()
+        .rounded(px(5.))
+        .flex()
+        .items_center()
+        .justify_center()
+        .cursor_pointer()
+        .text_size(px(12.))
+        .text_color(paint(palette.muted))
+        .hover(|style| style.bg(paint(palette.band)))
+        .on_mouse_down(MouseButton::Left, move |_, _window, cx| {
+            let _ = view.update(cx, |deck, cx| deck.fold_pane(ix, true, cx));
+        })
+        .child(if slot.fold_left { "‹" } else { "›" })
+        .into_any_element()
+}
+
+/// What a picture's or a page's spine says: what it is called, and under
+/// that whatever says more.
+///
+/// Its name over its title when it has both. When the two are the same word —
+/// a page is labelled by its name — the note it was given stands under it
+/// instead, so two unnamed pages are not both just "page".
+pub(crate) fn spine_words(
+    name: Option<&SharedString>,
+    label: &SharedString,
+    note: Option<&SharedString>,
+) -> (SharedString, Option<SharedString>) {
+    let title = name.unwrap_or(label).clone();
+    let under = if *label == title { note } else { Some(label) };
+    (title, under.cloned())
+}
+
+/// A pane folded down to its spine at the window's edge.
+///
+/// `title` is what the prose calls it, `under` whatever says which one it is
+/// when two share a name, and `said` the whole of it for the tooltip. Clicking
+/// anywhere on it opens the pane again.
+pub(crate) fn spine(
+    slot: &Slot,
+    title: &SharedString,
+    under: Option<&SharedString>,
+    said: SharedString,
+    cx: &App,
+) -> AnyElement {
+    let palette = slot.palette;
+    let mono = cx.theme().mono_font_family.clone();
+    let ix = slot.ix;
+    let fold = slot.fold;
+    let left = slot.fold_left;
+    let view = slot.view.clone();
+
+    div()
+        .flex_none()
+        // The spine grows as the pane gives up its place in the grid, so
+        // the two movements are the one movement.
+        .w(px(SPINE * fold))
+        .h_full()
+        .overflow_hidden()
+        .child(
+            div()
+                .id(("pane-spine", ix))
+                .w(px(SPINE))
+                .h_full()
+                .v_flex()
+                .items_center()
+                .pt(px(12.))
+                .pb(px(14.))
+                .bg(paint(palette.wash))
+                .cursor_pointer()
+                .hover(|style| style.bg(paint(palette.wash.mix(palette.band, 0.55))))
+                .tooltip(move |_window, cx| {
+                    cx.new(|_| gpui_kit::component::tooltip::Tooltip::new(said.clone()))
+                        .into()
+                })
+                .on_mouse_down(MouseButton::Left, {
+                    let view = view.clone();
+                    move |_, _window, cx| {
+                        let _ = view.update(cx, |deck, cx| deck.fold_pane(ix, false, cx));
+                    }
+                })
+                .child(
+                    div()
+                        .size(px(18.))
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .text_size(px(12.))
+                        .text_color(paint(palette.muted))
+                        // Pointing the way the pane will open.
+                        .child(if left { "›" } else { "‹" }),
+                )
+                // The name the prose calls it, and the file underneath, both
+                // turned on their side — which the panel could not do until the
+                // words went through a picture.
+                .child(
+                    div()
+                        .mt(px(10.))
+                        .flex_none()
+                        .flex()
+                        .justify_center()
+                        .child(sideways(title, &mono, 12.5, 700, palette.accent, left)),
+                )
+                .children(under.map(|under| {
+                    div()
+                        .mt(px(2.))
+                        .flex_none()
+                        .flex()
+                        .justify_center()
+                        .child(sideways(under, &mono, 11.5, 500, palette.fg, left))
+                }))
+                // The spine itself: a line down the rest of the pane, which is what
+                // the word means and all the room there is for it.
+                .child(div().mt(px(12.)).w(px(1.)).flex_1().bg(paint(palette.edge))),
+        )
+        .into_any_element()
+}
+
 /// The label row a pane wears: what it is showing, and what to make of it.
 ///
 /// Shared with the diagram pane. The two draw entirely different bodies, but a
@@ -1915,6 +1958,28 @@ mod tests {
     use core::prelude::v1::test;
 
     use super::*;
+
+    #[test]
+    fn a_spine_says_the_name_and_then_whatever_says_more() {
+        let words = |name: Option<&str>, label: &str, note: Option<&str>| {
+            let (name, note) = (name.map(SharedString::from), note.map(SharedString::from));
+            let (title, under) =
+                spine_words(name.as_ref(), &SharedString::from(label), note.as_ref());
+            (title.to_string(), under.map(|under| under.to_string()))
+        };
+        // A named picture: its name, over its title.
+        assert_eq!(
+            words(Some("flow"), "how it travels", Some("the path")),
+            ("flow".into(), Some("how it travels".into()))
+        );
+        // A page is labelled by its name, so the note stands under it.
+        assert_eq!(
+            words(Some("rows"), "rows", Some("which row wins")),
+            ("rows".into(), Some("which row wins".into()))
+        );
+        // Nothing but a label.
+        assert_eq!(words(None, "page", None), ("page".into(), None));
+    }
 
     #[test]
     fn without_a_proposed_change_a_line_is_its_own_row() {

@@ -105,8 +105,9 @@ enum What {
         /// The `.deck` directory, as `deck new` printed it.
         deck: PathBuf,
         /// What you want to say. Markdown: `**bold**`, `*look here*`,
-        /// `` `code` ``, blank line between paragraphs.
-        #[arg(long)]
+        /// `` `code` ``, blank line between paragraphs — a real one. A break
+        /// written as `\n` is read as one too, outside backticks.
+        #[arg(long, value_parser = prose)]
         say: String,
         /// A file and the lines to light up, and optionally a note after a
         /// space: `src/batch.ts:140-148 decremented *twice*`.
@@ -191,7 +192,7 @@ enum What {
         /// `[point 106-110]` inside it lights those lines of the code on
         /// screen, from the moment the words after it are said. The reader
         /// never sees the direction, and neither does the voice.
-        #[arg(long)]
+        #[arg(long, value_parser = prose)]
         text: String,
         /// Record it without reading it aloud.
         #[arg(long)]
@@ -375,6 +376,17 @@ enum What {
         #[arg(long, default_value_t = 0)]
         timeout: u64,
     },
+}
+
+/// A group's `--say` or a live `--text`, with breaks written as `\n` made
+/// into breaks.
+///
+/// As clap's value parser, so nothing downstream has to know. Only those two:
+/// they are the narration, the one place a paragraph break belongs. A ref's
+/// note, a title and `deck doing` are one line each, and `--after` and
+/// `--before` are code. See [`deck_cli::real_breaks`].
+fn prose(text: &str) -> Result<String, std::convert::Infallible> {
+    Ok(deck_cli::real_breaks(text))
 }
 
 /// Where decks go when nobody says otherwise.
@@ -1308,5 +1320,33 @@ fn report(done: anyhow::Result<()>) -> Result<Option<Opening>, ExitCode> {
             eprintln!("deck: {err}");
             Err(ExitCode::FAILURE)
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The narration has its written breaks made real; the code beside it is
+    /// left exactly as it was given.
+    #[test]
+    fn only_the_narration_has_its_breaks_made_real() {
+        let cli = Cli::try_parse_from([
+            "deck",
+            "group",
+            "a.deck",
+            "--say",
+            r"One.\n\nTwo.",
+            "--ref",
+            "a.rs:1-2",
+            "--after",
+            r#"print("a\n");"#,
+        ])
+        .expect("parses");
+        let What::Group { say, after, .. } = cli.what else {
+            panic!("a group");
+        };
+        assert_eq!(say, "One.\n\nTwo.");
+        assert_eq!(after, [r#"print("a\n");"#]);
     }
 }

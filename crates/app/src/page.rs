@@ -215,13 +215,9 @@ impl Paper {
         let Some(at) = self.hole.get() else {
             return; // not drawn yet, so there is nowhere to stand
         };
-        // The hole is the only honest answer to whether this page is on screen.
-        //
-        // Asking the fold instead was wrong in the one case that matters: a
-        // fold is a request, and the row can refuse it — the last pane with
-        // anything in it keeps its width, because there is nobody to give it
-        // to. Deck then believed it was folded and hid the view, while the
-        // layout carried on drawing the pane. An empty box, half the row wide.
+        // The hole is the last word on whether this page is on screen. The
+        // window keeps the view away while its pane is folding or folded; this
+        // catches whatever else leaves the pane with no room to stand in.
         if f32::from(at.size.width) < 8. || f32::from(at.size.height) < 8. {
             self.hide();
             return;
@@ -242,6 +238,17 @@ impl Paper {
             let _ = view.set_visible(true);
             self.shown = true;
         }
+    }
+
+    /// The page folded down to its spine: its name, and what it is of.
+    pub fn render_folded(&self, slot: &Slot, cx: &App) -> AnyElement {
+        let (title, under) =
+            crate::pane::spine_words(self.name.as_ref(), &self.label, self.note.as_ref());
+        let said = under.as_ref().map_or_else(
+            || title.clone(),
+            |under| format!("{title} — {under}").into(),
+        );
+        crate::pane::spine(slot, &title, under.as_ref(), said, cx)
     }
 
     /// The pane, header and all.
@@ -267,7 +274,11 @@ impl Paper {
 
         div()
             .v_flex()
-            .flex_grow(slot.share)
+            // Folding is a width, as it is for a file: the pane gives up its
+            // share of the row a frame at a time and its spine takes the edge.
+            .flex_grow(slot.share * (1. - slot.fold))
+            // And fades as it goes, rather than being squeezed in full view.
+            .opacity(1. - slot.fold)
             .flex_shrink(1.)
             .flex_basis(px(0.))
             .h_full()
@@ -279,7 +290,7 @@ impl Paper {
                 None,
                 self.label.clone(),
                 self.note.clone(),
-                crate::pane::Controls::default(),
+                crate::pane::controls(slot, None),
                 palette,
                 cx,
             ))
@@ -292,11 +303,17 @@ impl Paper {
             .child(
                 div().flex_1().min_h_0().p(px(crate::pane::FRAME)).child(
                     canvas(
-                        move |at, _window, _cx| {
+                        move |at, window, _cx| {
                             // Only recorded. The window reads this at the top of
                             // the next frame and moves the view then, because
                             // nothing may change the window while it is drawing.
-                            hole.set(Some(at));
+                            //
+                            // A hole that moved asks for one more frame, so the
+                            // view is never left where the last-but-one frame had
+                            // it when a movement stops.
+                            if hole.replace(Some(at)) != Some(at) {
+                                window.request_animation_frame();
+                            }
                         },
                         |_, (), _, _| {},
                     )
