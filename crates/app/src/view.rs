@@ -2411,6 +2411,22 @@ impl DeckView {
                 })
                 .ok();
             });
+        } else if let crate::notes::Notes::Read(blocks) = &notes
+            && crate::notes::missing_images(&version, blocks)
+        {
+            // Kept from a time the pictures could not be fetched — offline,
+            // or before deck drew them. The words show now; the pictures
+            // arrive when they do.
+            let asking = version.clone();
+            let blocks = blocks.clone();
+            let fetch = cx
+                .background_executor()
+                .spawn(async move { crate::notes::fetch_images(&asking, &blocks) });
+            self.fetching_notes = cx.spawn(async move |view, cx| {
+                if fetch.await {
+                    view.update(cx, |_, cx| cx.notify()).ok();
+                }
+            });
         }
         self.notes = Some((version, notes));
         self.notes_scroll = ScrollHandle::new();
@@ -2593,6 +2609,9 @@ impl DeckView {
     }
 
     fn render_notes(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
+        /// The notes card is 560 wide with 24 either side; this is what a
+        /// picture inside it can have.
+        const NOTES_TEXT: f32 = 512.;
         use crate::notes::{Block, Notes};
 
         let (version, notes) = self.notes.as_ref()?;
@@ -2667,6 +2686,30 @@ impl DeckView {
                         .line_height(px(18.))
                         .child(text.clone())
                         .into_any_element(),
+                    // As wide as the release asked, or half its pixels — the
+                    // screenshots are taken on a retina screen — and never
+                    // wider than the card. Not kept yet, it takes no room:
+                    // the words are already readable without it.
+                    Block::Image { url, width, .. } => match crate::notes::image(version, url) {
+                        Some((path, size)) => {
+                            let wide = width
+                                .map(|width| width as f32)
+                                .or(size.map(|(width, _)| width as f32 / 2.))
+                                .unwrap_or(NOTES_TEXT)
+                                .min(NOTES_TEXT);
+                            div()
+                                .py(px(4.))
+                                .child(
+                                    img(path)
+                                        .w(px(wide))
+                                        .rounded(px(6.))
+                                        .border_1()
+                                        .border_color(paint(palette.edge)),
+                                )
+                                .into_any_element()
+                        }
+                        None => div().into_any_element(),
+                    },
                 })
                 .collect(),
         };

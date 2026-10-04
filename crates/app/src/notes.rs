@@ -18,10 +18,18 @@
 //!
 //! # Only the blocks a release uses
 //!
-//! Headings, paragraphs, bullets and fenced code. The inline marks inside
-//! them are the narration's, and are drawn by [`crate::prose`]. Links keep
-//! their words and lose their address; an image is dropped. A document
-//! renderer would draw tables nobody writes and still not look like deck.
+//! Headings, paragraphs, bullets, fenced code and images. The inline marks
+//! inside them are the narration's, and are drawn by [`crate::prose`]. Links
+//! keep their words and lose their address. A document renderer would draw
+//! tables nobody writes and still not look like deck.
+//!
+//! # Images
+//!
+//! A release shows what changed, and a screenshot says it faster than a
+//! paragraph. An image on a line of its own — markdown or an `<img>` tag — is
+//! fetched with the notes and kept beside them, in `~/.deck/notes/<version>/`,
+//! so it is there offline too. One inside a sentence is dropped: there is no
+//! good way to set a picture in the middle of a line.
 
 use std::time::Duration;
 
@@ -39,6 +47,13 @@ pub enum Block {
     Para(String),
     Item(String),
     Code(String),
+    /// A picture on a line of its own. `width` is the width the release asked
+    /// for, in points, when it said.
+    Image {
+        url: String,
+        alt: String,
+        width: Option<u32>,
+    },
 }
 
 /// Where a version's notes stand.
@@ -92,7 +107,116 @@ pub fn fetch(version: &str) -> Notes {
     // an answer too, and one worth keeping so it is not asked again.
     let body = reply["body"].as_str().unwrap_or_default();
     keep(version, body);
-    Notes::Read(blocks(body))
+    let blocks = blocks(body);
+    fetch_images(version, &blocks);
+    Notes::Read(blocks)
+}
+
+/// The longest an image may take, and the most it may weigh.
+const IMAGE_PATIENCE: Duration = Duration::from_secs(10);
+const IMAGE_LIMIT: u64 = 20 * 1024 * 1024;
+
+/// Fetch whichever of these images are not kept yet. Says whether any
+/// arrived, so a card already on screen knows to draw them.
+///
+/// Blocking. Called from the background executor. Only over https, and a
+/// failure is an image that is not drawn — the words are what matter.
+pub fn fetch_images(version: &str, blocks: &[Block]) -> bool {
+    let mut arrived = false;
+    for block in blocks {
+        let Block::Image { url, .. } = block else {
+            continue;
+        };
+        let Some(path) = image_file(version, url) else {
+            continue;
+        };
+        if path.exists() || !url.starts_with("https://") {
+            continue;
+        }
+        let Ok(mut reply) = ureq::get(url)
+            .config()
+            .timeout_global(Some(IMAGE_PATIENCE))
+            .build()
+            .header("User-Agent", concat!("deck/", env!("CARGO_PKG_VERSION")))
+            .call()
+        else {
+            continue;
+        };
+        let Ok(bytes) = reply
+            .body_mut()
+            .with_config()
+            .limit(IMAGE_LIMIT)
+            .read_to_vec()
+        else {
+            continue;
+        };
+        if let Some(dir) = path.parent() {
+            let _ = std::fs::create_dir_all(dir);
+        }
+        let partial = path.with_extension(format!("part.{}", std::process::id()));
+        if std::fs::write(&partial, bytes).is_ok() && std::fs::rename(&partial, &path).is_ok() {
+            arrived = true;
+        } else {
+            let _ = std::fs::remove_file(&partial);
+        }
+    }
+    arrived
+}
+
+/// Whether any of these images still has to be fetched.
+#[must_use]
+pub fn missing_images(version: &str, blocks: &[Block]) -> bool {
+    blocks.iter().any(|block| match block {
+        Block::Image { url, .. } => {
+            url.starts_with("https://")
+                && image_file(version, url).is_some_and(|path| !path.exists())
+        }
+        _ => false,
+    })
+}
+
+/// A kept image, and its size in pixels when it can be read from the file.
+#[must_use]
+pub fn image(version: &str, url: &str) -> Option<(std::path::PathBuf, Option<(u32, u32)>)> {
+    let path = image_file(version, url)?;
+    if !path.exists() {
+        return None;
+    }
+    let size = std::fs::read(&path).ok().and_then(|bytes| png_size(&bytes));
+    Some((path, size))
+}
+
+/// Where an image from `url` is kept. Named by a hash of the address, which
+/// stays put across runs, with the extension the address had.
+fn image_file(version: &str, url: &str) -> Option<std::path::PathBuf> {
+    let notes = store(version)?;
+    let ext = url
+        .rsplit('/')
+        .next()
+        .and_then(|name| name.split(['?', '#']).next())
+        .and_then(|name| {
+            name.rsplit_once('.')
+                .map(|(_, ext)| ext.to_ascii_lowercase())
+        })
+        .filter(|ext| matches!(ext.as_str(), "png" | "jpg" | "jpeg" | "gif" | "webp"))
+        .unwrap_or_else(|| "png".into());
+    // FNV-1a: tiny, and the same answer in every build, unlike the standard
+    // hasher, which would fetch every image again after an upgrade.
+    let hash = url.bytes().fold(0xcbf2_9ce4_8422_2325_u64, |hash, byte| {
+        (hash ^ u64::from(byte)).wrapping_mul(0x0000_0100_0000_01b3)
+    });
+    Some(notes.with_extension("").join(format!("{hash:016x}.{ext}")))
+}
+
+/// A PNG's width and height, from its header.
+fn png_size(bytes: &[u8]) -> Option<(u32, u32)> {
+    const SIGNATURE: &[u8] = b"\x89PNG\r\n\x1a\n";
+    if bytes.len() < 24 || !bytes.starts_with(SIGNATURE) || &bytes[12..16] != b"IHDR" {
+        return None;
+    }
+    let width = u32::from_be_bytes(bytes[16..20].try_into().ok()?);
+    let height = u32::from_be_bytes(bytes[20..24].try_into().ok()?);
+    Some((width, height))
 }
 
 /// Whether the first window should open on this deck's notes.
@@ -213,6 +337,13 @@ pub fn blocks(markdown: &str) -> Vec<Block> {
             comment = !trimmed.contains("-->");
             continue;
         }
+        if fence.is_none()
+            && let Some(picture) = picture(trimmed)
+        {
+            flush(&mut para, &mut out);
+            out.push(picture);
+            continue;
+        }
         if fence.is_none() && tagged(trimmed) {
             flush(&mut para, &mut out);
             let words = untagged(trimmed);
@@ -258,6 +389,7 @@ pub fn blocks(markdown: &str) -> Vec<Block> {
     out.retain(|block| match block {
         Block::Para(text) | Block::Item(text) | Block::Heading(text) => !text.is_empty(),
         Block::Code(_) => true,
+        Block::Image { url, .. } => !url.is_empty(),
     });
     out
 }
@@ -350,6 +482,53 @@ fn link(text: &str) -> Option<(&str, &str)> {
         _ => None,
     })?;
     Some((words, &after[end + 1..]))
+}
+
+/// An image on a line of its own: `![alt](url)` or `<img src="…">`.
+fn picture(line: &str) -> Option<Block> {
+    if let Some(rest) = line.strip_prefix('!')
+        && let Some((alt, after)) = link(rest)
+        && after.trim().is_empty()
+    {
+        let open = rest.find("](")? + 2;
+        let close = open + rest[open..].rfind(')')?;
+        return Some(Block::Image {
+            url: rest[open..close].trim().to_string(),
+            alt: alt.to_string(),
+            width: None,
+        });
+    }
+    let tag = line.strip_prefix("<img")?;
+    if !tag.trim_end().ends_with('>') {
+        return None;
+    }
+    Some(Block::Image {
+        url: attribute(tag, "src")?,
+        alt: attribute(tag, "alt").unwrap_or_default(),
+        width: attribute(tag, "width").and_then(|width| width.trim_end_matches("px").parse().ok()),
+    })
+}
+
+/// The value of `name="…"` in a tag.
+fn attribute(tag: &str, name: &str) -> Option<String> {
+    let mut rest = tag;
+    while let Some(at) = rest.find(name) {
+        let before = rest[..at].chars().last();
+        let after = &rest[at + name.len()..];
+        if before.is_some_and(char::is_whitespace)
+            && let Some(value) = after.trim_start().strip_prefix('=')
+        {
+            let value = value.trim_start();
+            let quote = value
+                .chars()
+                .next()
+                .filter(|ch| *ch == '"' || *ch == '\'')?;
+            let value = &value[1..];
+            return Some(value[..value.find(quote)?].to_string());
+        }
+        rest = after;
+    }
+    None
 }
 
 /// A line of HTML: it opens with a tag and closes with one, like
@@ -471,5 +650,56 @@ mod tests {
         if deck_core::home::deck().is_some() {
             assert!(store("0.1.3-rc.2").is_some());
         }
+    }
+
+    #[test]
+    fn a_picture_on_its_own_line_is_kept() {
+        let notes = "Words.\n\n![Before and after](https://x.y/ba.png)\n\n\
+            <img src=\"https://x.y/quit.png\" width=\"520\" alt=\"The quit card\">\n\n\
+            See ![inline](https://x.y/i.png) here.";
+        assert_eq!(
+            blocks(notes),
+            vec![
+                Block::Para("Words.".into()),
+                Block::Image {
+                    url: "https://x.y/ba.png".into(),
+                    alt: "Before and after".into(),
+                    width: None
+                },
+                Block::Image {
+                    url: "https://x.y/quit.png".into(),
+                    alt: "The quit card".into(),
+                    width: Some(520)
+                },
+                Block::Para("See here.".into()),
+            ]
+        );
+    }
+
+    #[test]
+    fn a_kept_image_is_named_by_its_address() {
+        if deck_core::home::deck().is_none() {
+            return;
+        }
+        let a = image_file("0.1.3", "https://x.y/a.png?raw=1").expect("a path");
+        let b = image_file("0.1.3", "https://x.y/b.jpg").expect("a path");
+        assert_ne!(a, b);
+        assert_eq!(a.extension().and_then(|it| it.to_str()), Some("png"));
+        assert_eq!(b.extension().and_then(|it| it.to_str()), Some("jpg"));
+        assert_eq!(
+            a,
+            image_file("0.1.3", "https://x.y/a.png?raw=1").expect("again")
+        );
+        assert!(a.parent().is_some_and(|dir| dir.ends_with("notes/0.1.3")));
+        assert!(image_file("../x", "https://x.y/a.png").is_none());
+    }
+
+    #[test]
+    fn a_png_says_how_big_it_is() {
+        let mut header = b"\x89PNG\r\n\x1a\n\x00\x00\x00\x0dIHDR".to_vec();
+        header.extend_from_slice(&1040u32.to_be_bytes());
+        header.extend_from_slice(&880u32.to_be_bytes());
+        assert_eq!(png_size(&header), Some((1040, 880)));
+        assert_eq!(png_size(b"GIF89a"), None);
     }
 }
