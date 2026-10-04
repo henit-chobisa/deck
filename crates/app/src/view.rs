@@ -591,6 +591,9 @@ pub struct DeckView {
     /// otherwise have to sit through all of it again to get there. `↺` reads
     /// it again when they want it.
     heard_groups: std::collections::HashSet<usize>,
+    /// The sentence whose stretch of the track is under the pointer, lit in
+    /// the prose while it is.
+    track_hover: Option<(usize, usize)>,
     /// How many beats the deck has been finished with nobody waiting.
     ///
     /// Counted rather than asked once, because the right order is open, write,
@@ -1018,6 +1021,7 @@ impl DeckView {
             composing_when: deck_core::When::Interrupt,
             aloud,
             heard_groups,
+            track_hover: None,
             unheard,
             asked_someone,
             talking_task: None,
@@ -4651,7 +4655,10 @@ impl DeckView {
                                         .collect(),
                                     named: self.name_hovered.clone().or(self.name_pinned.clone()),
                                     heard: self
-                                        .heard_in(crate::speech::Narration::Group(self.group_ix)),
+                                        .heard_in(crate::speech::Narration::Group(self.group_ix))
+                                        .into_iter()
+                                        .chain(self.track_hover.map(|range| (range, 0.45)))
+                                        .collect(),
                                     pickable: true,
                                     // Only this group's. A word range means
                                     // nothing against another group's prose —
@@ -5672,10 +5679,10 @@ impl DeckView {
 
     /// The prose as a track, under the prose, while walking (#17).
     ///
-    /// A hairline that fills as the group is read, with a mark where each
-    /// sentence starts. Press a mark and it is read from there; press the line
-    /// and it holds, or carries on, or — read already — starts again. Nothing
-    /// else on screen, and nothing at all outside the walk.
+    /// Play or hold, and start again, on the left; then a hairline that fills
+    /// as the group is read, cut where each sentence starts. Hovering a stretch
+    /// of it lights its sentence in the prose above, and pressing it reads from
+    /// there. Nothing at all outside the walk.
     fn render_track(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
         if !self.aloud || !crate::speech::asked(cx).offered() {
             return None;
@@ -5684,22 +5691,27 @@ impl DeckView {
         let palette = &self.palette;
         let prose = crate::speech::Narration::Group(self.group_ix);
         let (starts, words) = crate::prose::sentence_starts(&group.say);
+        let ranges: Vec<(usize, usize)> = starts
+            .iter()
+            .map(|start| {
+                crate::prose::sentence_around(&group.say, *start).unwrap_or((*start, *start))
+            })
+            .collect();
         let words = words.max(1);
         #[allow(clippy::cast_precision_loss)]
         let by_words = |word: usize| word as f32 / words as f32;
         let progress = self.voice.progress().filter(|(of, _, _)| *of == prose);
         let paused = progress.is_some() && self.voice.paused();
-        let (shown, marks): (f32, Vec<(usize, f32)>) = match progress {
+        let reading = progress.is_some() && !paused;
+        let (shown, marks): (f32, Vec<f32>) = match progress {
             Some((_, at, length)) => {
                 let length = length.as_secs_f32().max(0.001);
                 let marks = starts
                     .iter()
                     .map(|start| {
-                        let when = self
-                            .voice
+                        self.voice
                             .time_of_word(*start)
-                            .map_or_else(|| by_words(*start), |at| at.as_secs_f32() / length);
-                        (*start, when)
+                            .map_or_else(|| by_words(*start), |at| at.as_secs_f32() / length)
                     })
                     .collect();
                 (at.as_secs_f32() / length, marks)
@@ -5710,106 +5722,191 @@ impl DeckView {
                 } else {
                     0.
                 };
-                (
-                    done,
-                    starts
-                        .iter()
-                        .map(|start| (*start, by_words(*start)))
-                        .collect(),
-                )
+                (done, starts.iter().map(|start| by_words(*start)).collect())
             }
         };
         let shown = shown.clamp(0., 1.);
-        Some(
+        let button = |id: &'static str, tip: &'static str| {
             div()
-                .id("prose-track")
-                .relative()
+                .id(id)
                 .flex_none()
-                .mx(px(18.))
-                .mt(px(6.))
-                .mb(px(10.))
-                .h(px(14.))
+                .size(px(22.))
+                .flex()
+                .items_center()
+                .justify_center()
+                .rounded(px(5.))
                 .cursor_pointer()
-                .on_click(cx.listener(move |deck, _, _window, cx| {
-                    if deck.voice.progress().is_some_and(|(of, _, _)| of == prose) {
-                        if deck.voice.paused() {
-                            deck.voice.resume();
-                        } else {
-                            deck.voice.pause();
-                        }
-                        cx.notify();
-                    } else {
-                        deck.again(cx);
-                    }
-                }))
-                .child(
-                    div()
-                        .absolute()
-                        .left_0()
-                        .right_0()
-                        .top(px(6.))
-                        .h(px(2.))
-                        .rounded_full()
-                        .bg(paint(palette.edge)),
-                )
-                .child(
-                    div()
-                        .absolute()
-                        .left_0()
-                        .top(px(6.))
-                        .h(px(2.))
-                        .w(relative(shown))
-                        .rounded_full()
-                        .bg(paint(palette.accent)),
-                )
-                .children(marks.into_iter().enumerate().map(|(ix, (word, at))| {
-                    div()
-                        .id(("sentence-mark", ix))
-                        .absolute()
-                        .top_0()
-                        .left(relative(at.clamp(0., 1.)))
-                        .ml(px(-6.))
-                        .w(px(12.))
-                        .h(px(14.))
-                        .flex()
-                        .items_center()
-                        .justify_center()
-                        .child(
-                            div()
-                                .w(px(2.))
-                                .h(px(8.))
-                                .rounded_full()
-                                .bg(paint(if at <= shown {
-                                    palette.accent
-                                } else {
-                                    palette.muted
-                                })),
-                        )
-                        .on_click(cx.listener(move |deck, _, _window, cx| {
-                            cx.stop_propagation();
-                            if !deck.voice.seek(prose, word) {
-                                deck.again(cx);
-                                deck.voice.seek(prose, word);
-                            }
-                            cx.notify();
-                        }))
-                }))
-                // Where the voice has got to: solid while it reads, a ring
-                // while it is held.
-                .when(progress.is_some(), |this| {
+                .text_color(paint(palette.fg))
+                .hover(|style| style.bg(paint(palette.wash)))
+                .tooltip(move |_window, cx| {
+                    cx.new(|_| gpui_kit::component::tooltip::Tooltip::new(tip))
+                        .into()
+                })
+        };
+        // Drawn, so no font can get them wrong: two bars to hold, a triangle's
+        // stand-in to play.
+        let play = if reading {
+            button("track-play", "Hold").child(
+                div()
+                    .h_flex()
+                    .gap(px(3.))
+                    .child(
+                        div()
+                            .w(px(3.))
+                            .h(px(10.))
+                            .rounded(px(1.))
+                            .bg(paint(palette.fg)),
+                    )
+                    .child(
+                        div()
+                            .w(px(3.))
+                            .h(px(10.))
+                            .rounded(px(1.))
+                            .bg(paint(palette.fg)),
+                    ),
+            )
+        } else {
+            button("track-play", if paused { "Carry on" } else { "Read it" })
+                .child(div().text_size(px(10.)).child("▶"))
+        }
+        .on_click(cx.listener(move |deck, _, _window, cx| {
+            if deck.voice.progress().is_some_and(|(of, _, _)| of == prose) {
+                if deck.voice.paused() {
+                    deck.voice.resume();
+                } else {
+                    deck.voice.pause();
+                }
+                cx.notify();
+            } else {
+                deck.again(cx);
+            }
+        }));
+        let restart = button("track-restart", "From the top")
+            .text_size(px(13.))
+            .child("↺")
+            .on_click(cx.listener(|deck, _, _window, cx| deck.again(cx)));
+
+        let count = marks.len();
+        let segments = (0..count).map(|ix| {
+            let from = marks[ix].clamp(0., 1.);
+            let to = marks.get(ix + 1).copied().unwrap_or(1.).clamp(from, 1.);
+            let range = ranges[ix];
+            let word = starts[ix];
+            let lit = self.track_hover == Some(range);
+            div()
+                .id(("sentence-stretch", ix))
+                .absolute()
+                .top_0()
+                .bottom_0()
+                .left(relative(from))
+                .w(relative(to - from))
+                .cursor_pointer()
+                // The cut between this sentence and the last.
+                .when(ix > 0, |this| {
                     this.child(
                         div()
                             .absolute()
-                            .top(px(3.))
-                            .left(relative(shown))
-                            .ml(px(-4.))
-                            .size(px(8.))
+                            .left_0()
+                            .top(px(4.))
+                            .w(px(2.))
+                            .h(px(10.))
+                            .ml(px(-1.))
                             .rounded_full()
-                            .border_1()
-                            .border_color(paint(palette.accent))
-                            .bg(paint(if paused { palette.band } else { palette.accent })),
+                            .bg(paint(if from <= shown {
+                                palette.accent
+                            } else {
+                                palette.muted
+                            })),
                     )
                 })
+                // The stretch being hovered, thicker, so the reader sees which
+                // part of the line is the sentence lit above.
+                .when(lit, |this| {
+                    this.child(
+                        div()
+                            .absolute()
+                            .left_0()
+                            .right_0()
+                            .top(px(7.))
+                            .h(px(4.))
+                            .rounded_full()
+                            .bg(paint(palette.fg).opacity(0.35)),
+                    )
+                })
+                .on_hover(cx.listener(move |deck, hovered: &bool, _window, cx| {
+                    if *hovered {
+                        deck.track_hover = Some(range);
+                    } else if deck.track_hover == Some(range) {
+                        deck.track_hover = None;
+                    }
+                    cx.notify();
+                }))
+                .on_click(cx.listener(move |deck, _, _window, cx| {
+                    if !deck.voice.seek(prose, word) {
+                        deck.again(cx);
+                        deck.voice.seek(prose, word);
+                    }
+                    cx.notify();
+                }))
+        });
+
+        Some(
+            div()
+                .h_flex()
+                .flex_none()
+                .items_center()
+                .gap(px(4.))
+                .mx(px(12.))
+                .mt(px(6.))
+                .mb(px(8.))
+                .child(play)
+                .child(restart)
+                .child(
+                    div()
+                        .id("prose-track")
+                        .relative()
+                        .flex_1()
+                        .ml(px(8.))
+                        .mr(px(6.))
+                        .h(px(18.))
+                        .child(
+                            div()
+                                .absolute()
+                                .left_0()
+                                .right_0()
+                                .top(px(8.))
+                                .h(px(2.))
+                                .rounded_full()
+                                .bg(paint(palette.edge)),
+                        )
+                        .child(
+                            div()
+                                .absolute()
+                                .left_0()
+                                .top(px(8.))
+                                .h(px(2.))
+                                .w(relative(shown))
+                                .rounded_full()
+                                .bg(paint(palette.accent)),
+                        )
+                        .children(segments)
+                        // Where the voice has got to: solid while it reads, a
+                        // ring while it is held.
+                        .when(progress.is_some(), |this| {
+                            this.child(
+                                div()
+                                    .absolute()
+                                    .top(px(5.))
+                                    .left(relative(shown))
+                                    .ml(px(-4.))
+                                    .size(px(8.))
+                                    .rounded_full()
+                                    .border_1()
+                                    .border_color(paint(palette.accent))
+                                    .bg(paint(if paused { palette.band } else { palette.accent })),
+                            )
+                        }),
+                )
                 .into_any_element(),
         )
     }

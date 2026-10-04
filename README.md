@@ -267,11 +267,11 @@ sentence being said — sentence by sentence, from the sound's own clock — and
 panes fold down to a spine when they are not the point, unfolding again when
 something points at them. `w` again leaves the walk.
 
-While walking, a thin track under the narration fills as it is read, with a
-mark where each sentence starts. Press a mark to hear it from there; press the
-line to hold it, and again to carry on. A group already read is not read again
-when you come back to it, so you can walk just to follow the conversation —
-press the track to hear it once more.
+While walking, a thin track under the narration fills as it is read, cut where
+each sentence starts. Hover a stretch of it and its sentence lights up above;
+press it to hear the prose from there. On its left, **▶ / ❚❚** reads or holds,
+and **↺** starts again from the top. A group already read is not read again
+when you come back to it, so you can walk just to follow the conversation.
 
 The voice wants a Google API key, set once:
 

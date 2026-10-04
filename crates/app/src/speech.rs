@@ -1197,7 +1197,11 @@ mod tests {
         assert_eq!(playing.time_of_word(3), Duration::from_secs(1));
         let second = playing.time_of_word(1).as_secs_f32();
         assert!((second - 1. / 3.).abs() < 0.01, "spread evenly: {second}");
-        assert_eq!(playing.time_of_word(9), Duration::from_secs(2), "past the end");
+        assert_eq!(
+            playing.time_of_word(9),
+            Duration::from_secs(2),
+            "past the end"
+        );
     }
 
     #[test]
