@@ -568,7 +568,7 @@ and you see it when they submit. So do not go looking for the others: a quiet
 waiter is a reader reading, not a reader with nothing to say.
 
 **Answer fast. Being right slowly is worse than being useful now.** Somebody is
-sitting in front of a panel with nothing in it but a bar that is filling up. A
+sitting in front of a panel with nothing in it but a pulse. A
 reply in three seconds that needs a follow-up beats a perfect one in forty,
 because they are still looking at the thing they asked about.
 

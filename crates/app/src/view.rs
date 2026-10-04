@@ -1219,10 +1219,8 @@ impl DeckView {
             self.conversation.spoken.insert(at, text.to_string());
             of = Some(crate::speech::Narration::Answer(at));
         }
-        // The author answered, so nothing is owed — and whatever they were
-        // doing to arrive at the answer is over.
+        // The author answered, so nothing is owed.
         self.conversation.asked_at = None;
-        self.conversation.doing = None;
         if aloud {
             // Only while the reader has asked to be walked through it. An
             // answer read out to somebody who never pressed `w` is a window
@@ -1234,23 +1232,6 @@ impl DeckView {
             };
             self.narrate(text, of, &speech, cx);
         }
-        cx.notify();
-    }
-
-    /// Show what the agent is doing while it is doing it.
-    ///
-    /// The one honest thing a window can say about a silence it did not cause.
-    /// Deck still refuses to call this thinking — it is the agent's own words,
-    /// repeated — but hearing *reading the retry loop* for twenty seconds is a
-    /// different experience from watching a panel decide nobody answered, and
-    /// the second one is what readers were getting.
-    ///
-    /// A note is also proof the agent is there, so it restarts the wait. Every
-    /// note buys another [`PATIENCE`] of the pulse.
-    fn doing_live(&mut self, text: String, cx: &mut Context<Self>) {
-        let at = std::time::Instant::now();
-        self.conversation.doing = Some((text, at));
-        self.watch_answer(at, cx);
         cx.notify();
     }
 
@@ -1274,11 +1255,10 @@ impl DeckView {
             command.finish(crate::live::ShowAnswer::said());
             return;
         }
-        // Neither does saying what you are doing. It replaces one line in the
-        // panel and nothing else moves.
-        if let Some(text) = command.doing() {
-            let text = text.to_string();
-            self.doing_live(text, cx);
+        // Neither does saying what you are doing — and it no longer shows
+        // anywhere. Accepted, so an agent on an older skill does not fail on
+        // it, and otherwise let go.
+        if command.doing().is_some() {
             command.finish(crate::live::ShowAnswer::said());
             return;
         }
@@ -3786,8 +3766,8 @@ impl DeckView {
 
     fn watch_answer(&self, sign: std::time::Instant, cx: &mut Context<Self>) {
         let remaining = PATIENCE.saturating_sub(sign.elapsed());
-        // A status label needs one deadline, not sixty full-window redraws a
-        // second. An older deadline cannot expire a newer question — or a
+        // The pulse ends at one deadline, and somebody has to draw the frame
+        // in which it is gone. An older deadline cannot expire a newer question — or a
         // newer note, which is a sign of life the same way an answer is and
         // owns the deadline from the moment it arrives.
         cx.spawn(async move |deck, cx| {
@@ -5825,19 +5805,32 @@ impl DeckView {
                                 .children(lines),
                         )
                         .child(
+                            // The way to the newest turn, and beside it the
+                            // pulse that says one is on its way — the two are
+                            // about the same thing, so they share a line and
+                            // nothing below them moves when the pulse comes
+                            // or goes.
                             div()
-                                .id("latest-reply")
                                 .flex_none()
-                                .py(px(5.))
-                                .text_size(px(10.))
-                                .text_color(paint(palette.muted))
-                                .cursor_pointer()
-                                .on_click(cx.listener(|deck, _, _window, cx| {
-                                    deck.rail_pinned.set(true);
-                                    deck.rail_scroll.scroll_to_bottom();
-                                    cx.notify();
-                                }))
-                                .child("Latest ↓"),
+                                .h_flex()
+                                .items_center()
+                                .gap(px(8.))
+                                .child(
+                                    div()
+                                        .id("latest-reply")
+                                        .flex_none()
+                                        .py(px(5.))
+                                        .text_size(px(10.))
+                                        .text_color(paint(palette.muted))
+                                        .cursor_pointer()
+                                        .on_click(cx.listener(|deck, _, _window, cx| {
+                                            deck.rail_pinned.set(true);
+                                            deck.rail_scroll.scroll_to_bottom();
+                                            cx.notify();
+                                        }))
+                                        .child("Latest ↓"),
+                                )
+                                .children(self.render_pulse()),
                         )
                         .children(self.render_invite(cx))
                         .children(self.render_making())
@@ -6075,12 +6068,8 @@ impl DeckView {
     /// away from. Whether anybody is there at all is the strip's to say, not
     /// this panel's.
     fn render_pending(&self) -> Option<AnyElement> {
-        /// One breath, in and out. Slow on purpose: a pulse at a heartbeat's
-        /// pace reads as urgency, and this is the opposite of that.
-        const BREATH: std::time::Duration = std::time::Duration::from_millis(2800);
-
         let palette = &self.palette;
-        let since = self.conversation.latest_sign()?.elapsed();
+        self.conversation.latest_sign()?;
 
         // Still held means the reader waited for a gap and the gap has not
         // come. Saying so is better than a pulse, which would be a lie about
@@ -6096,28 +6085,41 @@ impl DeckView {
                     .into_any_element(),
             );
         }
-        // Past any answer worth waiting on, it simply stops. No verdict.
-        if since >= PATIENCE {
+        None
+    }
+
+    /// The pulse itself: one dot, beside *Latest*, while an answer is owed.
+    fn render_pulse(&self) -> Option<AnyElement> {
+        /// One breath, in and out. Slow on purpose: a pulse at a heartbeat's
+        /// pace reads as urgency, and this is the opposite of that.
+        const BREATH: std::time::Duration = std::time::Duration::from_millis(2800);
+
+        let since = self.conversation.latest_sign()?.elapsed();
+        // Held behind speech is said in words, below. Past any answer worth
+        // waiting on, the pulse simply stops: no verdict.
+        //
+        // Nor while nobody is there to answer: the strip along the bottom is
+        // saying so, and a pulse above it would be saying the opposite.
+        if self.conversation.queued() || since >= PATIENCE || self.unheard >= UNHEARD_FOR {
             return None;
         }
         Some(
             div()
                 .flex_none()
-                .pt(px(10.))
-                .pb(px(2.))
-                .h_flex()
-                .child(
-                    div()
-                        .size(px(6.))
-                        .rounded_full()
-                        .bg(paint(palette.accent))
-                        .with_animation(
-                            "answering",
-                            Animation::new(BREATH)
-                                .repeat()
-                                .with_easing(pulsating_between(0.15, 0.7)),
-                            |this, breath| this.opacity(breath),
-                        ),
+                .size(px(6.))
+                .rounded_full()
+                .bg(paint(self.palette.accent))
+                .with_animation(
+                    "answering",
+                    // A dozen frames a second is plenty for a breath this
+                    // slow, and each one redraws the whole window: at the
+                    // screen's own rate that was tens of thousands of
+                    // redraws for one dot over a long answer.
+                    Animation::new(BREATH)
+                        .repeat()
+                        .with_max_fps(12.)
+                        .with_easing(pulsating_between(0.15, 0.7)),
+                    |this, breath| this.opacity(breath),
                 )
                 .into_any_element(),
         )

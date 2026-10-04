@@ -19,12 +19,6 @@ pub struct Conversation {
     pub spoken: std::collections::HashMap<usize, String>,
     pub began: Instant,
     pub asked_at: Option<Instant>,
-    /// What the agent last said it was doing, and when it said it.
-    ///
-    /// Not in the transcript on purpose. "reading the retry loop" is true for
-    /// ten seconds and then it is noise; the review keeps what was said, not
-    /// what was being done while nothing was.
-    pub doing: Option<(String, Instant)>,
     held: Vec<Moment>,
 }
 
@@ -35,7 +29,6 @@ impl Default for Conversation {
             spoken: std::collections::HashMap::new(),
             began: Instant::now(),
             asked_at: None,
-            doing: None,
             held: Vec::new(),
         }
     }
@@ -69,17 +62,14 @@ impl Conversation {
         !self.held.is_empty()
     }
 
-    /// The most recent moment the agent proved it was still there.
+    /// When the reader last asked something that is still owed an answer.
     ///
-    /// A question is the reader's evidence and a note is the agent's, and the
-    /// wait is measured from whichever came later. Before this existed the
-    /// panel measured only from the question, so an agent that was visibly
-    /// working for half a minute was still reported as not having answered.
+    /// What the pulse in the panel is measured from. It used to move forward
+    /// each time the agent sent a note about what it was doing; the agent is
+    /// no longer asked for those, and one arriving unasked must not start a
+    /// pulse for a question nobody put.
     pub fn latest_sign(&self) -> Option<Instant> {
-        [self.asked_at, self.doing.as_ref().map(|(_, at)| *at)]
-            .into_iter()
-            .flatten()
-            .max()
+        self.asked_at
     }
 }
 
@@ -119,24 +109,6 @@ mod tests {
             !conversation.queued(),
             "and it is not waiting behind speech"
         );
-    }
-
-    #[test]
-    fn a_note_about_what_the_agent_is_doing_is_a_later_sign_of_life() {
-        // The bug this fixes: the panel measured the wait from the question
-        // alone, so an agent that said "reading the retry loop" ten seconds in
-        // was still reported as silent at the same moment as one that had said
-        // nothing at all.
-        let mut conversation = Conversation::default();
-        assert_eq!(conversation.latest_sign(), None);
-
-        let asked = Instant::now();
-        conversation.asked_at = Some(asked);
-        assert_eq!(conversation.latest_sign(), Some(asked));
-
-        let noted = Instant::now();
-        conversation.doing = Some(("reading the retry loop".into(), noted));
-        assert_eq!(conversation.latest_sign(), Some(noted));
     }
 
     #[test]
