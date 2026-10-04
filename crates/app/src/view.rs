@@ -1246,7 +1246,7 @@ impl DeckView {
     /// the second one is what readers were getting.
     ///
     /// A note is also proof the agent is there, so it restarts the wait. Every
-    /// note buys another [`PATIENCE`] before the panel says it has no idea.
+    /// note buys another [`PATIENCE`] of the pulse.
     fn doing_live(&mut self, text: String, cx: &mut Context<Self>) {
         let at = std::time::Instant::now();
         self.conversation.doing = Some((text, at));
@@ -6061,166 +6061,66 @@ impl DeckView {
         )
     }
 
-    /// Distinguish feedback waiting behind speech from feedback awaiting an
-    /// answer, and say what the agent has reported doing about it.
+    /// A question on its way to an answer: a slow breath, and no words.
+    ///
+    /// This was a bar filling over two minutes, the agent's own notes about
+    /// what it was doing, and then *no answer yet*. Every part of that asked
+    /// something of somebody. The notes cost the agent a tool call a step,
+    /// which made the answer slower to say it was coming (#23); the bar put a
+    /// deadline on screen that an honest answer often outlived, and the label
+    /// at the end of it read as a verdict (#24).
+    ///
+    /// What the reader needs is smaller than any of that: *it went, and
+    /// something is happening*. One dot, breathing slowly enough to be looked
+    /// away from. Whether anybody is there at all is the strip's to say, not
+    /// this panel's.
     fn render_pending(&self) -> Option<AnyElement> {
+        /// One breath, in and out. Slow on purpose: a pulse at a heartbeat's
+        /// pace reads as urgency, and this is the opposite of that.
+        const BREATH: std::time::Duration = std::time::Duration::from_millis(2800);
+
         let palette = &self.palette;
-        let doing = self.conversation.doing.as_ref();
-        // Measured from the last sign of life, not from the question. An agent
-        // that reports what it is doing has answered the only question this
-        // panel can actually ask — *is anybody there* — so its note restarts
-        // the clock exactly as an answer would.
         let since = self.conversation.latest_sign()?.elapsed();
-        let quiet = since >= PATIENCE;
 
         // Still held means the reader waited for a gap and the gap has not
-        // come. Saying so is better than "thinking", which would be a lie
-        // about who is holding things up.
-        //
-        // Publication is also not proof that an agent is thinking, or even
-        // connected, so the words never claim it is. What moves is a bar, and a
-        // bar only says *time is passing* — which is the one thing deck knows.
-        //
-        // The one exception is a note, and it is not an exception to the rule:
-        // those are the agent's own words about its own work, quoted, not
-        // deck's guess at what the silence means.
-        let held = self.conversation.queued();
-        // A note only speaks for itself while it is the freshest thing there
-        // is. Behind a gap the honest subject is the gap, and after two minutes
-        // of silence it is the silence.
-        let note = (!held && !quiet)
-            .then_some(doing)
-            .flatten()
-            .map(|(what, _)| what.as_str());
-        let (label, tone) = if held {
-            ("waiting for a gap", palette.muted)
-        } else if quiet {
-            ("no answer yet", palette.muted)
-        } else {
-            ("sent", palette.accent)
-        };
-        let run = held || !quiet;
-
-        // What it last said it was doing, once that has stopped being news.
-        // Kept, because *it was reading the retry loop and then went quiet* is
-        // worth more to somebody deciding whether to wait than a bare silence
-        // — and kept in the past tense, because deck has no idea whether it
-        // still is. Not capitalised here: after `last said:` it is the rest of
-        // a sentence rather than a line of its own.
-        let last = quiet
-            .then_some(doing)
-            .flatten()
-            .map(|(what, _)| format!("last said: {what}"));
-
-        // Nought to one across the time deck is willing to wait. Not a guess at
-        // how far along the agent is — nobody knows that — but an honest
-        // picture of how much patience is left before it says so.
-        let run_for = (since.as_secs_f32() / PATIENCE.as_secs_f32()).clamp(0., 1.);
-
+        // come. Saying so is better than a pulse, which would be a lie about
+        // who is holding things up.
+        if self.conversation.queued() {
+            return Some(
+                div()
+                    .flex_none()
+                    .pt(px(8.))
+                    .text_size(px(10.5))
+                    .text_color(paint(palette.muted))
+                    .child("waiting for a gap")
+                    .into_any_element(),
+            );
+        }
+        // Past any answer worth waiting on, it simply stops. No verdict.
+        if since >= PATIENCE {
+            return None;
+        }
         Some(
             div()
-                .v_flex()
                 .flex_none()
-                .gap(px(5.))
-                .pt(px(8.))
-                .child(match note {
-                    Some(what) => self.render_doing(what),
-                    None => div()
-                        .text_size(px(10.5))
-                        .text_color(paint(tone))
-                        .child(SharedString::from(label))
-                        .into_any_element(),
-                })
-                .when_some(last, |this, last| {
-                    this.child(
-                        div()
-                            .text_size(px(10.))
-                            .text_color(paint(palette.muted))
-                            .child(SharedString::from(last)),
-                    )
-                })
-                .when(run, |this| {
-                    this.child(
-                        div()
-                            .w_full()
-                            .h(px(2.))
-                            .rounded(px(999.))
-                            .bg(paint(palette.edge))
-                            .child(
-                                div()
-                                    .h_full()
-                                    .w(relative(run_for))
-                                    .rounded(px(999.))
-                                    .bg(paint(palette.accent)),
-                            ),
-                    )
-                })
+                .pt(px(10.))
+                .pb(px(2.))
+                .h_flex()
+                .child(
+                    div()
+                        .size(px(6.))
+                        .rounded_full()
+                        .bg(paint(palette.accent))
+                        .with_animation(
+                            "answering",
+                            Animation::new(BREATH)
+                                .repeat()
+                                .with_easing(pulsating_between(0.15, 0.7)),
+                            |this, breath| this.opacity(breath),
+                        ),
+                )
                 .into_any_element(),
         )
-    }
-
-    /// The agent's own words about its own work, with a light going through
-    /// them.
-    ///
-    /// The shimmer is not decoration. A static line of grey text is the same
-    /// thing a crashed agent leaves behind, and the reader cannot tell the two
-    /// apart by looking — which is the exact confusion the note exists to end.
-    /// A light that is still travelling says *this is live* in the only
-    /// language a panel has, and it costs the reader no reading.
-    ///
-    /// It is also the only continuously animated thing in the panel, and it
-    /// exists solely while a fresh note does: a wait with no note, or one that
-    /// has gone quiet, asks for no frames at all.
-    fn render_doing(&self, what: &str) -> AnyElement {
-        /// How long the light takes to cross the line and come round again.
-        const SWEEP: std::time::Duration = std::time::Duration::from_millis(1700);
-
-        let palette = self.palette;
-        // Bright enough to read on its own, because for most of the loop this
-        // is the colour the words actually are. The accent is the peak, not the
-        // resting state.
-        let dim = palette.accent.mix(palette.band, 0.5);
-        let shown = capitalised(what);
-        // Where each word starts, in characters, so the light crosses a long
-        // word at the same speed it crosses a short one. Phasing by word index
-        // instead makes short words flash past and long ones hang, and it reads
-        // as words taking turns rather than as one light moving.
-        let letters = shown.chars().count().max(1) as f32;
-        let mut at = 0.;
-
-        div()
-            .h_flex()
-            .flex_wrap()
-            // Standing in for the spaces the words were split on: they are
-            // separate elements now, and a flex row does not keep the gap a
-            // single run of text would have had.
-            .gap(px(3.2))
-            .text_size(px(10.5))
-            .children(
-                shown
-                    .split_whitespace()
-                    .enumerate()
-                    .map(|(ix, word)| {
-                        let phase = at / letters;
-                        at += word.chars().count() as f32 + 1.;
-                        div()
-                            .text_color(paint(dim))
-                            .child(SharedString::from(word.to_string()))
-                            .with_animation(
-                                ("doing-word", ix),
-                                Animation::new(SWEEP).repeat().with_easing(shimmer(phase)),
-                                move |this, lit| {
-                                    this.text_color(paint(dim.mix(palette.accent, lit)))
-                                },
-                            )
-                            .into_any_element()
-                    })
-                    // Collected because the accumulator is borrowed by the
-                    // closure: the row cannot still be holding it when the
-                    // element is handed on.
-                    .collect::<Vec<_>>(),
-            )
-            .into_any_element()
     }
 }
 
@@ -6244,62 +6144,12 @@ const NOTHING_YET: &[&str] = &[
     "The agent is listening",
 ];
 
-/// Report a prolonged wait without pretending to know why the agent is quiet.
+/// How long the pulse goes on breathing for an answer that has not come.
 ///
-/// Two minutes, and it used to be twenty-five seconds. That was chosen for the
-/// answer an agent gives out of what it already read, and it is wrong for the
-/// ordinary case: a question whose answer needs a handful of tool calls is a
-/// minute of real work, and the panel was calling that no answer while the
-/// agent was still typing. A label that cries off before the thing it is
-/// waiting for is normally done teaches the reader to ignore it.
-///
-/// It is a deadline on *silence*, not on the answer. A `deck doing` note
-/// restarts it, so an agent that says what it is doing never trips this at all
-/// — which is the behaviour the length is chosen to make cheap.
-const PATIENCE: std::time::Duration = std::time::Duration::from_secs(120);
-
-/// How brightly a word sitting `phase` along the line is lit, through the loop.
-///
-/// One narrow peak with a long dark stretch after it. A sine — the shape the
-/// pulsing dot uses — lights the whole line at once and only varies how much,
-/// which reads as breathing rather than as something travelling.
-fn shimmer(phase: f32) -> impl Fn(f32) -> f32 {
-    /// How much of the loop a word spends lit. Wide enough that two or three
-    /// words are bright together, so it is a light with a width and not a
-    /// cursor running along the line.
-    const BAND: f32 = 0.34;
-
-    move |turn| {
-        // How far round the loop the light is past this word. Words behind it
-        // are still fading; words ahead wait for it to come round.
-        let since = (turn - phase).rem_euclid(1.);
-        let lit = (1. - since / BAND).clamp(0., 1.);
-        // Squared, so the fall-off is fast at the bright end. Linear leaves a
-        // long grey smear that looks like a rendering fault.
-        lit * lit
-    }
-}
-
-/// A note as a line rather than as a fragment: first letter up.
-///
-/// The agent writes these as present-tense fragments — `reading the retry
-/// loop` — because that is what reads well in a command. In the panel it is a
-/// line on its own next to capitalised furniture, and lower case there looks
-/// like a leaked internal string.
-///
-/// It leaves a word that is already carrying case alone, so `iOS` and `gRPC`
-/// survive being the first word.
-fn capitalised(what: &str) -> String {
-    let mut letters = what.chars();
-    let Some(first) = letters.next() else {
-        return String::new();
-    };
-    let rest = letters.as_str();
-    if !first.is_lowercase() || rest.starts_with(char::is_uppercase) {
-        return what.to_string();
-    }
-    first.to_uppercase().collect::<String>() + rest
-}
+/// Ten minutes, the same span an agent is given to be away with a question.
+/// Nothing is said when it runs out — the pulse stops, and if nobody is on
+/// the other end the strip along the bottom is what says so.
+const PATIENCE: std::time::Duration = std::time::Duration::from_secs(600);
 
 /// Room for a readable reply without turning the evidence into a thumbnail.
 const RAIL: f32 = 304.;

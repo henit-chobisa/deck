@@ -281,7 +281,6 @@ with the review, at the next gap, or now.
 ```sh
 deck show  <deck> --ref "src/view.rs:106-110"  # move my eyes here
 deck say   <deck> --text "…"                   # say something, spoken if you have a voice
-deck doing <deck> --text "reading the retry loop"  # what it is doing, while it does it
 deck next  <deck> --after <cursor>             # block until the reader does something
 deck fold  <deck> --pane protocol              # fold that pane away to its spine
 deck bring <deck> --ref "src/live.rs:40-60"    # borrow a file the group does not carry
@@ -294,10 +293,9 @@ Amp — the same reason the other verbs do. `deck next` returns a cursor, so an
 agent that was busy or restarting reads from where it got to rather than losing
 what you pressed while it was away.
 
-The panel cannot tell a working agent from a dead one, so `deck doing` is how it
-finds out: the words go where the waiting label is, and each one restarts the
-two minutes of silence after which deck admits it has no idea. Notes are not
-turns — nothing is read aloud, and nothing reaches the review.
+While the agent works on an answer the panel shows a slow pulse and nothing
+else. The agent is not asked to report its progress: a note a step made every
+answer later, to say it was on its way.
 
 Movement is yours the moment you take it. Scroll, select, or start typing and
 the agent stops moving you; the rail says **paused** while that holds. It lapses
