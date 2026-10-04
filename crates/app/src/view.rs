@@ -4118,6 +4118,9 @@ impl DeckView {
                 // The review is behind them now. A draft left lying about
                 // would put answered comments in front of the next reader.
                 crate::draft::clear(&self.deck.root);
+                // The walk is over: whatever the agent was away answering,
+                // the review is what it gets now.
+                deck_cli::stopped_answering(&self.deck.root);
                 self.stand_down(true, window, cx);
             }
             Err(err) => eprintln!("deck: could not write {}: {err}", path.display()),

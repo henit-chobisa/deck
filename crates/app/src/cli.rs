@@ -851,7 +851,11 @@ fn show(
         Ok(response) => {
             let exit = match response.status {
                 deck_cli::live::ResponseStatus::Applied
-                | deck_cli::live::ResponseStatus::Unchanged => ExitCode::SUCCESS,
+                | deck_cli::live::ResponseStatus::Unchanged => {
+                    // It reached the deck: the agent is still at its answer.
+                    deck_cli::still_answering(deck);
+                    ExitCode::SUCCESS
+                }
                 deck_cli::live::ResponseStatus::Waiting
                 | deck_cli::live::ResponseStatus::Hidden
                 | deck_cli::live::ResponseStatus::Ambiguous
@@ -1017,6 +1021,7 @@ fn bring(
 
 /// Send one request that answers only with whether the window took it.
 fn ask(deck: &std::path::Path, body: deck_cli::live::RequestBody, timeout: u64) -> ExitCode {
+    let spoke = matches!(body, deck_cli::live::RequestBody::Say { .. });
     let Some(runtime) = deck_core::home::deck() else {
         println!(
             "{}",
@@ -1049,6 +1054,14 @@ fn ask(deck: &std::path::Path, body: deck_cli::live::RequestBody, timeout: u64) 
                 Err(err) => eprintln!("deck: live reply will not print: {err}"),
             }
             if response.status == deck_cli::live::ResponseStatus::Applied {
+                // It reached the deck, so the agent is plainly alive: having
+                // spoken it is expected back at `deck wait`, and anything
+                // else means it is still working on the answer.
+                if spoke {
+                    deck_cli::answered(deck);
+                } else {
+                    deck_cli::still_answering(deck);
+                }
                 ExitCode::SUCCESS
             } else {
                 ExitCode::from(5)
@@ -1226,6 +1239,8 @@ fn wait(deck: &std::path::Path, timeout: u64) -> ExitCode {
     let _beat = Listening(deck);
     let mut last_said = std::time::Instant::now();
     deck_cli::listening(deck);
+    // Back from whatever it went away to answer.
+    deck_cli::stopped_answering(deck);
 
     loop {
         // Submit wins over queued nudges: the final review already contains
@@ -1272,6 +1287,10 @@ fn wait(deck: &std::path::Path, timeout: u64) -> ExitCode {
                                 eprintln!("deck: the event cursor could not be saved: {err}");
                                 return ExitCode::FAILURE;
                             }
+                            // Leaving with the reader's question. The beat
+                            // stops as this returns; this says the agent has
+                            // not gone, it is answering.
+                            deck_cli::answering(deck);
                         }
                         Err(err) => {
                             eprintln!("deck: the question will not print: {err}");
