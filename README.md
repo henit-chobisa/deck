@@ -109,31 +109,41 @@ you going back to the chat window.
 
 ## Install
 
+One command. It downloads the deck built for your machine, checks it, puts it
+on your PATH, clears away any older deck — a Homebrew one, a `cargo install`,
+a binary you were handed — and runs `deck setup`.
+
 **macOS and Linux**
 
 ```sh
-brew install henit-chobisa/deck/deck
+curl -fsSL https://raw.githubusercontent.com/henit-chobisa/deck/main/install | sh
 ```
 
-**Windows, and anywhere with a Rust toolchain**
+**Windows** (PowerShell)
+
+```powershell
+irm https://raw.githubusercontent.com/henit-chobisa/deck/main/install | iex
+```
+
+Nothing is compiled and nothing else is installed. Your settings and decks in
+`~/.deck` are kept. After that, deck keeps itself current.
+
+<details>
+<summary>Choices, and building it yourself</summary>
+
+- `DECK_VERSION=v0.1.3` installs that release rather than the newest.
+- `DECK_INSTALL=<dir>` puts it somewhere other than `~/.local/bin`
+  (`%LOCALAPPDATA%\Programs\deck` on Windows).
+- `DECK_NO_SETUP=1` stops before `deck setup`.
+
+On Linux the window needs WebKitGTK; the installer says which package if it is
+missing. To build from source instead:
 
 ```sh
 cargo install --git https://github.com/henit-chobisa/deck deck-app
 ```
 
-Then once, to choose how deck looks and to tell your agents it exists:
-
-```sh
-deck setup
-```
-
-Both install from source — deck compiles nineteen tree-sitter grammars into the
-binary, so the first build takes a few minutes. It is also why neither platform
-asks about an unsigned binary: nothing was downloaded, so there is nothing for
-Gatekeeper or SmartScreen to hold.
-
-On Windows this needs the MSVC toolchain — Visual Studio Build Tools with the
-"Desktop development with C++" workload — for the linker.
+</details>
 
 ## The catch
 

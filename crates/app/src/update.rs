@@ -339,7 +339,7 @@ mod tests {
         });
         assert_eq!(installable(&media_only), None);
 
-        let tarball = |platform: &str| format!("deck-v0.1.4-{platform}-universal.tar.gz");
+        let tarball = |platform: &str| format!("deck-v0.1.4-{platform}.tar.gz");
         let ours = tarball(crate::upgrade::PLATFORM);
         let real = serde_json::json!({
             "tag_name": "v0.1.4",
@@ -354,18 +354,25 @@ mod tests {
         });
         assert_eq!(installable(&unchecked), None);
 
-        // Nor one built for somewhere else: today every release carries a
-        // macOS binary and nothing else, and Windows must not be offered it.
-        let elsewhere = tarball(if crate::upgrade::PLATFORM == "macos" {
-            "windows"
-        } else {
-            "macos"
-        });
-        let theirs = serde_json::json!({
-            "tag_name": "v0.1.4",
-            "assets": [{ "name": elsewhere }, { "name": format!("{elsewhere}.sha256") }]
-        });
-        assert_eq!(installable(&theirs), None);
+        // Nor one built for somewhere else — another system, or the same
+        // system on the other chip.
+        for elsewhere in [
+            "macos-universal",
+            "windows-x86_64",
+            "windows-aarch64",
+            "linux-x86_64",
+            "linux-aarch64",
+        ]
+        .into_iter()
+        .filter(|platform| *platform != crate::upgrade::PLATFORM)
+        {
+            let elsewhere = tarball(elsewhere);
+            let theirs = serde_json::json!({
+                "tag_name": "v0.1.4",
+                "assets": [{ "name": elsewhere }, { "name": format!("{elsewhere}.sha256") }]
+            });
+            assert_eq!(installable(&theirs), None, "{elsewhere}");
+        }
     }
 
     #[test]

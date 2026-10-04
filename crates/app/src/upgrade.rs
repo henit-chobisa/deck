@@ -52,26 +52,43 @@ const RELEASES: &str = "https://api.github.com/repos/henit-chobisa/deck/releases
 /// What this build is.
 const RUNNING: &str = env!("CARGO_PKG_VERSION");
 
-/// The word this platform's binary carries in a release asset's name, as in
-/// `deck-v0.1.3-macos-universal.tar.gz`.
-///
-/// Only macOS has one today. The others are named so that the day a release
-/// carries their binary they find it, and until then they find nothing —
-/// rather than a macOS tarball they would download and could not run.
-pub(crate) const PLATFORM: &str = if cfg!(target_os = "macos") {
-    "macos"
-} else if cfg!(windows) {
-    "windows"
+/// How deck is installed, for anybody who has to be told.
+const INSTALL: &str = if cfg!(windows) {
+    "irm https://raw.githubusercontent.com/henit-chobisa/deck/main/install | iex"
 } else {
-    "linux"
+    "curl -fsSL https://raw.githubusercontent.com/henit-chobisa/deck/main/install | sh"
 };
+
+/// What this platform's binary is called in a release asset's name, as in
+/// `deck-v0.1.3-macos-universal.tar.gz` or `deck-v0.1.3-linux-aarch64.tar.gz`.
+///
+/// The same names the install script asks for, so a deck it installed finds
+/// its own next release. macOS has one binary for both chips; everywhere
+/// else the chip is part of the name, so an ARM machine is never handed an
+/// Intel build.
+pub(crate) const PLATFORM: &str = if cfg!(target_os = "macos") {
+    "macos-universal"
+} else if cfg!(all(windows, target_arch = "aarch64")) {
+    "windows-aarch64"
+} else if cfg!(windows) {
+    "windows-x86_64"
+} else if cfg!(target_arch = "aarch64") {
+    "linux-aarch64"
+} else {
+    "linux-x86_64"
+};
+
+/// The binary inside the archive.
+const BINARY: &str = if cfg!(windows) { "deck.exe" } else { "deck" };
 
 /// Whether a release asset called `name` is this platform's, ending `suffix`.
 ///
 /// One rule for `deck upgrade` and for the update check, so the foot never
-/// offers a release that `deck upgrade` would then refuse.
+/// offers a release that `deck upgrade` would then refuse. The platform has
+/// to end the name — `-linux-x86_64.` — so `linux-x86_64` never matches an
+/// asset for some longer name that starts the same way.
 pub(crate) fn ours(name: &str, suffix: &str) -> bool {
-    name.contains(&format!("-{PLATFORM}-")) && name.ends_with(suffix)
+    name.contains(&format!("-{PLATFORM}.")) && name.ends_with(suffix)
 }
 
 /// A release, as much of one as this needs.
@@ -93,10 +110,15 @@ pub fn run(unstable: Option<bool>) -> anyhow::Result<()> {
     println!();
 
     let here = installed()?;
-    if let Some(owner) = managed(&here) {
+    // Homebrew's copy is not replaced from here — the next `brew upgrade`
+    // would disagree — and Homebrew no longer gets new releases either. The
+    // install script moves a machine off it: it puts deck where this command
+    // can keep it current, and takes Homebrew's copy away.
+    if managed(&here).is_some() {
         bail!(
-            "deck was installed by {owner}, so {owner} should be the one to \
-             replace it — run `{owner} upgrade deck`"
+            "this deck came from Homebrew, which no longer gets new releases. \
+             Move to the one-command install — it replaces Homebrew's copy and \
+             keeps your settings:\n\n    {INSTALL}"
         );
     }
 
@@ -387,7 +409,7 @@ fn swap(here: &Path, release: &Release, showing: Showing) -> anyhow::Result<()> 
         ],
     )?;
 
-    let fresh = staging.join("deck");
+    let fresh = staging.join(BINARY);
     if !fresh.exists() {
         bail!("the archive did not contain a deck");
     }
