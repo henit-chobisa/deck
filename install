@@ -8,9 +8,9 @@ echo `# <#` >/dev/null
 #
 # One file, read by two shells. To `sh` the second line is an `echo` of nothing
 # and everything down to `exit` is this script. To PowerShell the same line
-# opens a block comment, `<#`, that runs until the `#>` below the `exit`, and
-# what follows it is the Windows installer. Neither shell ever reads the
-# other's half.
+# opens a block comment that runs until just below the `exit`, and what
+# follows is the Windows installer. Neither shell ever reads the other's half
+# — which is why the comment's two markers appear nowhere else in this half.
 #
 # Either way: the newest deck built for this machine is downloaded from the
 # GitHub release, checked against the checksum published beside it, put on
@@ -319,7 +319,14 @@ exit
   [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
   $repo = 'henit-chobisa/deck'
 
-  function Say($text) { Write-Host '  ◆ ' -ForegroundColor DarkYellow -NoNewline; Write-Host $text }
+  # deck's own orange where the terminal can draw it — Windows Terminal can —
+  # and the nearest of the console's sixteen colours where it cannot.
+  $esc = [char]27
+  $vt = $Host.UI.SupportsVirtualTerminal -and -not $env:NO_COLOR
+  function Orange($text) {
+    if ($vt) { Write-Host "$esc[38;5;208m$text$esc[0m" -NoNewline } else { Write-Host $text -ForegroundColor DarkYellow -NoNewline }
+  }
+  function Say($text) { Orange '  ◆ '; Write-Host $text }
   function Note($text) { Write-Host "    $text" -ForegroundColor DarkGray }
   function Fail($text) {
     Write-Host ''
@@ -336,7 +343,7 @@ exit
     '  ██║  ██║██╔══╝  ██║     ██╔═██╗'
     '  ██████╔╝███████╗╚██████╗██║  ██╗'
     '  ╚═════╝ ╚══════╝ ╚═════╝╚═╝  ╚═╝'
-  ) | ForEach-Object { Write-Host $_ -ForegroundColor DarkYellow }
+  ) | ForEach-Object { Orange $_; Write-Host '' }
   Write-Host ''
   Write-Host '  bridge the gap — argue, decide, lock.' -ForegroundColor White
   Write-Host ''
