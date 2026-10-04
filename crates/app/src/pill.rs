@@ -18,31 +18,16 @@ use std::time::Duration;
 
 use deck_core::theme::Palette;
 use gpui_kit::component::{ActiveTheme as _, Icon, IconName, StyledExt as _};
-use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 
 use crate::palette::{current, paint};
 
-gpui_kit::actions!(deck, [OpenDeck, Later, NextDeck]);
-
-/// The bar's own keys.
-///
-/// It can take them: a non-activating panel becomes key without its
-/// application becoming active, so the bar is reachable from the keyboard
-/// without the reader's editor losing the menu bar.
-#[must_use]
-pub fn bindings() -> Vec<KeyBinding> {
-    vec![
-        KeyBinding::new("enter", OpenDeck, Some("Pill")),
-        KeyBinding::new("o", OpenDeck, Some("Pill")),
-        KeyBinding::new("escape", Later, Some("Pill")),
-        KeyBinding::new("q", Later, Some("Pill")),
-        // The same key the window uses to walk groups, doing the same job one
-        // level up.
-        KeyBinding::new("n", NextDeck, Some("Pill")),
-        KeyBinding::new("tab", NextDeck, Some("Pill")),
-    ]
-}
+// No keys. The bar is something you press, with two things on it to press —
+// *Open*, and the cross. It had keys of its own, and then keys that waited
+// for a click; either way a letter typed at the wrong moment did something
+// to a deck the reader had not meant to touch. After `h` the bar is the
+// application's only window and the platform hands it the keyboard, so a
+// `q` aimed at the deck dismissed it for good.
 
 /// How big the window holding the bar is.
 ///
@@ -100,7 +85,6 @@ pub struct Pill {
     /// the deck window. The bar is a view onto the queue.
     at: usize,
     palette: Palette,
-    focus: FocusHandle,
     /// When the bar appeared, so the opening can be timed from it.
     ///
     /// Hand-rolled rather than an [`Animation`], because what is being animated
@@ -117,14 +101,6 @@ pub struct Pill {
     settled: bool,
     /// The loop watching the deck fill, while there is more coming.
     tailing: Task<()>,
-    /// Whether the bar's keys are live: only once somebody has pressed on it.
-    ///
-    /// Putting a deck away with `h` closes its window and leaves the bar as
-    /// the application's only one — and the application is still in front,
-    /// so the platform hands the bar the keyboard. Whatever the reader typed
-    /// next landed here: a `q` meant for the deck put it away for good. The
-    /// bar is something you reach for, so its keys wait until you have.
-    armed: bool,
 }
 
 impl Pill {
@@ -144,11 +120,9 @@ impl Pill {
         let mut pill = Self {
             at: showing,
             palette,
-            focus: cx.focus_handle(),
             opened: std::time::Instant::now(),
             settled: false,
             tailing: Task::ready(()),
-            armed: false,
         };
         pill.tail(cx);
         pill
@@ -219,30 +193,13 @@ impl Pill {
         cx.notify();
     }
 
-    fn on_open(&mut self, _: &OpenDeck, window: &mut Window, cx: &mut Context<Self>) {
-        self.open(window, cx);
-    }
-
     /// Put this one away for good. The rest keep waiting.
-    fn on_later(&mut self, _: &Later, window: &mut Window, cx: &mut Context<Self>) {
+    fn later(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let _ = crate::queue::take(self.at, cx);
         if crate::queue::len(cx) == 0 {
             window.remove_window();
         } else {
             self.at = self.at.min(crate::queue::len(cx) - 1);
-            cx.notify();
-        }
-    }
-
-    /// Walk to the next deck waiting, wrapping.
-    ///
-    /// Wrapping, unlike walking a deck's groups: a queue has no story in it and
-    /// no beginning to have lost your place in, so three decks that stopped
-    /// dead at the third would need a second key to get back.
-    fn on_walk(&mut self, _: &NextDeck, _window: &mut Window, cx: &mut Context<Self>) {
-        let pending = crate::queue::len(cx);
-        if pending > 0 {
-            self.at = (self.at + 1) % pending;
             cx.notify();
         }
     }
@@ -311,8 +268,6 @@ fn arrive(after: f32) -> impl Fn(f32) -> f32 {
 
 impl Render for Pill {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        self.focus.focus(window, cx);
-
         // The bar arrives saying whose it is and what it is about, holds long
         // enough to be read, and then opens out — the state and the button
         // arriving with the room to put them in.
@@ -557,7 +512,7 @@ impl Render for Pill {
             // Stopped here, or the bar underneath would take the same click
             // and open the very thing being put away.
             .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-            .on_click(cx.listener(|pill, _, window, cx| pill.on_later(&Later, window, cx)))
+            .on_click(cx.listener(|pill, _, window, cx| pill.later(window, cx)))
             .child(Icon::new(IconName::Close).size(px(12.)));
 
         // How many are waiting, when more than one is. It goes before the
@@ -611,18 +566,6 @@ impl Render for Pill {
             .size_full()
             .flex()
             .items_center()
-            .track_focus(&self.focus)
-            .when(self.armed, |this| this.key_context("Pill"))
-            .on_mouse_down(
-                MouseButton::Left,
-                cx.listener(|pill, _, _window, cx| {
-                    pill.armed = true;
-                    cx.notify();
-                }),
-            )
-            .on_action(cx.listener(Self::on_open))
-            .on_action(cx.listener(Self::on_later))
-            .on_action(cx.listener(Self::on_walk))
             // It rises into place rather than appearing. This is the first
             // thing anyone sees of deck, and a bar that blinks into existence
             // over your work reads as an alert; one that comes up reads as

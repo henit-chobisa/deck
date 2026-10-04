@@ -142,7 +142,6 @@ fn show(decks: Vec<Deck>, opening: &cli::Opening) {
             icon::wear_the_mark();
 
             cx.bind_keys(view::bindings());
-            cx.bind_keys(pill::bindings());
 
             // A deck is one window at a time. Closing the last one ends the
             // command rather than leaving a headless process behind for the
@@ -341,9 +340,8 @@ pub fn open_pill_over(waiting: Vec<Session>, cx: &mut App) {
         // leaves their hands where they are, which is the entire idea of a bar
         // rather than a window.
         //
-        // The cost, said plainly: `o`, `n` and `escape` do not reach the bar
-        // until it is clicked. A keystroke they have to ask for is a fair
-        // trade against one taken from them.
+        // The bar takes no keys at all (see `pill`), so there is nothing for
+        // it to want the keyboard for.
         focus: false,
         ..Default::default()
     };
