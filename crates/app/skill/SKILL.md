@@ -1704,6 +1704,7 @@ where it happens: a read and a write with nothing holding them together.' \
   body { margin: 0; height: 100vh }
   svg  { display: block; width: 100%; height: 100% }
   text { font: 12px ui-monospace, monospace; fill: var(--deck-muted) }
+  .tick { text-anchor: middle }  .lost { text-anchor: end }
   .name { fill: var(--deck-fg) }
   .bar { fill: var(--deck-edge); transition: fill .4s }
   .bar.lit { fill: var(--deck-accent) }
@@ -1726,7 +1727,7 @@ const make = (tag, cls, text) => {
 }
 
 // Built once. Every frame after this only moves what is already here.
-const ticks = [0, 2, 4, 6, 8, 10, 12].map(ms => make('text', '', ms + 'ms'))
+const ticks = [0, 2, 4, 6, 8, 10, 12].map(ms => make('text', 'tick', ms + 'ms'))
 const names = ['worker A', 'worker B', 'count'].map(n => make('text', 'name', n))
 const bars = spans.map(() => make('rect', 'bar'))
 const labels = spans.map(s => make('text', 'label', s[3]))
@@ -1737,24 +1738,26 @@ let W = 0, H = 0, shown = 0, point = null, from = 0, to = 0, t0 = null, frame = 
 const px = v => Math.round(v * devicePixelRatio) / devicePixelRatio  // whole pixels
 
 function place(t) {                        // the scene at time t, in the room there is
-  const lane = Math.max(28, Math.min(48, H / 8)), x = ms => px(110 + (W - 150) * ms / 12)
-  const top = px((H - lane * 3.4) / 2), row = { A: top, B: top + lane }
-  ticks.forEach((e, i) => { e.setAttribute('x', x(i * 2) - 12); e.setAttribute('y', top + lane * 3.4) })
-  names.forEach((e, i) => { e.setAttribute('x', 16); e.setAttribute('y', top + lane * (i === 2 ? 2.5 : i) + 16) })
+  // The room, filled: lanes as tall as the pane allows, bars more than half a lane.
+  const lane = Math.max(28, (H - 80) / 3.4), bar = px(Math.min(lane * 0.55, 56))
+  const x = ms => px(110 + (W - 150) * ms / 12)
+  const top = px(30), row = { A: top, B: top + lane }, mid = bar / 2 + 4
+  ticks.forEach((e, i) => { e.setAttribute('x', x(i * 2)); e.setAttribute('y', top + lane * 3.4) })
+  names.forEach((e, i) => { e.setAttribute('x', 16); e.setAttribute('y', (i === 2 ? top + lane * 2.5 : row['AB'[i]]) + mid) })
   spans.forEach(([who, a, b, label], i) => {
     const end = Math.max(a, Math.min(b, t)), done = t >= b, on = lit[point] === i && done
     const width = Math.max(0, x(end) - x(a) - 2)
     bars[i].setAttribute('x', x(a) + 1); bars[i].setAttribute('y', row[who])
-    bars[i].setAttribute('width', width); bars[i].setAttribute('height', 24)
+    bars[i].setAttribute('width', width); bars[i].setAttribute('height', bar)
     bars[i].setAttribute('class', on ? 'bar lit' : 'bar')
-    labels[i].setAttribute('x', x(a) + 7); labels[i].setAttribute('y', row[who] + 16)
+    labels[i].setAttribute('x', x(a) + 7); labels[i].setAttribute('y', row[who] + mid)
     labels[i].setAttribute('class', on ? 'label lit' : 'label')
     // A label fades in once its bar is whole, and only if it fits inside it.
     labels[i].style.opacity = done && label.length * 7.5 + 14 < width ? 1 : 0
   })
   count.textContent = t >= 10 ? '6' : '5'
-  count.setAttribute('x', 110); count.setAttribute('y', top + lane * 2.5 + 16)
-  lost.setAttribute('x', 140); lost.setAttribute('y', top + lane * 2.5 + 16)
+  count.setAttribute('x', 110); count.setAttribute('y', top + lane * 2.5 + mid)
+  lost.setAttribute('x', x(12)); lost.setAttribute('y', top + lane * 2.5 + mid)
   lost.style.opacity = point === 'write-b' && t >= 12 ? 1 : 0
   const h = x(t) + 0.5                     // a 1px line on the half pixel stays sharp
   head.setAttribute('x1', h); head.setAttribute('x2', h)

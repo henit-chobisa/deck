@@ -144,9 +144,8 @@ impl Paper {
     /// document and highlight something without knowing what the document
     /// meant by it. What deck can do is say *the reader is on this now* — and
     /// that event is the difference between a page and a picture of a page. It
-    /// arrives as `deck:point` with the id, or with `null` when the finger has
-    /// lifted, and the page decides whether that means a glow, an animation, or
-    /// a simulation stepping forward.
+    /// arrives as `deck:point` with the id, and the page decides whether that
+    /// means a glow, an animation, or a simulation stepping forward.
     ///
     /// Only ever forward. The page is told a name of its own, and never that
     /// the finger left: when the narration moves into another pane, or the
@@ -160,7 +159,9 @@ impl Paper {
         let Some(first) = self.pointed.first().cloned() else {
             return;
         };
-        if self.told.as_ref() == Some(&first) {
+        // No view yet — a page that was folded until this point unfolded it.
+        // Not marked as told: the view is handed the point as it is made.
+        if self.view.is_none() || self.told.as_ref() == Some(&first) {
             return;
         }
         self.told = Some(first.clone());
@@ -238,7 +239,23 @@ impl Paper {
         }
         if self.view.is_none() {
             let document = dressed(&self.html, palette);
-            self.view = build(window, &document, at);
+            // A point that landed before there was a view, handed over as the
+            // first thing the document knows — the shim replays it once the
+            // page has loaded. Not kept in `dressed`: `again` opens at rest.
+            let first = self.pointed.first().cloned();
+            let opening = first.as_ref().map_or_else(
+                || document.clone(),
+                |id| {
+                    format!(
+                        "<script>window.deck={{at:{}}};</script>{document}",
+                        quoted(id)
+                    )
+                },
+            );
+            self.view = build(window, &opening, at);
+            if self.view.is_some() {
+                self.told = first;
+            }
             self.dressed = Some(document);
         }
         let Some(view) = self.view.as_ref() else {
@@ -488,7 +505,6 @@ const SHIM: &str = "window.deck=window.deck||{at:null};\
     })();";
 
 /// `at`, moved to the nearest whole device pixels on every edge.
-#[cfg(not(target_os = "windows"))]
 fn snapped(at: Bounds<Pixels>, scale: f32) -> Bounds<Pixels> {
     let whole = |v: Pixels| px((f32::from(v) * scale).round() / scale);
     let (left, top) = (whole(at.origin.x), whole(at.origin.y));
