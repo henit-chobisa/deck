@@ -35,7 +35,7 @@
 //! - **no shadow** — a shadow is a window announcing its edges.
 
 #[cfg(target_os = "macos")]
-mod mac {
+mod sheets {
     use std::cell::{Cell, RefCell};
 
     use objc2::rc::Retained;
@@ -191,10 +191,210 @@ mod mac {
     pub fn lights_on() {
         LIT.set(false);
     }
+
+    /// Nothing to note here: the deck's level already puts it above the sheets.
+    pub fn behind(_window: &gpui_kit::Window) {}
 }
 
-#[cfg(not(target_os = "macos"))]
-mod mac {
+#[cfg(target_os = "windows")]
+mod sheets {
+    //! The same sheets on Windows: one layered window over each monitor.
+    //!
+    //! One per monitor, as the Mac has one per screen. A single window
+    //! stretched over every display is a window Windows treats as living on
+    //! one of them: with two monitors at different scales it is rescaled to
+    //! one and leaves the other half-dimmed or not at all.
+    //!
+    //! Each is layered, so its whole surface fades by one number;
+    //! *transparent*, so clicks fall through it; *no-activate* and a *tool
+    //! window*, so it never takes the keyboard and stays out of the taskbar and
+    //! Alt-Tab. They sit directly beneath the deck in the stacking order — the
+    //! deck is kept on top, and so are these, one place below it — so the deck
+    //! stays lit and everything else goes down, taskbar included.
+    //!
+    //! No blur: Windows has no supported way to blur what is behind an
+    //! arbitrary window, so `blur` is a dim here.
+
+    use std::cell::{Cell, RefCell};
+
+    use windows::Win32::Foundation::{COLORREF, HWND, LPARAM, LRESULT, RECT, WPARAM};
+    use windows::Win32::Graphics::Gdi::{
+        BLACK_BRUSH, EnumDisplayMonitors, GetStockObject, HBRUSH, HDC, HMONITOR,
+    };
+    use windows::Win32::System::LibraryLoader::GetModuleHandleW;
+    use windows::Win32::UI::WindowsAndMessaging::{
+        CreateWindowExW, DefWindowProcW, DestroyWindow, LWA_ALPHA, RegisterClassW,
+        SW_SHOWNOACTIVATE, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SetLayeredWindowAttributes,
+        SetWindowPos, ShowWindow, WNDCLASSW, WS_EX_LAYERED, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW,
+        WS_EX_TOPMOST, WS_EX_TRANSPARENT, WS_POPUP,
+    };
+    use windows::core::{BOOL, w};
+
+    thread_local! {
+        /// The sheets, one per monitor, kept between uses and faded rather
+        /// than closed — for the reason the Mac's are.
+        static SHEETS: RefCell<Vec<isize>> = const { RefCell::new(Vec::new()) };
+        /// The deck they sit beneath.
+        static DECK: Cell<Option<isize>> = const { Cell::new(None) };
+        static LIT: Cell<bool> = const { Cell::new(false) };
+        static ALPHA: Cell<f64> = const { Cell::new(0.) };
+    }
+
+    pub fn on() -> bool {
+        LIT.get()
+    }
+
+    /// Note which window is the deck, so the sheets can sit just beneath it.
+    pub fn behind(window: &gpui_kit::Window) {
+        DECK.set(crate::win::hwnd(window).map(|hwnd| hwnd.0 as isize));
+    }
+
+    // Clamped to nought..one first, so the byte it becomes cannot overflow.
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    pub fn set_alpha(alpha: f64) {
+        ALPHA.set(alpha);
+        let level = (alpha.clamp(0., 1.) * 255.).round() as u8;
+        SHEETS.with_borrow(|sheets| {
+            for &sheet in sheets {
+                // SAFETY: a window this thread made and still owns.
+                unsafe {
+                    let _ = SetLayeredWindowAttributes(
+                        HWND(sheet as *mut _),
+                        COLORREF(0),
+                        level,
+                        LWA_ALPHA,
+                    );
+                }
+            }
+        });
+    }
+
+    pub fn alpha() -> f64 {
+        ALPHA.get()
+    }
+
+    /// The sheets handle nothing themselves; the class brush paints them.
+    unsafe extern "system" fn sheet_proc(
+        hwnd: HWND,
+        message: u32,
+        wparam: WPARAM,
+        lparam: LPARAM,
+    ) -> LRESULT {
+        // SAFETY: forwarding a message the system just delivered.
+        unsafe { DefWindowProcW(hwnd, message, wparam, lparam) }
+    }
+
+    /// Each monitor's rectangle, in the desktop's coordinates.
+    fn monitors() -> Vec<RECT> {
+        unsafe extern "system" fn each(
+            _monitor: HMONITOR,
+            _dc: HDC,
+            rect: *mut RECT,
+            found: LPARAM,
+        ) -> BOOL {
+            // SAFETY: `found` is the vector passed below, alive for the call;
+            // `rect` is the system's, valid for this callback.
+            unsafe {
+                (*(found.0 as *mut Vec<RECT>)).push(*rect);
+            }
+            BOOL(1)
+        }
+        let mut found: Vec<RECT> = Vec::new();
+        // SAFETY: the callback only writes into `found`, which outlives the call.
+        unsafe {
+            let _ = EnumDisplayMonitors(None, None, Some(each), LPARAM(&raw mut found as isize));
+        }
+        found
+    }
+
+    /// One sheet over one monitor, born at nothing so it arrives by fading.
+    fn sheet(over: RECT) -> Option<isize> {
+        // SAFETY: plain Win32 window creation on the thread that runs gpui's
+        // message loop, which is the one that will deliver its messages.
+        unsafe {
+            let instance = GetModuleHandleW(None).ok()?;
+            let class = w!("DeckShade");
+            let wanted = WNDCLASSW {
+                lpfnWndProc: Some(sheet_proc),
+                hInstance: instance.into(),
+                lpszClassName: class,
+                hbrBackground: HBRUSH(GetStockObject(BLACK_BRUSH).0),
+                ..Default::default()
+            };
+            // Registering twice fails harmlessly; the class is already there.
+            RegisterClassW(&wanted);
+            let sheet = CreateWindowExW(
+                WS_EX_LAYERED
+                    | WS_EX_TRANSPARENT
+                    | WS_EX_NOACTIVATE
+                    | WS_EX_TOOLWINDOW
+                    | WS_EX_TOPMOST,
+                class,
+                None,
+                WS_POPUP,
+                over.left,
+                over.top,
+                over.right - over.left,
+                over.bottom - over.top,
+                None,
+                None,
+                Some(instance.into()),
+                None,
+            )
+            .ok()?;
+            let _ = SetLayeredWindowAttributes(sheet, COLORREF(0), 0, LWA_ALPHA);
+            let _ = ShowWindow(sheet, SW_SHOWNOACTIVATE);
+            Some(sheet.0 as isize)
+        }
+    }
+
+    pub fn lights_off(_dim: f32, _blur: bool) {
+        if on() {
+            return;
+        }
+        LIT.set(true);
+        // Made fresh each time the lights go down, from the monitors there
+        // are now: one plugged in or taken away since the last time is
+        // covered, or not, as it should be. The old ones are already at
+        // nothing.
+        let fresh: Vec<isize> = monitors().into_iter().filter_map(sheet).collect();
+        let old = SHEETS.replace(fresh);
+        for sheet in old {
+            // SAFETY: a window this thread made, no longer referenced.
+            unsafe {
+                let _ = DestroyWindow(HWND(sheet as *mut _));
+            }
+        }
+        ALPHA.set(0.);
+        // Beneath the deck: placed *after* it in the order, which among
+        // windows that are both kept on top is directly below it.
+        if let Some(deck) = DECK.get() {
+            SHEETS.with_borrow(|sheets| {
+                for &sheet in sheets {
+                    // SAFETY: two live windows' handles, asked only to change order.
+                    unsafe {
+                        let _ = SetWindowPos(
+                            HWND(sheet as *mut _),
+                            Some(HWND(deck as *mut _)),
+                            0,
+                            0,
+                            0,
+                            0,
+                            SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
+                        );
+                    }
+                }
+            });
+        }
+    }
+
+    pub fn lights_on() {
+        LIT.set(false);
+    }
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+mod sheets {
     //! Elsewhere there is nothing to dim yet.
     pub fn on() -> bool {
         false
@@ -205,13 +405,14 @@ mod mac {
     pub fn alpha() -> f64 {
         0.
     }
+    pub fn behind(_window: &gpui_kit::Window) {}
 }
 
 use std::time::Duration;
 
 use gpui_kit::App;
 
-pub use mac::on;
+pub use sheets::{behind, on};
 
 /// One frame of the fade, at about sixty a second.
 const STEP: Duration = Duration::from_millis(16);
@@ -227,11 +428,11 @@ const UP: u32 = 11;
 /// Turn the lights off, or back on. Returns whether they ended up off.
 pub fn toggle(dim: f32, blur: bool, cx: &mut App) -> bool {
     if on() {
-        mac::lights_on();
+        sheets::lights_on();
         fade(0., UP, cx);
         false
     } else {
-        mac::lights_off(dim, blur);
+        sheets::lights_off(dim, blur);
         fade(f64::from(dim.clamp(0., 0.92)), DOWN, cx);
         on()
     }
@@ -242,7 +443,7 @@ pub fn lights_on(cx: &mut App) {
     if !on() {
         return;
     }
-    mac::lights_on();
+    sheets::lights_on();
     fade(0., UP, cx);
 }
 
@@ -260,7 +461,7 @@ pub fn lights_on(cx: &mut App) {
 /// being asked for going unseen. The executor belongs to the application, and
 /// the bar keeps that alive.
 fn fade(to: f64, frames: u32, cx: &mut App) {
-    let from = mac::alpha();
+    let from = sheets::alpha();
     if (to - from).abs() < f64::EPSILON {
         return;
     }
@@ -272,7 +473,7 @@ fn fade(to: f64, frames: u32, cx: &mut App) {
             // black reads as a shutter coming down.
             let much = f64::from(frame) / f64::from(frames);
             let eased = much * much * (3. - 2. * much);
-            cx.update(|_| mac::set_alpha(from + (to - from) * eased));
+            cx.update(|_| sheets::set_alpha(from + (to - from) * eased));
         }
     })
     .detach();
