@@ -195,8 +195,10 @@ activation hook in GPUI, so while the lights are off it asks every fifth of a
 second — zen is a posture rather than a setting, and the way somebody stops
 reading is by looking at something else.
 
-The shade can never outlive its deck: every path that closes or hides the deck
-brings the lights up first.
+The shade does not outlive its deck. Hiding the deck, closing it with a key
+and submitting all bring the lights up first; a close that comes from the
+platform — the taskbar, Alt-F4 — is caught by the same watcher within a fifth
+of a second, or by the process ending.
 
 ## Diagrams
 

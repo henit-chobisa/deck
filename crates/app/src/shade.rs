@@ -495,7 +495,12 @@ pub fn toggle(dim: f32, blur: bool, cx: &mut App) -> bool {
         false
     } else {
         sheets::lights_off(dim, blur);
-        fade(f64::from(dim.clamp(0., 0.92)), DOWN, cx);
+        // Only if they did go down. Where there are no sheets to dim, or they
+        // could not be put beneath the deck, fading would move a number that
+        // nothing is drawn from — or dim sheets left over from before.
+        if on() {
+            fade(f64::from(dim.clamp(0., 0.92)), DOWN, cx);
+        }
         on()
     }
 }
@@ -534,6 +539,11 @@ fn fade(to: f64, frames: u32, cx: &mut App) {
 
     let from = sheets::alpha();
     if (to - from).abs() < f64::EPSILON {
+        // Already there — which, for up, still means the sheets can go: `z`
+        // twice inside one frame shows them and never fades them.
+        if to <= 0. {
+            sheets::rest();
+        }
         return;
     }
 
