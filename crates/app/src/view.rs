@@ -1659,19 +1659,12 @@ impl DeckView {
         self.walk(-1, cx);
     }
 
-    /// Close this deck without answering it.
+    /// Into the walk, or out of it.
     ///
-    /// The deck is dropped rather than put back: `q` is the reader saying they
-    /// are done with it, and a deck that reappeared on the bar after being
-    /// closed would be impossible to get rid of. Putting one away for later is
-    /// `h`, and that is a different key for a different thing.
-    /// Go live, or come back out.
-    ///
-    /// Live is not a second window and not a different deck — it is the same
-    /// deck with the room rearranged around it. The narration comes forward,
-    /// the rail carrying what you have said slides in beside it, the panes make
-    /// space, and the voice picks up the current group. Pressing `l` again puts
-    /// everything back where it was.
+    /// The walk is the one mode: the voice reads the group's prose, the code
+    /// lights under it, and the agent's answers are read as they come. Inside
+    /// it the prose is a track under the narration (see
+    /// [`Self::render_track`]). `w` again leaves, and the room goes quiet.
     ///
     /// One key for both directions, because there is only ever one thing the
     /// reader can want from it.
@@ -2299,14 +2292,18 @@ impl DeckView {
                     deck.follow_point(cx);
                     let heard = deck.listen();
                     let now = deck.voice.talking();
-                    // Heard once it is being heard, not once it is asked for: a
-                    // voice that failed to arrive has read nothing.
                     let prose = crate::speech::Narration::Group(deck.group_ix);
+                    let progress = deck.voice.progress().filter(|(of, _, _)| *of == prose);
                     // Held is not reading: nothing moves, so nothing to draw.
-                    let reading = deck.aloud
-                        && !deck.voice.paused()
-                        && deck.voice.progress().is_some_and(|(of, _, _)| of == prose);
-                    if reading {
+                    let reading = deck.aloud && progress.is_some() && !deck.voice.paused();
+                    // Read means read nearly to the end. A group walked past
+                    // after a sentence has not been heard, and coming back to
+                    // it should read it.
+                    if reading
+                        && progress.is_some_and(|(_, at, length)| {
+                            at.as_secs_f32() >= length.as_secs_f32() * 0.9
+                        })
+                    {
                         deck.heard_groups.insert(deck.group_ix);
                     }
                     // Speech holds attention. Once it stops, the frame and the
@@ -4673,8 +4670,6 @@ impl DeckView {
                                     lit_also: [self.track_hover, self.track_hover_was]
                                         .into_iter()
                                         .filter(|_| self.aloud)
-                                        .collect::<Vec<_>>()
-                                        .into_iter()
                                         .flatten()
                                         .map(|(range, light)| (range, light.level()))
                                         .filter(|(_, level)| *level > 0.)

@@ -258,9 +258,9 @@ have drifted.
 
 ## The walk
 
-There is no mode to enter. The rail sits beside the panes with everything that
-has been said in it, and the agent that wrote the deck can move your eyes while
-it talks, whether or not anybody is listening.
+The rail sits beside the panes with everything that has been said in it, and
+the agent that wrote the deck can move your eyes while it talks, whether or not
+anybody is listening.
 
 `w` adds the voice. The narration is read out loud, the code lights up under the
 sentence being said — sentence by sentence, from the sound's own clock — and

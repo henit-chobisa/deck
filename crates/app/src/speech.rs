@@ -296,7 +296,10 @@ impl Voice {
                     self.seek_on_start = None;
                     return;
                 }
-                Err(TryRecvError::Disconnected) => self.fetching = None,
+                Err(TryRecvError::Disconnected) => {
+                    self.fetching = None;
+                    self.seek_on_start = None;
+                }
             }
         }
 
