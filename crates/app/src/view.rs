@@ -2029,11 +2029,10 @@ impl DeckView {
         cx.notify();
     }
 
-    /// Outline the pane the agent is talking about, and only that one.
+    /// Outline the panes the agent is talking about, and no others.
     ///
-    /// The pane it is pointing into, when it is pointing. Otherwise the pane it
-    /// last moved the spotlight in. And only while live: a reader going through
-    /// a deck alone is not being talked to about anything.
+    /// Which those are is [`about`]'s to say. And only while live: a reader
+    /// going through a deck alone is not being talked to about anything.
     ///
     /// Worked out from state every frame rather than set at each place that
     /// state changes. There are five of those, and a light left on by the one
@@ -6906,6 +6905,9 @@ mod tests {
         assert_eq!(about(Some(3), &[], None, false), [3]);
         // Nobody talking, nothing framed.
         assert!(about(None, &[0], Some(1), false).is_empty());
+        assert!(about(None, &[], None, true).is_empty());
+        // Asked for and pointed at is still one pane, once.
+        assert_eq!(about(Some(0), &[0, 2], None, true), [0]);
     }
 
     #[test]
