@@ -66,6 +66,7 @@ pub struct Paper {
     /// The view, once the window has been able to make one.
     view: Option<wry::WebView>,
     /// Where it was last put, so it is only moved when it has moved.
+    #[cfg(not(target_os = "windows"))]
     at: Option<Bounds<Pixels>>,
     /// Where the pane's hole was drawn, written while painting and read on the
     /// next frame.
@@ -114,6 +115,7 @@ impl Paper {
             pointed: Vec::new(),
             selected: None,
             view: None,
+            #[cfg(not(target_os = "windows"))]
             at: None,
             hole: Rc::new(Cell::new(None)),
             shown: false,
