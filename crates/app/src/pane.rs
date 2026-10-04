@@ -95,6 +95,24 @@ fn span(stored: u16, fallback: std::time::Duration) -> std::time::Duration {
     }
 }
 
+/// The width of the frame round the pane being talked about, and of the
+/// margin a page keeps for it.
+pub(crate) const FRAME: f32 = 2.;
+
+/// The frame round the pane being talked about, at `level` of its fade.
+///
+/// One for every kind of pane, so a file, a picture and a page cannot drift
+/// apart. Laid over the pane rather than drawn as its border, so lighting it
+/// moves nothing, and with no handlers, so nothing under it stops being
+/// clickable.
+pub(crate) fn outline(palette: &Palette, level: f32) -> Div {
+    div()
+        .absolute()
+        .inset_0()
+        .border(px(FRAME))
+        .border_color(paint(palette.wash.mix(palette.accent, 0.9 * level)))
+}
+
 /// A light easing between off and on, from wherever it was when it was told.
 ///
 /// Time-based rather than a GPUI animation, for the reason the live room is:
@@ -1010,15 +1028,7 @@ impl Pane {
             // than as its border, so lighting it moves nothing: a border that
             // appeared would push every row down by its width, mid-sentence.
             // It has no handlers, so nothing under it stops being clickable.
-            .when(heeded > 0., |pane| {
-                pane.child(
-                    div()
-                        .absolute()
-                        .inset_0()
-                        .border_2()
-                        .border_color(paint(palette.wash.mix(palette.accent, 0.9 * heeded))),
-                )
-            })
+            .when(heeded > 0., |pane| pane.child(outline(palette, heeded)))
     }
 
     fn render_code(

@@ -33,10 +33,6 @@ use gpui_kit::*;
 use crate::palette::paint;
 use crate::sheet::Slot;
 
-/// The width of the outline that says the agent is talking about this pane,
-/// and of the margin kept for it.
-const FRAME: f32 = 2.;
-
 /// A page pane: the agent's markup, and the native view showing it.
 pub struct Paper {
     /// The ref this pane shows, so a remark can name it.
@@ -294,7 +290,7 @@ impl Paper {
             // draws under it — so the outline below needs a margin of the
             // pane's own to be seen in.
             .child(
-                div().flex_1().min_h_0().p(px(FRAME)).child(
+                div().flex_1().min_h_0().p(px(crate::pane::FRAME)).child(
                     canvas(
                         move |at, _window, _cx| {
                             // Only recorded. The window reads this at the top of
@@ -312,13 +308,7 @@ impl Paper {
             // unmarked, so with two panes side by side there was nothing to
             // say which one the sentence meant (#49).
             .when(heeded > 0., |pane| {
-                pane.child(
-                    div()
-                        .absolute()
-                        .inset_0()
-                        .border(px(FRAME))
-                        .border_color(paint(palette.wash.mix(palette.accent, 0.9 * heeded))),
-                )
+                pane.child(crate::pane::outline(palette, heeded))
             })
     }
 }

@@ -458,13 +458,7 @@ impl Chart {
             // unmarked, so with two panes side by side there was nothing to
             // say which one the sentence meant (#49).
             .when(heeded > 0., |pane| {
-                pane.child(
-                    div()
-                        .absolute()
-                        .inset_0()
-                        .border_2()
-                        .border_color(paint(palette.wash.mix(palette.accent, 0.9 * heeded))),
-                )
+                pane.child(crate::pane::outline(palette, heeded))
             })
     }
 
