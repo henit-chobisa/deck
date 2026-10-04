@@ -123,6 +123,12 @@ choose() {
   if [ -n "${DECK_VERSION:-}" ]; then
     tag="$DECK_VERSION"
     case "$tag" in v*) ;; *) tag="v$tag" ;; esac
+    # A version, and nothing that could steer the address somewhere else.
+    case "$tag" in
+      v[0-9]*) ;;
+      *) die "DECK_VERSION should look like v0.1.3" ;;
+    esac
+    case "$tag" in *[!A-Za-z0-9.+-]*) die "DECK_VERSION should look like v0.1.3" ;; esac
     URL="https://github.com/$REPO/releases/download/$tag/deck-$tag-$PLATFORM.tar.gz"
     TAG="$tag"
     return
@@ -146,6 +152,10 @@ choose() {
 
 # Where it goes, and whether the shell will find it there.
 place() {
+  case "${HOME:-}" in
+    /?*) ;;
+    *) [ -n "${DECK_INSTALL:-}" ] || die "there is no home directory to install into — set DECK_INSTALL" ;;
+  esac
   DIR="${DECK_INSTALL:-$HOME/.local/bin}"
   mkdir -p "$DIR" || die "could not make $DIR"
   # As the filesystem spells it: no trailing slash, nothing relative, no
@@ -154,22 +164,46 @@ place() {
 }
 
 on_path() {
-  case ":$PATH:" in *":$DIR:"*) return 0 ;; esac
-  # Said once, in the file this shell reads at start, and never twice.
+  # Already there, however it is spelled.
+  old_ifs="$IFS"
+  IFS=:
+  set -f
+  # shellcheck disable=SC2086
+  set -- $PATH
+  set +f
+  IFS="$old_ifs"
+  for p in "$@"; do
+    case "$p" in /*) ;; *) continue ;; esac
+    if [ "$p" = "$DIR" ] || [ "$p" -ef "$DIR" ]; then return 0; fi
+  done
+  # In single quotes, so nothing in the path is ever run as shell.
+  quoted="'$(printf '%s' "$DIR" | sed "s/'/'\\\\''/g")'"
+  line="export PATH=$quoted:\"\$PATH\""
   shell="$(basename "${SHELL:-sh}")"
   case "$shell" in
-    zsh) rc="${ZDOTDIR:-$HOME}/.zshrc"; line="export PATH=\"$DIR:\$PATH\"" ;;
+    zsh) rc="${ZDOTDIR:-$HOME}/.zshrc" ;;
     bash)
-      if [ "$(uname -s)" = Darwin ]; then rc="$HOME/.bash_profile"; else rc="$HOME/.bashrc"; fi
-      line="export PATH=\"$DIR:\$PATH\""
+      if [ "$(uname -s)" = Darwin ]; then
+        # The one bash already reads at login. Making a .bash_profile where
+        # there was only a .profile would stop bash reading the .profile.
+        rc="$HOME/.profile"
+        for known in "$HOME/.bash_profile" "$HOME/.bash_login" "$HOME/.profile"; do
+          if [ -e "$known" ]; then rc="$known"; break; fi
+        done
+      else
+        rc="$HOME/.bashrc"
+      fi
       ;;
-    fish) rc="$HOME/.config/fish/config.fish"; line="fish_add_path \"$DIR\"" ;;
-    *) rc="$HOME/.profile"; line="export PATH=\"$DIR:\$PATH\"" ;;
+    fish) rc="$HOME/.config/fish/config.fish"; line="fish_add_path $quoted" ;;
+    *) rc="$HOME/.profile" ;;
   esac
   mkdir -p "$(dirname "$rc")"
   if ! grep -qsF "$line" "$rc"; then
-    printf '\n# deck\n%s\n' "$line" >>"$rc"
-    ADDED="$rc"
+    if printf '\n# deck\n%s\n' "$line" >>"$rc" 2>/dev/null; then
+      ADDED="$rc"
+    else
+      note "could not write to $rc — add $DIR to your PATH yourself"
+    fi
   fi
 }
 
@@ -207,16 +241,17 @@ libraries() {
   exit 1
 }
 
-# Whether the program at $1 is this deck, and not something else that happens
-# to be called deck — Kong's decK is one. It has to say its name the way this
-# one does, and describe itself the way this one does.
+# Whether the file at $1 is this deck, and not something else that happens to
+# be called deck — Kong's decK is one, Homebrew's own deck another. Read, not
+# run: every deck there has ever been carries this sentence in it, and a
+# stranger's program is never started to find out what it is. A wrapper
+# script somebody wrote around deck does not carry it, and is left alone.
 ours() {
-  [ -x "$1" ] || return 1
-  "$1" --version </dev/null 2>/dev/null | grep -q '^deck [0-9]' || return 1
-  "$1" --help </dev/null 2>/dev/null | grep -q 'Present code for review'
+  [ -f "$1" ] && [ -r "$1" ] || return 1
+  LC_ALL=C grep -q 'Present code for review' "$1" 2>/dev/null
 }
 
-# Every deck this machine already had, taken away — now that the new one is
+# Every other deck this machine has, taken away — now that the new one is
 # in place and has been seen to start, so a failed download never leaves a
 # machine with less than it had. Homebrew's goes through Homebrew, cargo's
 # through cargo, and a binary somebody was handed is simply removed, with the
@@ -239,7 +274,8 @@ previous() {
     f="$d/deck"
     [ -e "$f" ] || continue
     # The deck just installed, however its directory is spelled: the same
-    # file, asked of the filesystem rather than compared as text.
+    # file, asked of the filesystem as well as compared as text.
+    [ "$f" = "$DIR/deck" ] && continue
     [ "$f" -ef "$DIR/deck" ] && continue
     case "$seen" in *" $f "*) continue ;; esac
     seen="$seen$f "
@@ -247,6 +283,14 @@ previous() {
 
     target="$f"
     if [ -L "$f" ]; then target="$(readlink "$f")"; fi
+    # A link somebody made — to a build of their own, say — is theirs. Only
+    # Homebrew's links are Homebrew's to take away, below.
+    if [ -L "$f" ]; then
+      case "$f $target" in
+        *Cellar/deck/* | */homebrew/* | */linuxbrew/*) ;;
+        *) note "left alone: $f is a link to $target"; continue ;;
+      esac
+    fi
     case "$f $target" in
       *Cellar/deck/* | */homebrew/* | */linuxbrew/*)
         # By its full name only. Homebrew's own collection has a different
@@ -265,8 +309,10 @@ previous() {
         continue
         ;;
       */.cargo/bin/*)
-        if command -v cargo >/dev/null 2>&1; then
-          cargo uninstall deck-app </dev/null >/dev/null 2>&1
+        if command -v cargo >/dev/null 2>&1 &&
+          cargo uninstall deck-app </dev/null >/dev/null 2>&1 && [ ! -e "$f" ]; then
+          say "removed  ${D}cargo's deck (cargo uninstall deck-app)${X}"
+          continue
         fi
         ;;
     esac
@@ -274,15 +320,21 @@ previous() {
       rm -f "$f" "$d/deck.prev" 2>/dev/null
     fi
     if [ -e "$f" ]; then
-      note "an older deck at $f could not be removed — sudo rm $f"
+      note "another deck at $f could not be removed — sudo rm $f"
     else
-      say "removed  ${D}an older deck at $f${X}"
+      say "removed  ${D}another deck at $f${X}"
     fi
   done
 }
 
 main() {
   banner
+  # Under sudo this would leave root's files in your home — a deck that
+  # cannot be upgraded, settings that cannot be written — and take away
+  # copies the whole machine shares. It needs no privileges at all.
+  if [ "$(id -u 2>/dev/null || echo 1)" = 0 ] && [ -n "${SUDO_USER:-}" ] && [ -z "${DECK_INSTALL:-}" ]; then
+    die "run this without sudo — deck installs into your own home directory"
+  fi
   platform
   say "$WHAT"
 
@@ -430,26 +482,40 @@ main "$@" </dev/null; exit
     if ($want -ne $got) { Fail 'the download does not match its checksum, so it is not going in'; return }
     Say "checked  sha256 $($got.Substring(0, 12))…"
 
-    tar -xzf $archive -C $work
+    # Windows' own tar, by name: another tar on the PATH reads `C:` as a host.
+    $tar = Join-Path $env:SystemRoot 'System32\tar.exe'
+    if (-not (Test-Path -LiteralPath $tar)) { Fail 'this Windows has no tar — it needs Windows 10 1803 or later'; return }
+    & $tar -xzf $archive -C $work
     $fresh = Join-Path $work 'deck.exe'
     if (-not (Test-Path $fresh)) { Fail 'the download held no deck'; return }
     if ((Said $fresh '--version') -notmatch '^deck \d') { Fail 'the new deck would not start on this machine'; return }
 
     $dir = if ($env:DECK_INSTALL) { $env:DECK_INSTALL } else { Join-Path $env:LOCALAPPDATA 'Programs\deck' }
     New-Item -ItemType Directory -Force -Path $dir | Out-Null
+    $dir = (Resolve-Path -LiteralPath $dir).Path.TrimEnd('\')   # in full, as the system spells it
     $exe = Join-Path $dir 'deck.exe'
     # A deck that is open cannot be overwritten on Windows, but it can be
     # renamed out of the way while it runs.
-    if (Test-Path $exe) {
-      Remove-Item "$exe.old" -Force -ErrorAction SilentlyContinue
+    $aside = $null
+    if (Test-Path -LiteralPath $exe) {
+      # Earlier ones set aside, now that nothing is running them.
+      Get-ChildItem -LiteralPath $dir -Filter 'deck.exe*.old' -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue
       # Under a name of its own if the last one out is still running too.
       $aside = if (Test-Path "$exe.old") { "deck.exe.$([Guid]::NewGuid().ToString('N').Substring(0, 6)).old" } else { 'deck.exe.old' }
-      try { Rename-Item $exe $aside -Force } catch { Fail "could not move the deck at $exe out of the way"; return }
+      try { Rename-Item -LiteralPath $exe $aside -Force } catch { Fail "could not move the deck at $exe out of the way"; return }
     }
-    Move-Item $fresh $exe -Force
+    try { Move-Item -LiteralPath $fresh $exe -Force }
+    catch {
+      # Put back what was there, so a failed install leaves a deck behind.
+      if ($aside) { try { Rename-Item -LiteralPath (Join-Path $dir $aside) 'deck.exe' -Force } catch {} }
+      Fail "could not write to $dir"; return
+    }
+    # What makes a file *this* file, whatever folder it is reached through:
+    # a junction or a mapped drive shows the same file under another name.
+    $mine = Get-Item -LiteralPath $exe -Force
     Say "installed  $exe"
 
-    # Every deck this machine already had: a `cargo install`, a binary
+    # Every other deck this machine has: a `cargo install`, a binary
     # somebody was handed. Only one that answers as this deck — other tools
     # are called deck too — and never what deck keeps in ~\.deck.
     $places = @($env:Path -split ';') + @((Join-Path $env:USERPROFILE '.cargo\bin'), (Join-Path $env:USERPROFILE 'bin'))
@@ -458,24 +524,31 @@ main "$@" </dev/null; exit
       if (-not $place) { continue }
       $old = Join-Path $place 'deck.exe'
       # Only a place named in full, and never the deck just installed —
-      # however its folder is spelled.
+      # however its folder is reached.
       if (-not [IO.Path]::IsPathRooted($place)) { continue }
-      if ($seen[$old.ToLower()] -or (Same $old $exe) -or -not (Test-Path $old)) { continue }
+      if ($seen[$old.ToLower()] -or (Same $old $exe) -or -not (Test-Path -LiteralPath $old)) { continue }
       $seen[$old.ToLower()] = $true
-      if ((Said $old '--version') -notmatch '^deck \d' -or (Said $old '--help') -notmatch 'Present code for review') { continue }
+      $item = Get-Item -LiteralPath $old -Force
+      if ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) { Note "left alone: $old is a link"; continue }
+      # Read, not run: every deck carries this sentence, and a stranger's
+      # program is never started to find out what it is.
+      if (-not (Select-String -LiteralPath $old -Pattern 'Present code for review' -SimpleMatch -List -Quiet)) { continue }
+      # The same file by another road — made at the same instant, the same
+      # size — is the deck just installed. A copy has a birth of its own.
+      if ($item.CreationTimeUtc -eq $mine.CreationTimeUtc -and $item.Length -eq $mine.Length) { continue }
       if ($old -like '*\.cargo\bin\*' -and (Get-Command cargo -ErrorAction SilentlyContinue)) {
         [void](Said 'cargo' 'uninstall' 'deck-app')
       }
-      if (Test-Path $old) {
-        try { Remove-Item $old -Force -ErrorAction Stop }
+      if (Test-Path -LiteralPath $old) {
+        try { Remove-Item -LiteralPath $old -Force -ErrorAction Stop }
         catch {
           # Open, so Windows will not let it go; out of the way will do.
-          try { Rename-Item $old 'deck.exe.old' -Force -ErrorAction Stop } catch {}
+          try { Rename-Item -LiteralPath $old 'deck.exe.old' -Force -ErrorAction Stop } catch {}
         }
-        Remove-Item (Join-Path $place 'deck.prev') -Force -ErrorAction SilentlyContinue
+        Remove-Item -LiteralPath (Join-Path $place 'deck.prev') -Force -ErrorAction SilentlyContinue
       }
-      if (Test-Path $old) { Note "an older deck at $old could not be removed" }
-      else { Say "removed  an older deck at $old" }
+      if (Test-Path -LiteralPath $old) { Note "another deck at $old could not be removed" }
+      else { Say "removed  another deck at $old" }
     }
 
     # Read and written unexpanded. The usual call hands back %VARIABLES%

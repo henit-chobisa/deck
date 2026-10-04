@@ -456,8 +456,12 @@ fn swap(here: &Path, release: &Release, showing: Showing) -> anyhow::Result<()> 
     // steps aside under another name first, and is put back if the new one
     // cannot take its place.
     if cfg!(windows) {
-        let aside = beside.join("deck.exe.old");
-        let _ = std::fs::remove_file(&aside);
+        // Under a name of its own if the last one set aside is still
+        // running in some window and cannot be removed yet.
+        let mut aside = beside.join("deck.exe.old");
+        if std::fs::remove_file(&aside).is_err() && aside.exists() {
+            aside = beside.join(format!("deck.exe.{}.old", std::process::id()));
+        }
         std::fs::rename(here, &aside).context("could not move the running deck aside")?;
         if let Err(err) = std::fs::rename(&fresh, here) {
             let _ = std::fs::rename(&aside, here);

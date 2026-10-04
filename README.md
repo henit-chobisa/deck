@@ -110,8 +110,9 @@ you going back to the chat window.
 ## Install
 
 One command. It downloads the deck built for your machine, checks it, puts it
-on your PATH, clears away any older deck — a Homebrew one, a `cargo install`,
-a binary you were handed — and runs `deck setup`.
+on your PATH, clears away any other deck on it — a Homebrew one, a `cargo
+install`, a binary you were handed — and runs `deck setup`. Run it as yourself,
+not with `sudo`.
 
 **macOS and Linux**
 
