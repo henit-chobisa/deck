@@ -384,26 +384,30 @@ drawing the same idea come out looking the same.
 
 ## Pages, for the idea that only moves
 
-Some things are neither a file nor a picture. Two rows merging, a queue filling
-up, a node coming out of a chain — the argument *is* the movement, and a diagram
-of it is a diagram of the start and the end with the interesting part missing.
+Some things are neither a file nor a picture. Two workers racing for one count, a
+queue filling until the producer is told to stop, a pointer walking a list, a
+latency chart bending when the cache goes cold — the argument *is* the movement,
+and a still picture of it shows the start and the end with the interesting part
+missing.
 
 A group can carry a page: HTML the agent writes, rendered in a pane of the deck,
-wearing the deck's own colours and hearing the same points the code does.
+wearing the deck's own colours and hearing the same points the code does. It is
+for something the reader watches happen. Boxes and arrows are a diagram.
 
 ```bash
 deck group <path> \
-  --say 'Two rows arrive with the same key. [point 24-26 hop] The later one
-lands on top of the earlier — [hop] is the line that picks the winner, and
-[rows] shows which field actually survives it.' \
-  --page 'merge.html [rows] two rows meeting' \
-  --ref 'src/merge.ts:24-26 [hop] the line that decides'
+  --say '[point read-a] Worker A reads the count: 5. [point read-b] Worker B reads
+it too, and also sees 5. [point write-b] Both write 6, and one increment is gone —
+[race], and [bump] is where it happens.' \
+  --page 'race.html [race] two workers, one count' \
+  --ref 'src/counter.ts:12-14 [bump] read, add one, write'
 ```
 
-It is deliberately narrow. At most forty words may show — the prose carries the
-argument and a page with paragraphs in it is a second narration competing with
-the band — nothing is fetched from anywhere, and the page is handed deck's
-palette as CSS variables rather than choosing its own.
+It is deliberately narrow. At most forty words may show — numbers and units are
+free, so an axis costs nothing, but a page with sentences in it is a second
+narration competing with the band. Nothing is fetched from anywhere, the page is
+handed deck's palette as CSS variables rather than choosing its own, and it draws
+for the pane's real size with text at the window's own size.
 
 What it gets in return is the thing an artifact cannot have: it is told where the
 reader is. `[point rows]` reaches the page as an event, so the animation is bound

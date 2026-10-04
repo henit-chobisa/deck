@@ -505,8 +505,13 @@ pub fn shown_words(html: &str) -> usize {
 fn counted(text: &str) -> usize {
     text.split_whitespace()
         .filter(|token| {
-            token.chars().any(char::is_alphabetic)
-                && !token.starts_with(|ch: char| ch.is_ascii_digit() || "+-.$€£".contains(ch))
+            // A word unless it starts, once its punctuation is set aside,
+            // with a digit: `(200ms)` and `~5ms` are numbers, `.gitignore`
+            // and `--force` are words.
+            token
+                .chars()
+                .find(|ch| ch.is_alphanumeric())
+                .is_some_and(char::is_alphabetic)
         })
         .count()
 }
@@ -905,6 +910,12 @@ mod tests {
             "p99 and retry are words"
         );
         assert_eq!(shown_words("queue full"), 2);
+        assert_eq!(shown_words("(200ms) ~5ms"), 0);
+        assert_eq!(
+            shown_words(".gitignore --force"),
+            2,
+            "words in punctuation are words"
+        );
     }
 
     #[test]

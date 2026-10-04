@@ -394,7 +394,7 @@ mod tests {
             "Then ask which panes each group needs",
             "almost always wants a file beside it",
             "If you would have to draw it twice, it is a page",
-            "this is the pane that\ngets forgotten",
+            "this is the pane that gets forgotten",
             "Draw for the room you have",
             "Never scale text with a `viewBox`",
             "Boxes and arrows are a picture (§4) — always.",

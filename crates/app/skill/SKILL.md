@@ -1475,8 +1475,8 @@ which field actually survives it.' \
 `--page` takes the same shape `--ref` and `--diagram` do: the file, then an optional
 `[name]`, then a note. It is a pane like any other — it takes a name the prose can say,
 it folds, and a point can land in it. An agent reaches for a file without thinking and
-a picture when prompted; this is the pane that
-gets forgotten, so ask the question on purpose.
+a picture when prompted; this is the pane that gets forgotten, so ask the question on
+purpose.
 
 ### What pages are for
 
@@ -1655,8 +1655,10 @@ where it should read 7.
 deck group <path> \
   --say '[point read-a] Worker A reads the count: 5. [point read-b] Before A is done,
 worker B reads it too, and also sees 5. [point write-a] A writes 6. [point write-b] Then
-B writes 6 over it, and one increment is gone. That is [race].' \
-  --page 'race.html [race] two workers, one count'
+B writes 6 over it, and one increment is gone. That is [race], and [bump] is
+where it happens: a read and a write with nothing holding them together.' \
+  --page 'race.html [race] two workers, one count' \
+  --ref 'src/counter.ts:12-14 [bump] read, add one, write'
 ```
 
 ```html
@@ -1667,7 +1669,7 @@ B writes 6 over it, and one increment is gone. That is [race].' \
   text { font: 11px ui-monospace, monospace; fill: var(--deck-muted) }
   .name { fill: var(--deck-fg); font-size: 12px }
   .bar { fill: var(--deck-edge) }  .bar.lit { fill: var(--deck-accent) }
-  .on { fill: var(--deck-on-accent) }
+  .on-bar { fill: var(--deck-on-accent) }
   .lost { fill: var(--deck-del); font-weight: 600 }
 </style>
 <svg id="s"></svg>
@@ -1676,10 +1678,10 @@ B writes 6 over it, and one increment is gone. That is [race].' \
 const lanes = { 'worker A': [[0, 2, 'read 5'], [2, 8, ''], [8, 10, 'write 6']],
                 'worker B': [[2, 4, 'read 5'], [4, 10, ''], [10, 12, 'write 6']] }
 const at  = { 'read-a': 2, 'read-b': 4, 'write-a': 10, 'write-b': 12 }
-const lit = { 'read-a': ['worker A0'], 'read-b': ['worker A0', 'worker B0'],
-              'write-a': ['worker A2'], 'write-b': ['worker B2'] }
+const lit = { 'read-a': 'worker A0', 'read-b': 'worker B0',      // one thing each
+              'write-a': 'worker A2', 'write-b': 'worker B2' }
 const svg = document.getElementById('s')
-let shown = 0, target = 0, point = null
+let shown = 0, target = 0, point = null, frame = 0
 
 function add(tag, attrs, text) {
   const e = document.createElementNS('http://www.w3.org/2000/svg', tag)
@@ -1699,10 +1701,12 @@ function draw(t) {                       // the scene at time t, for this pane's
     add('text', { x: 16, y: y + 16, class: 'name' }, name)
     spans.forEach(([from, to, label], i) => {
       if (from >= t) return
-      const end = Math.min(to, t), on = (lit[point] || []).includes(name + i) && end === to
-      add('rect', { x: x(from) + 1, y, width: x(end) - x(from) - 2, height: 22, rx: 4,
-                    class: on ? 'bar lit' : 'bar' })
-      if (label && end === to) add('text', { x: x(from) + 6, y: y + 15, class: on ? 'on' : '' }, label)
+      const end = Math.min(to, t), on = lit[point] === name + i && end === to
+      const width = Math.max(0, x(end) - x(from) - 2)
+      add('rect', { x: x(from) + 1, y, width, height: 22, rx: 4, class: on ? 'bar lit' : 'bar' })
+      // A label that does not fit its bar is left off, never spilled over it.
+      if (label && end === to && label.length * 7 + 12 < width)
+        add('text', { x: x(from) + 6, y: y + 15, class: on ? 'on-bar' : '' }, label)
     })
   })
   const y = top + lane * 2.5
@@ -1718,7 +1722,7 @@ function run() {                         // time runs forward to the sentence, e
   shown += (target - shown) * 0.14
   if (Math.abs(target - shown) < 0.02) shown = target
   draw(shown)
-  if (shown !== target) requestAnimationFrame(run)
+  frame = shown === target ? 0 : requestAnimationFrame(run)
 }
 
 addEventListener('deck:point', (e) => {
@@ -1726,6 +1730,7 @@ addEventListener('deck:point', (e) => {
   target = point ? at[point] : 0
   if (!point || target < shown) shown = target
   if (matchMedia('(prefers-reduced-motion: reduce)').matches) shown = target
+  cancelAnimationFrame(frame)            // one clock, however fast the points come
   run()
 })
 addEventListener('resize', () => draw(shown))
@@ -1733,7 +1738,9 @@ draw(0)
 </script>
 ```
 
-Two lanes, a track, four moments, and every colour borrowed. Nothing in it is a box with
+Two lanes, a track, four moments, one thing lit at each, and every colour borrowed —
+with the three lines that cause it beside it, so the reader sees the race and the code
+that allows it in the same breath. Nothing in it is a box with
 a label for a box's sake: every shape is something happening, at the time it happens.
 That is the size and the kind of thing that works. A page with a legend, a title and six
 controls is a small web app, and the reader did not open deck to use a small web app.

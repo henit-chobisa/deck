@@ -413,6 +413,8 @@ fn dressed(html: &str, palette: &Palette) -> String {
          }}\
          html,body{{background:transparent;color:var(--deck-fg);\
            font:12px ui-monospace,SFMono-Regular,Menlo,monospace;}}\
+         [data-show],[data-from]{{transition:opacity .35s}}\
+         .deck-off{{opacity:0;pointer-events:none}}\
          </style>{html}",
         bg = hex(palette.bg),
         fg = hex(palette.fg),
@@ -437,20 +439,25 @@ fn dressed(html: &str, palette: &Palette) -> String {
 /// And the declarative half, so most pages need no script at all: an element
 /// with `data-on="hop settle"` wears `on` while the point is either of those;
 /// `data-show="hop"` is there only then; `data-from="hop"` arrives at `hop`
-/// and stays for every point after it, in the order `deck-points` lists them.
+/// and stays for every step after it, in the order `deck-points` lists them —
+/// a point at a plain element in between does not take it away.
 /// At rest — no point — nothing is on and nothing shown is showing, which is
 /// the still first frame a page must open on.
 const SHIM: &str = "window.deck=window.deck||{at:null};\
+    var deckStep=null;\
     function deckApply(at){\
       var meta=document.querySelector('meta[name=deck-points]');\
       var order=meta?meta.content.split(/\\s+/):[];\
-      var here=order.indexOf(at);\
-      var has=function(e,k){return at!==null&&e.getAttribute(k).split(/\\s+/).indexOf(at)>=0;};\
-      document.querySelectorAll('[data-on]').forEach(function(e){e.classList.toggle('on',has(e,'data-on'));});\
-      document.querySelectorAll('[data-show]').forEach(function(e){e.classList.toggle('deck-off',!has(e,'data-show'));});\
-      document.querySelectorAll('[data-from]').forEach(function(e){\
-        var from=order.indexOf(e.getAttribute('data-from'));\
-        e.classList.toggle('deck-off',!(at!==null&&here>=0&&from>=0&&here>=from));});\
+      if(at===null){deckStep=null;}else if(order.indexOf(at)>=0){deckStep=at;}\
+      var here=order.indexOf(deckStep);\
+      var names=function(e,k){var v=e.getAttribute(k);return v===null?null:v.split(/\\s+/);};\
+      document.querySelectorAll('[data-on]').forEach(function(e){\
+        e.classList.toggle('on',at!==null&&names(e,'data-on').indexOf(at)>=0);});\
+      document.querySelectorAll('[data-show],[data-from]').forEach(function(e){\
+        var show=names(e,'data-show'),from=names(e,'data-from'),seen=true;\
+        if(show){seen=at!==null&&show.indexOf(at)>=0;}\
+        if(from){var f=order.indexOf(from[0]);seen=seen&&here>=0&&f>=0&&here>=f;}\
+        e.classList.toggle('deck-off',!seen);});\
     }\
     addEventListener('deck:point',function(e){deckApply(e.detail);});\
     addEventListener('DOMContentLoaded',function(){\
@@ -515,4 +522,21 @@ fn quoted(text: &str) -> String {
     }
     out.push('"');
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{SHIM, dressed};
+
+    /// What `data-show` and `data-from` switch has to look like something.
+    /// The script toggled a class nothing styled, and both did nothing.
+    #[test]
+    fn what_the_shim_hides_is_hidden() {
+        let page = dressed(
+            "<p>x</p>",
+            &crate::palette::current_on(true, Default::default()),
+        );
+        assert!(page.contains(".deck-off{opacity:0"));
+        assert!(SHIM.contains("'deck-off'"));
+    }
 }
