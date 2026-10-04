@@ -71,11 +71,12 @@ objc2-app-kit = "0.3"
 objc2-foundation = "0.3"
 
 # The few things gpui does not do on Windows: keeping the deck above other
-# windows, and the dimming sheet behind it for zen. gpui already builds this
-# version, so it costs a few features rather than a crate.
+# windows, and fitting the frame Windows draws to the corner deck paints. gpui
+# already builds this version, so it costs a few features rather than a crate.
 [target.'cfg(target_os = "windows")'.dependencies]
 windows = { version = "0.62", features = [
     "Win32_Foundation",
+    "Win32_Graphics_Dwm",
     "Win32_UI_WindowsAndMessaging",
 ] }
 

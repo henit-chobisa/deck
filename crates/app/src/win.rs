@@ -6,6 +6,10 @@
 use gpui_kit::Window;
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 use windows::Win32::Foundation::HWND;
+use windows::Win32::Graphics::Dwm::{
+    DWMWA_BORDER_COLOR, DWMWA_COLOR_NONE, DWMWA_WINDOW_CORNER_PREFERENCE, DWMWCP_ROUND,
+    DwmSetWindowAttribute,
+};
 use windows::Win32::UI::WindowsAndMessaging::{
     HWND_TOPMOST, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SetWindowPos,
 };
@@ -41,5 +45,37 @@ pub fn keep_on_top(window: &Window) {
                 SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
             );
         }
+    }
+}
+
+/// Make the frame Windows draws agree with the one deck paints.
+///
+/// As an ordinary window the deck gets Windows 11's own frame: a hairline
+/// border and an 8-point rounded corner, with a shadow. Deck paints its own
+/// corner on a transparent window, so the two disagreed — a grey line traced
+/// a rectangle just outside the painted curve. The border goes, the corner is
+/// asked to stay rounded, and deck paints its corner at the same 8 points on
+/// Windows (see `view::WINDOW_CORNER`), so the shadow follows the deck.
+pub fn fit_frame(window: &Window) {
+    let Some(hwnd) = hwnd(window) else {
+        return;
+    };
+    let none = DWMWA_COLOR_NONE;
+    let round = DWMWCP_ROUND;
+    // SAFETY: a live window's handle and pointers to two locals of the sizes
+    // passed, read during the call only.
+    unsafe {
+        let _ = DwmSetWindowAttribute(
+            hwnd,
+            DWMWA_BORDER_COLOR,
+            (&raw const none).cast(),
+            size_of_val(&none) as u32,
+        );
+        let _ = DwmSetWindowAttribute(
+            hwnd,
+            DWMWA_WINDOW_CORNER_PREFERENCE,
+            (&raw const round).cast(),
+            size_of_val(&round) as u32,
+        );
     }
 }

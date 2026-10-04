@@ -456,7 +456,10 @@ pub fn open_deck(session: Session, cx: &mut App) {
 
     let handle = match cx.open_window(options, |window, cx| {
         #[cfg(target_os = "windows")]
-        win::keep_on_top(window);
+        {
+            win::keep_on_top(window);
+            win::fit_frame(window);
+        }
         let view = cx.new(|cx| DeckView::resume(session, window, cx));
         cx.new(|cx| Root::new(view, window, cx))
     }) {

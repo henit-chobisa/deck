@@ -4194,7 +4194,10 @@ impl DeckView {
                         // area the window says is a caption, and with the real
                         // one hidden nothing said so — the deck could not be
                         // moved at all (#50). The platform's caption also
-                        // brings its own double-click to maximise.
+                        // brings its own double-click, which maximises and
+                        // restores — so the `on_click` below only ever runs on
+                        // other platforms: on Windows the caption's clicks
+                        // never reach the deck.
                         div()
                             .id("deck-titlebar")
                             .h_flex()
@@ -6227,7 +6230,11 @@ const SEAM: f32 = 7.;
 /// Near enough to what macOS gives a window of this kind that the two agree,
 /// and the window is transparent behind it so a disagreement shows as a
 /// slightly rounder corner rather than as a square one.
-const WINDOW_CORNER: f32 = 14.;
+///
+/// On Windows it is Windows 11's own 8, because there the platform draws a
+/// rounded shadow around the window too, and a deck rounder than its shadow
+/// showed a sliver of it at every corner (see `win::fit_frame`).
+const WINDOW_CORNER: f32 = if cfg!(target_os = "windows") { 8. } else { 14. };
 
 /// How wide the rail is folded down to its spine.
 ///
