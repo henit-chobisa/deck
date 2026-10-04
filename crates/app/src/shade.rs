@@ -33,6 +33,13 @@
 //!   out of the switcher, out of Spaces animations. This is why a tiling window
 //!   manager leaves it alone: there is no window there that it can see.
 //! - **no shadow** — a shadow is a window announcing its edges.
+//!
+//! # On Windows
+//!
+//! The same idea with Win32's words for it: one layered, click-through,
+//! never-activated window over each monitor, slotted beneath the deck. See the
+//! Windows `sheets` module below. There is no blur there — the platform has
+//! none to offer behind an arbitrary window — so `blur` is a dim.
 
 #[cfg(target_os = "macos")]
 mod sheets {
@@ -194,6 +201,10 @@ mod sheets {
 
     /// Nothing to note here: the deck's level already puts it above the sheets.
     pub fn behind(_window: &gpui_kit::Window) {}
+
+    /// Nothing to put away: a panel at nothing is click-through, out of the
+    /// switcher and inert, and it is kept for the next time.
+    pub fn rest() {}
 }
 
 #[cfg(target_os = "windows")]
@@ -223,7 +234,7 @@ mod sheets {
     };
     use windows::Win32::System::LibraryLoader::GetModuleHandleW;
     use windows::Win32::UI::WindowsAndMessaging::{
-        CreateWindowExW, DefWindowProcW, DestroyWindow, LWA_ALPHA, RegisterClassW,
+        CreateWindowExW, DefWindowProcW, DestroyWindow, LWA_ALPHA, RegisterClassW, SW_HIDE,
         SW_SHOWNOACTIVATE, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SetLayeredWindowAttributes,
         SetWindowPos, ShowWindow, WNDCLASSW, WS_EX_LAYERED, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW,
         WS_EX_TOPMOST, WS_EX_TRANSPARENT, WS_POPUP,
@@ -233,7 +244,7 @@ mod sheets {
     thread_local! {
         /// The sheets, one per monitor, kept between uses and faded rather
         /// than closed — for the reason the Mac's are.
-        static SHEETS: RefCell<Vec<isize>> = const { RefCell::new(Vec::new()) };
+        static SHEETS: RefCell<Vec<(isize, RECT)>> = const { RefCell::new(Vec::new()) };
         /// The deck they sit beneath.
         static DECK: Cell<Option<isize>> = const { Cell::new(None) };
         static LIT: Cell<bool> = const { Cell::new(false) };
@@ -250,12 +261,12 @@ mod sheets {
     }
 
     // Clamped to nought..one first, so the byte it becomes cannot overflow.
-    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    #[allow(clippy::cast_possible_truncation)]
     pub fn set_alpha(alpha: f64) {
         ALPHA.set(alpha);
         let level = (alpha.clamp(0., 1.) * 255.).round() as u8;
         SHEETS.with_borrow(|sheets| {
-            for &sheet in sheets {
+            for &(sheet, _) in sheets {
                 // SAFETY: a window this thread made and still owns.
                 unsafe {
                     let _ = SetLayeredWindowAttributes(
@@ -307,7 +318,7 @@ mod sheets {
         found
     }
 
-    /// One sheet over one monitor, born at nothing so it arrives by fading.
+    /// One sheet over one monitor, born at nothing and not yet shown.
     fn sheet(over: RECT) -> Option<isize> {
         // SAFETY: plain Win32 window creation on the thread that runs gpui's
         // message loop, which is the one that will deliver its messages.
@@ -343,8 +354,17 @@ mod sheets {
             )
             .ok()?;
             let _ = SetLayeredWindowAttributes(sheet, COLORREF(0), 0, LWA_ALPHA);
-            let _ = ShowWindow(sheet, SW_SHOWNOACTIVATE);
             Some(sheet.0 as isize)
+        }
+    }
+
+    /// Take every sheet off the screen for good.
+    fn destroy(sheets: Vec<(isize, RECT)>) {
+        for (sheet, _) in sheets {
+            // SAFETY: a window this thread made, no longer referenced.
+            unsafe {
+                let _ = DestroyWindow(HWND(sheet as *mut _));
+            }
         }
     }
 
@@ -352,40 +372,81 @@ mod sheets {
         if on() {
             return;
         }
-        LIT.set(true);
-        // Made fresh each time the lights go down, from the monitors there
-        // are now: one plugged in or taken away since the last time is
-        // covered, or not, as it should be. The old ones are already at
-        // nothing.
-        let fresh: Vec<isize> = monitors().into_iter().filter_map(sheet).collect();
-        let old = SHEETS.replace(fresh);
-        for sheet in old {
-            // SAFETY: a window this thread made, no longer referenced.
-            unsafe {
-                let _ = DestroyWindow(HWND(sheet as *mut _));
-            }
+        // Without the deck's handle there is nowhere to put the sheets but
+        // on top of everything, the deck included. Better no dimming.
+        let Some(deck) = DECK.get() else {
+            return;
+        };
+
+        // The sheets are kept while the monitors stay as they were, so going
+        // dark again partway through coming up carries on from where the
+        // light had got to rather than snapping clear first. A monitor
+        // plugged in or taken away makes a fresh set. One changed *while* the
+        // lights are down is not followed until the next time.
+        let now = monitors();
+        let kept = SHEETS.with_borrow(|sheets| {
+            sheets.len() == now.len()
+                && sheets
+                    .iter()
+                    .zip(&now)
+                    .all(|((_, over), rect)| over == rect)
+        });
+        if !kept {
+            let fresh = now
+                .into_iter()
+                .filter_map(|over| sheet(over).map(|sheet| (sheet, over)))
+                .collect();
+            destroy(SHEETS.replace(fresh));
+            ALPHA.set(0.);
         }
-        ALPHA.set(0.);
-        // Beneath the deck: placed *after* it in the order, which among
-        // windows that are both kept on top is directly below it.
-        if let Some(deck) = DECK.get() {
-            SHEETS.with_borrow(|sheets| {
-                for &sheet in sheets {
-                    // SAFETY: two live windows' handles, asked only to change order.
-                    unsafe {
-                        let _ = SetWindowPos(
-                            HWND(sheet as *mut _),
-                            Some(HWND(deck as *mut _)),
-                            0,
-                            0,
-                            0,
-                            0,
-                            SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
-                        );
-                    }
+
+        // Shown, and beneath the deck: placed *after* it in the order, which
+        // among windows that are both kept on top is directly below it.
+        let placed = SHEETS.with_borrow(|sheets| {
+            sheets.iter().all(|&(sheet, _)| {
+                // SAFETY: two live windows' handles, asked to show one and
+                // change its place in the order.
+                unsafe {
+                    let _ = ShowWindow(HWND(sheet as *mut _), SW_SHOWNOACTIVATE);
+                    SetWindowPos(
+                        HWND(sheet as *mut _),
+                        Some(HWND(deck as *mut _)),
+                        0,
+                        0,
+                        0,
+                        0,
+                        SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
+                    )
+                    .is_ok()
                 }
-            });
+            })
+        });
+        // One that could not be put beneath the deck would sit above it and
+        // dim the deck too. So none at all.
+        if !placed {
+            destroy(SHEETS.take());
+            ALPHA.set(0.);
+            return;
         }
+        LIT.set(true);
+    }
+
+    /// The lights are up and the fade has finished: take the sheets off the
+    /// screen. They are kept for next time, but hidden — a window left
+    /// showing at nothing is still a full-screen window to every tool that
+    /// lists windows, and to whatever is trying to play full-screen beneath.
+    pub fn rest() {
+        if on() {
+            return;
+        }
+        SHEETS.with_borrow(|sheets| {
+            for &(sheet, _) in sheets {
+                // SAFETY: a window this thread made and still owns.
+                unsafe {
+                    let _ = ShowWindow(HWND(sheet as *mut _), SW_HIDE);
+                }
+            }
+        });
     }
 
     pub fn lights_on() {
@@ -406,6 +467,7 @@ mod sheets {
         0.
     }
     pub fn behind(_window: &gpui_kit::Window) {}
+    pub fn rest() {}
 }
 
 use std::time::Duration;
@@ -460,7 +522,16 @@ pub fn lights_on(cx: &mut App) {
 /// breath as bringing the lights up, and a fade that stops there is the thing
 /// being asked for going unseen. The executor belongs to the application, and
 /// the bar keeps that alive.
+///
+/// One at a time. A fade that has been overtaken stops: the lights going
+/// down take eighteen frames and coming up eleven, so `z` pressed twice in a
+/// hurry left the slower one to finish last, and the screen stayed dark with
+/// the lights nominally on.
 fn fade(to: f64, frames: u32, cx: &mut App) {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static LATEST: AtomicU64 = AtomicU64::new(0);
+    let this = LATEST.fetch_add(1, Ordering::Relaxed) + 1;
+
     let from = sheets::alpha();
     if (to - from).abs() < f64::EPSILON {
         return;
@@ -469,11 +540,18 @@ fn fade(to: f64, frames: u32, cx: &mut App) {
     cx.spawn(async move |cx| {
         for frame in 1..=frames {
             cx.background_executor().timer(STEP).await;
+            if LATEST.load(Ordering::Relaxed) != this {
+                return;
+            }
             // Smoothstep, so it leaves and arrives slowly. A linear fade to
             // black reads as a shutter coming down.
             let much = f64::from(frame) / f64::from(frames);
             let eased = much * much * (3. - 2. * much);
             cx.update(|_| sheets::set_alpha(from + (to - from) * eased));
+        }
+        // Up, and nothing has asked for them down again: the sheets can go.
+        if to <= 0. {
+            cx.update(|_| sheets::rest());
         }
     })
     .detach();
