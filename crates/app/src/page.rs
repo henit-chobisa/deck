@@ -27,6 +27,7 @@ use std::rc::Rc;
 use deck_core::protocol::PageRef;
 use deck_core::theme::{Palette, Rgb};
 use gpui_kit::component::*;
+use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 
 use crate::palette::paint;
@@ -50,6 +51,8 @@ pub struct Paper {
     ids: Vec<SharedString>,
     /// The elements a point in the narration is holding a light on.
     pub pointed: Vec<SharedString>,
+    /// Whether the agent is talking about this pane. See [`Self::heed`].
+    heeded: crate::pane::Fade,
     /// What the reader has picked inside the page, if anything.
     ///
     /// A page has no lines, so a remark about one is pinned to whichever region
@@ -89,6 +92,7 @@ impl Paper {
             html: spec.page.clone().into(),
             dressed: None,
             pointed: Vec::new(),
+            heeded: crate::pane::Fade::default(),
             selected: None,
             view: None,
             at: None,
@@ -252,9 +256,21 @@ impl Paper {
     /// Deck draws the chrome and leaves a hole. The hole is measured as it is
     /// painted and the native view is moved to sit in it, which is the only way
     /// two rendering worlds can share a window.
+    /// Outline this pane, or stop: the agent is talking about it, or is not.
+    pub fn heed(&mut self, on: bool) {
+        self.heeded.set(on);
+    }
+
+    /// Whether the outline is still coming up or going out.
+    #[must_use]
+    pub fn fading(&self) -> bool {
+        self.heeded.moving()
+    }
+
     pub fn render(&self, slot: &Slot, cx: &App) -> impl IntoElement {
         let palette = slot.palette;
         let hole = Rc::clone(&self.hole);
+        let heeded = self.heeded.level();
 
         div()
             .v_flex()
@@ -280,24 +296,39 @@ impl Paper {
             ))
             .relative()
             .children(self.render_again(slot.ix, palette, slot.view))
+            // Two points in from the pane's edge, always. The page is a
+            // native view laid over this hole, and it covers anything deck
+            // draws under it — so the outline below needs a margin of the
+            // pane's own to be seen in.
             .child(
-                canvas(
-                    move |at, window, _cx| {
-                        // Only recorded. The window reads this at the top of
-                        // the next frame and moves the view then, because
-                        // nothing may change the window while it is drawing.
-                        //
-                        // A hole that moved asks for one more frame, so the
-                        // view is never left where the last-but-one frame had
-                        // it when a movement stops.
-                        if hole.replace(Some(at)) != Some(at) {
-                            window.request_animation_frame();
-                        }
-                    },
-                    |_, (), _, _| {},
-                )
-                .size_full(),
+                div().flex_1().min_h_0().p(px(crate::pane::FRAME)).child(
+                    canvas(
+                        move |at, window, _cx| {
+                            // Only recorded. The window reads this at the top of
+                            // the next frame and moves the view then, because
+                            // nothing may change the window while it is drawing.
+                            //
+                            // A hole that moved asks for one more frame, so the
+                            // view is never left where the last-but-one frame had
+                            // it when a movement stops.
+                            if hole.replace(Some(at)) != Some(at) {
+                                window.request_animation_frame();
+                            }
+                        },
+                        |_, (), _, _| {},
+                    )
+                    .size_full(),
+                ),
             )
+            // The pane being talked about, outlined — as a code pane is. A
+            // point lit the block inside the picture and left the pane itself
+            // unmarked, so with two panes side by side there was nothing to
+            // say which one the sentence meant (#49).
+            // Not round a pane that has folded away: a name hovered in the
+            // prose can ask for one, and there is nothing there to frame.
+            .when(heeded > 0. && slot.fold < 1., |pane| {
+                pane.child(crate::pane::outline(palette, heeded))
+            })
     }
 }
 

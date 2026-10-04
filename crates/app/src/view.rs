@@ -2041,33 +2041,38 @@ impl DeckView {
         cx.notify();
     }
 
-    /// Outline the pane the agent is talking about, and only that one.
+    /// Outline the panes the agent is talking about, and no others.
     ///
-    /// The pane it is pointing into, when it is pointing. Otherwise the pane it
-    /// last moved the spotlight in. And only while live: a reader going through
-    /// a deck alone is not being talked to about anything.
+    /// Which those are is [`about`]'s to say. And only while live: a reader
+    /// going through a deck alone is not being talked to about anything.
     ///
     /// Worked out from state every frame rather than set at each place that
     /// state changes. There are five of those, and a light left on by the one
     /// that was forgotten is worse than no light.
     fn heed(&mut self) {
-        let pointed = self
+        // Whichever kind of pane the point landed in: lines of a file, a
+        // block of a picture, an element of a page. One point may land in two
+        // — `[point 106-110 checkout]` — and then both are being talked about.
+        let pointed: Vec<usize> = self
             .panes
             .iter()
-            .position(|pane| pane.code().is_some_and(|code| code.pointed().is_some()));
+            .enumerate()
+            .filter(|(_, pane)| {
+                pane.code().is_some_and(|code| code.pointed().is_some())
+                    || pane.chart().is_some_and(|chart| !chart.pointed.is_empty())
+                    || pane.paper().is_some_and(|paper| !paper.pointed.is_empty())
+            })
+            .map(|(ix, _)| ix)
+            .collect();
         let staged = self
             .live
             .stage()
             .filter(|stage| self.group().is_some_and(|group| group.id == stage.group));
         let shown = staged.and_then(|stage| {
-            self.panes.iter().position(|pane| {
-                pane.code()
-                    .is_some_and(|code| stage.ref_id.as_deref() == Some(code.ref_id.as_ref()))
-            })
+            self.panes
+                .iter()
+                .position(|pane| stage.ref_id.as_deref() == Some(pane.ref_id().as_ref()))
         });
-        // The reader asking beats the agent pointing. They put the pointer on a
-        // name to find its pane, and showing them some other pane because a
-        // sentence moved on would answer a question they did not ask.
         let asked = self
             .name_hovered
             .as_ref()
@@ -2076,10 +2081,15 @@ impl DeckView {
         let attending = self
             .attending
             .is_some_and(|until| std::time::Instant::now() < until);
-        let about = asked.or(pointed.or(shown).filter(|_| attending));
+        let about = about(asked, &pointed, shown, attending);
         for (ix, pane) in self.panes.iter_mut().enumerate() {
+            let on = about.contains(&ix);
             if let Some(code) = pane.code_mut() {
-                code.heed(Some(ix) == about);
+                code.heed(on);
+            } else if let Some(chart) = pane.chart_mut() {
+                chart.heed(on);
+            } else if let Some(paper) = pane.paper_mut() {
+                paper.heed(on);
             }
         }
     }
@@ -6339,10 +6349,11 @@ impl Render for DeckView {
                 .as_ref()
                 .is_some_and(|(_, light)| light.moving())
             || self.folds.iter().any(crate::pane::Fade::moving)
-            || self
-                .panes
-                .iter()
-                .any(|pane| pane.code().is_some_and(Pane::fading))
+            || self.panes.iter().any(|pane| {
+                pane.code().is_some_and(Pane::fading)
+                    || pane.chart().is_some_and(crate::chart::Chart::fading)
+                    || pane.paper().is_some_and(crate::page::Paper::fading)
+            })
         {
             window.request_animation_frame();
         }
@@ -6782,6 +6793,27 @@ impl Render for DeckView {
     }
 }
 
+/// Which panes to frame.
+///
+/// The reader asking beats the agent pointing. They put the pointer on a name
+/// to find its pane, and showing them some other pane because a sentence moved
+/// on would answer a question they did not ask. Otherwise every pane the
+/// sentence points into, or failing that the one the spotlight last moved in —
+/// and neither once the agent has stopped talking.
+fn about(
+    asked: Option<usize>,
+    pointed: &[usize],
+    shown: Option<usize>,
+    attending: bool,
+) -> Vec<usize> {
+    match asked {
+        Some(asked) => vec![asked],
+        None if !attending => Vec::new(),
+        None if pointed.is_empty() => shown.into_iter().collect(),
+        None => pointed.to_vec(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     #[test]
@@ -6924,6 +6956,22 @@ mod tests {
     use core::prelude::v1::test;
 
     use super::*;
+
+    #[test]
+    fn the_frame_goes_round_what_is_being_talked_about() {
+        // Every pane the sentence points into, whatever its kind.
+        assert_eq!(about(None, &[0, 2], Some(1), true), [0, 2]);
+        // Nothing pointed at: where the spotlight last moved.
+        assert_eq!(about(None, &[], Some(1), true), [1]);
+        // The reader asking beats both, and does not wait for the agent.
+        assert_eq!(about(Some(3), &[0], Some(1), true), [3]);
+        assert_eq!(about(Some(3), &[], None, false), [3]);
+        // Nobody talking, nothing framed.
+        assert!(about(None, &[0], Some(1), false).is_empty());
+        assert!(about(None, &[], None, true).is_empty());
+        // Asked for and pointed at is still one pane, once.
+        assert_eq!(about(Some(0), &[0, 2], None, true), [0]);
+    }
 
     #[test]
     fn a_dragged_share_is_ignored_once_it_is_the_only_pane_open() {
