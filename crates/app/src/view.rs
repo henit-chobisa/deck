@@ -3018,6 +3018,10 @@ impl DeckView {
     /// the window and has to be told where to stand on every frame.
     fn settle_pages(&mut self, window: &Window) {
         let spread = self.spread;
+        let moving = self.folds.iter().any(crate::pane::Fade::moving) || self.rail_open.moving();
+        if moving {
+            window.request_animation_frame();
+        }
         let palette = self.palette;
         for ix in 0..self.panes.len() {
             // Shaded, mid-turn or folding: a native view cannot join in with
@@ -3036,7 +3040,11 @@ impl DeckView {
             if self.folds.get(ix).is_some_and(crate::pane::Fade::moving) {
                 window.request_animation_frame();
             }
-            let still = !spread && !folding;
+            // Nor while anything beside it moves. A neighbour folding or the
+            // rail sliding reshapes the hole every frame, and the view —
+            // told where to stand a frame late each time — wobbled along
+            // after it, relaying out its page at every step.
+            let still = !spread && !folding && !moving;
             let Some(paper) = self.panes.get_mut(ix).and_then(Sheet::paper_mut) else {
                 continue;
             };
