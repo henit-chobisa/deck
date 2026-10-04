@@ -539,7 +539,9 @@ off, and they cannot skim past it the way they would on a page.
 `deck wait` returns before the review is finished whenever the reader says
 something. Instead of a review you get `{"asked": …}` — what they said, and what
 was on screen when they said it. Answer with `deck say`, then call `deck wait`
-again. Same verb, and the loop continues until they submit.
+again — straight away: a minute and a half after you have spoken with no waiter
+running, the window tells them nobody is listening. Same verb, and the loop
+continues until they submit.
 
 The conversation is always there: it does not need a mode turned on, and neither
 do you. Assume somebody may talk to you at any point after `deck open`.

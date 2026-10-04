@@ -713,21 +713,20 @@ pub fn answering(root: &Path) {
 
 /// Say the agent is still at it: it has just done something to the deck.
 ///
-/// Only while it is away with a question. An agent that shows a pane or
-/// brings a page in mid-answer is plainly alive, and the clock starts again;
-/// one that was never asked anything is not made present by speaking.
+/// Only while it is away with a question, and back onto the long clock —
+/// an agent that says *"looking"* and then shows a pane is working again,
+/// not about to wait. One that was never asked anything is not made present
+/// by doing things, and one given up on is not brought back.
 pub fn still_answering(root: &Path) {
-    let mark = root.join(ANSWERING);
-    if let Ok(was) = std::fs::read(&mark) {
-        let _ = std::fs::write(mark, was);
+    if presence(root) == Presence::Answering {
+        let _ = std::fs::write(root.join(ANSWERING), b"asked");
     }
 }
 
 /// Say the agent has answered, and should be waiting again shortly.
 pub fn answered(root: &Path) {
-    let mark = root.join(ANSWERING);
-    if mark.exists() {
-        let _ = std::fs::write(mark, b"said");
+    if presence(root) == Presence::Answering {
+        let _ = std::fs::write(root.join(ANSWERING), b"said");
     }
 }
 
@@ -754,10 +753,15 @@ pub enum Presence {
 /// one that died an hour ago must not read as somebody listening.
 #[must_use]
 pub fn presence(root: &Path) -> Presence {
+    // A mark dated a little into the future is a clock that stepped back,
+    // not a mark from long ago: it counts by how far off it is.
     let fresh = |name: &str, within: std::time::Duration| {
         std::fs::metadata(root.join(name))
             .and_then(|marked| marked.modified())
-            .is_ok_and(|at| at.elapsed().is_ok_and(|since| since < within))
+            .is_ok_and(|at| {
+                at.elapsed()
+                    .map_or_else(|ahead| ahead.duration() < within, |since| since < within)
+            })
     };
     if fresh(HEARD, STILL_THERE) {
         return Presence::Listening;
@@ -786,6 +790,8 @@ pub fn is_heard(root: &Path) -> bool {
 ///
 /// When the marker cannot be written.
 pub fn shut(root: &Path) -> std::io::Result<()> {
+    // The walk is over, whatever the agent was in the middle of.
+    stopped_answering(root);
     std::fs::write(root.join(SHUT), b"")
 }
 
@@ -1011,26 +1017,49 @@ mod tests {
         assert_eq!(presence(deck), Presence::Answering);
         assert!(is_heard(deck));
 
-        // Five minutes into a slow answer: still there. Eleven: gone.
+        // Nine minutes into a slow answer it does something to the deck, and
+        // the clock starts again: nine minutes later still, it is there.
+        age(ANSWERING, minutes(9));
+        still_answering(deck);
+        age(ANSWERING, minutes(9));
+        assert_eq!(presence(deck), Presence::Answering);
+
+        // It says "looking" — expected back soon — and then goes on working.
+        // That is the long clock again, not the short one.
+        answered(deck);
+        still_answering(deck);
         age(ANSWERING, minutes(5));
         assert_eq!(presence(deck), Presence::Answering);
-        age(ANSWERING, minutes(11));
-        assert_eq!(presence(deck), Presence::Nobody);
 
-        // Doing something to the deck mid-answer starts the clock again.
-        still_answering(deck);
-        assert_eq!(presence(deck), Presence::Answering);
-
-        // Having spoken, it is expected back soon — not for ten minutes.
+        // Having answered and done nothing since, it is given a minute and
+        // a half to start waiting, not ten.
         answered(deck);
-        assert_eq!(presence(deck), Presence::Answering);
         age(ANSWERING, minutes(2));
         assert_eq!(presence(deck), Presence::Nobody);
 
-        // Speaking does not make an agent present that was never asked.
+        // Given up on, it is not brought back by a late word.
+        still_answering(deck);
+        answered(deck);
+        assert_eq!(presence(deck), Presence::Nobody);
+
+        // A clock that stepped back a few seconds does not lose it.
+        answering(deck);
+        let file = std::fs::File::options()
+            .write(true)
+            .open(deck.join(ANSWERING))
+            .expect("the mark is there");
+        file.set_modified(std::time::SystemTime::now() + std::time::Duration::from_secs(5))
+            .expect("and can be dated ahead");
+        assert_eq!(presence(deck), Presence::Answering);
+
+        // Speaking does not make an agent present that was never asked, and
+        // closing the deck ends it whatever the agent was doing.
         stopped_answering(deck);
         answered(deck);
         still_answering(deck);
+        assert_eq!(presence(deck), Presence::Nobody);
+        answering(deck);
+        shut(deck).expect("the deck can be closed");
         assert_eq!(presence(deck), Presence::Nobody);
     }
 

@@ -551,14 +551,11 @@ impl Cli {
                 deck,
                 text,
                 timeout,
-            } => {
-                deck_cli::still_answering(&deck);
-                Err(ask(
-                    &deck,
-                    deck_cli::live::RequestBody::Doing { text },
-                    timeout,
-                ))
-            }
+            } => Err(ask(
+                &deck,
+                deck_cli::live::RequestBody::Doing { text },
+                timeout,
+            )),
             What::Clear { deck, timeout } => {
                 Err(ask(&deck, deck_cli::live::RequestBody::Clear, timeout))
             }
@@ -586,10 +583,7 @@ impl Cli {
                 fold,
                 timeout,
             } => Err(bring(
-                {
-                    deck_cli::still_answering(&deck);
-                    &deck
-                },
+                &deck,
                 Bringing {
                     reference: reference.as_deref(),
                     diagram: diagram.as_deref(),
@@ -906,17 +900,14 @@ fn show(
 
 /// Put the agent's words into an open walk.
 fn say(deck: &std::path::Path, text: &str, aloud: bool, timeout: u64) -> ExitCode {
-    let code = ask(
+    ask(
         deck,
         deck_cli::live::RequestBody::Say {
             text: text.to_string(),
             aloud,
         },
         timeout,
-    );
-    // The answer has gone; the agent is expected back at `deck wait`.
-    deck_cli::answered(deck);
-    code
+    )
 }
 
 /// What `deck bring` was asked to put in the room.
@@ -1029,6 +1020,7 @@ fn bring(
 
 /// Send one request that answers only with whether the window took it.
 fn ask(deck: &std::path::Path, body: deck_cli::live::RequestBody, timeout: u64) -> ExitCode {
+    let spoke = matches!(body, deck_cli::live::RequestBody::Say { .. });
     let Some(runtime) = deck_core::home::deck() else {
         println!(
             "{}",
@@ -1061,6 +1053,14 @@ fn ask(deck: &std::path::Path, body: deck_cli::live::RequestBody, timeout: u64) 
                 Err(err) => eprintln!("deck: live reply will not print: {err}"),
             }
             if response.status == deck_cli::live::ResponseStatus::Applied {
+                // It reached the deck, so the agent is plainly alive: having
+                // spoken it is expected back at `deck wait`, and anything
+                // else means it is still working on the answer.
+                if spoke {
+                    deck_cli::answered(deck);
+                } else {
+                    deck_cli::still_answering(deck);
+                }
                 ExitCode::SUCCESS
             } else {
                 ExitCode::from(5)

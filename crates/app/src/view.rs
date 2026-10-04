@@ -4068,6 +4068,9 @@ impl DeckView {
     }
 
     fn submit_review(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        // The walk is over: whatever the agent was away answering, the review
+        // is what it gets now.
+        deck_cli::stopped_answering(&self.deck.root);
         let found = self.follow_the_files();
         let comments: Vec<deck_core::Comment> = self
             .remarks
