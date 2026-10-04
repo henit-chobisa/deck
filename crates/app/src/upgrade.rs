@@ -52,6 +52,13 @@ const RELEASES: &str = "https://api.github.com/repos/henit-chobisa/deck/releases
 /// What this build is.
 const RUNNING: &str = env!("CARGO_PKG_VERSION");
 
+/// How deck is installed, for anybody who has to be told.
+const INSTALL: &str = if cfg!(windows) {
+    "irm https://raw.githubusercontent.com/henit-chobisa/deck/main/install | iex"
+} else {
+    "curl -fsSL https://raw.githubusercontent.com/henit-chobisa/deck/main/install | sh"
+};
+
 /// What this platform's binary is called in a release asset's name, as in
 /// `deck-v0.1.3-macos-universal.tar.gz` or `deck-v0.1.3-linux-aarch64.tar.gz`.
 ///
@@ -103,10 +110,15 @@ pub fn run(unstable: Option<bool>) -> anyhow::Result<()> {
     println!();
 
     let here = installed()?;
-    if let Some(owner) = managed(&here) {
+    // Homebrew's copy is not replaced from here — the next `brew upgrade`
+    // would disagree — and Homebrew no longer gets new releases either. The
+    // install script moves a machine off it: it puts deck where this command
+    // can keep it current, and takes Homebrew's copy away.
+    if managed(&here).is_some() {
         bail!(
-            "deck was installed by {owner}, so {owner} should be the one to \
-             replace it — run `{owner} upgrade deck`"
+            "this deck came from Homebrew, which no longer gets new releases. \
+             Move to the one-command install — it replaces Homebrew's copy and \
+             keeps your settings:\n\n    {INSTALL}"
         );
     }
 
