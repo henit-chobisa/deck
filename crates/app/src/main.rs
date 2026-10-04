@@ -23,6 +23,8 @@ mod hook;
 mod icon;
 mod live;
 mod load;
+#[cfg(target_os = "macos")]
+mod mac;
 mod notes;
 mod notes_body;
 mod page;
@@ -364,6 +366,10 @@ pub fn open_pill_over(waiting: Vec<Session>, cx: &mut App) {
         // rounded panel of the window's own ground with the bar sitting inside
         // it. The bezel was not gone; it was brief.
         window.set_background_appearance(WindowBackgroundAppearance::Transparent);
+        // And never the keyboard. `focus: false` above only stops gpui asking
+        // for it; this stops the system handing it over anyway.
+        #[cfg(target_os = "macos")]
+        mac::never_key(window);
         cx.new(|cx| Pill::new(pending - 1, cx))
     }) {
         Ok(handle) => handle,
