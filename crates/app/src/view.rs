@@ -2997,11 +2997,16 @@ impl DeckView {
         let spread = self.spread;
         let palette = self.palette;
         for ix in 0..self.panes.len() {
-            // Shaded or mid-turn: a native view cannot join in with either, so
-            // it steps out rather than sitting on top of the movement. Whether
-            // it is folded is not asked here — the pane's own rectangle says
-            // that, and it is the one thing that cannot be out of date.
-            let still = !spread;
+            // Shaded, mid-turn or folding: a native view cannot join in with
+            // any of them, so it steps out rather than sitting on top of the
+            // movement. A fold in particular it trails by a frame, drawn over
+            // the seam and the pane beside it, and the last frame of one could
+            // leave it standing where the pane had been.
+            let folding = self
+                .folds
+                .get(ix)
+                .is_some_and(|fold| fold.moving() || fold.on());
+            let still = !spread && !folding;
             let Some(paper) = self.panes.get_mut(ix).and_then(Sheet::paper_mut) else {
                 continue;
             };

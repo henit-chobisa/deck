@@ -1679,6 +1679,22 @@ fn fold_button(slot: &Slot) -> AnyElement {
         .into_any_element()
 }
 
+/// What a picture's or a page's spine says: what it is called, and under
+/// that whatever says more.
+///
+/// Its name over its title when it has both. When the two are the same word —
+/// a page is labelled by its name — the note it was given stands under it
+/// instead, so two unnamed pages are not both just "page".
+pub(crate) fn spine_words(
+    name: Option<&SharedString>,
+    label: &SharedString,
+    note: Option<&SharedString>,
+) -> (SharedString, Option<SharedString>) {
+    let title = name.unwrap_or(label).clone();
+    let under = if *label == title { note } else { Some(label) };
+    (title, under.cloned())
+}
+
 /// A pane folded down to its spine at the window's edge.
 ///
 /// `title` is what the prose calls it, `under` whatever says which one it is
@@ -1932,6 +1948,28 @@ mod tests {
     use core::prelude::v1::test;
 
     use super::*;
+
+    #[test]
+    fn a_spine_says_the_name_and_then_whatever_says_more() {
+        let words = |name: Option<&str>, label: &str, note: Option<&str>| {
+            let (name, note) = (name.map(SharedString::from), note.map(SharedString::from));
+            let (title, under) =
+                spine_words(name.as_ref(), &SharedString::from(label), note.as_ref());
+            (title.to_string(), under.map(|under| under.to_string()))
+        };
+        // A named picture: its name, over its title.
+        assert_eq!(
+            words(Some("flow"), "how it travels", Some("the path")),
+            ("flow".into(), Some("how it travels".into()))
+        );
+        // A page is labelled by its name, so the note stands under it.
+        assert_eq!(
+            words(Some("rows"), "rows", Some("which row wins")),
+            ("rows".into(), Some("which row wins".into()))
+        );
+        // Nothing but a label.
+        assert_eq!(words(None, "page", None), ("page".into(), None));
+    }
 
     #[test]
     fn without_a_proposed_change_a_line_is_its_own_row() {
