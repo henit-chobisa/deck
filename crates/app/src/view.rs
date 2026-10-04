@@ -960,7 +960,16 @@ impl DeckView {
             grid: layout,
             panes: Vec::new(),
             group_ix,
-            focus: cx.focus_handle(),
+            // Holding the keyboard from the start. Nothing else gave it to the
+            // deck until the reader clicked somewhere in it, and on Windows
+            // that left every key dead on a deck that had just been opened:
+            // with nothing focused, a key is offered to the window's root and
+            // never reaches the deck's own bindings.
+            focus: {
+                let focus = cx.focus_handle();
+                focus.focus(window, cx);
+                focus
+            },
             remarks,
             composing: None,
             composing_when: deck_core::When::Interrupt,
