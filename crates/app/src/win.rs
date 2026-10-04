@@ -110,8 +110,8 @@ pub fn rounds() -> bool {
 /// So the page gets a window the deck owns. An owned window always stands
 /// above its owner, goes away when the owner is minimised and is destroyed
 /// with it — which is everything a child would have done, above the surface
-/// rather than beneath it. It never takes the keyboard from the deck and has
-/// no place in the taskbar. What it cannot do is move with the deck by
+/// rather than beneath it. It has no place in the taskbar, and the keys the
+/// page has no use for go to the deck (see [`pass_key`]). What it cannot do is move with the deck by
 /// itself: it is put where the pane's hole is each time the deck draws, and
 /// the deck draws when it moves (see `open_window`).
 pub struct PageHost {
@@ -181,15 +181,22 @@ impl PageHost {
         use windows::Win32::Graphics::Gdi::ClientToScreen;
         use windows::Win32::UI::WindowsAndMessaging::{SWP_NOZORDER, SetWindowPos};
 
+        // Each edge rounded, and the size taken between them. Rounding the
+        // size by itself leaves a pixel of seam on one side or the other.
         let mut corner = POINT {
             x: whole(left),
             y: whole(top),
         };
-        let (wide, tall) = (whole(wide), whole(tall));
+        let wide = (whole(left + wide) - corner.x).max(0);
+        let tall = (whole(top + tall) - corner.y).max(0);
         // SAFETY: two windows this thread owns, and a local written during
         // the call only.
         unsafe {
-            let _ = ClientToScreen(HWND(self.deck as *mut _), &raw mut corner);
+            // Refused, the corner is still in the deck's own coordinates, and
+            // the host would be put there on the screen. Better left alone.
+            if !ClientToScreen(HWND(self.deck as *mut _), &raw mut corner).as_bool() {
+                return (wide, tall);
+            }
             let now = (corner.x, corner.y, wide, tall);
             if self.at.replace(Some(now)) != Some(now) {
                 let _ = SetWindowPos(
@@ -221,6 +228,11 @@ impl PageHost {
 
 impl Drop for PageHost {
     fn drop(&mut self) {
+        // A view asked for and never made, or made and never collected, goes
+        // with the window it was for — the view first.
+        let asked = WAITING.with_borrow_mut(|waiting| waiting.remove(&self.host));
+        let made = MADE.with_borrow_mut(|made| made.remove(&self.host));
+        drop((asked, made));
         // SAFETY: a window this thread made. Already gone when the deck that
         // owned it was closed first, and then this fails and nothing follows.
         unsafe {
@@ -230,14 +242,71 @@ impl Drop for PageHost {
     }
 }
 
-impl HasWindowHandle for PageHost {
+/// What makes a host's web view, given the host to make it in.
+type Make = Box<dyn FnOnce(&Standing) -> Option<wry::WebView>>;
+
+thread_local! {
+    /// The views asked for and not yet made, by host.
+    static WAITING: std::cell::RefCell<std::collections::HashMap<isize, Make>> =
+        std::cell::RefCell::new(std::collections::HashMap::new());
+    /// The views made and not yet collected, by host. `None` is one that
+    /// could not be made, so nobody goes on waiting for it.
+    static MADE: std::cell::RefCell<std::collections::HashMap<isize, Option<wry::WebView>>> =
+        std::cell::RefCell::new(std::collections::HashMap::new());
+}
+
+impl PageHost {
+    /// Ask for the web view to be made in this host, a moment from now.
+    ///
+    /// Not now, because now is the middle of the deck drawing itself. Making
+    /// a WebView2 waits for the browser by running the message loop where it
+    /// stands, and that loop hands gpui whatever work was queued for it —
+    /// while gpui is already in the middle of some. It answers
+    /// `RefCell already borrowed` and the process aborts. So the request is
+    /// posted to the host's own window, and the view is made when the
+    /// message loop gets to it with nothing of gpui's on the stack.
+    pub fn make(&self, make: impl FnOnce(&Standing) -> Option<wry::WebView> + 'static) {
+        use windows::Win32::Foundation::{LPARAM, WPARAM};
+        use windows::Win32::UI::WindowsAndMessaging::PostMessageW;
+        WAITING.with_borrow_mut(|waiting| waiting.insert(self.host, Box::new(make)));
+        // SAFETY: a message to a window this thread made and still owns.
+        unsafe {
+            let _ = PostMessageW(
+                Some(HWND(self.host as *mut _)),
+                MAKE_VIEW,
+                WPARAM(0),
+                LPARAM(0),
+            );
+        }
+    }
+
+    /// The view, once it has been made: `None` until then, and `Some(None)`
+    /// if the window would not take one.
+    pub fn made(&self) -> Option<Option<wry::WebView>> {
+        MADE.with_borrow_mut(|made| made.remove(&self.host))
+    }
+}
+
+/// A host's window, for the length of one call: what a web view is built in.
+pub struct Standing(isize);
+
+impl Standing {
+    /// Which host this is, for [`pass_key`].
+    #[must_use]
+    pub fn host(&self) -> isize {
+        self.0
+    }
+}
+
+impl HasWindowHandle for Standing {
     fn window_handle(
         &self,
     ) -> Result<raw_window_handle::WindowHandle<'_>, raw_window_handle::HandleError> {
-        let handle = std::num::NonZeroIsize::new(self.host)
+        let handle = std::num::NonZeroIsize::new(self.0)
             .ok_or(raw_window_handle::HandleError::Unavailable)?;
         let raw = RawWindowHandle::Win32(raw_window_handle::Win32WindowHandle::new(handle));
-        // SAFETY: the window lives as long as `self`, which the borrow is tied to.
+        // SAFETY: only made inside the window's own procedure, while it is
+        // handling a message, and not kept past it.
         Ok(unsafe { raw_window_handle::WindowHandle::borrow_raw(raw) })
     }
 }
@@ -249,14 +318,11 @@ fn whole(length: f32) -> i32 {
     length.round() as i32
 }
 
-/// The host handles one thing itself: it never keeps the keyboard.
-///
-/// It is made not to activate, and a click inside the web view activates it
-/// all the same — the browser takes the focus for itself. Left there, the
-/// deck's own keys were dead after any click on a page until the reader
-/// clicked the deck again. So a click is told not to activate, and when it
-/// has anyway, the deck is put back in front. The click still lands: the
-/// mouse goes to whatever is under it, focused or not.
+/// Posted to the host: make the web view that was asked for.
+const MAKE_VIEW: u32 = windows::Win32::UI::WindowsAndMessaging::WM_APP + 2;
+
+/// The host handles one thing itself: making its web view when asked (see
+/// [`PageHost::make`]). Everything else is the web view's.
 unsafe extern "system" fn host_proc(
     hwnd: HWND,
     message: u32,
@@ -264,23 +330,50 @@ unsafe extern "system" fn host_proc(
     lparam: windows::Win32::Foundation::LPARAM,
 ) -> windows::Win32::Foundation::LRESULT {
     use windows::Win32::Foundation::LRESULT;
-    use windows::Win32::UI::WindowsAndMessaging::{
-        DefWindowProcW, GW_OWNER, GetWindow, MA_NOACTIVATE, SetForegroundWindow, WA_INACTIVE,
-        WM_ACTIVATE, WM_MOUSEACTIVATE,
-    };
-    // SAFETY: a message the system just delivered to a window of this class,
-    // answered or forwarded, and the window's own owner asked for by handle.
-    unsafe {
-        match message {
-            WM_MOUSEACTIVATE => LRESULT(MA_NOACTIVATE as isize),
-            // The low word says whether this is the window being made active.
-            WM_ACTIVATE if (wparam.0 & 0xffff) != WA_INACTIVE as usize => {
-                if let Ok(deck) = GetWindow(hwnd, GW_OWNER) {
-                    let _ = SetForegroundWindow(deck);
-                }
-                LRESULT(0)
-            }
-            _ => DefWindowProcW(hwnd, message, wparam, lparam),
+    use windows::Win32::UI::WindowsAndMessaging::DefWindowProcW;
+    if message == MAKE_VIEW {
+        let host = hwnd.0 as isize;
+        // Taken out before it is run, and put away after: making the view
+        // runs the message loop, and nothing may be held across that.
+        let asked = WAITING.with_borrow_mut(|waiting| waiting.remove(&host));
+        if let Some(make) = asked {
+            let view = make(&Standing(host));
+            MADE.with_borrow_mut(|made| made.insert(host, view));
         }
+        return LRESULT(0);
+    }
+    // SAFETY: forwarding a message the system just delivered.
+    unsafe { DefWindowProcW(hwnd, message, wparam, lparam) }
+}
+
+/// Hand a key pressed inside a page to the deck that owns it.
+///
+/// A click on a page gives the page's window the keyboard — the browser takes
+/// it, whatever the window was made not to do — and the deck's keys would be
+/// dead until the reader clicked the deck again. Taking the keyboard back on
+/// the click costs the click: the browser drops a press it loses focus in the
+/// middle of. So the page keeps the keyboard and gives up the keys: its
+/// document reports each one it has no use for, the deck comes back to the
+/// front, and the key is posted to it as if it had been pressed there.
+pub fn pass_key(host: isize, key: u32) {
+    use windows::Win32::Foundation::{LPARAM, WPARAM};
+    use windows::Win32::UI::Input::KeyboardAndMouse::{MAPVK_VK_TO_VSC, MapVirtualKeyW};
+    use windows::Win32::UI::WindowsAndMessaging::{
+        GW_OWNER, GetWindow, PostMessageW, SetForegroundWindow, WM_KEYDOWN, WM_KEYUP,
+    };
+    // SAFETY: the host's owner asked for by handle, brought forward, and two
+    // messages posted to it; all refusals are ignored.
+    unsafe {
+        let Ok(deck) = GetWindow(HWND(host as *mut _), GW_OWNER) else {
+            return;
+        };
+        let _ = SetForegroundWindow(deck);
+        // As the keyboard would have said it: a repeat count of one, and the
+        // key's scan code, which is how gpui tells keys apart.
+        let scan = (MapVirtualKeyW(key, MAPVK_VK_TO_VSC) & 0xff) as isize;
+        let down = 1 | (scan << 16);
+        let up = down | (0b11 << 30);
+        let _ = PostMessageW(Some(deck), WM_KEYDOWN, WPARAM(key as usize), LPARAM(down));
+        let _ = PostMessageW(Some(deck), WM_KEYUP, WPARAM(key as usize), LPARAM(up));
     }
 }
