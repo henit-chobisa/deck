@@ -3907,6 +3907,9 @@ impl DeckView {
     /// you are in.
     fn on_zen(&mut self, _: &Zen, window: &mut Window, cx: &mut Context<Self>) {
         let zen = crate::config::read().unwrap_or_default().zen;
+        // On Windows the sheet is slotted in just beneath this window, so it
+        // has to know which window that is.
+        crate::shade::behind(window);
         if crate::shade::toggle(zen.opacity(), zen.blur, cx) {
             self.watch_the_lights(window.window_handle(), cx);
         }
