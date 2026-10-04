@@ -167,37 +167,38 @@ group.
 
 ## Lights off
 
-`z` is a shade — one borderless window per display, near-black, with the deck
+`z` is a shade — one borderless sheet per display, near-black, with the deck
 left sitting above it. Nothing can reach into another application and dim it,
 so covering the screen and leaving one thing uncovered is the whole trick.
 
-Three details carry it, and each was the difference between an overlay and a
-window:
+The sheets are native windows, not GPUI ones (`crates/app/src/shade.rs` says
+why at length). GPUI only makes titled windows, and a titled window has
+corners, an edge, and a frame the platform clamps below the menu bar; a dimmer
+must have none of those.
 
-- **Popup level.** An ordinary window sits below the menu bar and inside
-  Mission Control, so the shade turned up as a tile when you swiped and read as
-  a big black window. `WindowKind::PopUp` is above both.
-- **The menu bar is hidden before the shade opens, not after.** AppKit will not
-  put a window over the menu bar however it is asked: request the full display
-  and the window comes back moved down by exactly the bar's height, leaving a
-  seam along the top. The only way past it is `presentationOptions` on the
-  shared application, which GPUI does not expose — and the order matters, since
-  a window is clamped to the screen it can see *at the moment it opens*. Hidden
-  afterwards, the strip reappears under a shade already placed below it.
-- **The deck is re-ordered afterwards.** Both windows are popups, and within a
-  level the last one ordered front wins. The shade opens second, so without
-  `activate_window` it would cover the thing it exists to light.
+- **On macOS** each sheet is a borderless, non-activating `NSPanel` at a level
+  above the menu bar and the Dock and below the deck, so both are dimmed
+  without being hidden. A second panel behind it blurs what is underneath when
+  `blur` is on.
+- **On Windows** each sheet is a layered pop-up window — click-through, never
+  activated, out of the taskbar and Alt-Tab — placed directly beneath the deck
+  in the stacking order, taskbar included. There is no blur: Windows offers no
+  supported way to blur what is behind an arbitrary window, so `blur` is a dim
+  there.
+- **Elsewhere** there is nothing to dim yet, and `z` does nothing.
+
+On both, clicks fall through the sheets to whatever is underneath, and the
+sheets fade a frame at a time rather than appearing.
 
 It also ends by itself when the deck stops being the active window. There is no
 activation hook in GPUI, so while the lights are off it asks every fifth of a
 second — zen is a posture rather than a setting, and the way somebody stops
 reading is by looking at something else.
 
-The shade can never outlive its deck. Every path that closes the deck brings
-the lights up first, and `on_window_closed` catches whatever those miss: if the
-only windows left are shades, they go and the process quits. Clicking the dark
-dismisses it too, which matters because a window cannot be made click-through —
-a click the shade swallowed could take the keyboard with it and leave `z` dead.
+The shade does not outlive its deck. Hiding the deck, closing it with a key
+and submitting all bring the lights up first; a close that comes from the
+platform — the taskbar, Alt-F4 — is caught by the same watcher within a fifth
+of a second, or by the process ending.
 
 ## Diagrams
 

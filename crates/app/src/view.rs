@@ -3938,6 +3938,9 @@ impl DeckView {
     /// you are in.
     fn on_zen(&mut self, _: &Zen, window: &mut Window, cx: &mut Context<Self>) {
         let zen = crate::config::read().unwrap_or_default().zen;
+        // On Windows the sheet is slotted in just beneath this window, so it
+        // has to know which window that is.
+        crate::shade::behind(window);
         if crate::shade::toggle(zen.opacity(), zen.blur, cx) {
             self.watch_the_lights(window.window_handle(), cx);
         }
@@ -4219,6 +4222,16 @@ impl DeckView {
                         // where a titlebar would be landed on the band and did
                         // nothing — while every other window on the machine
                         // zooms.
+                        //
+                        // On Windows it is also where the window is dragged
+                        // from. There the platform only moves a window from an
+                        // area the window says is a caption, and with the real
+                        // one hidden nothing said so — the deck could not be
+                        // moved at all (#50). The platform's caption also
+                        // brings its own double-click, which maximises and
+                        // restores — so the `on_click` below only ever runs on
+                        // other platforms: on Windows the caption's clicks
+                        // never reach the deck.
                         div()
                             .id("deck-titlebar")
                             .h_flex()
@@ -4228,6 +4241,9 @@ impl DeckView {
                             .pt(px(15.))
                             .pl(px(18.))
                             .pr(px(18.))
+                            .when(cfg!(target_os = "windows"), |this| {
+                                this.window_control_area(WindowControlArea::Drag)
+                            })
                             .on_click(|event, window, _| {
                                 if event.click_count() >= 2 {
                                     window.zoom_window();
@@ -6290,7 +6306,26 @@ const SEAM: f32 = 7.;
 /// Near enough to what macOS gives a window of this kind that the two agree,
 /// and the window is transparent behind it so a disagreement shows as a
 /// slightly rounder corner rather than as a square one.
-const WINDOW_CORNER: f32 = 14.;
+///
+/// On Windows it is Windows 11's own 8, because there the platform draws a
+/// rounded shadow around the window too, and a deck rounder than its shadow
+/// showed a sliver of it at every corner (see `win::fit_frame`).
+const WINDOW_CORNER: f32 = if cfg!(target_os = "windows") { 8. } else { 14. };
+
+/// The corner to paint right now.
+///
+/// Square when the platform's own frame is: a maximised window on Windows
+/// fills the screen with square corners, and Windows 10 never rounds at all.
+/// A curve painted inside a square frame leaves a wedge of whatever is behind
+/// the window at each corner.
+fn window_corner(window: &Window) -> f32 {
+    #[cfg(target_os = "windows")]
+    if window.is_maximized() || !crate::win::rounds() {
+        return 0.;
+    }
+    let _ = window;
+    WINDOW_CORNER
+}
 
 /// How wide the rail is folded down to its spine.
 ///
@@ -6308,6 +6343,7 @@ impl Render for DeckView {
             self.notes = None;
         }
         let typing = self.typing(window, cx);
+        let corner = window_corner(window);
         // A page's own view is not deck's to paint, so it is moved here, before
         // anything is drawn: to where the last frame measured its hole, or off
         // the screen if the room is in the middle of moving.
@@ -6627,7 +6663,7 @@ impl Render for DeckView {
             // Everything drawn along this edge shares the radius because they
             // share the element, which is the only way two curves stay
             // concentric without anybody knowing the platform's number.
-            .rounded(px(WINDOW_CORNER))
+            .rounded(px(corner))
             .overflow_hidden()
             .track_focus(&self.focus)
             // Only while nothing is being typed — which is a question about
@@ -6783,7 +6819,7 @@ impl Render for DeckView {
                         .left(px(1.))
                         .right(px(1.))
                         .bottom(px(1.))
-                        .rounded(px(WINDOW_CORNER - 1.))
+                        .rounded(px((corner - 1.).max(0.)))
                         .border_2()
                         .border_color(paint(self.palette.accent)),
                 )
