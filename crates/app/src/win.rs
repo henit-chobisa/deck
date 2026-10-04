@@ -166,6 +166,10 @@ impl PageHost {
             )
             .ok()?
         };
+        // Anything left under this handle belonged to a window that had it
+        // before; it is not this one's.
+        let stale = MADE.with_borrow_mut(|made| made.remove(&(host.0 as isize)));
+        drop(stale);
         Some(Self {
             host: host.0 as isize,
             deck: deck.0 as isize,
@@ -338,7 +342,17 @@ unsafe extern "system" fn host_proc(
         let asked = WAITING.with_borrow_mut(|waiting| waiting.remove(&host));
         if let Some(make) = asked {
             let view = make(&Standing(host));
-            MADE.with_borrow_mut(|made| made.insert(host, view));
+            // Making it ran the message loop, and the pane may have closed
+            // meanwhile and taken this window with it. A view kept for it
+            // then would be collected by whichever window is next given the
+            // same handle.
+            // SAFETY: asking whether a handle still names a window.
+            if !unsafe { windows::Win32::UI::WindowsAndMessaging::IsWindow(Some(hwnd)) }.as_bool() {
+                drop(view);
+                return LRESULT(0);
+            }
+            let old = MADE.with_borrow_mut(|made| made.insert(host, view));
+            drop(old);
         }
         return LRESULT(0);
     }
@@ -357,13 +371,31 @@ unsafe extern "system" fn host_proc(
 /// front, and the key is posted to it as if it had been pressed there.
 pub fn pass_key(host: isize, key: u32) {
     use windows::Win32::Foundation::{LPARAM, WPARAM};
-    use windows::Win32::UI::Input::KeyboardAndMouse::{MAPVK_VK_TO_VSC, MapVirtualKeyW};
+    use windows::Win32::UI::Input::KeyboardAndMouse::{
+        GetAsyncKeyState, MAPVK_VK_TO_VSC, MapVirtualKeyW,
+    };
     use windows::Win32::UI::WindowsAndMessaging::{
-        GW_OWNER, GetWindow, PostMessageW, SetForegroundWindow, WM_KEYDOWN, WM_KEYUP,
+        GW_OWNER, GetForegroundWindow, GetWindow, PostMessageW, SetForegroundWindow, WM_KEYDOWN,
+        WM_KEYUP,
     };
     // SAFETY: the host's owner asked for by handle, brought forward, and two
     // messages posted to it; all refusals are ignored.
     unsafe {
+        // Only a key a person is holding down, on the page in front of them.
+        // The page is markup the agent wrote, and its script can say `key:`
+        // whenever it likes: taken at its word, a page could press `s` and
+        // submit its own review, or `q`, from the background. A key that is
+        // not physically down, or a page that is not the window in front, is
+        // nobody's key press.
+        if GetForegroundWindow() != HWND(host as *mut _) {
+            return;
+        }
+        let Ok(vk) = i32::try_from(key) else {
+            return;
+        };
+        if GetAsyncKeyState(vk).cast_unsigned() & 0x8000 == 0 {
+            return;
+        }
         let Ok(deck) = GetWindow(HWND(host as *mut _), GW_OWNER) else {
             return;
         };

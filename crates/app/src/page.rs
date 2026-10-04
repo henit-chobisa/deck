@@ -259,6 +259,12 @@ impl Paper {
             self.hide();
             return;
         }
+        // A window that would not take a view is not asked again, and the
+        // document is not dressed again for it every frame.
+        #[cfg(target_os = "windows")]
+        if self.view.is_none() && self.refused {
+            return;
+        }
         if self.view.is_none() {
             let document = dressed(&self.html, palette);
             #[cfg(not(target_os = "windows"))]
@@ -270,11 +276,15 @@ impl Paper {
             // for until it arrives, so this comes round again to collect it.
             #[cfg(target_os = "windows")]
             {
-                if self.host.is_none() {
+                if self.host.is_none() && !self.refused {
                     self.host = crate::win::PageHost::new(window);
-                    if let Some(host) = self.host.as_ref() {
-                        let (html, wash) = (document.clone(), palette.wash);
-                        host.make(move |standing| build(standing, &html, wash));
+                    match self.host.as_ref() {
+                        Some(host) => {
+                            let (html, wash) = (document.clone(), palette.wash);
+                            host.make(move |standing| build(standing, &html, wash));
+                        }
+                        // No window to stand in: not asked for again every frame.
+                        None => self.refused = true,
                     }
                 }
                 match self.host.as_ref().map(crate::win::PageHost::made) {
@@ -311,7 +321,7 @@ impl Paper {
             // Starting below the *again* button, wherever this frame drew it.
             // On a Mac the view is see-through and the button shows through
             // it; this window is not, and would cover it.
-            let top = self.again.take().map_or(at.origin.y, |again| {
+            let top = self.again.get().map_or(at.origin.y, |again| {
                 (again.origin.y + again.size.height + px(4.)).max(at.origin.y)
             });
             let tall = at.size.height - (top - at.origin.y);
@@ -552,13 +562,16 @@ const SHIM: &str = "window.deck=window.deck||{at:null};\
 /// What a page on Windows does with a key it has no use for: tells deck.
 ///
 /// There the page stands in a window of its own, and a click on it takes the
-/// keyboard with it. Anything typed into a field is the page's; everything
-/// else was meant for the deck, and is handed over (see `win::pass_key`).
+/// keyboard with it. Anything typed into a field is the page's, and so are
+/// the keys that move around in it — Tab, Space, the arrows, Page Up and
+/// Down, Home and End — and the modifiers on their own. Everything else was
+/// meant for the deck, and is handed over (see `win::pass_key`).
 #[cfg(target_os = "windows")]
 const KEYS: &str = "addEventListener('keydown',function(e){\
       var t=e.target;\
       if(t&&(t.isContentEditable||/^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName)))return;\
       if(e.ctrlKey||e.altKey||e.metaKey)return;\
+      if([9,16,17,18,32,33,34,35,36,37,38,39,40,91].indexOf(e.keyCode)>=0)return;\
       window.ipc.postMessage('key:'+e.keyCode);\
       e.preventDefault();\
     },true);";
