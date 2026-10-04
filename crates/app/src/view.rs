@@ -960,7 +960,19 @@ impl DeckView {
             grid: layout,
             panes: Vec::new(),
             group_ix,
-            focus: cx.focus_handle(),
+            // Holding the keyboard from the start. Nothing else gave it to the
+            // deck until the reader clicked somewhere in it, which left every
+            // key dead on a deck that had just been opened — most visibly on
+            // Windows: with nothing focused, a key is offered to the window's
+            // root and never reaches the deck's own bindings.
+            //
+            // First, so that whatever opens further down — the notes card, a
+            // comment kept from last time — takes the keyboard from it.
+            focus: {
+                let focus = cx.focus_handle();
+                focus.focus(window, cx);
+                focus
+            },
             remarks,
             composing: None,
             composing_when: deck_core::When::Interrupt,
@@ -2427,9 +2439,10 @@ impl DeckView {
     ) {
         use crate::notes::Notes;
 
-        // Escape has to reach them. A window that opened on them has nothing
-        // focused for a key to start from, and a comment box that had the
-        // keyboard is under the card where nobody can see what they type.
+        // Escape has to reach them. The deck itself holds the keyboard from
+        // the moment it opens, and its keys must not act under the card; a
+        // comment box that had the keyboard is under it too, where nobody
+        // can see what they type.
         self.notes_focus.focus(window, cx);
         let cached = crate::notes::cached(&version);
         let fetch_words = cached.is_none() && may_ask;
