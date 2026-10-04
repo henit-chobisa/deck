@@ -535,12 +535,9 @@ impl Cli {
                 after,
                 request_id,
                 timeout,
-            } => {
-                deck_cli::still_answering(&deck);
-                Err(show(
-                    &deck, &reference, group, pane, after, request_id, timeout,
-                ))
-            }
+            } => Err(show(
+                &deck, &reference, group, pane, after, request_id, timeout,
+            )),
             What::Say {
                 deck,
                 text,
@@ -854,7 +851,11 @@ fn show(
         Ok(response) => {
             let exit = match response.status {
                 deck_cli::live::ResponseStatus::Applied
-                | deck_cli::live::ResponseStatus::Unchanged => ExitCode::SUCCESS,
+                | deck_cli::live::ResponseStatus::Unchanged => {
+                    // It reached the deck: the agent is still at its answer.
+                    deck_cli::still_answering(deck);
+                    ExitCode::SUCCESS
+                }
                 deck_cli::live::ResponseStatus::Waiting
                 | deck_cli::live::ResponseStatus::Hidden
                 | deck_cli::live::ResponseStatus::Ambiguous
