@@ -457,7 +457,9 @@ impl Chart {
             // point lit the block inside the picture and left the pane itself
             // unmarked, so with two panes side by side there was nothing to
             // say which one the sentence meant (#49).
-            .when(heeded > 0., |pane| {
+            // Not round a pane that has folded away: a name hovered in the
+            // prose can ask for one, and there is nothing there to frame.
+            .when(heeded > 0. && slot.fold < 1., |pane| {
                 pane.child(crate::pane::outline(palette, heeded))
             })
     }
