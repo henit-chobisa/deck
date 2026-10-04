@@ -4307,6 +4307,10 @@ impl DeckView {
         // after, because closing the last one ends the command.
         crate::open_pill(self.pack(), cx);
         window.remove_window();
+        // Only the bar is left, and it takes no keys: the keyboard goes back
+        // to whatever the reader was in before they opened the deck.
+        #[cfg(target_os = "macos")]
+        crate::mac::step_back();
     }
 
     /// Write the review and close.
@@ -4337,6 +4341,8 @@ impl DeckView {
             crate::open_pill_over(Vec::new(), cx);
         }
         window.remove_window();
+        #[cfg(target_os = "macos")]
+        crate::mac::step_back();
     }
 
     fn submit_review(&mut self, window: &mut Window, cx: &mut Context<Self>) {
