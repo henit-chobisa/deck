@@ -535,9 +535,12 @@ impl Cli {
                 after,
                 request_id,
                 timeout,
-            } => Err(show(
-                &deck, &reference, group, pane, after, request_id, timeout,
-            )),
+            } => {
+                deck_cli::still_answering(&deck);
+                Err(show(
+                    &deck, &reference, group, pane, after, request_id, timeout,
+                ))
+            }
             What::Say {
                 deck,
                 text,
@@ -548,11 +551,14 @@ impl Cli {
                 deck,
                 text,
                 timeout,
-            } => Err(ask(
-                &deck,
-                deck_cli::live::RequestBody::Doing { text },
-                timeout,
-            )),
+            } => {
+                deck_cli::still_answering(&deck);
+                Err(ask(
+                    &deck,
+                    deck_cli::live::RequestBody::Doing { text },
+                    timeout,
+                ))
+            }
             What::Clear { deck, timeout } => {
                 Err(ask(&deck, deck_cli::live::RequestBody::Clear, timeout))
             }
@@ -580,7 +586,10 @@ impl Cli {
                 fold,
                 timeout,
             } => Err(bring(
-                &deck,
+                {
+                    deck_cli::still_answering(&deck);
+                    &deck
+                },
                 Bringing {
                     reference: reference.as_deref(),
                     diagram: diagram.as_deref(),
@@ -897,14 +906,17 @@ fn show(
 
 /// Put the agent's words into an open walk.
 fn say(deck: &std::path::Path, text: &str, aloud: bool, timeout: u64) -> ExitCode {
-    ask(
+    let code = ask(
         deck,
         deck_cli::live::RequestBody::Say {
             text: text.to_string(),
             aloud,
         },
         timeout,
-    )
+    );
+    // The answer has gone; the agent is expected back at `deck wait`.
+    deck_cli::answered(deck);
+    code
 }
 
 /// What `deck bring` was asked to put in the room.
@@ -1226,6 +1238,8 @@ fn wait(deck: &std::path::Path, timeout: u64) -> ExitCode {
     let _beat = Listening(deck);
     let mut last_said = std::time::Instant::now();
     deck_cli::listening(deck);
+    // Back from whatever it went away to answer.
+    deck_cli::stopped_answering(deck);
 
     loop {
         // Submit wins over queued nudges: the final review already contains
@@ -1272,6 +1286,10 @@ fn wait(deck: &std::path::Path, timeout: u64) -> ExitCode {
                                 eprintln!("deck: the event cursor could not be saved: {err}");
                                 return ExitCode::FAILURE;
                             }
+                            // Leaving with the reader's question. The beat
+                            // stops as this returns; this says the agent has
+                            // not gone, it is answering.
+                            deck_cli::answering(deck);
                         }
                         Err(err) => {
                             eprintln!("deck: the question will not print: {err}");

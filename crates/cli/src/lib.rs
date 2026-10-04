@@ -51,6 +51,29 @@ const HEARD: &str = "listening";
 /// lie than the silence it replaces.
 const STILL_THERE: std::time::Duration = std::time::Duration::from_secs(4);
 
+/// The file a waiter leaves when it goes away with a question in its hand.
+///
+/// `deck wait` returns the moment the reader asks something, and the beat
+/// stops with it. For as long as the agent then spends on the answer there
+/// is no waiter at all — and the window, seeing none, told the reader nobody
+/// was listening while the agent was in the middle of answering them.
+const ANSWERING: &str = "answering";
+
+/// How long an agent may be away with a question before it has gone.
+///
+/// Long, because a real answer can take a subagent and several minutes, and
+/// the cost of giving up early is the lie described above. Not for ever: an
+/// agent that was killed mid-answer never comes back, and after this the
+/// window says so.
+const AWAY_WITH_IT: std::time::Duration = std::time::Duration::from_secs(10 * 60);
+
+/// How long after it has spoken an agent may take to start waiting again.
+///
+/// The answer has landed, and the next thing the agent does is `deck wait`.
+/// A minute and a half covers a slow turn; one that never comes back is not
+/// believed for the full ten minutes.
+const BACK_SOON: std::time::Duration = std::time::Duration::from_secs(90);
+
 /// The file that says the reader shut the deck without answering.
 ///
 /// Inside the deck rather than beside it, unlike the review: a review is the
@@ -680,16 +703,76 @@ pub fn stopped_listening(root: &Path) {
     let _ = std::fs::remove_file(root.join(HEARD));
 }
 
-/// Whether anybody is waiting for this deck's review right now.
+/// Say the waiter has gone away to answer what the reader asked.
 ///
-/// By how fresh the mark is rather than whether it exists, because a waiter
-/// that was killed never got to tidy up — and a file left behind by one that
-/// died an hour ago must not read as somebody listening.
+/// Written as `wait` returns a question, so the agent stays *there* in the
+/// reader's eyes for as long as it is working on the answer.
+pub fn answering(root: &Path) {
+    let _ = std::fs::write(root.join(ANSWERING), b"asked");
+}
+
+/// Say the agent is still at it: it has just done something to the deck.
+///
+/// Only while it is away with a question. An agent that shows a pane or
+/// brings a page in mid-answer is plainly alive, and the clock starts again;
+/// one that was never asked anything is not made present by speaking.
+pub fn still_answering(root: &Path) {
+    let mark = root.join(ANSWERING);
+    if let Ok(was) = std::fs::read(&mark) {
+        let _ = std::fs::write(mark, was);
+    }
+}
+
+/// Say the agent has answered, and should be waiting again shortly.
+pub fn answered(root: &Path) {
+    let mark = root.join(ANSWERING);
+    if mark.exists() {
+        let _ = std::fs::write(mark, b"said");
+    }
+}
+
+/// Stop saying any of it: a waiter is back, or the walk is over.
+pub fn stopped_answering(root: &Path) {
+    let _ = std::fs::remove_file(root.join(ANSWERING));
+}
+
+/// Who is on the other end of a deck.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Presence {
+    /// A waiter is running: what the reader writes reaches it at once.
+    Listening,
+    /// The agent took a question and is working on it, or has just answered.
+    Answering,
+    /// Nothing has been heard from an agent for long enough to say so.
+    Nobody,
+}
+
+/// Who is on the other end of this deck right now.
+///
+/// By how fresh the marks are rather than whether they exist, because a
+/// waiter that was killed never got to tidy up — and a file left behind by
+/// one that died an hour ago must not read as somebody listening.
+#[must_use]
+pub fn presence(root: &Path) -> Presence {
+    let fresh = |name: &str, within: std::time::Duration| {
+        std::fs::metadata(root.join(name))
+            .and_then(|marked| marked.modified())
+            .is_ok_and(|at| at.elapsed().is_ok_and(|since| since < within))
+    };
+    if fresh(HEARD, STILL_THERE) {
+        return Presence::Listening;
+    }
+    let spoke = std::fs::read(root.join(ANSWERING)).is_ok_and(|mark| mark == b"said");
+    if fresh(ANSWERING, if spoke { BACK_SOON } else { AWAY_WITH_IT }) {
+        return Presence::Answering;
+    }
+    Presence::Nobody
+}
+
+/// Whether anybody is on the other end: waiting, or away answering.
 #[must_use]
 pub fn is_heard(root: &Path) -> bool {
-    std::fs::metadata(root.join(HEARD))
-        .and_then(|marked| marked.modified())
-        .is_ok_and(|at| at.elapsed().is_ok_and(|since| since < STILL_THERE))
+    presence(root) != Presence::Nobody
 }
 
 /// Say the reader closed the deck without answering.
@@ -904,6 +987,53 @@ fn closes(rest: &[char]) -> bool {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn an_agent_away_with_a_question_is_still_there() {
+        let dir = tempfile::tempdir().expect("a temp dir");
+        let deck = dir.path();
+        let age = |name: &str, by: std::time::Duration| {
+            let file = std::fs::File::options()
+                .write(true)
+                .open(deck.join(name))
+                .expect("the mark is there");
+            file.set_modified(std::time::SystemTime::now() - by)
+                .expect("and can be aged");
+        };
+        let minutes = |n: u64| std::time::Duration::from_secs(n * 60);
+
+        assert_eq!(presence(deck), Presence::Nobody);
+
+        // The waiter returns a question and its beat stops: still there.
+        listening(deck);
+        assert_eq!(presence(deck), Presence::Listening);
+        answering(deck);
+        stopped_listening(deck);
+        assert_eq!(presence(deck), Presence::Answering);
+        assert!(is_heard(deck));
+
+        // Five minutes into a slow answer: still there. Eleven: gone.
+        age(ANSWERING, minutes(5));
+        assert_eq!(presence(deck), Presence::Answering);
+        age(ANSWERING, minutes(11));
+        assert_eq!(presence(deck), Presence::Nobody);
+
+        // Doing something to the deck mid-answer starts the clock again.
+        still_answering(deck);
+        assert_eq!(presence(deck), Presence::Answering);
+
+        // Having spoken, it is expected back soon — not for ten minutes.
+        answered(deck);
+        assert_eq!(presence(deck), Presence::Answering);
+        age(ANSWERING, minutes(2));
+        assert_eq!(presence(deck), Presence::Nobody);
+
+        // Speaking does not make an agent present that was never asked.
+        stopped_answering(deck);
+        answered(deck);
+        still_answering(deck);
+        assert_eq!(presence(deck), Presence::Nobody);
+    }
+
     #[test]
     fn a_waiter_that_died_is_not_one_that_is_listening() {
         // The mark is read by its age, not its existence, because the common
