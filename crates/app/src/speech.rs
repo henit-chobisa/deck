@@ -129,6 +129,19 @@ impl Voice {
         self.playing.as_ref().is_some_and(Playing::paused)
     }
 
+    /// Let go of a passage held part-way, keeping what is queued after it.
+    ///
+    /// Prose the reader stopped is not something an answer should wait
+    /// behind; the answers already waiting are still to be heard.
+    pub fn drop_held(&mut self, speech: &Speech) {
+        if self.paused()
+            && let Some(playing) = self.playing.take()
+        {
+            self.now = playing.pointing();
+        }
+        self.pump(speech);
+    }
+
     /// Hold the passage where it is. Nothing after it starts meanwhile.
     pub fn pause(&mut self) {
         if let Some(playing) = self.playing.as_mut() {
@@ -280,6 +293,7 @@ impl Voice {
                     eprintln!("deck: {why}");
                     self.fetching = None;
                     self.next.clear();
+                    self.seek_on_start = None;
                     return;
                 }
                 Err(TryRecvError::Disconnected) => self.fetching = None,
@@ -325,7 +339,10 @@ impl Voice {
                 self.playing = Some(playing);
             }
             // Nothing can speak it, so draining the rest would only stall.
-            None => self.next.clear(),
+            None => {
+                self.next.clear();
+                self.seek_on_start = None;
+            }
         }
     }
 
@@ -481,17 +498,16 @@ impl Playing {
         self.stop_player();
         let at = at.min(self.length);
         self.held = None;
-        self.since = Instant::now().checked_sub(at).unwrap_or_else(Instant::now);
-        let Some(sound) = self.sound.as_ref() else {
-            return;
-        };
-        let Some(copy) = from(sound, at) else {
-            return;
-        };
-        self.child = play(&copy);
-        if let Some(old) = self.from.replace(copy) {
-            let _ = std::fs::remove_file(old);
+        // The clock is set once the player is going, not before the copy is
+        // made: reading and writing a long passage takes long enough to put
+        // the light ahead of the voice.
+        if let Some(copy) = self.sound.as_ref().and_then(|sound| from(sound, at)) {
+            self.child = play(&copy);
+            if let Some(old) = self.from.replace(copy) {
+                let _ = std::fs::remove_file(old);
+            }
         }
+        self.since = Instant::now().checked_sub(at).unwrap_or_else(Instant::now);
     }
 
     /// When the page's word `word` of this passage is heard: the inverse of

@@ -1285,7 +1285,7 @@ impl DeckView {
             // Prose held paused is prose the reader stopped. The answer to
             // what they said is not made to wait behind it.
             if speech.aloud && self.voice.paused() {
-                self.voice.hush();
+                self.voice.drop_held(&speech);
             }
             self.narrate(text, of, &speech, cx);
         }
@@ -1705,6 +1705,8 @@ impl DeckView {
             self.speak_unheard(cx);
         } else {
             self.voice.hush();
+            self.track_hover = None;
+            self.track_hover_was = None;
             self.flush_held();
             self.rest(cx);
         }
@@ -2300,13 +2302,18 @@ impl DeckView {
                     // Heard once it is being heard, not once it is asked for: a
                     // voice that failed to arrive has read nothing.
                     let prose = crate::speech::Narration::Group(deck.group_ix);
-                    let reading =
-                        deck.aloud && deck.voice.progress().is_some_and(|(of, _, _)| of == prose);
+                    // Held is not reading: nothing moves, so nothing to draw.
+                    let reading = deck.aloud
+                        && !deck.voice.paused()
+                        && deck.voice.progress().is_some_and(|(of, _, _)| of == prose);
                     if reading {
                         deck.heard_groups.insert(deck.group_ix);
                     }
                     // Speech holds attention. Once it stops, the frame and the
                     // lit lines stay for a breath and then go.
+                    // Held too: the light stays on the lines it was reading,
+                    // or resuming would carry on pointing at nothing. This
+                    // only moves a deadline; it draws nothing.
                     if deck.voice.has_work() {
                         deck.attend();
                     }
@@ -4479,6 +4486,10 @@ impl DeckView {
         self.voice.hush();
         self.flush_held();
         self.picked_said = None;
+        // A sentence lit from the track belongs to the group that had it, and
+        // its word range would light other words in the next one.
+        self.track_hover = None;
+        self.track_hover_was = None;
         // Names belong to a group. The next group may use the same word for a
         // different pane, and a pin carried over would light the wrong one.
         self.name_hovered = None;
@@ -4660,6 +4671,9 @@ impl DeckView {
                                     heard: self
                                         .heard_in(crate::speech::Narration::Group(self.group_ix)),
                                     lit_also: [self.track_hover, self.track_hover_was]
+                                        .into_iter()
+                                        .filter(|_| self.aloud)
+                                        .collect::<Vec<_>>()
                                         .into_iter()
                                         .flatten()
                                         .map(|(range, light)| (range, light.level()))
