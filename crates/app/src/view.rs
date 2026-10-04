@@ -32,7 +32,6 @@ gpui_kit::actions!(
         Comment,
         Rotate,
         Walk,
-        Again,
         Follow,
         Hide,
         Submit,
@@ -62,7 +61,6 @@ const KEYS: &[(&str, &str, &str)] = &[
     ("n", "next", "next"),
     ("p", "prev", "previous"),
     ("w", "walk", "walk"),
-    ("r", "again", "again"),
     ("c", "comment", "comment"),
     ("t", "turn", "turn"),
     ("⎋", "clear", "clear"),
@@ -105,7 +103,6 @@ pub fn bindings() -> Vec<KeyBinding> {
         KeyBinding::new("c", Comment, Some("Deck")),
         KeyBinding::new("t", Rotate, Some("Deck")),
         KeyBinding::new("w", Walk, Some("Deck")),
-        KeyBinding::new("r", Again, Some("Deck")),
         KeyBinding::new("f", Follow, Some("Deck")),
         KeyBinding::new("z", Zen, Some("Deck")),
         KeyBinding::new("h", Hide, Some("Deck")),
@@ -493,7 +490,7 @@ pub struct Session {
     rail_width: Option<f32>,
     rail_scroll: ScrollHandle,
     aloud: bool,
-    hearing_answers: bool,
+    heard_groups: std::collections::HashSet<usize>,
     draft: Option<(About, Entity<TextareaState>, deck_core::When)>,
     group_ix: usize,
     turn: Option<u8>,
@@ -524,7 +521,7 @@ impl Session {
             rail_width: None,
             rail_scroll: ScrollHandle::new(),
             aloud: false,
-            hearing_answers: false,
+            heard_groups: std::collections::HashSet::new(),
             draft: None,
             group_ix: 0,
             // Whatever the reader last turned a page to. `None` only for
@@ -587,13 +584,17 @@ pub struct DeckView {
     composing_when: deck_core::When,
     /// Whether a voice is reading the deck aloud.
     aloud: bool,
-    /// Whether the agent's answers are read aloud as they arrive, walking or
-    /// not (#18).
+    /// The groups whose prose has been read aloud in this walk's session.
     ///
-    /// A walk reads the answers too, but it also reads the prose — so a
-    /// reader who had already heard the deck and only wanted to follow the
-    /// conversation had to hear all of it again to get there.
-    hearing_answers: bool,
+    /// Coming back to one does not read it again by itself (#18): somebody
+    /// who has heard the deck and is walking to follow the conversation would
+    /// otherwise have to sit through all of it again to get there. `↺` reads
+    /// it again when they want it.
+    heard_groups: std::collections::HashSet<usize>,
+    /// Whether the voice is reading the group's prose, as opposed to an answer
+    /// or nothing. What decides between stop and play at the top of the
+    /// narration.
+    reading_prose: bool,
     /// How many beats the deck has been finished with nobody waiting.
     ///
     /// Counted rather than asked once, because the right order is open, write,
@@ -950,7 +951,7 @@ impl DeckView {
             rail_width,
             rail_scroll,
             aloud,
-            hearing_answers,
+            heard_groups,
             draft,
             group_ix,
             turn,
@@ -1020,7 +1021,8 @@ impl DeckView {
             composing: None,
             composing_when: deck_core::When::Interrupt,
             aloud,
-            hearing_answers,
+            heard_groups,
+            reading_prose: false,
             unheard,
             asked_someone,
             talking_task: None,
@@ -1270,14 +1272,17 @@ impl DeckView {
         // The author answered, so nothing is owed.
         self.conversation.asked_at = None;
         if aloud {
-            // Only while the reader has asked to be walked through it, or to
-            // hear the answers. An answer read out to somebody who asked for
-            // neither is a window that started talking on its own.
+            // Only while the reader has asked to be walked through it. An
+            // answer read out to somebody who never pressed `w` is a window
+            // that started talking on its own.
             let speech = crate::speech::asked(cx);
             let speech = deck_core::config::Speech {
-                aloud: speech.aloud && (self.aloud || self.hearing_answers),
+                aloud: speech.aloud && self.aloud,
                 ..speech
             };
+            if speech.aloud {
+                self.reading_prose = false;
+            }
             self.narrate(text, of, &speech, cx);
         }
         cx.notify();
@@ -1637,7 +1642,7 @@ impl DeckView {
         // it was saying belonged to the group that left the screen. If the
         // reader is being read to, the new group picks up where they now are.
         if self.aloud {
-            self.speak(cx);
+            self.speak_unheard(cx);
         }
         cx.notify();
     }
@@ -1672,35 +1677,29 @@ impl DeckView {
 
     /// Hear the group in front of them again, from its first word (#17).
     ///
-    /// Walking if they were not: asking to hear it again is asking to be
-    /// walked through it. A walk already going starts over rather than
-    /// carrying on, which is the whole difference from `w`.
-    fn on_again(&mut self, _: &Again, _window: &mut Window, cx: &mut Context<Self>) {
-        self.again(cx);
-    }
-
+    /// Only offered inside the walk, so it never has to start one.
     fn again(&mut self, cx: &mut Context<Self>) {
         if !crate::speech::asked(cx).offered() {
             return;
         }
         self.voice.hush();
-        self.aloud = true;
+        self.flush_held();
         self.picked_said = None;
         self.said_from = None;
         self.speak(cx);
         cx.notify();
     }
 
-    /// Read the agent's answers aloud as they come, or stop.
+    /// Stop reading the prose, and stay in the walk (#17).
     ///
-    /// Turning it off silences an answer being read, unless a walk is what
-    /// is reading it.
-    fn toggle_hearing_answers(&mut self, cx: &mut Context<Self>) {
-        self.hearing_answers = !self.hearing_answers;
-        if !self.hearing_answers && !self.aloud {
-            self.voice.hush();
-            self.rest(cx);
-        }
+    /// Leaving the walk is `w`. This is the other thing a reader wants
+    /// mid-paragraph: quiet, while the walk goes on — the answers to what they
+    /// say are still read to them.
+    fn stop_prose(&mut self, cx: &mut Context<Self>) {
+        self.voice.hush();
+        self.reading_prose = false;
+        self.flush_held();
+        self.rest(cx);
         cx.notify();
     }
 
@@ -1712,8 +1711,9 @@ impl DeckView {
             // reading, the voice is what points.
             self.picked_said = None;
             self.said_from = None;
-            self.speak(cx);
+            self.speak_unheard(cx);
         } else {
+            self.reading_prose = false;
             self.voice.hush();
             self.flush_held();
             self.rest(cx);
@@ -2307,6 +2307,10 @@ impl DeckView {
                     deck.follow_point(cx);
                     let heard = deck.listen();
                     let now = deck.voice.talking();
+                    if !deck.voice.has_work() && deck.reading_prose {
+                        deck.reading_prose = false;
+                        cx.notify();
+                    }
                     // Speech holds attention. Once it stops, the frame and the
                     // lit lines stay for a breath and then go.
                     if deck.voice.has_work() {
@@ -2431,7 +2435,16 @@ impl DeckView {
         }
         let say = group.say.clone();
         let of = crate::speech::Narration::Group(self.group_ix);
+        self.heard_groups.insert(self.group_ix);
+        self.reading_prose = true;
         self.narrate(&say, Some(of), &speech, cx);
+    }
+
+    /// Read the group's prose unless this walk has already read it.
+    fn speak_unheard(&mut self, cx: &mut Context<Self>) {
+        if !self.heard_groups.contains(&self.group_ix) {
+            self.speak(cx);
+        }
     }
 
     /// Turn the rest of the screen down, or back up.
@@ -4241,7 +4254,7 @@ impl DeckView {
             rail_width: self.rail_width,
             rail_scroll: self.rail_scroll.clone(),
             aloud: self.aloud,
-            hearing_answers: self.hearing_answers,
+            heard_groups: self.heard_groups.clone(),
             draft: self
                 .composing
                 .as_ref()
@@ -4471,6 +4484,7 @@ impl DeckView {
         // And stops talking, because what it is saying belongs to the group
         // that just left the screen.
         self.voice.hush();
+        self.reading_prose = false;
         self.flush_held();
         self.picked_said = None;
         // Names belong to a group. The next group may use the same word for a
@@ -4576,12 +4590,12 @@ impl DeckView {
                         // never reach the deck.
                         div()
                             .h_flex()
+                            .flex_none()
                             .items_start()
                             .child(
                                 div()
                                     .id("deck-titlebar")
                                     .h_flex()
-                                    .flex_none()
                                     .items_baseline()
                                     .gap(px(14.))
                                     .pt(px(15.))
@@ -5675,24 +5689,38 @@ impl DeckView {
             )
     }
 
-    /// Walk, stop, and hear it again — where the prose they act on is (#17).
+    /// The prose as a track inside the walk: stop it, play it, hear it again
+    /// (#17).
     ///
-    /// `w` was the only way in or out, and nothing on screen said a walk
-    /// could be stopped or a group heard twice. Only offered with a voice set
-    /// up, the same as the keys in the legend.
+    /// Only while walking. The walk is the one mode; `w` goes in and out of
+    /// it, and these are what can be done with the prose once inside —
+    /// stopping it does not leave the walk, so the answers to what the reader
+    /// says are still read to them (#18).
     fn render_walk_controls(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
-        if !crate::speech::asked(cx).offered() {
+        if !self.aloud || !crate::speech::asked(cx).offered() {
             return None;
         }
         let palette = &self.palette;
-        let mono = cx.theme().mono_font_family.clone();
-        let walking = self.aloud;
-        let key = |text: &'static str| {
+        let playing = self.reading_prose;
+        let control = |id: &'static str, tip: &'static str| {
             div()
-                .font_family(mono.clone())
-                .text_size(px(9.5))
-                .opacity(0.7)
-                .child(text)
+                .id(id)
+                .flex_none()
+                .size(px(26.))
+                .flex()
+                .items_center()
+                .justify_center()
+                .rounded(px(6.))
+                .border_1()
+                .border_color(paint(palette.edge))
+                .cursor_pointer()
+                .text_size(px(12.))
+                .text_color(paint(palette.fg))
+                .hover(|style| style.bg(paint(palette.wash)))
+                .tooltip(move |_window, cx| {
+                    cx.new(|_| gpui_kit::component::tooltip::Tooltip::new(tip))
+                        .into()
+                })
         };
         Some(
             div()
@@ -5700,120 +5728,23 @@ impl DeckView {
                 .flex_none()
                 .items_center()
                 .gap(px(6.))
-                .pt(px(12.))
+                .pt(px(11.))
                 .pr(px(14.))
-                .child(
-                    div()
-                        .id("walk-toggle")
-                        .h_flex()
-                        .items_center()
-                        .gap(px(7.))
-                        .px(px(10.))
-                        .py(px(4.))
-                        .rounded(px(5.))
-                        .cursor_pointer()
-                        .text_size(px(11.5))
-                        .map(|this| {
-                            if walking {
-                                this.bg(paint(palette.accent))
-                                    .text_color(paint(palette.on_accent))
-                            } else {
-                                this.border_1()
-                                    .border_color(paint(palette.edge))
-                                    .text_color(paint(palette.fg))
-                                    .hover(|style| style.bg(paint(palette.wash)))
-                            }
-                        })
-                        // Drawn: a square for stop, and the play mark as the
-                        // one glyph every system font has.
-                        .child(if walking {
-                            div()
-                                .size(px(7.))
-                                .rounded(px(1.))
-                                .bg(paint(palette.on_accent))
-                                .into_any_element()
-                        } else {
-                            div().text_size(px(9.)).child("▶").into_any_element()
-                        })
-                        .child(if walking { "Stop" } else { "Walk" })
-                        .child(key("w"))
-                        .on_click(cx.listener(|deck, _, _window, cx| deck.toggle_walk(cx))),
-                )
-                .child(
-                    div()
-                        .id("walk-again")
-                        .h_flex()
-                        .items_center()
-                        .gap(px(6.))
-                        .px(px(9.))
-                        .py(px(4.))
-                        .rounded(px(5.))
-                        .border_1()
-                        .border_color(paint(palette.edge))
-                        .cursor_pointer()
-                        .text_size(px(11.5))
-                        .text_color(paint(palette.fg))
-                        .hover(|style| style.bg(paint(palette.wash)))
-                        .tooltip(|_window, cx| {
-                            cx.new(|_| {
-                                gpui_kit::component::tooltip::Tooltip::new(
-                                    "Hear this group again from the top",
-                                )
-                            })
-                            .into()
-                        })
-                        .child("↺")
-                        .child(key("r"))
-                        .on_click(cx.listener(|deck, _, _window, cx| deck.again(cx))),
-                )
-                .into_any_element(),
-        )
-    }
-
-    /// Whether the agent's answers are read aloud, in the chat's own header
-    /// (#18). Apart from the walk: following the conversation should not
-    /// mean hearing the deck again to get there.
-    fn render_hearing_toggle(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
-        if !crate::speech::asked(cx).offered() {
-            return None;
-        }
-        let palette = &self.palette;
-        let on = self.hearing_answers;
-        Some(
-            div()
-                .id("hear-answers")
-                .h_flex()
-                .flex_none()
-                .items_center()
-                .gap(px(6.))
-                .px(px(8.))
-                .py(px(3.))
-                .rounded(px(5.))
-                .cursor_pointer()
-                .font_family(cx.theme().mono_font_family.clone())
-                .text_size(px(9.5))
-                .text_color(paint(if on { palette.fg } else { palette.muted }))
-                .hover(|style| style.bg(paint(palette.wash)))
-                .tooltip(move |_window, cx| {
-                    cx.new(|_| {
-                        gpui_kit::component::tooltip::Tooltip::new(if on {
-                            "Answers are read aloud as they arrive"
-                        } else {
-                            "Read the agent's answers aloud, without walking"
-                        })
-                    })
-                    .into()
+                .child(if playing {
+                    // Drawn: a square, which no font can get wrong.
+                    control("prose-stop", "Stop reading · still walking")
+                        .child(div().size(px(8.)).rounded(px(1.)).bg(paint(palette.fg)))
+                        .on_click(cx.listener(|deck, _, _window, cx| deck.stop_prose(cx)))
+                } else {
+                    control("prose-play", "Read this group")
+                        .child(div().text_size(px(9.)).child("▶"))
+                        .on_click(cx.listener(|deck, _, _window, cx| deck.again(cx)))
                 })
                 .child(
-                    div()
-                        .size(px(7.))
-                        .rounded_full()
-                        .border_1()
-                        .border_color(paint(if on { palette.accent } else { palette.muted }))
-                        .when(on, |this| this.bg(paint(palette.accent))),
+                    control("prose-again", "Hear it again from the top")
+                        .child("↺")
+                        .on_click(cx.listener(|deck, _, _window, cx| deck.again(cx))),
                 )
-                .child(if on { "reading aloud" } else { "read aloud" })
-                .on_click(cx.listener(|deck, _, _window, cx| deck.toggle_hearing_answers(cx)))
                 .into_any_element(),
         )
     }
@@ -5827,6 +5758,10 @@ impl DeckView {
             .v_flex()
             .flex_none()
             .w(px(168.))
+            // A band dragged shorter than the keys cuts them off rather than
+            // letting them spill over the panes.
+            .min_h_0()
+            .overflow_hidden()
             .flex_none()
             .pl(px(14.))
             .pr(px(14.))
@@ -5847,41 +5782,39 @@ impl DeckView {
             // The walk is only offered to somebody who has set a voice up.
             // Everything else here works out of the box; that one does not, and
             // a key that does nothing is worse than a key that is not there.
-            .children(
-                KEYS.iter()
-                    .filter(|(key, _, _)| !matches!(*key, "w" | "r") || ready)
-                    .map(|(key, _, says)| {
-                        div()
-                            .h_flex()
-                            .items_center()
-                            .gap(px(9.))
-                            .py(px(2.5))
-                            .font_family(mono.clone())
-                            .text_size(px(11.))
-                            .text_color(paint(self.palette.fg.mix(self.palette.band, 0.28)))
-                            // A key is a thing you press, so it is drawn as one — a
-                            // cap with a thicker bottom edge, the way a key catches
-                            // light.
-                            .child(
-                                div()
-                                    .min_w(px(19.))
-                                    .flex_none()
-                                    .px(px(4.))
-                                    .py(px(3.))
-                                    .text_center()
-                                    .rounded(px(4.))
-                                    .border_1()
-                                    .border_b_2()
-                                    .border_color(paint(self.palette.edge))
-                                    .bg(paint(self.palette.wash))
-                                    .text_size(px(10.5))
-                                    .line_height(px(10.5))
-                                    .text_color(paint(self.palette.fg))
-                                    .child(*key),
-                            )
-                            .child(*says)
-                    }),
-            )
+            .children(KEYS.iter().filter(|(key, _, _)| *key != "w" || ready).map(
+                |(key, _, says)| {
+                    div()
+                        .h_flex()
+                        .items_center()
+                        .gap(px(9.))
+                        .py(px(2.5))
+                        .font_family(mono.clone())
+                        .text_size(px(11.))
+                        .text_color(paint(self.palette.fg.mix(self.palette.band, 0.28)))
+                        // A key is a thing you press, so it is drawn as one — a
+                        // cap with a thicker bottom edge, the way a key catches
+                        // light.
+                        .child(
+                            div()
+                                .min_w(px(19.))
+                                .flex_none()
+                                .px(px(4.))
+                                .py(px(3.))
+                                .text_center()
+                                .rounded(px(4.))
+                                .border_1()
+                                .border_b_2()
+                                .border_color(paint(self.palette.edge))
+                                .bg(paint(self.palette.wash))
+                                .text_size(px(10.5))
+                                .line_height(px(10.5))
+                                .text_color(paint(self.palette.fg))
+                                .child(*key),
+                        )
+                        .child(*says)
+                },
+            ))
     }
 }
 
@@ -6307,8 +6240,7 @@ impl DeckView {
                                                     ))),
                                             )
                                         }),
-                                )
-                                .children(self.render_hearing_toggle(cx)),
+                                ),
                         )
                         .child(
                             div()
@@ -6427,6 +6359,7 @@ impl DeckView {
             return;
         };
         self.voice.hush();
+        self.reading_prose = false;
         let speech = crate::speech::asked(cx);
         self.narrate(
             &text,
@@ -7130,7 +7063,6 @@ impl Render for DeckView {
             .on_action(cx.listener(Self::on_next))
             .on_action(cx.listener(Self::on_prev))
             .on_action(cx.listener(Self::on_walk))
-            .on_action(cx.listener(Self::on_again))
             .on_action(cx.listener(Self::on_follow))
             .on_action(cx.listener(Self::on_unlight))
             .on_action(cx.listener(Self::on_close))
@@ -7549,9 +7481,8 @@ mod tests {
     #[test]
     fn every_key_in_the_legend_is_a_key_that_is_bound() {
         // The legend is built from KEYS and the bindings are written out
-        // beside it. `r` moved from turning the panes to reading them aloud,
-        // and a legend still offering `l` would be the first thing a reader
-        // tried.
+        // beside it. Turning the panes moved to `t`, and a legend still
+        // offering `l` would be the first thing a reader tried.
         let bound: Vec<String> = bindings()
             .iter()
             .filter_map(|binding| binding.keystrokes().first())

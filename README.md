@@ -226,14 +226,15 @@ or not anybody is listening.
 
 ### Arrange it the way you read
 
-Drag a seam to resize a pane, `r` to turn the panes a quarter, and the shape is
+Drag a seam to resize a pane, `t` to turn the panes a quarter, and the shape is
 remembered for next time.
 
 | key | does |
 | --- | --- |
 | `n` `p` | next / previous group |
 | `c` | comment on the selection, or on the group |
-| `r` | turn the panes |
+| `w` | walk: read the deck aloud, and its answers |
+| `t` | turn the panes |
 | `h` | put the deck away |
 | `s` | submit the review |
 | `q` | close without answering |
@@ -264,12 +265,13 @@ it talks, whether or not anybody is listening.
 `w` adds the voice. The narration is read out loud, the code lights up under the
 sentence being said — sentence by sentence, from the sound's own clock — and
 panes fold down to a spine when they are not the point, unfolding again when
-something points at them. `w` again stops it, and so does **Stop** at the top
-of the narration; `r` (or **↺**) hears the group again from its first word.
+something points at them. `w` again leaves the walk.
 
-To follow only the conversation — you have heard the deck and want the agent's
-answers — turn on **read aloud** in the chat's header. Answers are read as they
-arrive, without walking the prose again.
+Inside the walk the prose is a track: **■** at the top of the narration stops
+it and keeps you walking, so the agent's answers are still read to you; **↺**
+hears the group again from its first word. A group already read in
+this walk is not read again when you come back to it — walk to follow the
+conversation without hearing the deck twice.
 
 The voice wants a Google API key, set once:
 
