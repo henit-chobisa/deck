@@ -264,7 +264,12 @@ it talks, whether or not anybody is listening.
 `w` adds the voice. The narration is read out loud, the code lights up under the
 sentence being said — sentence by sentence, from the sound's own clock — and
 panes fold down to a spine when they are not the point, unfolding again when
-something points at them. `w` again stops it.
+something points at them. `w` again stops it, and so does **Stop** at the top
+of the narration; `r` (or **↺**) hears the group again from its first word.
+
+To follow only the conversation — you have heard the deck and want the agent's
+answers — turn on **read aloud** in the chat's header. Answers are read as they
+arrive, without walking the prose again.
 
 The voice wants a Google API key, set once:
 
