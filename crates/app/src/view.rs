@@ -6236,6 +6236,21 @@ const SEAM: f32 = 7.;
 /// showed a sliver of it at every corner (see `win::fit_frame`).
 const WINDOW_CORNER: f32 = if cfg!(target_os = "windows") { 8. } else { 14. };
 
+/// The corner to paint right now.
+///
+/// Square when the platform's own frame is: a maximised window on Windows
+/// fills the screen with square corners, and Windows 10 never rounds at all.
+/// A curve painted inside a square frame leaves a wedge of whatever is behind
+/// the window at each corner.
+fn window_corner(window: &Window) -> f32 {
+    #[cfg(target_os = "windows")]
+    if window.is_maximized() || !crate::win::rounds() {
+        return 0.;
+    }
+    let _ = window;
+    WINDOW_CORNER
+}
+
 /// How wide the rail is folded down to its spine.
 ///
 /// Narrow enough to be a margin rather than a column: it holds a stack of
@@ -6252,6 +6267,7 @@ impl Render for DeckView {
             self.notes = None;
         }
         let typing = self.typing(window, cx);
+        let corner = window_corner(window);
         // A page's own view is not deck's to paint, so it is moved here, before
         // anything is drawn: to where the last frame measured its hole, or off
         // the screen if the room is in the middle of moving.
@@ -6570,7 +6586,7 @@ impl Render for DeckView {
             // Everything drawn along this edge shares the radius because they
             // share the element, which is the only way two curves stay
             // concentric without anybody knowing the platform's number.
-            .rounded(px(WINDOW_CORNER))
+            .rounded(px(corner))
             .overflow_hidden()
             .track_focus(&self.focus)
             // Only while nothing is being typed — which is a question about
@@ -6726,7 +6742,7 @@ impl Render for DeckView {
                         .left(px(1.))
                         .right(px(1.))
                         .bottom(px(1.))
-                        .rounded(px(WINDOW_CORNER - 1.))
+                        .rounded(px((corner - 1.).max(0.)))
                         .border_2()
                         .border_color(paint(self.palette.accent)),
                 )

@@ -56,6 +56,10 @@ pub fn keep_on_top(window: &Window) {
 /// a rectangle just outside the painted curve. The border goes, the corner is
 /// asked to stay rounded, and deck paints its corner at the same 8 points on
 /// Windows (see `view::WINDOW_CORNER`), so the shadow follows the deck.
+///
+/// Says whether Windows agreed to round the corner. Windows 10 has no such
+/// setting and keeps its square frame, so deck paints a square corner there
+/// (see [`rounds`]) rather than a curve inside a square.
 pub fn fit_frame(window: &Window) {
     let Some(hwnd) = hwnd(window) else {
         return;
@@ -69,13 +73,29 @@ pub fn fit_frame(window: &Window) {
             hwnd,
             DWMWA_BORDER_COLOR,
             (&raw const none).cast(),
-            size_of_val(&none) as u32,
+            size_of(&none),
         );
-        let _ = DwmSetWindowAttribute(
+        let rounded = DwmSetWindowAttribute(
             hwnd,
             DWMWA_WINDOW_CORNER_PREFERENCE,
             (&raw const round).cast(),
-            size_of_val(&round) as u32,
-        );
+            size_of(&round),
+        )
+        .is_ok();
+        ROUNDS.store(rounded, std::sync::atomic::Ordering::Relaxed);
     }
+}
+
+/// The size of an attribute's value, as the window manager wants it told.
+fn size_of<T>(value: &T) -> u32 {
+    u32::try_from(size_of_val(value)).unwrap_or(0)
+}
+
+/// Whether this Windows rounds a window's corners. True until a window has
+/// asked and been refused, which is Windows 10.
+static ROUNDS: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
+
+/// Whether the platform's frame around the deck is rounded.
+pub fn rounds() -> bool {
+    ROUNDS.load(std::sync::atomic::Ordering::Relaxed)
 }

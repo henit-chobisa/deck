@@ -420,7 +420,10 @@ pub fn open_deck(session: Session, cx: &mut App) {
         // edges, while hiding the chrome. The traffic lights are pushed
         // off-screen rather than left sitting on the deck's own header.
         titlebar: Some(TitlebarOptions {
-            title: None,
+            // Named on Windows, where the deck is an ordinary window with a
+            // taskbar button and a place in Alt-Tab, and an unnamed one is a
+            // blank entry in both. Nowhere else shows a title for it.
+            title: cfg!(target_os = "windows").then(|| "deck".into()),
             appears_transparent: true,
             traffic_light_position: Some(point(px(-64.), px(-64.))),
         }),
