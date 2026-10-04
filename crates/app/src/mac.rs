@@ -9,7 +9,10 @@ use gpui_kit::Window;
 use objc2::ffi;
 use objc2::runtime::{AnyClass, AnyObject, Bool, Imp, NSObject, Sel};
 use objc2::sel;
-use objc2_app_kit::NSView;
+use objc2_app_kit::{
+    NSApplication, NSApplicationActivationOptions, NSRunningApplication, NSView, NSWorkspace,
+};
+use objc2_foundation::NSObjectProtocol as _;
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 
 /// Make this window one that never holds the keyboard.
@@ -64,14 +67,14 @@ pub fn never_key(window: &Window) {
 
 thread_local! {
     /// The application the reader was in when they opened a deck.
-    static BEFORE: std::cell::RefCell<Option<objc2::rc::Retained<objc2_app_kit::NSRunningApplication>>> =
+    static BEFORE: std::cell::RefCell<Option<objc2::rc::Retained<NSRunningApplication>>> =
         const { std::cell::RefCell::new(None) };
 }
 
 /// Note which application is in front, before deck comes forward to be read.
 pub fn remember_front() {
-    let front = objc2_app_kit::NSWorkspace::sharedWorkspace().frontmostApplication();
-    let ours = objc2_app_kit::NSRunningApplication::currentApplication();
+    let front = NSWorkspace::sharedWorkspace().frontmostApplication();
+    let ours = NSRunningApplication::currentApplication();
     // Not deck itself: opening a second deck from the first would otherwise
     // forget where the reader really came from.
     if let Some(front) = front
@@ -94,10 +97,17 @@ pub fn step_back() {
     let Some(before) = BEFORE.take() else {
         return;
     };
+    if before.isTerminated() {
+        return;
+    }
     // Offered, then asked for: since macOS 14 an application comes forward
-    // only if the one in front lets it.
-    objc2_app_kit::NSApplication::sharedApplication(main).yieldActivationToApplication(&before);
-    before.activateWithOptions(objc2_app_kit::NSApplicationActivationOptions::empty());
+    // only if the one in front lets it. The offer does not exist before 14,
+    // and sending it there is an unrecognised selector — asked first.
+    let app = NSApplication::sharedApplication(main);
+    if app.respondsToSelector(sel!(yieldActivationToApplication:)) {
+        app.yieldActivationToApplication(&before);
+    }
+    before.activateWithOptions(NSApplicationActivationOptions::empty());
 }
 
 /// Mark an object as one that must never hold the keyboard.
