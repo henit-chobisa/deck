@@ -141,6 +141,8 @@ pub fn bindings() -> Vec<KeyBinding> {
         // the answer, escape is changing your mind.
         KeyBinding::new("q", Close, Some("DeckQuit")),
         KeyBinding::new("escape", Unlight, Some("DeckQuit")),
+        // The card that says why Ask now is off: escape puts it away.
+        KeyBinding::new("escape", Unlight, Some("DeckUnheard")),
     ]
 }
 
@@ -821,6 +823,14 @@ pub struct DeckView {
     notes_fade: crate::pane::Fade,
     /// The same, for the warning before quitting.
     quit_fade: crate::pane::Fade,
+    /// The card that says why *Ask now* is off, while it is up.
+    ///
+    /// Shown when the reader presses the button, or its keys, with no agent
+    /// on the other end. See [`Self::render_unheard`].
+    explaining: bool,
+    /// That card's hold on the keyboard, and how far it has come in.
+    explain_focus: FocusHandle,
+    explain_fade: crate::pane::Fade,
     /// The fetch of notes that were not cached. Replaced, and so dropped,
     /// when another version's notes are asked for.
     fetching_notes: Task<()>,
@@ -1021,6 +1031,9 @@ impl DeckView {
             quit_focus: cx.focus_handle(),
             notes_fade: Self::card_fade(),
             quit_fade: Self::card_fade(),
+            explaining: false,
+            explain_focus: cx.focus_handle(),
+            explain_fade: Self::card_fade(),
             fetching_notes: Task::ready(()),
             voice: crate::speech::Voice::default(),
             folded,
@@ -2520,6 +2533,202 @@ impl DeckView {
     /// Pressing anywhere off the card puts it away, and so does escape. The
     /// card is the only thing that can be pressed while it is up: the deck
     /// behind it is dimmed to say so, and occluded so that it is true.
+    /// Why *Ask now* is off, and what to do instead.
+    ///
+    /// The card the disabled button opens. Set as the other two cards are —
+    /// the same panel over the same dimmed window, the same cross — so it
+    /// reads as one of them. Escape, the cross and a click off the card put
+    /// it away with the words still in the box.
+    fn render_unheard(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
+        /// Where the fix for this will be announced.
+        const RELEASES: &str = "https://github.com/henit-chobisa/deck/releases";
+
+        if !self.explaining && !self.explain_fade.moving() {
+            return None;
+        }
+        let open = self.explaining;
+        let shown = self.explain_fade.level();
+        let palette = &self.palette;
+        let mono = cx.theme().mono_font_family.clone();
+        let para = |text: &'static str| {
+            div()
+                .text_size(px(13.))
+                .line_height(px(20.5))
+                .text_color(paint(palette.fg))
+                .child(text)
+        };
+        Some(
+            div()
+                .id("unheard-shade")
+                .when(open, |this| {
+                    this.track_focus(&self.explain_focus)
+                        .key_context("DeckUnheard")
+                        .on_action(cx.listener(Self::on_unlight))
+                        .occlude()
+                        .on_mouse_down(
+                            MouseButton::Left,
+                            cx.listener(|deck, _, window, cx| deck.understood(window, cx)),
+                        )
+                })
+                .absolute()
+                .top_0()
+                .left_0()
+                .right_0()
+                .bottom_0()
+                .flex()
+                .items_center()
+                .justify_center()
+                .opacity(shown)
+                .bg(paint(palette.bg).opacity(0.72))
+                .child(
+                    div()
+                        .id("unheard-card")
+                        .relative()
+                        .w(px(460.))
+                        .max_w(relative(0.9))
+                        .v_flex()
+                        .rounded(px(10.))
+                        .border_1()
+                        .border_color(paint(palette.edge))
+                        .bg(paint(palette.bg))
+                        .shadow_lg()
+                        .on_mouse_down(MouseButton::Left, |_, _window, cx| cx.stop_propagation())
+                        .child(
+                            div()
+                                .v_flex()
+                                .gap(px(4.))
+                                .px(px(24.))
+                                .pt(px(20.))
+                                .pb(px(14.))
+                                .child(
+                                    div()
+                                        .text_size(px(11.))
+                                        .text_color(paint(palette.muted))
+                                        .child("ask now is off"),
+                                )
+                                .child(
+                                    div()
+                                        .text_size(px(18.))
+                                        .font_weight(FontWeight::SEMIBOLD)
+                                        .child("Your agent isn't listening"),
+                                ),
+                        )
+                        .child(div().h(px(1.)).mx(px(24.)).bg(paint(palette.edge)))
+                        .child(
+                            div()
+                                .v_flex()
+                                .gap(px(10.))
+                                .px(px(24.))
+                                .pt(px(16.))
+                                .child(para(
+                                    "Deck's skill asks your agent to keep listening for what \
+                                     you say here, and this one did not start anything to \
+                                     listen with. A question sent now would reach nobody.",
+                                ))
+                                .child(para(
+                                    "Add it to the review instead. It goes back with \
+                                     everything else when you submit.",
+                                ))
+                                .child(
+                                    div()
+                                        .h_flex()
+                                        .flex_wrap()
+                                        .gap(px(6.))
+                                        .text_size(px(12.))
+                                        .line_height(px(19.))
+                                        .text_color(paint(palette.muted))
+                                        .child("The deck team is making this more robust.")
+                                        .child(
+                                            div()
+                                                .id("unheard-releases")
+                                                .cursor_pointer()
+                                                .text_color(paint(palette.accent))
+                                                .hover(|this| this.opacity(0.8))
+                                                .on_click(|_, _window, cx| cx.open_url(RELEASES))
+                                                .child("Follow the releases ↗"),
+                                        ),
+                                ),
+                        )
+                        .child(
+                            div()
+                                .h_flex()
+                                .justify_end()
+                                .gap(px(8.))
+                                .px(px(24.))
+                                .pt(px(18.))
+                                .pb(px(20.))
+                                .child(
+                                    div()
+                                        .id("unheard-close")
+                                        .h_flex()
+                                        .items_center()
+                                        .gap(px(6.))
+                                        .px(px(10.))
+                                        .py(px(5.))
+                                        .rounded(px(5.))
+                                        .cursor_pointer()
+                                        .text_size(px(11.5))
+                                        .border_1()
+                                        .border_color(paint(palette.edge))
+                                        .text_color(paint(palette.fg))
+                                        .hover(|style| style.bg(paint(palette.wash)))
+                                        .child("Keep writing")
+                                        .child(
+                                            div()
+                                                .font_family(mono.clone())
+                                                .text_size(px(10.))
+                                                .opacity(0.7)
+                                                .child("esc"),
+                                        )
+                                        .on_click(cx.listener(|deck, _, window, cx| {
+                                            deck.understood(window, cx);
+                                        })),
+                                )
+                                .child(
+                                    div()
+                                        .id("unheard-add")
+                                        .px(px(10.))
+                                        .py(px(5.))
+                                        .rounded(px(5.))
+                                        .cursor_pointer()
+                                        .text_size(px(11.5))
+                                        .bg(paint(palette.accent))
+                                        .text_color(paint(palette.on_accent))
+                                        .child("Add to review")
+                                        .on_click(cx.listener(|deck, _, window, cx| {
+                                            deck.explaining = false;
+                                            deck.explain_fade.set(false);
+                                            deck.save_remark(deck_core::When::Defer, window, cx);
+                                        })),
+                                ),
+                        )
+                        .child(
+                            div()
+                                .id("unheard-cross")
+                                .absolute()
+                                .top(px(12.))
+                                .right(px(12.))
+                                .size(px(24.))
+                                .flex()
+                                .items_center()
+                                .justify_center()
+                                .rounded(px(6.))
+                                .cursor_pointer()
+                                .text_size(px(13.))
+                                .text_color(paint(palette.muted))
+                                .hover(|this| {
+                                    this.bg(paint(palette.wash)).text_color(paint(palette.fg))
+                                })
+                                .on_click(
+                                    cx.listener(|deck, _, window, cx| deck.understood(window, cx)),
+                                )
+                                .child("✕"),
+                        ),
+                )
+                .into_any_element(),
+        )
+    }
+
     /// Before quitting over a comment with words in it: what happens to them.
     ///
     /// Set as the release notes are — the same card over the same dimmed
@@ -2826,6 +3035,10 @@ impl DeckView {
     fn on_unlight(&mut self, _: &Unlight, window: &mut Window, cx: &mut Context<Self>) {
         if self.quitting {
             self.stay(window, cx);
+            return;
+        }
+        if self.explaining {
+            self.understood(window, cx);
             return;
         }
         // Notes over the window are the nearest thing to put away.
@@ -3584,9 +3797,46 @@ impl DeckView {
                     ..
                 }
             ) {
-                deck.save_remark(deck_core::When::Interrupt, window, cx);
+                deck.ask_now(window, cx);
             }
         })
+    }
+
+    /// Whether an agent is on the other end to hear a question asked now.
+    ///
+    /// Before the deck is sealed the agent is plainly there — it is still
+    /// writing — and the count never starts.
+    fn heard(&self) -> bool {
+        self.unheard < UNHEARD_FOR
+    }
+
+    /// Send what is in the box to the agent now — if there is an agent.
+    ///
+    /// With nobody listening the words would be published to no one and sit
+    /// under a pulse that never ends. So the box keeps them, and a card says
+    /// why and what to do instead.
+    fn ask_now(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.heard() {
+            self.save_remark(deck_core::When::Interrupt, window, cx);
+        } else {
+            self.explaining = true;
+            self.explain_fade.set(true);
+            self.explain_focus.focus(window, cx);
+            cx.notify();
+        }
+    }
+
+    /// Put the card away, and the keyboard back in the comment box.
+    fn understood(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.explaining = false;
+        self.explain_fade.set(false);
+        match self.composing.as_ref().map(|(_, state, _)| state.clone()) {
+            Some(state) if self.rail_open.on() => {
+                state.update(cx, |state, cx| state.focus(window, cx));
+            }
+            _ => self.focus.focus(window, cx),
+        }
+        cx.notify();
     }
 
     /// The composer's other ending: keep the remark for the review.
@@ -5054,19 +5304,54 @@ impl DeckView {
                     "add-to-review",
                     "Add to review",
                     chord("⇧⌘⏎", "Ctrl+Shift+Enter"),
-                    false,
+                    // The one thing left to do with the words, when nobody
+                    // is there to ask: it takes the accent Ask now gave up.
+                    !self.heard(),
                 )
                 .on_click(cx.listener(|deck, _, window, cx| {
                     deck.save_remark(deck_core::When::Defer, window, cx);
                 })),
             )
-            .child(
-                button("ask-now", "Ask now", chord("⌘⏎", "Ctrl+Enter"), true).on_click(
-                    cx.listener(|deck, _, window, cx| {
-                        deck.save_remark(deck_core::When::Interrupt, window, cx);
-                    }),
-                ),
-            )
+            .child(if self.heard() {
+                button("ask-now", "Ask now", chord("⌘⏎", "Ctrl+Enter"), true)
+                    .on_click(cx.listener(|deck, _, window, cx| deck.ask_now(window, cx)))
+                    .into_any_element()
+            } else {
+                // Off, and saying so. Nobody is on the other end, so asking
+                // now would send the words nowhere. It still answers a click —
+                // with the reason, which is the thing the reader is missing.
+                div()
+                    .id("ask-now")
+                    .flex_none()
+                    .h_flex()
+                    .items_center()
+                    .gap(px(6.))
+                    .px(px(9.))
+                    .py(px(4.))
+                    .rounded(px(5.))
+                    .border_1()
+                    .border_color(paint(palette.edge))
+                    .text_size(px(10.5))
+                    .text_color(paint(palette.muted))
+                    .cursor_pointer()
+                    .hover(|style| style.bg(paint(palette.wash)))
+                    .tooltip(|_window, cx| {
+                        cx.new(|_| {
+                            gpui_kit::component::tooltip::Tooltip::new("Your agent isn't listening")
+                        })
+                        .into()
+                    })
+                    .on_click(cx.listener(|deck, _, window, cx| deck.ask_now(window, cx)))
+                    .child(div().opacity(0.6).child("Ask now"))
+                    .child(
+                        div()
+                            .font_family(mono.clone())
+                            .text_size(px(10.5))
+                            .text_color(paint(palette.accent))
+                            .child("ⓘ"),
+                    )
+                    .into_any_element()
+            })
     }
 
     /// The strip along the bottom: what is still coming, and which deck this
@@ -6388,6 +6673,7 @@ impl Render for DeckView {
             || self.rail_open.moving()
             || self.notes_fade.moving()
             || self.quit_fade.moving()
+            || self.explain_fade.moving()
             || self
                 .showing
                 .as_ref()
@@ -6694,9 +6980,10 @@ impl Render for DeckView {
             // Nor while the notes are up. They are a card over the deck, and a
             // key matched up the focus chain would otherwise reach through it:
             // `s` sent the review, `c` opened a comment under the card.
-            .when(!typing && !self.notes_fade.on() && !self.quitting, |this| {
-                this.key_context("Deck")
-            })
+            .when(
+                !typing && !self.notes_fade.on() && !self.quitting && !self.explaining,
+                |this| this.key_context("Deck"),
+            )
             .on_action(cx.listener(Self::on_next))
             .on_action(cx.listener(Self::on_prev))
             .on_action(cx.listener(Self::on_walk))
@@ -6834,6 +7121,7 @@ impl Render for DeckView {
             })
             .children(self.render_notes(cx))
             .children(self.render_quitting(cx))
+            .children(self.render_unheard(cx))
     }
 }
 
