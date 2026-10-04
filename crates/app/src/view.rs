@@ -592,8 +592,10 @@ pub struct DeckView {
     /// it again when they want it.
     heard_groups: std::collections::HashSet<usize>,
     /// The sentence whose stretch of the track is under the pointer, lit in
-    /// the prose while it is.
-    track_hover: Option<(usize, usize)>,
+    /// the prose while it is — rising and falling the way a pressed sentence
+    /// does — and the one it moved off, still going out.
+    track_hover: Option<((usize, usize), crate::pane::Fade)>,
+    track_hover_was: Option<((usize, usize), crate::pane::Fade)>,
     /// How many beats the deck has been finished with nobody waiting.
     ///
     /// Counted rather than asked once, because the right order is open, write,
@@ -1022,6 +1024,7 @@ impl DeckView {
             aloud,
             heard_groups,
             track_hover: None,
+            track_hover_was: None,
             unheard,
             asked_someone,
             talking_task: None,
@@ -4655,9 +4658,12 @@ impl DeckView {
                                         .collect(),
                                     named: self.name_hovered.clone().or(self.name_pinned.clone()),
                                     heard: self
-                                        .heard_in(crate::speech::Narration::Group(self.group_ix))
+                                        .heard_in(crate::speech::Narration::Group(self.group_ix)),
+                                    lit_also: [self.track_hover, self.track_hover_was]
                                         .into_iter()
-                                        .chain(self.track_hover.map(|range| (range, 0.45)))
+                                        .flatten()
+                                        .map(|(range, light)| (range, light.level()))
+                                        .filter(|(_, level)| *level > 0.)
                                         .collect(),
                                     pickable: true,
                                     // Only this group's. A word range means
@@ -5677,6 +5683,26 @@ impl DeckView {
             )
     }
 
+    /// The pointer went onto, or off, a sentence's stretch of the track.
+    ///
+    /// The sentence it leaves goes out from wherever its light had got to,
+    /// and the one it reaches rises — the same light a pressed sentence gets.
+    fn hover_track(&mut self, range: (usize, usize), over: bool) {
+        let here = self.track_hover.is_some_and(|(lit, _)| lit == range);
+        if over == here {
+            return;
+        }
+        if let Some((was, mut light)) = self.track_hover.take() {
+            light.set(false);
+            self.track_hover_was = Some((was, light));
+        }
+        if over {
+            let mut light = crate::pane::Fade::default();
+            light.set(true);
+            self.track_hover = Some((range, light));
+        }
+    }
+
     /// The prose as a track, under the prose, while walking (#17).
     ///
     /// Play or hold, and start again, on the left; then a hairline that fills
@@ -5792,7 +5818,9 @@ impl DeckView {
             let to = marks.get(ix + 1).copied().unwrap_or(1.).clamp(from, 1.);
             let range = ranges[ix];
             let word = starts[ix];
-            let lit = self.track_hover == Some(range);
+            let lit = self
+                .track_hover
+                .is_some_and(|(hovered, _)| hovered == range);
             div()
                 .id(("sentence-stretch", ix))
                 .absolute()
@@ -5834,11 +5862,7 @@ impl DeckView {
                     )
                 })
                 .on_hover(cx.listener(move |deck, hovered: &bool, _window, cx| {
-                    if *hovered {
-                        deck.track_hover = Some(range);
-                    } else if deck.track_hover == Some(range) {
-                        deck.track_hover = None;
-                    }
+                    deck.hover_track(range, *hovered);
                     cx.notify();
                 }))
                 .on_click(cx.listener(move |deck, _, _window, cx| {
@@ -6907,6 +6931,10 @@ impl Render for DeckView {
         if hearing
             || self.pressed.is_some_and(|(_, _, light)| light.moving())
             || self.said_lit.is_some_and(|(_, light)| light.moving())
+            || [self.track_hover, self.track_hover_was]
+                .into_iter()
+                .flatten()
+                .any(|(_, light)| light.moving())
             || self.rail_open.moving()
             || self.notes_fade.moving()
             || self.quit_fade.moving()

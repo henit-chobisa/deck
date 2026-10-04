@@ -113,6 +113,10 @@ pub struct Picking {
     /// rail was folded, none at all. A reader could write one and have no way
     /// of telling whether it had landed.
     pub remarked: Vec<(usize, usize)>,
+    /// Sentences lit from somewhere else — the walk's track, under the
+    /// pointer — each with how far up its light has come. Painted exactly as a
+    /// pressed sentence is, because it is the same promise: *this one*.
+    pub lit_also: Vec<((usize, usize), f32)>,
 }
 
 impl Picking {
@@ -147,6 +151,7 @@ impl Picking {
             pickable: false,
             shown: 1.,
             remarked: Vec::new(),
+            lit_also: Vec::new(),
         }
     }
 }
@@ -721,6 +726,12 @@ impl Token {
         } else {
             0.
         };
+        let lit = picking
+            .lit_also
+            .iter()
+            .filter(|((from, to), _)| at >= *from && at <= *to)
+            .map(|(_, level)| *level)
+            .fold(lit, f32::max);
         // Being heard: a soft ground under the sentence the voice is on, which
         // rises and falls rather than jumping from one sentence to the next.
         let heard = picking
