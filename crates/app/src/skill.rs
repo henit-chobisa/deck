@@ -718,7 +718,7 @@ mod tests {
         // and the reader sat in front of a panel that had stopped answering.
         assert!(SKILL.contains("The walk is for talking. Do not start the work."));
         assert!(
-            SKILL.contains("Never write to the project."),
+            SKILL.contains("Never change their code."),
             "said as a rule, not a preference"
         );
         assert!(

@@ -595,9 +595,9 @@ they do not answer the question. Do not use one to say the thing — that is
 **The walk is for talking. Do not start the work.** While the deck is open,
 nothing they say is an instruction to go and change something — not *"do it"*,
 not *"yes, let's go with the second one"*, not a decision the two of you just
-locked in. Every one of those is a point in the review. Agree in a sentence,
-say when it will happen — *"agreed — I'll make that change once you submit"* —
-and call `deck wait` again.
+locked in. Every one of those is a point in the review. Agree in a sentence — or
+say why not — and say when it will happen, in `deck say`: *"agreed — I'll make
+that change once you submit."* Then call `deck wait` again.
 
 The reason is what it looks like from their side. An agent that goes off to
 edit files mid-walk has stopped answering: the panel says *no answer yet*, the
@@ -605,15 +605,19 @@ next question goes nowhere, and the deck they were reading is now about code
 that is changing under it. They came to argue and decide; the doing comes after,
 from the review, all of it at once.
 
-So: answer questions, look things up, show them more — `deck show`, `deck bring`,
-a page or a picture to settle it. Never write to the project. If they insist it
-happens now, say that submitting the review is how they hand it over, and that
-you start the moment it arrives. A decision locked in the conversation goes in
-your own list of things to do; when the review comes, do those along with the
-comments.
+So: answer questions, look things up, run what you need to, show them more —
+`deck show`, `deck bring`, a diagram or a page written for the deck to settle
+it. **Never change their code.** An edit to a file they own is the work, and the
+work waits. If they want it now, tell them submitting is the handover — one key —
+and you start the moment it lands; *"ship it"* mid-walk is a submit, not a
+go-ahead.
+
+The `deck say` line is the record. Everything said in the walk comes back in the
+review's `transcript`, so a promise made there arrives with the comments even
+if you have lost track of it by then.
 
 **Hand the slow part to a subagent if you must.** If answering means real
-digging, spawn one with the context you already have and let it work while you
+digging, spawn one to read and report back — not to edit — with the context you already have and let it work while you
 keep the conversation alive. Do not make them wait on your whole investigation.
 
 **Two or three sentences.** They are listening, not reading — they cannot skim
@@ -1211,8 +1215,8 @@ as it stands, seal it, and make the edit afterwards. You lose nothing by that
 order and they get to argue before it lands, which is the whole point of handing
 it over.
 
-If the edit is already written — and it usually is, because *make this change*
-came before *show me* — reach for `--before`. You still have the old text; you
+If the edit was already written before the deck opened — and it usually is,
+because *make this change* came before *show me* — reach for `--before`. You still have the old text; you
 replaced it a moment ago, and it exists nowhere else now. That is exactly why
 the flag is there.
 
@@ -1783,7 +1787,11 @@ The payload is the review:
     { "group": "g1", "ref": "g1r1", "file": "src/batch.ts",
       "range": [122, 124], "source": "diff", "kind": "must-fix",
       "quote": "if (--pending === 0) finish()",   // use this to relocate if lines moved
-      "text": "why does this assume sorted input?" } ] }
+      "text": "why does this assume sorted input?" } ],
+  // only after a live walk: what was said, in order — yours included
+  "transcript": [
+    { "at_ms": 41200, "what": "said", "group": "g2",
+      "text": "agreed — I'll make the retry bounded once you submit." } ] }
 ```
 
 `range` is where the comment sits *now* (deck tracked it through any edits made while they
@@ -1800,7 +1808,9 @@ line — often the most important one in the review.
 
 Act on every comment, and on everything you agreed to during the walk — the
 changes they asked for in the conversation and the decisions you locked in
-together are part of this review even though they are not in `comments`. Answer
+together are part of this review even though they are not in `comments`. Read
+`transcript` for what you said you would do: every *"agreed"* there is a comment
+too. Answer
 the questions, fix what they objected to. Their comments are
 often the real "but why" — a question in a comment means the deck did not carry the model
 far enough, so answer it fully, not thinly. If the review changes your plan materially,
