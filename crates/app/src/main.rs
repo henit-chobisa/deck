@@ -463,7 +463,15 @@ pub fn open_deck(session: Session, cx: &mut App) {
             win::keep_on_top(window);
             win::fit_frame(window);
         }
-        let view = cx.new(|cx| DeckView::resume(session, window, cx));
+        let view = cx.new(|cx| {
+            // A page stands in a window of its own here, put where its pane
+            // is each time the deck draws. Moving the deck changes nothing
+            // deck paints, so it has to be told to draw.
+            #[cfg(target_os = "windows")]
+            cx.observe_window_bounds(window, |_, _, cx| cx.notify())
+                .detach();
+            DeckView::resume(session, window, cx)
+        });
         cx.new(|cx| Root::new(view, window, cx))
     }) {
         Ok(handle) => handle,
