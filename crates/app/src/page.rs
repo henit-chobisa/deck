@@ -240,6 +240,15 @@ impl Paper {
         }
     }
 
+    /// The page folded down to its spine: its name, and what it is of.
+    pub fn render_folded(&self, slot: &Slot, cx: &App) -> AnyElement {
+        let title = self.name.clone().unwrap_or_else(|| self.label.clone());
+        // What it is of, under what it is called — unless they are the same
+        // word, which a pane with a name and no title of its own makes them.
+        let under = Some(self.label.clone()).filter(|label| *label != title);
+        crate::pane::spine(slot, &title, under.as_ref(), self.label.clone(), cx)
+    }
+
     /// The pane, header and all.
     ///
     /// Deck draws the chrome and leaves a hole. The hole is measured as it is
@@ -251,7 +260,9 @@ impl Paper {
 
         div()
             .v_flex()
-            .flex_grow(slot.share)
+            // Folding is a width, as it is for a file: the pane gives up its
+            // share of the row a frame at a time and its spine takes the edge.
+            .flex_grow(slot.share * (1. - slot.fold))
             .flex_shrink(1.)
             .flex_basis(px(0.))
             .h_full()
@@ -263,7 +274,7 @@ impl Paper {
                 None,
                 self.label.clone(),
                 self.note.clone(),
-                crate::pane::Controls::default(),
+                crate::pane::controls(slot, None),
                 palette,
                 cx,
             ))

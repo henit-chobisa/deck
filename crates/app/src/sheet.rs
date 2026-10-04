@@ -209,15 +209,15 @@ impl Sheet {
         }
     }
 
-    /// The pane folded down to its spine, or nothing for a picture.
+    /// The pane folded down to its spine.
+    ///
+    /// Every kind has one. A picture and a page used to fold away to nothing,
+    /// which is a pane with no way back.
     pub fn render_folded(&self, slot: &Slot, cx: &App) -> AnyElement {
         match self {
             Self::Code(code) => code.render_folded(slot, cx),
-            // A picture has no name to put on a spine and nothing to read down
-            // the side of it, so it folds away to nothing at all.
-            // A page folds away to nothing for the same reason, and its view
-            // goes with it: a native surface cannot be drawn on a spine.
-            Self::Drawn(_) | Self::Page(_) => gpui_kit::div().into_any_element(),
+            Self::Drawn(chart) => chart.render_folded(slot, cx),
+            Self::Page(paper) => paper.render_folded(slot, cx),
         }
     }
 
