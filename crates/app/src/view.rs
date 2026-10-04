@@ -497,6 +497,9 @@ pub struct Session {
     shares: Vec<f32>,
     widths: Vec<f32>,
     folded: std::collections::HashSet<usize>,
+    /// How long nobody has been listening, so a window taken back off the
+    /// bar does not spend four seconds believing somebody is.
+    unheard: u8,
 }
 
 impl Session {
@@ -526,6 +529,7 @@ impl Session {
             shares: Vec::new(),
             widths: Vec::new(),
             folded: std::collections::HashSet::new(),
+            unheard: 0,
         }
     }
 
@@ -934,6 +938,7 @@ impl DeckView {
             shares,
             widths,
             folded,
+            unheard,
         } = session;
 
         // Nothing in hand means this deck is being opened rather than taken
@@ -987,7 +992,7 @@ impl DeckView {
             composing: None,
             composing_when: deck_core::When::Interrupt,
             aloud,
-            unheard: 0,
+            unheard,
             talking_task: None,
             followed: None,
             ahead: 0,
@@ -3806,8 +3811,18 @@ impl DeckView {
     ///
     /// Before the deck is sealed the agent is plainly there — it is still
     /// writing — and the count never starts.
+    ///
+    /// An agent that was just asked something is there too. Its waiter ends
+    /// the moment a question reaches it and does not come back until the
+    /// answer is said, so for the whole of that turn nothing is marked as
+    /// listening — and a second question asked meanwhile is kept and handed
+    /// over when it returns. That is not nobody.
     fn heard(&self) -> bool {
         self.unheard < UNHEARD_FOR
+            || self
+                .conversation
+                .latest_sign()
+                .is_some_and(|sign| sign.elapsed() < PATIENCE)
     }
 
     /// Send what is in the box to the agent now — if there is an agent.
@@ -3816,7 +3831,8 @@ impl DeckView {
     /// under a pulse that never ends. So the box keeps them, and a card says
     /// why and what to do instead.
     fn ask_now(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if self.heard() {
+        // An empty box has nothing to explain: it closes, as it always did.
+        if self.heard() || self.unsent(cx).is_none() {
             self.save_remark(deck_core::When::Interrupt, window, cx);
         } else {
             self.explaining = true;
@@ -4179,6 +4195,7 @@ impl DeckView {
             shares: self.shares.clone(),
             widths: self.widths.clone(),
             folded: self.folded.clone(),
+            unheard: self.unheard,
         }
     }
 
@@ -5237,6 +5254,9 @@ impl DeckView {
     /// question, which is the whole of the back-and-forth. *Add to review*
     /// holds it, and it goes back with the review.
     ///
+    /// With nobody listening *Ask now* is off and *Add to review* is the
+    /// bright one: see [`Self::ask_now`].
+    ///
     /// This was three chips, then three chips read as a sentence, then a
     /// checkbox — and none of them made sense to the person using them (#14).
     /// The middle chip was a timing rule nobody could predict, and a checkbox
@@ -5342,13 +5362,24 @@ impl DeckView {
                         .into()
                     })
                     .on_click(cx.listener(|deck, _, window, cx| deck.ask_now(window, cx)))
-                    .child(div().opacity(0.6).child("Ask now"))
+                    .child("Ask now")
+                    // Drawn, not typed: the circled letter is not in every
+                    // system's fonts.
                     .child(
                         div()
+                            .flex_none()
+                            .size(px(12.))
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .rounded_full()
+                            .border_1()
+                            .border_color(paint(palette.accent))
                             .font_family(mono.clone())
-                            .text_size(px(10.5))
+                            .text_size(px(8.))
+                            .font_weight(FontWeight::BOLD)
                             .text_color(paint(palette.accent))
-                            .child("ⓘ"),
+                            .child("i"),
                     )
                     .into_any_element()
             })
@@ -5649,8 +5680,13 @@ impl DeckView {
             hash ^= u64::from(byte);
             hash = hash.wrapping_mul(0x0100_0000_01b3);
         }
-        let at = hash % NOTHING_YET.len() as u64;
-        NOTHING_YET[usize::try_from(at).unwrap_or(0)]
+        let at = usize::try_from(hash % NOTHING_YET.len() as u64).unwrap_or(0);
+        // One of them says the agent is listening. Not beside a strip that
+        // says nobody is.
+        if NOTHING_YET[at] == "The agent is listening" && !self.heard() {
+            return NOTHING_YET[(at + 1) % NOTHING_YET.len()];
+        }
+        NOTHING_YET[at]
     }
 
     /// The rail: everything you have said, in the order you said it.
@@ -6634,6 +6670,12 @@ impl Render for DeckView {
         // Notes that have finished fading out are let go.
         if self.notes.is_some() && !self.notes_fade.on() && !self.notes_fade.moving() {
             self.notes = None;
+        }
+        // Somebody is there again: a card still saying otherwise would be
+        // wrong for as long as it stayed up. Put away here, where there is a
+        // window to hand the keyboard back through.
+        if self.explaining && self.heard() {
+            self.understood(window, cx);
         }
         let typing = self.typing(window, cx);
         let corner = window_corner(window);
