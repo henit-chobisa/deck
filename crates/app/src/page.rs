@@ -414,7 +414,8 @@ fn dressed(html: &str, palette: &Palette) -> String {
          html,body{{background:transparent;color:var(--deck-fg);\
            font:12px ui-monospace,SFMono-Regular,Menlo,monospace;}}\
          [data-show],[data-from]{{transition:opacity .35s}}\
-         .deck-off{{opacity:0;pointer-events:none}}\
+         [data-show]:not(.deck-seen),[data-from]:not(.deck-seen)\
+           {{opacity:0!important;pointer-events:none!important}}\
          </style>{html}",
         bg = hex(palette.bg),
         fg = hex(palette.fg),
@@ -444,12 +445,13 @@ fn dressed(html: &str, palette: &Palette) -> String {
 /// At rest — no point — nothing is on and nothing shown is showing, which is
 /// the still first frame a page must open on.
 const SHIM: &str = "window.deck=window.deck||{at:null};\
-    var deckStep=null;\
-    function deckApply(at){\
+    (function(){\
+    var step=null;\
+    function apply(at){\
       var meta=document.querySelector('meta[name=deck-points]');\
       var order=meta?meta.content.split(/\\s+/):[];\
-      if(at===null){deckStep=null;}else if(order.indexOf(at)>=0){deckStep=at;}\
-      var here=order.indexOf(deckStep);\
+      if(at===null){step=null;}else if(order.indexOf(at)>=0){step=at;}\
+      var here=order.indexOf(step);\
       var names=function(e,k){var v=e.getAttribute(k);return v===null?null:v.split(/\\s+/);};\
       document.querySelectorAll('[data-on]').forEach(function(e){\
         e.classList.toggle('on',at!==null&&names(e,'data-on').indexOf(at)>=0);});\
@@ -457,15 +459,16 @@ const SHIM: &str = "window.deck=window.deck||{at:null};\
         var show=names(e,'data-show'),from=names(e,'data-from'),seen=true;\
         if(show){seen=at!==null&&show.indexOf(at)>=0;}\
         if(from){var f=order.indexOf(from[0]);seen=seen&&here>=0&&f>=0&&here>=f;}\
-        e.classList.toggle('deck-off',!seen);});\
+        e.classList.toggle('deck-seen',seen);});\
     }\
-    addEventListener('deck:point',function(e){deckApply(e.detail);});\
+    addEventListener('deck:point',function(e){apply(e.detail);});\
     addEventListener('DOMContentLoaded',function(){\
-      deckApply(window.deck.at);\
+      apply(window.deck.at);\
       if(window.deck.at!==null){\
         window.dispatchEvent(new CustomEvent('deck:point',{detail:window.deck.at}));\
       }\
-    });";
+    });\
+    })();";
 
 /// Where a page sits, in the coordinates a webview wants.
 fn rect(at: Bounds<Pixels>) -> wry::Rect {
@@ -536,7 +539,15 @@ mod tests {
             "<p>x</p>",
             &crate::palette::current_on(true, Default::default()),
         );
-        assert!(page.contains(".deck-off{opacity:0"));
-        assert!(SHIM.contains("'deck-off'"));
+        // Hidden by deck's own stylesheet from the first paint, not by the
+        // script once the document has loaded — so nothing flashes, and a
+        // page rule cannot quietly show it again.
+        assert!(page.contains(":not(.deck-seen)"));
+        assert!(page.contains("opacity:0!important"));
+        assert!(SHIM.contains("'deck-seen'"));
+        assert!(
+            SHIM.contains("(function(){"),
+            "and the script keeps its names to itself"
+        );
     }
 }

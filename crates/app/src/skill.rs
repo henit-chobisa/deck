@@ -381,7 +381,7 @@ mod tests {
         // colour beside a themed window.
         for said in [
             "## 5. When the answer only makes sense moving",
-            "--page 'merge.html [rows] two rows meeting'",
+            "--page 'race.html [race] two workers, one count'",
             "Forty words, and that is the whole rule",
             "It starts at rest, and moves when you point",
             "deck:point",

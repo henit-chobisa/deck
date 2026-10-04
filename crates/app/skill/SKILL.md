@@ -1465,11 +1465,11 @@ grows, fills, races or changes value when you point, it is a page.
 
 ```bash
 deck group <path> \
-  --say 'Two rows arrive with the same key. [point 24-26 hop] The later one lands
-on top of the earlier — [hop] is the line that picks the winner, and [rows] shows
-which field actually survives it.' \
-  --page 'merge.html [rows] two rows meeting' \
-  --ref 'src/merge.ts:24-26 [hop] the line that decides'
+  --say '[point read-a] Worker A reads the count: 5. [point read-b] Worker B reads
+it too, and also sees 5. [point write-b] Both write 6, and one increment is gone —
+[race], and [bump] is where it happens.' \
+  --page 'race.html [race] two workers, one count' \
+  --ref 'src/counter.ts:12-14 [bump] read, add one, write'
 ```
 
 `--page` takes the same shape `--ref` and `--diagram` do: the file, then an optional
@@ -1526,10 +1526,12 @@ So write the page as a **function of the point**, not as a sequence that plays. 
 be walked forwards, walked backwards, and re-entered in the middle, which is what the
 reader will actually do to it.
 
-For a page that only lights or reveals parts, no script is needed: `data-on="hop
+For marking the moment inside a scene that already moves — the bar that just landed, the
+label that appears when the count goes wrong — no script is needed: `data-on="hop
 settle"` puts the class `on` on an element while the point is either name,
 `data-show="hop"` shows it only then, and `data-from="hop"` shows it from `hop` onward
-in the order `deck-points` lists. Style `.on` yourself.
+in the order `deck-points` lists. Style `.on` yourself. A page whose parts only light, and
+otherwise sit still, is a picture: write the picture.
 
 `deck:remark` is the other half: the reader pressing a comment in the rail, saying *this
 part*, about something that moves. Nothing else they could have written it against can
@@ -1636,7 +1638,7 @@ code should not be making requests while you read it. SVG, a canvas, and
 Asked for a clearer one? **Bring it again under the same `[name]`.**
 
 ```bash
-deck bring <path> --page 'flow.html [flow] the whole path, one screen'   # and again, revised
+deck bring <path> --page 'race.html [race] the same race, slower'   # and again, revised
 ```
 
 A page or a picture brought under a name that is already borrowed replaces what

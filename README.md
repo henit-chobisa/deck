@@ -406,11 +406,12 @@ it too, and also sees 5. [point write-b] Both write 6, and one increment is gone
 It is deliberately narrow. At most forty words may show — numbers and units are
 free, so an axis costs nothing, but a page with sentences in it is a second
 narration competing with the band. Nothing is fetched from anywhere, the page is
-handed deck's palette as CSS variables rather than choosing its own, and it draws
-for the pane's real size with text at the window's own size.
+handed deck's palette as CSS variables rather than choosing its own. The skill
+asks for it to be drawn for the pane's real size, with text at the window's own
+size.
 
 What it gets in return is the thing an artifact cannot have: it is told where the
-reader is. `[point rows]` reaches the page as an event, so the animation is bound
+reader is. `[point read-b]` reaches the page as an event, so the animation is bound
 to the sentence being read rather than to a clock.
 
 <p align="center">

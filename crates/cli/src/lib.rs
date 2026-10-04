@@ -360,6 +360,13 @@ pub fn what_will_not_light(say: &str, pointing: &[Pointing]) -> Vec<String> {
     }
     for page in &written {
         answers.extend(answered_by(&page.html));
+        notes.extend(unordered(&page.html).into_iter().map(|name| {
+            format!(
+                "`data-from=\"{name}\"` is not in the page's `deck-points`, so it never \
+                 shows: `data-from` arrives at a step in that list and stays for the \
+                 ones after it"
+            )
+        }));
     }
     for block in blocks(say) {
         // `106` and `106-110` are lines, not blocks, and belong to a file.
@@ -395,6 +402,38 @@ pub fn what_will_not_light(say: &str, pointing: &[Pointing]) -> Vec<String> {
         }
     }
     notes
+}
+
+/// The `data-from` names a page uses and never lists in `deck-points`.
+///
+/// `data-from` counts steps in that list's order, so a name outside it has
+/// no place in the order and the element stays hidden for the whole walk.
+fn unordered(html: &str) -> Vec<String> {
+    let listed: Vec<&str> = html
+        .find("name=\"deck-points\"")
+        .and_then(|at| {
+            let after = &html[at..];
+            let from = after.find("content=\"")? + 9;
+            let end = after[from..].find('"')?;
+            Some(after[from..from + end].split_whitespace().collect())
+        })
+        .unwrap_or_default();
+    let mut missing = Vec::new();
+    let mut rest = html;
+    while let Some(at) = rest.find("data-from=\"") {
+        rest = &rest[at + 11..];
+        let Some(end) = rest.find('"') else {
+            break;
+        };
+        if let Some(name) = rest[..end].split_whitespace().next()
+            && !listed.contains(&name)
+            && !missing.iter().any(|known: &String| known == name)
+        {
+            missing.push(name.to_string());
+        }
+        rest = &rest[end + 1..];
+    }
+    missing
 }
 
 /// Every payload a `[point ...]` in `say` carries, block names and all.
@@ -916,6 +955,13 @@ mod tests {
             2,
             "words in punctuation are words"
         );
+    }
+
+    #[test]
+    fn a_step_a_page_counts_from_has_to_be_in_its_order() {
+        let page = r#"<meta name="deck-points" content="one two">
+            <i data-from="two"></i><i data-from="three"></i>"#;
+        assert_eq!(unordered(page), ["three"]);
     }
 
     #[test]
