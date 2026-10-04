@@ -12,6 +12,13 @@
 //! to install IME behaviour — and the platform webview is added as a subview of
 //! it, positioned to the pane's rectangle every frame.
 //!
+//! Except on Windows, where a child of the window is drawn *under* what deck
+//! paints and a page built that way is never seen. There the view stands in
+//! a small window of its own that the deck owns — see `win::PageHost` — and
+//! everything below holds for it just the same. A click on it takes the
+//! keyboard to that window, so the page hands back every key it has no field
+//! to type into, and the deck's keys go on working.
+//!
 //! # What that costs, said plainly
 //!
 //! A native subview composites **above** everything deck paints, whatever order
@@ -67,6 +74,7 @@ pub struct Paper {
     /// The view, once the window has been able to make one.
     view: Option<wry::WebView>,
     /// Where it was last put, so it is only moved when it has moved.
+    #[cfg(not(target_os = "windows"))]
     at: Option<Bounds<Pixels>>,
     /// Where the pane's hole was drawn, written while painting and read on the
     /// next frame.
@@ -78,6 +86,22 @@ pub struct Paper {
     hole: Rc<Cell<Option<Bounds<Pixels>>>>,
     /// Whether it is on screen right now.
     shown: bool,
+    /// The window the view lives in, on Windows, where it cannot be a child
+    /// of the deck's. After `view`, so the view is dropped before the window
+    /// it was built in.
+    #[cfg(target_os = "windows")]
+    host: Option<crate::win::PageHost>,
+    /// Where the *again* button was drawn, and the size the view was last
+    /// given, both for the same reason: on Windows the view is not
+    /// see-through, so it has to keep out from under the one and is sized in
+    /// screen pixels, which change when the deck crosses to another monitor.
+    #[cfg(target_os = "windows")]
+    again: Rc<Cell<Option<Bounds<Pixels>>>>,
+    #[cfg(target_os = "windows")]
+    filled: Option<(i32, i32)>,
+    /// Whether the window would not take a view, so it is not waited for.
+    #[cfg(target_os = "windows")]
+    refused: bool,
 }
 
 impl Paper {
@@ -101,9 +125,18 @@ impl Paper {
             heeded: crate::pane::Fade::default(),
             selected: None,
             view: None,
+            #[cfg(not(target_os = "windows"))]
             at: None,
             hole: Rc::new(Cell::new(None)),
             shown: false,
+            #[cfg(target_os = "windows")]
+            host: None,
+            #[cfg(target_os = "windows")]
+            again: Rc::new(Cell::new(None)),
+            #[cfg(target_os = "windows")]
+            filled: None,
+            #[cfg(target_os = "windows")]
+            refused: false,
         }
     }
 
@@ -222,6 +255,10 @@ impl Paper {
         if let Some(view) = self.view.as_ref() {
             let _ = view.set_visible(false);
         }
+        #[cfg(target_os = "windows")]
+        if let Some(host) = self.host.as_ref() {
+            host.show(false);
+        }
         self.shown = false;
     }
 
@@ -235,6 +272,12 @@ impl Paper {
         // catches whatever else leaves the pane with no room to stand in.
         if f32::from(at.size.width) < 8. || f32::from(at.size.height) < 8. {
             self.hide();
+            return;
+        }
+        // A window that would not take a view is not asked again, and the
+        // document is not dressed again for it every frame.
+        #[cfg(target_os = "windows")]
+        if self.view.is_none() && self.refused {
             return;
         }
         if self.view.is_none() {
@@ -252,9 +295,46 @@ impl Paper {
                     )
                 },
             );
-            self.view = build(window, &opening, at);
-            if self.view.is_some() {
-                self.told = first;
+            #[cfg(not(target_os = "windows"))]
+            {
+                self.view = build(window, &opening, at);
+                if self.view.is_some() {
+                    self.told = first;
+                }
+            }
+            // Asked for here and made a moment later, out from under the
+            // deck's own drawing — see `win::PageHost::make`. Frames are asked
+            // for until it arrives, so this comes round again to collect it.
+            #[cfg(target_os = "windows")]
+            {
+                if self.host.is_none() && !self.refused {
+                    self.host = crate::win::PageHost::new(window);
+                    match self.host.as_ref() {
+                        Some(host) => {
+                            let wash = palette.wash;
+                            host.make(move |standing| build(standing, &opening, wash));
+                            // What that document opens knowing. Harmless
+                            // until the view is here: nothing is told a page
+                            // with no view.
+                            self.told = first;
+                        }
+                        // No window to stand in: not asked for again every frame.
+                        None => self.refused = true,
+                    }
+                }
+                match self.host.as_ref().map(crate::win::PageHost::made) {
+                    // Made, or refused for good: either way the wait is over.
+                    Some(Some(view)) => {
+                        self.view = view;
+                        self.refused = self.view.is_none();
+                        // The narration may have moved on while it was made.
+                        if self.view.is_some() {
+                            self.point_at(self.pointed.clone());
+                        }
+                    }
+                    Some(None) if !self.refused => window.request_animation_frame(),
+                    _ => {}
+                }
             }
             self.dressed = Some(document);
         }
@@ -262,14 +342,52 @@ impl Paper {
             return;
         };
         // Whole device pixels: a flex share puts the hole on a fraction, and
-        // a native view standing on a fraction is drawn soft.
+        // a native view standing on a fraction is drawn soft. (Windows places
+        // its host in whole screen pixels already.)
+        #[cfg(not(target_os = "windows"))]
         let at = snapped(at, window.scale_factor());
+        #[cfg(not(target_os = "windows"))]
         if self.at != Some(at) {
             let _ = view.set_bounds(rect(at));
             self.at = Some(at);
         }
+        // Asked every frame, not only when the hole has moved: the host is a
+        // window of its own, and the deck moving across the screen moves the
+        // hole without changing it. The host knows when there is nothing to do.
+        #[cfg(target_os = "windows")]
+        if let Some(host) = self.host.as_ref() {
+            // Starting below the *again* button, wherever this frame drew it.
+            // On a Mac the view is see-through and the button shows through
+            // it; this window is not, and would cover it.
+            let top = self.again.get().map_or(at.origin.y, |again| {
+                (again.origin.y + again.size.height + px(4.)).max(at.origin.y)
+            });
+            let tall = at.size.height - (top - at.origin.y);
+            if f32::from(tall) < 8. {
+                self.hide();
+                return;
+            }
+            let scale = window.scale_factor();
+            let filled = host.place(
+                f32::from(at.origin.x) * scale,
+                f32::from(top) * scale,
+                f32::from(at.size.width) * scale,
+                f32::from(tall) * scale,
+            );
+            if self.filled != Some(filled) {
+                let _ = view.set_bounds(wry::Rect {
+                    position: wry::dpi::PhysicalPosition::new(0, 0).into(),
+                    size: wry::dpi::PhysicalSize::new(filled.0, filled.1).into(),
+                });
+                self.filled = Some(filled);
+            }
+        }
         if !self.shown {
             let _ = view.set_visible(true);
+            #[cfg(target_os = "windows")]
+            if let Some(host) = self.host.as_ref() {
+                host.show(true);
+            }
             self.shown = true;
         }
     }
@@ -378,12 +496,25 @@ impl Paper {
         view: &WeakEntity<crate::view::DeckView>,
     ) -> Option<impl IntoElement> {
         let view = view.clone();
+        #[cfg(target_os = "windows")]
+        let measured = {
+            let again = Rc::clone(&self.again);
+            canvas(
+                move |at, _window, _cx| again.set(Some(at)),
+                |_, (), _, _| {},
+            )
+            .absolute()
+            .inset_0()
+        };
+        #[cfg(not(target_os = "windows"))]
+        let measured = gpui_kit::Empty;
         Some(
             div()
                 .absolute()
                 .top(px(35.))
                 .right(px(10.))
                 .id(("again", pane_ix))
+                .child(measured)
                 .h_flex()
                 .items_center()
                 .gap(px(6.))
@@ -505,6 +636,7 @@ const SHIM: &str = "window.deck=window.deck||{at:null};\
     })();";
 
 /// `at`, moved to the nearest whole device pixels on every edge.
+#[cfg(not(target_os = "windows"))]
 fn snapped(at: Bounds<Pixels>, scale: f32) -> Bounds<Pixels> {
     let whole = |v: Pixels| px((f32::from(v) * scale).round() / scale);
     let (left, top) = (whole(at.origin.x), whole(at.origin.y));
@@ -516,7 +648,25 @@ fn snapped(at: Bounds<Pixels>, scale: f32) -> Bounds<Pixels> {
     }
 }
 
+/// What a page on Windows does with a key it has no use for: tells deck.
+///
+/// There the page stands in a window of its own, and a click on it takes the
+/// keyboard with it. Anything typed into a field is the page's, and so are
+/// the keys that move around in it — Tab, Space, the arrows, Page Up and
+/// Down, Home and End — and the modifiers on their own. Everything else was
+/// meant for the deck, and is handed over (see `win::pass_key`).
+#[cfg(target_os = "windows")]
+const KEYS: &str = "addEventListener('keydown',function(e){\
+      var t=e.target;\
+      if(t&&(t.isContentEditable||/^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName)))return;\
+      if(e.ctrlKey||e.altKey||e.metaKey)return;\
+      if([9,16,17,18,32,33,34,35,36,37,38,39,40,91].indexOf(e.keyCode)>=0)return;\
+      window.ipc.postMessage('key:'+e.keyCode);\
+      e.preventDefault();\
+    },true);";
+
 /// Where a page sits, in the coordinates a webview wants.
+#[cfg(not(target_os = "windows"))]
 fn rect(at: Bounds<Pixels>) -> wry::Rect {
     wry::Rect {
         position: wry::dpi::LogicalPosition::new(f64::from(at.origin.x), f64::from(at.origin.y))
@@ -527,7 +677,55 @@ fn rect(at: Bounds<Pixels>) -> wry::Rect {
 }
 
 /// Make the view, as a child of the window deck is already drawing in.
+#[cfg(not(target_os = "windows"))]
 fn build(window: &Window, html: &str, at: Bounds<Pixels>) -> Option<wry::WebView> {
+    builder(html)
+        .with_transparent(true)
+        .with_bounds(rect(at))
+        .build_as_child(&window)
+        .inspect_err(refused)
+        .ok()
+}
+
+/// Make the view, filling the window that stands over the pane for it.
+///
+/// Not see-through, as it is on a Mac: there is nothing of deck's behind this
+/// window to see, only the desktop. It is given the pane's own colour instead,
+/// which is what would have shown.
+#[cfg(target_os = "windows")]
+fn build(host: &crate::win::Standing, html: &str, wash: Rgb) -> Option<wry::WebView> {
+    let Rgb { r, g, b } = wash;
+    builder(html)
+        .with_background_color((r, g, b, 255))
+        // Not focused as it is made. wry would otherwise hand the new view
+        // the keyboard, and the deck's window would lose it the moment a
+        // page appeared.
+        .with_focused(false)
+        .with_initialization_script(KEYS)
+        .with_ipc_handler({
+            let host = host.host();
+            move |said| {
+                if let Some(key) = said.body().strip_prefix("key:")
+                    && let Ok(key) = key.parse()
+                {
+                    crate::win::pass_key(host, key);
+                }
+            }
+        })
+        .build_as_child(host)
+        .inspect_err(refused)
+        .ok()
+}
+
+/// Said once, out loud. A pane that is silently empty is worse than one that
+/// explains itself: the reader would be looking at a hole wondering whether
+/// the agent forgot to draw anything.
+fn refused(err: &wry::Error) {
+    eprintln!("deck: this window would not take a page: {err}");
+}
+
+/// Everything about the view that is the same wherever it stands.
+fn builder(html: &str) -> wry::WebViewBuilder<'_> {
     wry::WebViewBuilder::new()
         .with_html(html)
         // Nothing is loaded from anywhere. A page is markup the agent wrote,
@@ -544,16 +742,6 @@ fn build(window: &Window, html: &str, at: Bounds<Pixels>) -> Option<wry::WebView
             let url = url.trim().to_ascii_lowercase();
             url.is_empty() || url.starts_with("about:") || url.starts_with("data:")
         })
-        .with_transparent(true)
-        .with_bounds(rect(at))
-        .build_as_child(&window)
-        .inspect_err(|err| {
-            // Said once, out loud. A pane that is silently empty is worse than
-            // one that explains itself: the reader would be looking at a hole
-            // wondering whether the agent forgot to draw anything.
-            eprintln!("deck: this window would not take a page: {err}");
-        })
-        .ok()
 }
 
 /// A string, as a script may safely receive it.
