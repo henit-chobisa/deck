@@ -34,6 +34,10 @@ building the deck *is* answering it. A deck costs them one keypress to ignore �
 a bar appears at the bottom of the screen and they open it when they choose —
 so there is no cost to be weighed and nothing to ask about.
 
+The one exception is a question too big for one deck — *explain the whole event
+stream*. Then you do not ask *whether* to build; you agree *the chapters* in a few
+lines, and build the first one the moment they say go. See "Agree the chapters first".
+
 **And do not send the prose version as well.** A summary carrying the whole
 argument is why nobody opens the deck. Say one line — *a deck is on the bar* —
 and let the deck do the work.
@@ -529,16 +533,28 @@ files. These have their own rules, and they come first:
 - **One travelling thing per journey.** Follow one concrete event, request or record
   from end to end, on a page that moves it as you point.
 - **Zoom one level at a time.** The map, then one part's inside, then its code. Never
-  the map straight to a line.
+  the map straight to a line. A part small enough to be one file has no inside worth a
+  group of its own: go from the map to its code.
 - **Keep a "you are here".** Each time you zoom, put the map in the group again
   (`--diagram map.json [map]`) with the current part set to `"weight": "accent"`, and
   point at it. That map is the group's one drawing; show a part's inside in a group of
-  its own. Getting lost is the commonest way a big explanation fails, and this is the
+  its own. A page whose lanes are the parts already says where you are, and needs no map
+  beside it. Getting lost is the commonest way a big explanation fails, and this is the
   cure.
-- **A series of decks, not one big one.** More than seven groups, counting each repeated
-  map, means split: deck one is the map and the main journey, each next deck one journey
-  or one part, each opening on the same map. Say what comes next — *this is the way in;
-  the way back is the next deck*.
+- **Chapters, not one big deck.** More than seven groups, counting each repeated map,
+  means split it into chapters: chapter one is the map and the main journey, each next
+  chapter one journey or one part, each opening on the same map.
+- **Agree the chapters first, then walk them one at a time.** This is the one place you
+  ask before building:
+  1. Say the plan in a few lines — *we will take this in three chapters: the map and a
+     command going in; a remark coming back; what happens when it fails. Start with
+     chapter one?* — and wait for the answer. They may reorder it, cut a chapter, or want
+     only one.
+  2. Build chapter one, open it, and wait for the review, exactly as for any deck.
+  3. Act on what they said, then build chapter two — and only then. Never write a later
+     chapter before they have finished the current one: their comments change it.
+  4. Each chapter's last group says what the next one is, and each next chapter opens on
+     the same map with its part accented.
 - **Shells, at system scale.** Deck one is the happy journey and nothing else. When the
   question is about reliability, failure, retries, ordering and recovery are the next
   shells, each opened by the problem the shell inside it leaves (see "Build it in
