@@ -471,17 +471,19 @@ mod tests {
     fn the_skill_offers_a_catalog_of_shapes_by_question() {
         // Left to itself an agent draws boxes, then a Gantt for everything. A
         // menu keyed by the question gets the right shape the first time.
+        let flat = SKILL.split_whitespace().collect::<Vec<_>>().join(" ");
         for said in [
             "A catalog of shapes that have worked",
-            "pick by the question, not by",
-            "the commonest one to overuse: use them only when two or",
+            "Pick by the question, not by habit",
+            "lanes are for two or more actors, and one actor is one row",
             "Should we make this change?",
             "Why is this number what it is?",
             "Why does the user see an old value?",
             "Some of these have a shape that has already landed with readers",
             "When nothing here fits, name the question first",
+            "the code sits beside it (\"Where it goes\", in \"Plan the context\")",
         ] {
-            assert!(SKILL.contains(said), "the skill never says `{said}`");
+            assert!(flat.contains(said), "the skill never says `{said}`");
         }
     }
 
