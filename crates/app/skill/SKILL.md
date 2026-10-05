@@ -606,6 +606,9 @@ files. These have their own rules, and they come first:
   their heads, and most misunderstandings live here.
 - **You would have to draw it twice**, before and after, and the meaning is the gap.
 
+For each of these, "A catalog of shapes that have worked" in §5 has a shape that has
+already landed with readers. Start there.
+
 **And not a page when nothing moves.** If the drawing looks the same at every sentence,
 it is structure, and structure is a picture. Motion that does not stand for something
 changing in the code is decoration, and decoration costs attention.
@@ -2007,6 +2010,53 @@ that allows it in the same breath. Nothing in it is a box with
 a label for a box's sake: every shape is something happening, at the time it happens.
 That is the size and the kind of thing that works. A page with a legend, a title and six
 controls is a small web app, and the reader did not open deck to use a small web app.
+
+### A catalog of shapes that have worked
+
+Pick the shape by the question the group answers, not by habit. A Gantt is one shape
+among these, and the commonest one to overuse. Each entry is the question, the shape,
+and what it needs from the code or the system. Walk it with the code: every sentence
+points at a line **and** a moment of the drawing, so the two move together.
+
+1. **Why does this break only under load or concurrency?** Two or three lanes on a time
+   axis in real milliseconds, a value track under them (a balance, a count), and the
+   moment it goes wrong lit red. The fix replays the same lanes with the second actor
+   refused. Needs: the order of reads and writes, and the timing of the slow step.
+
+2. **Should we make this change?** A projection with production numbers. Bars for
+   p50/p95/p99 today, the option drawn over them as a second set, today left as a ghost;
+   then the cost the option moves elsewhere — a day of traffic with its spike, and the
+   backlog that builds, with and without the mitigation. Needs: real percentiles from
+   traces, the peak multiplier, and the numbers that make the trade-off.
+
+3. **What happens to the input on its way through?** One record taken apart. The raw
+   value as chips; each chip moves to where the code sends it (filters, terms,
+   discarded); then the results as bars that grow as each factor is added and re-sort
+   by the final score. Needs: one real input and the factors that score it.
+
+4. **How is this system put together?** A picture, not a page: four to six parts, the
+   boundaries as clusters, and one playable flow per journey. Use it as the map that
+   opens a system-sized deck.
+
+5. **Why is this number what it is?** Asked mid-walk, answered with evidence: the
+   experiment or measurement as a line or bar chart, the chosen value marked, the
+   region past it marked as worse. Needs: the data the decision was made on.
+
+6. **Where does the time go?** A waterfall of every call the request makes: one bar per
+   query, so an N+1 shows as a staircase; the fix collapses it into one bar, and the
+   total ticks down. Needs: the call count, the time per call, and any pool limit.
+
+7. **Why does the total not add up?** A reconciliation waterfall: opening value, each
+   movement as a step, what it should be, what it is, and the gap lit red. Needs: the
+   figures the books or the counter report.
+
+8. **Why does the user see an old value?** Two value tracks over time — the source and
+   what the user sees — diverging at the change, with the stale window shaded and
+   counted. Needs: when the value changed and when the stale copy expires.
+
+When none of these fits, the question is usually one of: how it changes over time, how
+it compares, how a whole splits into parts, how one thing flows through others, or how
+two things relate. Name which, then draw the plainest chart that answers it.
 
 ### Bringing one mid-walk
 

@@ -468,6 +468,25 @@ mod tests {
     }
 
     #[test]
+    fn the_skill_offers_a_catalog_of_shapes_by_question() {
+        // Left to itself an agent draws boxes, then a Gantt for everything. A
+        // menu keyed by the question gets the right shape the first time.
+        for said in [
+            "A catalog of shapes that have worked",
+            "Pick the shape by the question the group answers, not by habit",
+            "Why does this break only under load or concurrency?",
+            "Should we make this change?",
+            "What happens to the input on its way through?",
+            "Why is this number what it is?",
+            "Where does the time go?",
+            "Why does the total not add up?",
+            "Why does the user see an old value?",
+        ] {
+            assert!(SKILL.contains(said), "the skill never says `{said}`");
+        }
+    }
+
+    #[test]
     fn the_skill_starts_a_deck_where_a_person_was_standing() {
         // The failure this answers, from a real deck: an opening about
         // `useState` and `destinationData` with nothing in it about the
