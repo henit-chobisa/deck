@@ -34,9 +34,9 @@ building the deck *is* answering it. A deck costs them one keypress to ignore �
 a bar appears at the bottom of the screen and they open it when they choose —
 so there is no cost to be weighed and nothing to ask about.
 
-The one exception is a question too big for one deck — a big feature, *explain
-the whole event stream* when it will not fit in seven groups. Then you do not ask *whether* to build; you agree *the chapters* in a few
-lines, and build the first one the moment they say go. See "Agree the chapters first".
+One exception: a question too big for seven groups — a big feature, *explain the
+whole event stream*. Do not ask whether to build. Agree the chapters in a few lines,
+and build chapter one when they say go. See "Agree the chapters first".
 
 **And do not send the prose version as well.** A summary carrying the whole
 argument is why nobody opens the deck. Say one line — *a deck is on the bar* —
@@ -259,8 +259,7 @@ actually learn:
     one-in-a-million path is the bug. A deck that gives the rare branch as much room as
     the common one tells the reader they are equally important, and they are not.
 
-12. **One decision at a time.** When a
-    deck asks the reader to decide, each group asks for at most one decision, and the
+12. **One decision at a time.** When a deck asks the reader to decide, each group asks for at most one decision, and the
     last group names the one that matters most. Three questions in one group get one
     answer, and it is to the easiest of them.
 
@@ -494,8 +493,8 @@ Build it the way it was built, **from the inside out**:
    inside it has.
 3. **Say which shell you are on, and what is still outside.** *That is shell one. It
    works, and it loses an event if the process dies mid-send — which is what the next
-   group is for.* That sentence is the door between two groups, and it tells the reader
-   whether to comment now or wait.
+   group is for.* That sentence links the two groups, and tells the reader whether to
+   comment now or wait.
 
 Shells add no groups. They set the order of the groups you already have, so that each
 one lands. They also give the walk its natural BUT: every shell exists
@@ -506,7 +505,7 @@ one-file fix has one shell; do not invent more.
 
 ## Plan the context: when to draw what
 
-This is the strategy, and it is decided before you write a word of `say`. The question
+Decide this before you write any `say`. The question
 is never *what should I show?* It is **what is the cheapest way to put the right model in
 this person's head?** Code, a picture and a page each do one job well and the other jobs
 badly. Pick by the job, not by habit — and the habit is code, every time.
@@ -525,13 +524,16 @@ files. These have their own rules, and they come first:
 
 - **Map first.** The first group is the whole system on one picture: four to six parts,
   the boundaries between them, and no code. People hold about four things at once; a map
-  of twelve boxes is a list, not a map.
+  of twelve boxes is a list, not a map. The map is group one's drawing; its `say` still
+  opens on a person and a hook — show the destination, then retreat.
 - **Walk journeys, not files.** Name the one to three journeys through it that answer
   the question — *a command goes in*, *a remark comes back* — and make each a flow on
   the map. People understand a system from what it is for down to the code, not from
   folders up.
 - **One travelling thing per journey.** Follow one concrete event, request or record
-  from end to end, on a page that moves it as you point.
+  from end to end. Where it goes — place to place — is a flow on the map: the current
+  runs along the path and your points light each stop. Use a page only for what a flow
+  cannot show: its timing against other actors, or its own shape changing on the way.
 - **Zoom one level at a time.** The map, then one part's inside, then its code. Never
   the map straight to a line. A part small enough to be one file has no inside worth a
   group of its own: go from the map to its code.
@@ -543,23 +545,30 @@ files. These have their own rules, and they come first:
   cure.
 - **Chapters, only when one deck cannot hold it.** Most questions — even many about a
   whole system — fit in one deck of seven groups or fewer. Then it is one deck: no
-  chapters, and nothing to ask. More than seven groups, counting each repeated map,
+  chapters, and nothing to ask. More than seven groups, counting each group that shows the
+  map again,
   means split it into chapters: chapter one is the map and the main journey, each next
   chapter one journey or one part, each opening on the same map.
-- **Agree the chapters first, then walk them one at a time.** This is the one place you
-  ask before building:
-  1. Say the plan in a few lines — *we will take this in three chapters: the map and a
-     command going in; a remark coming back; what happens when it fails. Start with
-     chapter one?* — and wait for the answer. They may reorder it, cut a chapter, or want
-     only one.
-  2. Build chapter one, open it, and wait for the review, exactly as for any deck.
-  3. Act on what they said, then build chapter two — and only then. Never write a later
-     chapter before they have finished the current one: their comments change it.
-  4. Each chapter's last group says what the next one is, and each next chapter opens on
-     the same map with its part accented.
-- **Shells, at system scale.** Deck one is the happy journey and nothing else. When the
-  question is about reliability, failure, retries, ordering and recovery are the next
-  shells, each opened by the problem the shell inside it leaves (see "Build it in
+- **Agree the chapters first, then walk them one at a time.** Chapters are for teaching
+  a system. A PR's concerns are not chapters: build those without asking, one deck per
+  concern, one at a time.
+  1. Read enough to name the journeys, then say the plan in a few lines — *we will take
+     this in three chapters: the map and a command going in; a remark coming back; what
+     happens when it fails. Start with chapter one?* Do not run `deck new` until they
+     answer: this is the one deck whose bar goes up after the research. If they say no,
+     build one deck of the main journey, seven groups at most, and offer the rest. If
+     they pick one chapter, build only that one.
+  2. Each chapter is its own deck: `deck new`, `deck open` in the background, the groups,
+     `deck seal`, then stop — exactly as for any deck.
+  3. When the waiter brings back a review, act on it, then build the next chapter right
+     away; do not ask again. Never write a later chapter before they have finished the
+     current one: their comments change it. If it comes back with no review — closed, or
+     interrupted — do not start the next chapter. Say it went unreviewed, and stop.
+  4. Each chapter's last group asks its decision first, then names the next chapter in
+     one line. Each next chapter opens on the same map with its part accented.
+- **Shells, at system scale.** Chapter one, or the only deck, is the happy journey and
+  nothing else. If the question is about reliability, the next shells are failure,
+  retries, ordering and recovery, each opened by the problem the shell inside it leaves (see "Build it in
   shells"). When it is not, they get a sentence.
 - **Details on demand.** Rare paths, configuration and metrics stay out of the walk.
   The last group names what was left out and offers it — *ask, and I'll bring it in*.
@@ -600,6 +609,15 @@ files. These have their own rules, and they come first:
 **And not a page when nothing moves.** If the drawing looks the same at every sentence,
 it is structure, and structure is a picture. Motion that does not stand for something
 changing in the code is decoration, and decoration costs attention.
+
+**And not a page when a thing only moves between places.** A card hopping between
+labelled boxes — folders, services, queues drawn as rectangles — is a picture with a
+flow, drawn badly. The picture lays it out, themes it, and runs a current along the
+path; your points light each stop. A page earns its place when its axes are **time**,
+**quantity** or **the thing's own shape** — never places.
+
+**Freeze it to check.** Imagine the page at rest, before any point. If it is boxes with
+labels and arrows, it is a picture: write the JSON instead, and give it a flow.
 
 ### Where it goes
 
@@ -1192,7 +1210,8 @@ used to be a separate step, and a separate step is a step to forget.
 Background, always. In the foreground it blocks you for as long as somebody is
 reading, which is minutes, and a foreground command has a timeout.
 
-Run it **second**, right after `deck new`, before the research — and then never again for
+Run it **second**, right after `deck new`, before the research — and only again after you
+answer a question mid-walk (§7), never otherwise for
 that deck. A bar appears at the bottom of the screen showing the title and `writing group
 1…`. Everything after this point is them waiting on *less and less*.
 
@@ -1491,32 +1510,14 @@ And one more plan check, for teaching decks: **does the story make them reason, 
 receive?** If the deck reveals everything top-down with nothing for them to predict, you
 have written a lecture. Find the spot where you can point at the code and ask them first.
 
-**Then ask which panes each group needs.** Not one answer — most groups want more than
-one, and the mistake is stopping at the first, which is the one you reach for without
-noticing:
-
-- **A file**, when the evidence is code that exists. Most groups.
-- **A picture**, when answering means naming three or more places and the order they run
-  in. See §4.
-- **A page**, when the answer is something they should watch happen — a race on a
-  timeline, a queue filling, a structure changing, a chart bending. When you would have
-  to draw it **twice**, because the thing being explained is the bit in between. See §5.
+**Then ask which panes each group needs** — a file, a picture, a page — by the
+strategy in "Plan the context: when to draw what". Most groups want more than one, and
+the mistake is stopping at the first, which is the one you reach for without noticing.
 
 **A picture or a page almost always wants a file beside it.** The picture says *where* in
 the flow you are, the refs say *what* the code does there; the page shows the movement,
 the ref shows the line that causes it. §4 and §5 both pair them, and a group that answers
 with a shape and no code has left the reader to find the code themselves.
-
-That last test is the one that makes the difference, because a page is the pane everybody
-forgets — and, when it is remembered, the one written as boxes, which is a picture's job.
-Two requests racing for one row, a queue filling until the producer is told to stop, a
-node coming out of the middle of a chain, a pointer walking a list: draw any of those once
-and you have drawn the start, or the end, and not the thing. Those are pages, and a deck that
-answers one with a static picture has handed the reader the two frames either side of the
-only frame they wanted.
-
-**Which of these, and when, is decided by the strategy in "Plan the context: when to draw
-what".** Run it on the plan, and again on each group.
 
 ### Read your own `say` back before you send it
 
@@ -1666,7 +1667,9 @@ the way they would if they had stepped through it in a debugger themselves.
 It is not a diagram drawn in HTML. **Boxes and arrows are a picture (§4) — always.**
 Deck draws pictures itself, laid out, themed, folding, with blocks a point can light.
 A page that is a row of rounded rectangles with labels in them is a worse picture,
-and it is the page agents write by default. Do not write it.
+and it is the page agents write by default. Do not write it. A card hopping between
+labelled boxes is the same mistake with motion added: a picture with a flow does it
+properly.
 
 **If you would have to draw it twice, it is a page.** That is the test. A before and
 an after, with the interesting part in the gap between them — that gap is the whole
