@@ -1,4 +1,4 @@
-# In the window
+# The window
 
 ## Walk the argument, not the diff
 
