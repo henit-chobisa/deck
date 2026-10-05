@@ -448,15 +448,17 @@ mod tests {
             "The bug lives in runtime state",
             "And not a page when nothing moves",
             "Beside the code that causes it, by default",
-            "Every page stops before the outcome, and asks",
+            "every page stops before the outcome, and asks",
+            "30 or\n   more lines apart",
+            "a picture six to ten nodes",
             "Keep one drawing across groups",
             "Build it in shells",
             "Shell 1 makes the idea alive",
             "Say which shell you are on, and what is still outside",
-            "Shells cost no extra groups",
+            "Shells add no groups",
             "Plain words, active voice, one claim a sentence",
             "Spend the deck where the cases are",
-            "One concern at a time, one decision at a time",
+            "One decision at a time",
         ] {
             assert!(SKILL.contains(said), "the skill never says `{said}`");
         }

@@ -240,8 +240,8 @@ actually learn:
    function, so one callsite per pane per file. If two ranges of one file are close
    together they are **one range** — widen it and use one pane. Deck refuses ranges in
    one file less than 30 lines apart, because the second pane opens below the first and
-   repeats most of it. The exception: a writer and its reader that live in the same file,
-   far apart, are two panes. They are the relationship the group is about.
+   repeats most of it. The exception: a writer and its reader in the same file, 30 or
+   more lines apart, are two panes. They are the relationship the group is about.
 
 10. **Plain words, active voice, one claim a sentence.** *The guard drops the password*,
     not *the password is dropped by the guard*. Short sentences, one thing each, and the
@@ -255,7 +255,7 @@ actually learn:
     one-in-a-million path is the bug. A deck that gives the rare branch as much room as
     the common one tells the reader they are equally important, and they are not.
 
-12. **One concern at a time, one decision at a time.** A group carries one claim. When a
+12. **One decision at a time.** When a
     deck asks the reader to decide, each group asks for at most one decision, and the
     last group names the one that matters most. Three questions in one group get one
     answer, and it is to the easiest of them.
@@ -493,8 +493,8 @@ Build it the way it was built, **from the inside out**:
    group is for.* That sentence is the door between two groups, and it tells the reader
    whether to comment now or wait.
 
-Shells cost no extra groups. They are the groups you were going to write, in the order
-that lets each one land. They also give the walk its natural BUT: every shell exists
+Shells add no groups. They set the order of the groups you already have, so that each
+one lands. They also give the walk its natural BUT: every shell exists
 because the one inside it breaks somewhere, and saying where is the turn.
 
 Use them for *how does this work*, a design, and a change big enough to have layers. A
@@ -507,9 +507,8 @@ is never *what should I show?* It is **what is the cheapest way to put the right
 this person's head?** Code, a picture and a page each do one job well and the other jobs
 badly. Pick by the job, not by habit — and the habit is code, every time.
 
-The rules below are the defaults. They are not taste: each one is where the research on
-how people understand diagrams, animation and programs lands, and each has a reason you
-can check against your own plan.
+The rules below are the defaults, not taste. Each one follows what research on diagrams,
+animation and program comprehension found, and each carries its reason.
 
 ### First, how big is the question?
 
@@ -521,8 +520,8 @@ through the importer*. A file cannot answer it, because the answer is the shape 
 files. These have their own rules, and they come first:
 
 - **Map first.** The first group is the whole system on one picture: four to six parts,
-  the boundaries between them, and no code — one ref at most, for the entry point.
-  Working memory holds about four things; a map of twelve boxes is a list, not a map.
+  the boundaries between them, and no code. People hold about four things at once; a map
+  of twelve boxes is a list, not a map.
 - **Walk journeys, not files.** Name the one to three journeys through it that answer
   the question — *a command goes in*, *a remark comes back* — and make each a flow on
   the map. People understand a system from what it is for down to the code, not from
@@ -531,16 +530,19 @@ files. These have their own rules, and they come first:
   from end to end, on a page that moves it as you point.
 - **Zoom one level at a time.** The map, then one part's inside, then its code. Never
   the map straight to a line.
-- **Keep a "you are here".** Each time you zoom, bring the same map back under the same
-  `[name]` with the current part lit. Getting lost is the commonest way a big
-  explanation fails, and this is the cure.
-- **A series of decks, not one big one.** If the plan is longer than about seven
-  groups, split it: deck one is the map and the main journey, each next deck one
-  journey or one part, each opening on the same map. Say what comes next — *this is
-  the way in; the way back is the next deck*.
-- **Shells, at system scale.** Deck one is the happy journey and nothing else. Failure,
-  retries, ordering and recovery come later, each opened by the problem the shell
-  inside it leaves (see "Build it in shells").
+- **Keep a "you are here".** Each time you zoom, put the map in the group again
+  (`--diagram map.json [map]`) with the current part set to `"weight": "accent"`, and
+  point at it. That map is the group's one drawing; show a part's inside in a group of
+  its own. Getting lost is the commonest way a big explanation fails, and this is the
+  cure.
+- **A series of decks, not one big one.** More than seven groups, counting each repeated
+  map, means split: deck one is the map and the main journey, each next deck one journey
+  or one part, each opening on the same map. Say what comes next — *this is the way in;
+  the way back is the next deck*.
+- **Shells, at system scale.** Deck one is the happy journey and nothing else. When the
+  question is about reliability, failure, retries, ordering and recovery are the next
+  shells, each opened by the problem the shell inside it leaves (see "Build it in
+  shells"). When it is not, they get a sentence.
 - **Details on demand.** Rare paths, configuration and metrics stay out of the walk.
   The last group names what was left out and offers it — *ask, and I'll bring it in*.
   `deck bring` serves it live.
@@ -554,8 +556,8 @@ files. These have their own rules, and they come first:
 - **Three or more places run in an order** — files, services, functions — and the
   answer is that order.
 - **It is a reachability question**: *what calls this*, *can X reach Y*, *what happens
-  after this returns*. These are the questions developers find hardest and get lost
-  in. Draw only the path that answers it, a flow per route.
+  after this returns*. Developers find these the hardest to answer from code. Draw only
+  the path that answers it, a flow per route.
 - **The code holds states and the moves between them** — a lifecycle, a retry policy,
   a `match` on a state. One flow per path.
 - **Two paths cross the same parts** — the happy one and the failing one, the first run
@@ -573,8 +575,8 @@ files. These have their own rules, and they come first:
 - **A structure is mutated** — a list spliced, an entry evicted, a tree rebalanced.
 - **The bug lives in runtime state** — two names for one object, a mutation through a
   reference, ownership moving, what is on the stack and what is not. The variables and
-  objects as boxes and arrows that change with each point. This is the view people
-  cannot run in their heads, and the one most misunderstandings live in.
+  objects as boxes and arrows that change with each point. People cannot run this in
+  their heads, and most misunderstandings live here.
 - **You would have to draw it twice**, before and after, and the meaning is the gap.
 
 **And not a page when nothing moves.** If the drawing looks the same at every sentence,
@@ -585,14 +587,12 @@ changing in the code is decoration, and decoration costs attention.
 
 - **Beside the code that causes it, by default.** Same group, and one sentence points
   into both — `[point 44-46 q]`. A picture in one group and its code in the next makes
-  the reader join them from memory, which is measurably harder. Working programmers put
-  their own diagrams in the comments right next to the code they explain, for the same
-  reason.
+  the reader join them from memory, which is harder.
 - **Alone only in two cases:** the opening map of a system-sized deck, or code spread so
   wide that no single ref carries it — then the picture first, and the code in the
   groups that follow.
 - **Code alone** when the claim is one function's logic — a condition, an off-by-one —
-  or a ship-mode change of two files or fewer.
+  unless the bug is runtime state, which is a page.
 - **Keep one drawing across groups** while the story stays in one place. Bring it again
   under the same `[name]` and point further into it: the event reaches the bus in group
   two, the consumer in group three. A drawing that grows is easier to follow than four
@@ -600,18 +600,16 @@ changing in the code is decoration, and decoration costs attention.
 
 ### How to draw it
 
-- **Hand-pick, and keep it small.** Only the nodes the claim needs. Never every call: a
-  diagram that holds everything helps nobody, and the research on generated diagrams
-  says so plainly. No UML ceremony either — practising engineers sketch informally,
-  because the formal notation costs more than it explains.
-- **At most four to six things at any level** — parts on a map, nodes in a picture,
-  panes in a group. More, and cluster them first.
-- **Every page stops before the outcome, and asks.** The sentence before the last
-  point asks what happens next; the last point shows it. Watching an animation teaches
-  little; predicting it and being right, or wrong, is what teaches.
-- **Point into every drawing.** A drawing no sentence points into is decoration. Cut
-  it.
-- **Do not narrate what the drawing shows.** It already shows it. Say why it matters.
+- **Hand-pick, and keep it small.** Only the nodes the claim needs, never every call,
+  and no UML ceremony — an informal sketch explains more for less.
+- **The limits:** a map holds four to six parts, a picture six to ten nodes (§4), a
+  group four refs or fewer. More, and cluster them first.
+- **In teaching mode, every page stops before the outcome, and asks.** The sentence
+  before the last point asks what happens next; the last point shows it. Watching an
+  animation teaches little; predicting it does. The question goes in the `say` — the
+  page's forty words are for labels.
+- **Point into every drawing**, and say why the part matters rather than what it shows.
+  A drawing no sentence points into is decoration. Cut it.
 - **One drawing a group**, unless the group is the comparison of two.
 
 ### Asked mid-walk
@@ -623,12 +621,12 @@ the picture in their head while you talk.
 
 ### Check it, on the plan and on each group
 
-- **Count the drawings.** In a teaching deck about a system, a picture or a page in at
-  least half the groups. Fewer, and you have explained the code and left the system for
-  the reader to draw.
-- **Listen to your own draft.** *Then*, *after*, *meanwhile*, *retries*, *queue*,
-  *waits*, *state*, *arrives*, *times out* — words like these in a `say` mean something
-  moves in time or between states, and a drawing above probably applies.
+- **Count the drawings.** If a teaching deck about a system has a drawing in fewer than
+  half its groups, check each code-only group against the rules above. Do not add a
+  drawing to meet a number.
+- **Listen to your own draft.** *Meanwhile*, *retries*, *queue*, *waits*, *arrives*,
+  *times out*, *after it returns* — words like these in a `say` mean something moves in
+  time or between states, and a drawing above probably applies.
 - **In ship mode**, draw only when three places run in an order or two actors act in
   time. Everything else is friction for somebody who wants to approve and move on.
 
