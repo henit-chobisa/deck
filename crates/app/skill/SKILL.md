@@ -236,12 +236,29 @@ actually learn:
    not everything with context mixed in. They'd rather walk three tight decks than one
    sprawling one.
 
-9. **One file per page when panes relate.** Don't show one file in multiple panes. If a
-   page uses multiple panes, show one file per pane where a change in one impacts the
-   other — e.g. you removed a function, now one callsite per pane per file. If two
-   ranges of one file are close together they are **one range** — widen it and use one
-   pane. Deck refuses ranges in one file less than 30 lines apart, because the second
-   pane opens below the first and repeats most of it.
+9. **One file per pane, with one exception.** Prefer one file per pane: you removed a
+   function, so one callsite per pane per file. If two ranges of one file are close
+   together they are **one range** — widen it and use one pane. Deck refuses ranges in
+   one file less than 30 lines apart, because the second pane opens below the first and
+   repeats most of it. The exception: a writer and its reader that live in the same file,
+   far apart, are two panes. They are the relationship the group is about.
+
+10. **Plain words, active voice, one claim a sentence.** *The guard drops the password*,
+    not *the password is dropped by the guard*. Short sentences, one thing each, and the
+    same word for the same thing every time — the way a maintenance manual is written,
+    because it is read by somebody doing something else at the same time. A sentence
+    that needs a second reading is a sentence that was not finished.
+
+11. **Spend the deck where the cases are.** Weigh a path by how often it runs. The path
+    every request takes gets a group; the path one request in a million takes gets a
+    sentence — *a retry also lands here, and it is handled the same way* — unless that
+    one-in-a-million path is the bug. A deck that gives the rare branch as much room as
+    the common one tells the reader they are equally important, and they are not.
+
+12. **One concern at a time, one decision at a time.** A group carries one claim. When a
+    deck asks the reader to decide, each group asks for at most one decision, and the
+    last group names the one that matters most. Three questions in one group get one
+    answer, and it is to the easiest of them.
 
 ## Root context first: where somebody was standing
 
@@ -455,6 +472,165 @@ surprised you while you were reading the code, you have not found the story yet.
 
 And a size rule with teeth: **if a group needs three separate ideas to land, it is not a
 group — it is two groups glued together.** Split it. One claim, one group.
+
+## Build it in shells
+
+The fastest way to lose somebody is to show them the whole machine at once: the happy
+path, the retries, the cache, the error handling, the metrics, all in group one. They
+see everything and hold nothing.
+
+Build it the way it was built, **from the inside out**:
+
+1. **Shell 1 makes the idea alive.** The smallest path that does the thing, end to end.
+   One event goes in, one comes out. No queue, no retry, no config. *This is the whole
+   idea; everything else is protection around it.*
+2. **Each next shell wraps the last one.** Reliability around it — a queue, so the work
+   survives the request ending. Then correctness around that — an id, because the same
+   event can arrive twice. One shell a group, and each shell answers a problem the shell
+   inside it has.
+3. **Say which shell you are on, and what is still outside.** *That is shell one. It
+   works, and it loses an event if the process dies mid-send — which is what the next
+   group is for.* That sentence is the door between two groups, and it tells the reader
+   whether to comment now or wait.
+
+Shells cost no extra groups. They are the groups you were going to write, in the order
+that lets each one land. They also give the walk its natural BUT: every shell exists
+because the one inside it breaks somewhere, and saying where is the turn.
+
+Use them for *how does this work*, a design, and a change big enough to have layers. A
+one-file fix has one shell; do not invent more.
+
+## Plan the context: when to draw what
+
+This is the strategy, and it is decided before you write a word of `say`. The question
+is never *what should I show?* It is **what is the cheapest way to put the right model in
+this person's head?** Code, a picture and a page each do one job well and the other jobs
+badly. Pick by the job, not by habit — and the habit is code, every time.
+
+The rules below are the defaults. They are not taste: each one is where the research on
+how people understand diagrams, animation and programs lands, and each has a reason you
+can check against your own plan.
+
+### First, how big is the question?
+
+**Line-sized** — *why does this condition fail*, *what does this function do*. Code
+answers it. Draw only if a rule below fires.
+
+**System-sized** — *explain the whole event stream*, *how does auth work*, *walk me
+through the importer*. A file cannot answer it, because the answer is the shape *between*
+files. These have their own rules, and they come first:
+
+- **Map first.** The first group is the whole system on one picture: four to six parts,
+  the boundaries between them, and no code — one ref at most, for the entry point.
+  Working memory holds about four things; a map of twelve boxes is a list, not a map.
+- **Walk journeys, not files.** Name the one to three journeys through it that answer
+  the question — *a command goes in*, *a remark comes back* — and make each a flow on
+  the map. People understand a system from what it is for down to the code, not from
+  folders up.
+- **One travelling thing per journey.** Follow one concrete event, request or record
+  from end to end, on a page that moves it as you point.
+- **Zoom one level at a time.** The map, then one part's inside, then its code. Never
+  the map straight to a line.
+- **Keep a "you are here".** Each time you zoom, bring the same map back under the same
+  `[name]` with the current part lit. Getting lost is the commonest way a big
+  explanation fails, and this is the cure.
+- **A series of decks, not one big one.** If the plan is longer than about seven
+  groups, split it: deck one is the map and the main journey, each next deck one
+  journey or one part, each opening on the same map. Say what comes next — *this is
+  the way in; the way back is the next deck*.
+- **Shells, at system scale.** Deck one is the happy journey and nothing else. Failure,
+  retries, ordering and recovery come later, each opened by the problem the shell
+  inside it leaves (see "Build it in shells").
+- **Details on demand.** Rare paths, configuration and metrics stay out of the walk.
+  The last group names what was left out and offers it — *ask, and I'll bring it in*.
+  `deck bring` serves it live.
+- **Check the plan before `deck new`.** Write down the parts and the journeys. If you
+  cannot name the journeys, you are not ready to write the deck.
+
+### Then, what does each group need?
+
+**Draw a picture when:**
+
+- **Three or more places run in an order** — files, services, functions — and the
+  answer is that order.
+- **It is a reachability question**: *what calls this*, *can X reach Y*, *what happens
+  after this returns*. These are the questions developers find hardest and get lost
+  in. Draw only the path that answers it, a flow per route.
+- **The code holds states and the moves between them** — a lifecycle, a retry policy,
+  a `match` on a state. One flow per path.
+- **Two paths cross the same parts** — the happy one and the failing one, the first run
+  and the second. One picture with two flows, never two pictures.
+- **A boundary matters** — browser and server, process and thread, trust. Clusters.
+
+**Make a page when something changes over time**, and only then:
+
+- **Two or more actors act in an order** — events, messages, retries, timeouts, races. A
+  timeline.
+- **A quantity changes** — a queue's depth, a buffer, a rate limit, latency. A level or a
+  chart that moves.
+- **One record changes shape** across steps — a payload through its handlers. The same
+  record, fields filling in or dropping out.
+- **A structure is mutated** — a list spliced, an entry evicted, a tree rebalanced.
+- **The bug lives in runtime state** — two names for one object, a mutation through a
+  reference, ownership moving, what is on the stack and what is not. The variables and
+  objects as boxes and arrows that change with each point. This is the view people
+  cannot run in their heads, and the one most misunderstandings live in.
+- **You would have to draw it twice**, before and after, and the meaning is the gap.
+
+**And not a page when nothing moves.** If the drawing looks the same at every sentence,
+it is structure, and structure is a picture. Motion that does not stand for something
+changing in the code is decoration, and decoration costs attention.
+
+### Where it goes
+
+- **Beside the code that causes it, by default.** Same group, and one sentence points
+  into both — `[point 44-46 q]`. A picture in one group and its code in the next makes
+  the reader join them from memory, which is measurably harder. Working programmers put
+  their own diagrams in the comments right next to the code they explain, for the same
+  reason.
+- **Alone only in two cases:** the opening map of a system-sized deck, or code spread so
+  wide that no single ref carries it — then the picture first, and the code in the
+  groups that follow.
+- **Code alone** when the claim is one function's logic — a condition, an off-by-one —
+  or a ship-mode change of two files or fewer.
+- **Keep one drawing across groups** while the story stays in one place. Bring it again
+  under the same `[name]` and point further into it: the event reaches the bus in group
+  two, the consumer in group three. A drawing that grows is easier to follow than four
+  drawings. Start a new one only when the subject moves somewhere else.
+
+### How to draw it
+
+- **Hand-pick, and keep it small.** Only the nodes the claim needs. Never every call: a
+  diagram that holds everything helps nobody, and the research on generated diagrams
+  says so plainly. No UML ceremony either — practising engineers sketch informally,
+  because the formal notation costs more than it explains.
+- **At most four to six things at any level** — parts on a map, nodes in a picture,
+  panes in a group. More, and cluster them first.
+- **Every page stops before the outcome, and asks.** The sentence before the last
+  point asks what happens next; the last point shows it. Watching an animation teaches
+  little; predicting it and being right, or wrong, is what teaches.
+- **Point into every drawing.** A drawing no sentence points into is decoration. Cut
+  it.
+- **Do not narrate what the drawing shows.** It already shows it. Say why it matters.
+- **One drawing a group**, unless the group is the comparison of two.
+
+### Asked mid-walk
+
+If a question during the walk is about shape or flow — *how does this connect*, *what
+happens next*, *where does it go* — answer with a drawing straight away, `deck bring
+--diagram` or `--page`. Not four `deck show` calls in a row: that makes the reader draw
+the picture in their head while you talk.
+
+### Check it, on the plan and on each group
+
+- **Count the drawings.** In a teaching deck about a system, a picture or a page in at
+  least half the groups. Fewer, and you have explained the code and left the system for
+  the reader to draw.
+- **Listen to your own draft.** *Then*, *after*, *meanwhile*, *retries*, *queue*,
+  *waits*, *state*, *arrives*, *times out* — words like these in a `say` mean something
+  moves in time or between states, and a drawing above probably applies.
+- **In ship mode**, draw only when three places run in an order or two actors act in
+  time. Everything else is friction for somebody who wants to approve and move on.
 
 ## Write it so it can be heard
 
@@ -1322,6 +1498,9 @@ node coming out of the middle of a chain, a pointer walking a list: draw any of 
 and you have drawn the start, or the end, and not the thing. Those are pages, and a deck that
 answers one with a static picture has handed the reader the two frames either side of the
 only frame they wanted.
+
+**Which of these, and when, is decided by the strategy in "Plan the context: when to draw
+what".** Run it on the plan, and again on each group.
 
 ### Read your own `say` back before you send it
 
