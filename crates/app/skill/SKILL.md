@@ -610,14 +610,9 @@ files. These have their own rules, and they come first:
 it is structure, and structure is a picture. Motion that does not stand for something
 changing in the code is decoration, and decoration costs attention.
 
-**And not a page when a thing only moves between places.** A card hopping between
-labelled boxes — folders, services, queues drawn as rectangles — is a picture with a
-flow, drawn badly. The picture lays it out, themes it, and runs a current along the
-path; your points light each stop. A page earns its place when its axes are **time**,
-**quantity** or **the thing's own shape** — never places.
-
-**Freeze it to check.** Imagine the page at rest, before any point. If it is boxes with
-labels and arrows, it is a picture: write the JSON instead, and give it a flow.
+**And not a page when a thing only moves between places.** A trip from place to place
+is a picture with a flow (§4). A page is for **time**, **quantity** or **the thing's own
+shape** — never places.
 
 ### Where it goes
 
@@ -633,20 +628,9 @@ labels and arrows, it is a picture: write the JSON instead, and give it a flow.
   under the same `[name]` and point further into it: the event reaches the bus in group
   two, the consumer in group three. A drawing that grows is easier to follow than four
   drawings. Start a new one only when the subject moves somewhere else.
-
-### How to draw it
-
-- **Hand-pick, and keep it small.** Only the nodes the claim needs, never every call,
-  and no UML ceremony — an informal sketch explains more for less.
-- **The limits:** a map holds four to six parts, a picture six to ten nodes (§4), a
-  group four refs or fewer. More, and cluster them first.
-- **In teaching mode, every page stops before the outcome, and asks.** The sentence
-  before the last point asks what happens next; the last point shows it. Watching an
-  animation teaches little; predicting it does. The question goes in the `say` — the
-  page's forty words are for labels.
-- **Point into every drawing**, and say why the part matters rather than what it shows.
-  A drawing no sentence points into is decoration. Cut it.
 - **One drawing a group**, unless the group is the comparison of two.
+
+How to draw each one is §4 and §5. This section only decides which, and where.
 
 ### Asked mid-walk
 
@@ -1510,14 +1494,32 @@ And one more plan check, for teaching decks: **does the story make them reason, 
 receive?** If the deck reveals everything top-down with nothing for them to predict, you
 have written a lecture. Find the spot where you can point at the code and ask them first.
 
-**Then ask which panes each group needs** — a file, a picture, a page — by the
-strategy in "Plan the context: when to draw what". Most groups want more than one, and
-the mistake is stopping at the first, which is the one you reach for without noticing.
+**Then ask which panes each group needs.** Not one answer — most groups want more than
+one, and the mistake is stopping at the first, which is the one you reach for without
+noticing:
+
+- **A file**, when the evidence is code that exists. Most groups.
+- **A picture**, when answering means naming three or more places and the order they run
+  in. See §4.
+- **A page**, when the answer is something they should watch happen — a race on a
+  timeline, a queue filling, a structure changing, a chart bending. When you would have
+  to draw it **twice**, because the thing being explained is the bit in between. See §5.
 
 **A picture or a page almost always wants a file beside it.** The picture says *where* in
 the flow you are, the refs say *what* the code does there; the page shows the movement,
 the ref shows the line that causes it. §4 and §5 both pair them, and a group that answers
 with a shape and no code has left the reader to find the code themselves.
+
+That last test is the one that makes the difference, because a page is the pane everybody
+forgets — and, when it is remembered, the one written as boxes, which is a picture's job.
+Two requests racing for one row, a queue filling until the producer is told to stop, a
+node coming out of the middle of a chain, a pointer walking a list: draw any of those once
+and you have drawn the start, or the end, and not the thing. Those are pages, and a deck that
+answers one with a static picture has handed the reader the two frames either side of the
+only frame they wanted.
+
+**Which of these, and when, is decided by "Plan the context: when to draw what".** Run it
+on the plan, and again on each group.
 
 ### Read your own `say` back before you send it
 
@@ -1667,9 +1669,7 @@ the way they would if they had stepped through it in a debugger themselves.
 It is not a diagram drawn in HTML. **Boxes and arrows are a picture (§4) — always.**
 Deck draws pictures itself, laid out, themed, folding, with blocks a point can light.
 A page that is a row of rounded rectangles with labels in them is a worse picture,
-and it is the page agents write by default. Do not write it. A card hopping between
-labelled boxes is the same mistake with motion added: a picture with a flow does it
-properly.
+and it is the page agents write by default. Do not write it.
 
 **If you would have to draw it twice, it is a page.** That is the test. A before and
 an after, with the interesting part in the gap between them — that gap is the whole
