@@ -44,10 +44,10 @@ so you say "do what's good and move on".
 My favourite: code reviews. A PR comes to you, you ask the agent to review it,
 and it gives you five paragraphs in a language you understand fifty per cent of.
 Now you are too tired to go and sniff into the code — 20,000 lines of it, by the
-way. No architecture was explained. No root
-context was given. There are only two outcomes. Either you become a proxy,
-"okay", and get an alert at three in the morning. Or you discard the review and
-dig in yourself, coffee in hand, rewriting everything you thought you knew.
+way. No architecture was explained. No root context was given. There are only
+two outcomes. Either you become a proxy, "okay", and get an alert at three in
+the morning. Or you discard the review and dig in yourself, coffee in hand,
+rewriting everything you thought you knew.
 
 Engineers cannot keep up with the pace their agents work at. Nobody decides to
 stop understanding their own system; it is given up, one "looks good" at a time,
@@ -58,10 +58,10 @@ the understanding.
 
 Explanation as *text* is the bottleneck now. People run four, six, eight agents
 at once, and their own reading speed is the ceiling — the agents finish and then
-wait on a human reading prose. Deck is built for that
-moment. It is not a diff viewer and not a chat window: it is the surface where an
-agent makes an argument about code, draws the flow it is describing, and a
-person answers it in the fewest keystrokes that can carry the answer.
+wait on a human reading prose. Deck is built for that moment. It is not a diff
+viewer and not a chat window: it is the surface where an agent makes an argument
+about code, draws the flow it is describing, and a person answers it in the
+fewest keystrokes that can carry the answer.
 
 ## Install
 
@@ -125,9 +125,10 @@ front of you.
 
 ### Learning a system you didn't build: one query, end to end
 
-One search query from the box to the results: the map of the service, the code at each stop, and
-the query taken apart as it goes. Ask why popularity is weighted 0.3 and the
-answer comes back inside the deck, with the experiment that decided it.
+One search query from the box to the results: the map of the service, the code
+at each stop, and the query taken apart as it goes. Ask why popularity is
+weighted 0.3 and the answer comes back inside the deck, with the experiment that
+decided it.
 
 <img src="https://raw.githubusercontent.com/henit-chobisa/deck/2117df7f35e002a3e02e26387056487525676ef7/readme/learning.gif" alt="A search request walked end to end, then a question asked mid-walk answered with a chart of the experiment behind the number">
 
@@ -248,7 +249,7 @@ have drifted.
 | [Diagrams and pages](docs/diagrams-and-pages.md) | pictures with flows, and pages for the idea that only moves |
 | [Theming](docs/theming.md) | your editor's colours, twenty themes |
 | [The catch](docs/the-catch.md) | the hook that sends a prose reply back to become a deck |
-| [How it works](docs/how-it-works.md) | the architecture, and [`PROTOCOL.md`](PROTOCOL.md), the wire format |
+| [How it works](docs/how-it-works.md) | the architecture |
 
 ## Contributing
 
