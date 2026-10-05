@@ -4532,7 +4532,12 @@ impl DeckView {
         let say = self.group().map_or_else(
             || {
                 if self.deck.sealed() {
-                    "This deck has no groups in it.".to_string()
+                    // Opening one before any group is possible now, so this is
+                    // reachable; and a first group that failed to load leaves
+                    // the rest unreadable behind it.
+                    "This deck has no readable groups. If it should have, the first \
+                     group may have failed to load."
+                        .to_string()
                 } else {
                     "The agent is writing this deck. Groups appear as they land — \
                      you can start on the first without waiting for the last."
@@ -7321,7 +7326,12 @@ impl Render for DeckView {
             .text_color(paint(self.palette.fg))
             .child(self.render_band(cx))
             .child(self.render_seam(Divide::Band, cx))
-            .child(if self.deck.groups().is_empty() {
+            // The moving placeholder says something is on its way, which is
+            // only true while the deck is still being written. A sealed deck
+            // with nothing readable gets the band's words and an empty room.
+            .child(if self.deck.groups().is_empty() && self.deck.sealed() {
+                div().flex_1().into_any_element()
+            } else if self.deck.groups().is_empty() {
                 crate::waiting::render(
                     &self.palette,
                     self.spread,
