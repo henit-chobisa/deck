@@ -439,7 +439,7 @@ impl Paper {
             .overflow_hidden()
             .bg(paint(palette.wash))
             .child(crate::pane::chrome(
-                None,
+                self.name.clone(),
                 self.label.clone(),
                 self.note.clone(),
                 crate::pane::controls(slot, None),
