@@ -4536,7 +4536,7 @@ impl DeckView {
                     // reachable; and a first group that failed to load leaves
                     // the rest unreadable behind it.
                     "This deck has no readable groups. If it should have, the first \
-                     group may have failed to load."
+                     group is missing or failed to load."
                         .to_string()
                 } else {
                     "The agent is writing this deck. Groups appear as they land — \

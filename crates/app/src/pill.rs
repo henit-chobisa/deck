@@ -204,12 +204,21 @@ impl Pill {
             return String::new();
         };
         let (_, here, claimed, sealed, remarks) = said;
-        let total = claimed.map_or(here, |total| (total as usize).max(here));
+        // Sealed, the groups that arrived are the deck; a header that promised
+        // more was only a guess, and saying "3 groups" over a window with
+        // nothing in it is a promise Open now has to keep.
+        let total = if sealed {
+            here
+        } else {
+            claimed.map_or(here, |total| (total as usize).max(here))
+        };
 
         // What it is doing, said the way the reader would ask it. A count on
         // its own answers a question nobody has: they want to know whether
         // there is anything to read yet, and whether it is finished.
-        let where_at = if sealed {
+        let where_at = if sealed && total == 0 {
+            "Nothing readable".to_string()
+        } else if sealed {
             format!("{total} group{}", if total == 1 { "" } else { "s" })
         } else {
             format!("Getting deck ready… {here}/{total}")
