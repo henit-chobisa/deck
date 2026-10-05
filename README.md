@@ -17,7 +17,7 @@ Focused on engineers, built for agents.
 
 </div>
 
-<img src="assets/hero.gif" alt="A deck explaining why checkout slows down every hour: as the narration is read, the code lights line by line, the service map lights Postgres, and a timeline of requests piles up behind an expired cache">
+<img src="assets/hero.gif" alt="A deck explaining why checkout slows down every hour: as the narration is read, the code lights line by line, the service map lights Postgres, and a timeline of requests piles up behind the connection pool once the cache expires">
 
 <p align="center"><i>An agent leverages deck to walk you through intent, one claim at a time, until the whole decision is yours. Argue, decide and lock.</i></p>
 
@@ -37,13 +37,13 @@ type *looks good*, and neither of you is quite sure what you approved.
 My favourite: code reviews. The PR is 20,000 lines, the agent gives you five
 paragraphs in a language you understand fifty per cent of, and no root context.
 Either you become a proxy, "okay", and get an alert at three in the morning, or
-you dig in yourself, coffee in hand.
+you discard the review and dig in yourself, coffee in hand, rewriting everything
+you thought you knew.
 
 Engineers cannot keep up with the pace their agents work at, and understanding
 is given up one *looks good* at a time. So instead of another harness for agents,
-deck is **focused on engineers, but built for agents**: the agent points at the
-code, draws what it means, and you answer it in the fewest keystrokes that can
-carry the answer.
+deck is **focused on engineers, but built for agents**: the agent does the
+explaining, and you keep the understanding.
 
 ## Install
 
@@ -92,11 +92,11 @@ reply full of `file:line` locations back to become a deck.
 
 ### Debugging a race condition: the books don't balance
 
-Two requests read the same balance, both write, and one deposit is gone. The
-agent puts the lines beside a timeline of both requests and plays it, sentence by
-sentence, until the money goes missing.
+Two $80 cash-outs land on a $100 wallet milliseconds apart, and both are paid.
+The agent puts the lines beside a timeline of both requests and plays it,
+sentence by sentence, until $80 is missing; then it shows the fix.
 
-<img src="https://raw.githubusercontent.com/henit-chobisa/deck/2117df7f35e002a3e02e26387056487525676ef7/readme/race.gif" alt="Two cash-outs racing on one wallet: the code lights line by line while a timeline plays both requests until the balance is wrong">
+<img src="https://raw.githubusercontent.com/henit-chobisa/deck/2117df7f35e002a3e02e26387056487525676ef7/readme/race.gif" alt="Two cash-outs racing on one wallet: the code lights line by line while a timeline plays both requests until $80 is missing, then the fix, where the second cash-out is refused and the books balance">
 
 ### Planning with your agent: decide before a line is written
 

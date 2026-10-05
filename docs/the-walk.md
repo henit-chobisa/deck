@@ -61,10 +61,10 @@ written there and then, folded in beside what you were already looking at.
 
 ## What comes back
 
-`deck open` (or `deck wait`, if you detached it) returns the comments as always, and for a walked deck it also
-returns a `transcript`: what you were shown, in what order, and what you said
-about each part. Not that a review happened — **what the reviewer actually
-looked at.**
+`deck open` (or `deck wait`, if you detached it) returns the comments as always,
+and for a walked deck it also returns a `transcript`: what you were shown, in
+what order, and what you said about each part. Not that a review happened —
+**what the reviewer actually looked at.**
 
 ## The voice
 
