@@ -1694,7 +1694,8 @@ fn fold_button(slot: &Slot) -> AnyElement {
 ///
 /// Its name over its title when it has both. When the two are the same word —
 /// a page is labelled by its name — the note it was given stands under it
-/// instead, so two unnamed pages are not both just "page".
+/// instead, so two unnamed pages are not both just "page". Nothing stands
+/// under it that only says it again.
 pub(crate) fn spine_words(
     name: Option<&SharedString>,
     label: &SharedString,
@@ -1711,7 +1712,7 @@ pub(crate) fn spine_words(
 }
 
 /// What a pane's header says, each part only once: its name, its label unless
-/// that is just the name (a page's always is), and its note unless that only
+/// that is just the name (a named page's always is), and its note unless that only
 /// repeats one of the two (a picture whose note is its own title).
 pub(crate) fn header_words(
     name: Option<SharedString>,
@@ -2018,6 +2019,10 @@ mod tests {
             words(None, "search", Some(" search")),
             ("search".into(), None)
         );
+        assert_eq!(
+            words(Some("rows"), "rows", Some("rows")),
+            ("rows".into(), None)
+        );
     }
 
     #[test]
@@ -2051,6 +2056,11 @@ mod tests {
         assert_eq!(
             words(Some("map"), "map ", Some(" map")),
             (some("map"), None, None)
+        );
+        // A page with no name: still "page", and its note.
+        assert_eq!(
+            words(None, "page", Some("which row wins")),
+            (None, some("page"), some("which row wins"))
         );
         // A code pane: its path, and its note.
         assert_eq!(
