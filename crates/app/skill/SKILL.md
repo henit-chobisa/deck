@@ -34,8 +34,8 @@ building the deck *is* answering it. A deck costs them one keypress to ignore �
 a bar appears at the bottom of the screen and they open it when they choose —
 so there is no cost to be weighed and nothing to ask about.
 
-The one exception is a question too big for one deck — *explain the whole event
-stream*. Then you do not ask *whether* to build; you agree *the chapters* in a few
+The one exception is a question too big for one deck — a big feature, *explain
+the whole event stream* when it will not fit in seven groups. Then you do not ask *whether* to build; you agree *the chapters* in a few
 lines, and build the first one the moment they say go. See "Agree the chapters first".
 
 **And do not send the prose version as well.** A summary carrying the whole
@@ -541,7 +541,9 @@ files. These have their own rules, and they come first:
   its own. A page whose lanes are the parts already says where you are, and needs no map
   beside it. Getting lost is the commonest way a big explanation fails, and this is the
   cure.
-- **Chapters, not one big deck.** More than seven groups, counting each repeated map,
+- **Chapters, only when one deck cannot hold it.** Most questions — even many about a
+  whole system — fit in one deck of seven groups or fewer. Then it is one deck: no
+  chapters, and nothing to ask. More than seven groups, counting each repeated map,
   means split it into chapters: chapter one is the map and the main journey, each next
   chapter one journey or one part, each opening on the same map.
 - **Agree the chapters first, then walk them one at a time.** This is the one place you

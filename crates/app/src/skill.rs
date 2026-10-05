@@ -443,7 +443,7 @@ mod tests {
             "Map first",
             "Walk journeys, not files",
             "Keep a \"you are here\"",
-            "Chapters, not one big deck",
+            "Chapters, only when one deck cannot hold it",
             "Agree the chapters first, then walk them one at a time",
             "Never write a later\n     chapter before they have finished the current one",
             "It is a reachability question",
