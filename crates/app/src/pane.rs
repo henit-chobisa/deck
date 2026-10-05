@@ -1701,8 +1701,38 @@ pub(crate) fn spine_words(
     note: Option<&SharedString>,
 ) -> (SharedString, Option<SharedString>) {
     let title = name.unwrap_or(label).clone();
-    let under = if *label == title { note } else { Some(label) };
+    let under = if same(label, &title) {
+        note
+    } else {
+        Some(label)
+    };
+    let under = under.filter(|under| !same(under, &title));
     (title, under.cloned())
+}
+
+/// What a pane's header says, each part only once: its name, its label unless
+/// that is just the name (a page's always is), and its note unless that only
+/// repeats one of the two (a picture whose note is its own title).
+pub(crate) fn header_words(
+    name: Option<SharedString>,
+    label: SharedString,
+    note: Option<SharedString>,
+) -> (
+    Option<SharedString>,
+    Option<SharedString>,
+    Option<SharedString>,
+) {
+    let label = Some(label).filter(|label| name.as_ref().is_none_or(|name| !same(name, label)));
+    let note = note.filter(|note| {
+        label.as_ref().is_none_or(|label| !same(note, label))
+            && name.as_ref().is_none_or(|name| !same(note, name))
+    });
+    (name, label, note)
+}
+
+/// The same words, whatever space is around them.
+fn same(a: &str, b: &str) -> bool {
+    a.trim() == b.trim()
 }
 
 /// A pane folded down to its spine at the window's edge.
@@ -1808,7 +1838,7 @@ pub fn chrome(
         fold,
         close,
     } = controls;
-    let note = note.filter(|note| note.trim() != label.trim());
+    let (name, label, note) = header_words(name, label, note);
     div()
         .h_flex()
         .flex_none()
@@ -1840,21 +1870,17 @@ pub fn chrome(
                         .h_flex()
                         .gap(px(8.))
                         .min_w_0()
-                        .children(name.clone().map(|name| {
+                        // Alone on the row — a page — the name gives up width
+                        // like the label would have.
+                        .children(name.map(|name| {
                             div()
-                                .flex_none()
+                                .when(label.is_some(), |this| this.flex_none())
+                                .when(label.is_none(), |this| this.min_w_0().truncate())
                                 .text_color(paint(palette.accent))
                                 .child(name)
                         }))
-                        // A page with no title of its own is labelled by its
-                        // name, which the row has just said.
-                        .when(name.as_ref().is_none_or(|name| *name != label), |this| {
-                            this.child(div().min_w_0().truncate().child(label.clone()))
-                        }),
+                        .children(label.map(|label| div().min_w_0().truncate().child(label))),
                 )
-                // A note that only repeats the label — a picture whose note
-                // is its own title — says nothing the row above did not, so it
-                // was dropped above.
                 .children(
                     note.as_deref()
                         .map(|note| div().overflow_hidden().child(emphasise(note, palette))),
@@ -1987,6 +2013,50 @@ mod tests {
         );
         // Nothing but a label.
         assert_eq!(words(None, "page", None), ("page".into(), None));
+        // A note that is its own title is not said twice.
+        assert_eq!(
+            words(None, "search", Some(" search")),
+            ("search".into(), None)
+        );
+    }
+
+    #[test]
+    fn a_header_says_each_thing_once() {
+        let words = |name: Option<&str>, label: &str, note: Option<&str>| {
+            let (name, label, note) = header_words(
+                name.map(SharedString::from),
+                SharedString::from(label),
+                note.map(SharedString::from),
+            );
+            let text = |word: Option<SharedString>| word.map(|word| word.to_string());
+            (text(name), text(label), text(note))
+        };
+        let some = |word: &str| Some(word.to_string());
+        // A page is labelled by its name: the name, once, and its note.
+        assert_eq!(
+            words(Some("shape"), "shape", Some("the query")),
+            (some("shape"), None, some("the query"))
+        );
+        // A picture whose note is its title.
+        assert_eq!(
+            words(None, "search, end to end", Some("search, end to end")),
+            (None, some("search, end to end"), None)
+        );
+        // A named picture with its own title: both.
+        assert_eq!(
+            words(Some("map"), "search", Some("one query")),
+            (some("map"), some("search"), some("one query"))
+        );
+        // A note that only repeats the name, and space around the words.
+        assert_eq!(
+            words(Some("map"), "map ", Some(" map")),
+            (some("map"), None, None)
+        );
+        // A code pane: its path, and its note.
+        assert_eq!(
+            words(None, "src/a.rs:1-9", Some("why")),
+            (None, some("src/a.rs:1-9"), some("why"))
+        );
     }
 
     #[test]
