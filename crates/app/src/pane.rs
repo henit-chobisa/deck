@@ -1808,6 +1808,7 @@ pub fn chrome(
         fold,
         close,
     } = controls;
+    let note = note.filter(|note| note.trim() != label.trim());
     div()
         .h_flex()
         .flex_none()
@@ -1839,14 +1840,21 @@ pub fn chrome(
                         .h_flex()
                         .gap(px(8.))
                         .min_w_0()
-                        .children(name.map(|name| {
+                        .children(name.clone().map(|name| {
                             div()
                                 .flex_none()
                                 .text_color(paint(palette.accent))
                                 .child(name)
                         }))
-                        .child(div().min_w_0().truncate().child(label)),
+                        // A page with no title of its own is labelled by its
+                        // name, which the row has just said.
+                        .when(name.as_ref().is_none_or(|name| *name != label), |this| {
+                            this.child(div().min_w_0().truncate().child(label.clone()))
+                        }),
                 )
+                // A note that only repeats the label — a picture whose note
+                // is its own title — says nothing the row above did not, so it
+                // was dropped above.
                 .children(
                     note.as_deref()
                         .map(|note| div().overflow_hidden().child(emphasise(note, palette))),
