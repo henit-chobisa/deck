@@ -15,8 +15,8 @@ release binary, which is the point — see `main.rs`.
 
 ## The recordings
 
-The README's hero and its four use cases are GIFs, and they do not live here:
-each is 6–8 MB, and committed they would be in every clone forever. They sit on
+The README's recordings — a five-second hero and one for each of the four use
+cases — are GIFs, and they do not live here: each is several MB, and committed they would be in every clone forever. They sit on
 the `pr-assets` branch under `readme/`, linked by commit so a later push to that
 branch cannot break them.
 

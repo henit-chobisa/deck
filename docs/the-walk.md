@@ -27,7 +27,7 @@ without it.
 
 A comment is a comment. There is nothing to grade it with and nothing to choose
 before you type — `c`, write, send. What you do choose is *when* it is heard:
-now, with **Ask now**, or with the review, with **Add to review**.
+now (**Ask now**) or with the review (**Add to review**).
 
 ## What the agent can do while you watch
 
@@ -61,7 +61,7 @@ written there and then, folded in beside what you were already looking at.
 
 ## What comes back
 
-`deck wait` returns the comments as always, and for a walked deck it also
+`deck open` (or `deck wait`, if you detached it) returns the comments as always, and for a walked deck it also
 returns a `transcript`: what you were shown, in what order, and what you said
 about each part. Not that a review happened — **what the reviewer actually
 looked at.**

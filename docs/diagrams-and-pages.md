@@ -23,12 +23,12 @@ the picture can be walked.
 
 A **flow** is a named path through the picture. Press it and a current travels
 the route while the rest of the diagram recedes — several to a picture, so the
-happy path and the one that stalls can share the same seven boxes. Drag the
+happy path and the one that stalls can share the same boxes. Drag the
 drawing anywhere; hold `⌘` or `ctrl` and scroll, or pinch, to zoom.
 
 A picture is a pane like any other: it takes a `[name]` the prose can say, and a
-point can land in it. `[point checkout]` lights the block whose `id` is
-`checkout` and steps the rest of the picture back — and `[point 44-46 checkout]`
+point can land in it. `[point q]` lights the block whose `id` is
+`q` and steps the rest of the picture back — and `[point 44-46 q]`
 lights those lines **and** that block from one sentence, which is the thing
 neither a diff nor a diagram can do alone.
 

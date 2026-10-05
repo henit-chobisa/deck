@@ -109,9 +109,10 @@ front of you.
 
 ### Learning a system you didn't build: one query, end to end
 
-One search query from the box to the results: the map of the service, the code at each stop, and
-the query taken apart as it goes. Ask why popularity is weighted 0.3 and the
-answer comes back inside the deck, with the experiment that decided it.
+One search query from the box to the results: the map of the service, the code
+at each stop, and the query taken apart as it goes. Ask why popularity is
+weighted 0.3 and the answer comes back inside the deck, with the experiment that
+decided it.
 
 <img src="https://raw.githubusercontent.com/henit-chobisa/deck/2117df7f35e002a3e02e26387056487525676ef7/readme/learning.gif" alt="A search request walked end to end, then a question asked mid-walk answered with a chart of the experiment behind the number">
 
@@ -232,7 +233,7 @@ have drifted.
 | [Diagrams and pages](docs/diagrams-and-pages.md) | pictures with flows, and pages for the idea that only moves |
 | [Theming](docs/theming.md) | your editor's colours, twenty themes |
 | [The catch](docs/the-catch.md) | the hook that sends a prose reply back to become a deck |
-| [How it works](docs/how-it-works.md) | the architecture, and [`PROTOCOL.md`](PROTOCOL.md), the wire format |
+| [How it works](docs/how-it-works.md) | the architecture |
 
 ## Contributing
 
