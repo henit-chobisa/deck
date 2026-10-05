@@ -433,6 +433,41 @@ mod tests {
     }
 
     #[test]
+    fn the_skill_draws_beside_the_code_and_builds_in_shells() {
+        // From a real deck: asked to explain an event stream, the agent drew
+        // one flow and then walked every handler as text. The reader wanted to
+        // watch the event move, group after group, and got files.
+        for said in [
+            "Plan the context: when to draw what",
+            "what is the cheapest way to put the right model in",
+            "Map first",
+            "Walk journeys, not files",
+            "Keep a \"you are here\"",
+            "Chapters, only when one deck cannot hold it",
+            "Agree the chapters first, then walk them one at a time",
+            "Never write a later chapter before they have finished the\n     current one",
+            "this is the one deck whose bar goes up after the research",
+            "It is a reachability question",
+            "The bug lives in runtime state",
+            "And not a page when nothing moves",
+            "And not a page when a thing only moves between places",
+            "How to draw each one is §4 and §5",
+            "Beside the code that causes it, by default",
+            "30 or\n   more lines apart",
+            "Keep one drawing across groups",
+            "Build it in shells",
+            "Shell 1 makes the idea alive",
+            "Say which shell you are on, and what is still outside",
+            "Shells add no groups",
+            "Plain words, active voice, one claim a sentence",
+            "Spend the deck where the cases are",
+            "One decision at a time",
+        ] {
+            assert!(SKILL.contains(said), "the skill never says `{said}`");
+        }
+    }
+
+    #[test]
     fn the_skill_starts_a_deck_where_a_person_was_standing() {
         // The failure this answers, from a real deck: an opening about
         // `useState` and `destinationData` with nothing in it about the
