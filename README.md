@@ -17,7 +17,9 @@ Focused on engineers, built for agents.
 
 </div>
 
-<img src="assets/hero.gif" alt="A deck explaining why checkout slows down every hour: as the narration is read, the code lights line by line, the service map lights Postgres, and a timeline of requests piles up behind the connection pool once the cache expires">
+<p align="center">
+<img src="assets/hero.gif" width="788" alt="A deck explaining why checkout slows down every hour: as the narration is read, the code lights line by line, the service map lights Postgres, and a timeline of requests piles up behind the connection pool once the cache expires">
+</p>
 
 <p align="center"><i>An agent leverages deck to walk you through intent, one claim at a time, until the whole decision is yours. Argue, decide and lock.</i></p>
 
