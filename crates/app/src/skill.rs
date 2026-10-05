@@ -468,6 +468,26 @@ mod tests {
     }
 
     #[test]
+    fn the_skill_offers_a_catalog_of_shapes_by_question() {
+        // Left to itself an agent draws boxes, then a Gantt for everything. A
+        // menu keyed by the question gets the right shape the first time.
+        let flat = SKILL.split_whitespace().collect::<Vec<_>>().join(" ");
+        for said in [
+            "A catalog of shapes that have worked",
+            "Pick by the question, not by habit",
+            "lanes are for two or more actors, and one actor is one row",
+            "Should we make this change?",
+            "Why is this number what it is?",
+            "Why does the user see an old value?",
+            "Some of these have a shape that has already landed with readers",
+            "When nothing here fits, name the question first",
+            "the code sits beside it (\"Where it goes\", in \"Plan the context\")",
+        ] {
+            assert!(flat.contains(said), "the skill never says `{said}`");
+        }
+    }
+
+    #[test]
     fn the_skill_starts_a_deck_where_a_person_was_standing() {
         // The failure this answers, from a real deck: an opening about
         // `useState` and `destinationData` with nothing in it about the

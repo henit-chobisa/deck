@@ -606,6 +606,9 @@ files. These have their own rules, and they come first:
   their heads, and most misunderstandings live here.
 - **You would have to draw it twice**, before and after, and the meaning is the gap.
 
+Some of these have a shape that has already landed with readers: "A catalog of shapes
+that have worked" in §5.
+
 **And not a page when nothing moves.** If the drawing looks the same at every sentence,
 it is structure, and structure is a picture. Motion that does not stand for something
 changing in the code is decoration, and decoration costs attention.
@@ -1699,8 +1702,9 @@ purpose.
 Each of these is a page, and each says what moves:
 
 - **A timeline.** Lanes for the actors — threads, requests, services — on a time axis
-  in real units. Concurrency, races, deadlocks, retries and backoff, where the latency
-  went. Bars grow as time runs; the sentence decides how far it has run.
+  in real units; one actor is one row. Concurrency, races, deadlocks, retries and
+  backoff, where the latency went. Bars grow as time runs; the sentence decides how far
+  it has run.
 - **Something filling.** A queue, a buffer, a pool, a token bucket, a rate limit.
   Items arrive and leave; the level is the story; the moment it is full is the point.
 - **A structure changing.** An array with an index walking it, a linked list being
@@ -1710,6 +1714,54 @@ Each of these is a page, and each says what moves:
   a counter over time. The axes stay put and the data moves between them.
 - **A value through time.** Every variable that matters as a track, and the moment one
   goes wrong — the count that should be 7 and is 6.
+
+### A catalog of shapes that have worked
+
+The list above is by what moves; this one is by the question the group answers. They
+are options that have landed with readers, not a template. Pick by the question, not by
+habit. The timeline is the commonest one to overuse: lanes are for two or more actors,
+and one actor is one row. Each entry says what moves and what it needs. The sentences
+move the drawing, and the code sits beside it ("Where it goes", in "Plan the context").
+
+1. **Why does this break only under load or concurrency?** The timeline above, with the
+   shared value as a track beneath it. "What a good page looks like" below is this one.
+   The fix is the next group: the same page brought back under the same name, the
+   second actor refused. Needs: the order of reads and writes, and how long the slow
+   step takes.
+
+2. **Should we make this change?** For a plan or a proposal, not ship mode. A chart that
+   bends, in production numbers: the latency percentiles today move to what the option
+   gives. If the option moves cost somewhere else, a worker or a queue, that is the next
+   group, as something filling over a busy day. Needs: real percentiles from traces, and
+   the peak the system sees.
+
+3. **What does the input become on its way through?** Where it stops is a flow on the
+   picture. The page is the one record: its fields filling in or dropping out at each
+   step. Needs: one real input and what each step does to it.
+
+4. **Why is this number what it is?** Asked mid-walk, answered with evidence: the
+   measurement the decision was made on, and a marker that moves along it to the value
+   that shipped, then past it to where it gets worse. Needs: the data, not a guess.
+
+5. **Where does the time go?** One request, its calls in one row as they run. An N+1
+   grows call by call; the fix collapses it to one, and the total falls with it. Needs:
+   the call count, the time per call, any pool limit.
+
+6. **Why does the total not add up?** A running total: the opening value, each movement
+   applied in turn, then what it should be beside what it is, and the gap as the bad
+   outcome. Needs: the figures the books or the counter report.
+
+7. **Why does the user see an old value?** Two values through time, the source and the
+   copy the user reads, moving apart at the change and meeting again when the copy
+   expires. The window between them is the bug. Needs: when the value changed and when
+   the copy expires.
+
+A question about how a system is put together is not on this list. It is a picture
+with a flow per journey (the system-sized rules in "Plan the context", and §4). When
+nothing here fits, name the question first. Something changing over time, a number
+before and after, or a quantity is a page. One thing moving through others is a picture
+with a flow. Two paths through the same parts are one picture with two flows. How a
+whole splits into parts, or how two things relate, is a picture or no drawing at all.
 
 ### It starts at rest, and moves when you point
 
