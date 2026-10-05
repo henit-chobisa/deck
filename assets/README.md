@@ -13,29 +13,19 @@ To remake it: `DECK_SHOW_ME=1` on a **debug** build opens a deck without the
 bar, which is the only way to photograph the window. It does not exist in a
 release binary, which is the point — see `main.rs`.
 
-## The demo video
+## The recordings
 
-It does not live here. GitHub will not play a video committed to the repo — the
-only form that renders as a player is an upload. Open the README in the web
-editor, drag the file in, and GitHub inserts a `user-attachments` URL for it.
-MP4 or MOV, under 10 MB.
+The README's hero and its four use cases are GIFs, and they do not live here:
+each is 6–8 MB, and committed they would be in every clone forever. They sit on
+the `pr-assets` branch under `readme/`, linked by commit so a later push to that
+branch cannot break them.
 
-## Screenshots
+They are cut from screen recordings of the deck window at 1165×954 (the size in
+`~/.deck/window.json`): 15 frames a second, 1600 wide, waits removed, and a
+256-colour palette with a bayer dither, which keeps one under 10 MB.
 
-The hero slot is the commented-out block near the top of the README. What
-belongs there is a deck **open** — two panes of code with the narration band
-above them, around 1600 wide. A reader learns what deck is from that picture
-faster than from any paragraph on the page.
+Caption anything that goes in. A picture of an interface means nothing to
+somebody who does not yet know what they are looking at.
 
-Two more places want one, and each has a comment in the README marking the spot:
-
-- **In the window** — walking a group, or a comment being written.
-- **Diagrams** — a flow playing, which has to be a GIF: the travelling is the
-  part prose cannot carry.
-
-Caption anything that goes in. Every project worth copying puts a sentence under
-its screenshot, because a picture of an interface means nothing to somebody who
-does not yet know what they are looking at.
-
-Keep them small. A README that takes a second to load is a README with a
-screenshot nobody optimised.
+`hero.png` is the still the hero used before the recordings; nothing links to it
+now.

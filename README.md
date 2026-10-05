@@ -17,7 +17,7 @@ Focused on engineers, built for agents.
 
 </div>
 
-<img src="https://raw.githubusercontent.com/henit-chobisa/deck/pr-assets/readme/race.gif" alt="A deck walking a race condition: two requests read the same balance, the code lights line by line while a timeline plays both requests until the money goes missing">
+<img src="https://raw.githubusercontent.com/henit-chobisa/deck/2117df7f35e002a3e02e26387056487525676ef7/readme/race.gif" alt="A deck walking a race condition: two requests read the same balance, the code lights line by line while a timeline plays both requests until the money goes missing">
 
 <p align="center"><i>An agent leverages deck to walk you through intent, one claim at a time, until the whole decision is yours. Argue, decide and lock.</i></p>
 
@@ -43,12 +43,13 @@ so you say "do what's good and move on".
 
 My favourite: code reviews. A PR comes to you, you ask the agent to review it,
 and it gives you five paragraphs in a language you understand fifty per cent of.
-The PR is 20,000 lines, by the way. No architecture was explained. No root
+Now you are too tired to go and sniff into the code — 20,000 lines of it, by the
+way. No architecture was explained. No root
 context was given. There are only two outcomes. Either you become a proxy,
 "okay", and get an alert at three in the morning. Or you discard the review and
 dig in yourself, coffee in hand, rewriting everything you thought you knew.
 
-Code is now written faster than anyone can keep up with it. Nobody decides to
+Engineers cannot keep up with the pace their agents work at. Nobody decides to
 stop understanding their own system; it is given up, one "looks good" at a time,
 and in a team building seven things at once, soon nobody knows what is happening
 behind the scenes. So instead of another harness for agents, deck is **focused on
@@ -56,7 +57,8 @@ engineers, but built for agents**: the agent does the explaining, and you keep
 the understanding.
 
 Explanation as *text* is the bottleneck now. People run four, six, eight agents
-at once, and their own reading speed is the ceiling. Deck is built for that
+at once, and their own reading speed is the ceiling — the agents finish and then
+wait on a human reading prose. Deck is built for that
 moment. It is not a diff viewer and not a chat window: it is the surface where an
 agent makes an argument about code, draws the flow it is describing, and a
 person answers it in the fewest keystrokes that can carry the answer.
@@ -101,15 +103,16 @@ cargo install --git https://github.com/henit-chobisa/deck deck-app
 
 </details>
 
+`deck setup` also offers to turn on [the catch](docs/the-catch.md), which sends a
+reply full of `file:line` locations back to become a deck.
+
 ## Where deck helps
 
 ### Debugging a race condition: the books don't balance
 
 Two requests read the same balance, both write, and one deposit is gone. The
 agent puts the lines beside a timeline of both requests and plays it, sentence by
-sentence, until the money goes missing.
-
-<img src="https://raw.githubusercontent.com/henit-chobisa/deck/pr-assets/readme/race.gif" alt="Two requests racing on one wallet: the code lights line by line while a timeline plays both requests until the balance is wrong">
+sentence, until the money goes missing. That is the recording at the top.
 
 ### Planning with your agent: decide before a line is written
 
@@ -118,17 +121,17 @@ anything, the agent shows the plan against today's code, projects the latency it
 buys, and the backlog it costs on the busiest day. You decide with the numbers in
 front of you.
 
-<img src="https://raw.githubusercontent.com/henit-chobisa/deck/pr-assets/readme/planning.gif" alt="A plan walked as a deck: today's checkout code beside the proposed change, a latency chart moving from today to the plan, and a day of traffic building a backlog">
+<img src="https://raw.githubusercontent.com/henit-chobisa/deck/2117df7f35e002a3e02e26387056487525676ef7/readme/planning.gif" alt="A plan walked as a deck: today's checkout code beside the proposed change, a latency chart moving from today to the plan, and a day of traffic building a backlog">
 
-### Learning a system you didn't build
+### Learning a system you didn't build: one query, end to end
 
-One search query, end to end: the map of the service, the code at each stop, and
+One search query from the box to the results: the map of the service, the code at each stop, and
 the query taken apart as it goes. Ask why popularity is weighted 0.3 and the
 answer comes back inside the deck, with the experiment that decided it.
 
-<img src="https://raw.githubusercontent.com/henit-chobisa/deck/pr-assets/readme/learning.gif" alt="A search request walked end to end, then a question asked mid-walk answered with a chart of the experiment behind the number">
+<img src="https://raw.githubusercontent.com/henit-chobisa/deck/2117df7f35e002a3e02e26387056487525676ef7/readme/learning.gif" alt="A search request walked end to end, then a question asked mid-walk answered with a chart of the experiment behind the number">
 
-### Reviewing a 20,000-line PR
+### Reviewing a 20,000-line PR: chapters, agreed first
 
 You say *review this branch*. The agent reads it, proposes the review as
 chapters — the layers the branch was built in, inside out — and asks before it
@@ -136,7 +139,7 @@ starts. Chapter one is a deck: the map of the branch, a retried payment played
 out in milliseconds, the test, and what the test does not prove. Your review of
 it shapes the next chapter.
 
-<img src="https://raw.githubusercontent.com/henit-chobisa/deck/pr-assets/readme/review.gif" alt="An agent proposes a 20,000-line review as three chapters, then the first chapter opens as a deck: a map of the branch, the middleware beside a timeline of a retried payment, and the test">
+<img src="https://raw.githubusercontent.com/henit-chobisa/deck/2117df7f35e002a3e02e26387056487525676ef7/readme/review.gif" alt="An agent proposes a 20,000-line review as three chapters, then the first chapter opens as a deck: a map of the branch, the middleware beside a timeline of a retried payment, and the test">
 
 ## How it works
 
@@ -199,8 +202,6 @@ d-1788265010-8842.review    your answer, written beside it
 
 </details>
 
-The architecture is in [`docs/how-it-works.md`](docs/how-it-works.md).
-
 ## In the window
 
 A deck is a sequence of groups, and each group is one thing the agent is saying
@@ -247,8 +248,7 @@ have drifted.
 | [Diagrams and pages](docs/diagrams-and-pages.md) | pictures with flows, and pages for the idea that only moves |
 | [Theming](docs/theming.md) | your editor's colours, twenty themes |
 | [The catch](docs/the-catch.md) | the hook that sends a prose reply back to become a deck |
-| [How it works](docs/how-it-works.md) | the architecture |
-| [`PROTOCOL.md`](PROTOCOL.md) | the wire format, frozen at v1 |
+| [How it works](docs/how-it-works.md) | the architecture, and [`PROTOCOL.md`](PROTOCOL.md), the wire format |
 
 ## Contributing
 

@@ -94,4 +94,4 @@ sent until a key is set up, and a deck with no key still walks, in silence.
 
 ---
 
-[← README](../README.md) · [How it works](how-it-works.md) · [The walk](the-walk.md) · [Diagrams and pages](diagrams-and-pages.md) · [Theming](theming.md) · [The catch](the-catch.md)
+[← README](../README.md) · [The window](the-window.md) · [Diagrams and pages](diagrams-and-pages.md) · [Theming](theming.md) · [The catch](the-catch.md) · [How it works](how-it-works.md)

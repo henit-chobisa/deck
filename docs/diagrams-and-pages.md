@@ -83,4 +83,4 @@ to the sentence being read rather than to a clock.
 
 ---
 
-[← README](../README.md) · [How it works](how-it-works.md) · [The walk](the-walk.md) · [Diagrams and pages](diagrams-and-pages.md) · [Theming](theming.md) · [The catch](the-catch.md)
+[← README](../README.md) · [The window](the-window.md) · [The walk](the-walk.md) · [Theming](theming.md) · [The catch](the-catch.md) · [How it works](how-it-works.md)

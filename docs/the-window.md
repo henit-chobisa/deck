@@ -20,7 +20,8 @@ Finish it one of two ways: **Ask now** (`⌘↩`, or `Ctrl+Enter` on Windows and
 Linux) puts the question to the agent straight away, and **Add to review**
 (`⇧⌘↩` / `Ctrl+Shift+Enter`) holds it until you submit. `esc` discards. When
 the agent is not listening, **Ask now** is off and says why; the review still
-takes the comment. Every comment is pinned to the lines it was about, with the text it was written
+takes the comment. Every
+comment is pinned to the lines it was about, with the text it was written
 against — so it survives the file moving underneath it.
 
 ## Put it away without losing it
@@ -54,4 +55,4 @@ remembered for next time.
 
 ---
 
-[← README](../README.md) · [How it works](how-it-works.md) · [The walk](the-walk.md) · [Diagrams and pages](diagrams-and-pages.md) · [Theming](theming.md) · [The catch](the-catch.md)
+[← README](../README.md) · [The walk](the-walk.md) · [Diagrams and pages](diagrams-and-pages.md) · [Theming](theming.md) · [The catch](the-catch.md) · [How it works](how-it-works.md)
