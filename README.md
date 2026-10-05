@@ -17,7 +17,7 @@ Focused on engineers, built for agents.
 
 </div>
 
-<img src="https://raw.githubusercontent.com/henit-chobisa/deck/2117df7f35e002a3e02e26387056487525676ef7/readme/race.gif" alt="A deck walking a race condition: two requests read the same balance, the code lights line by line while a timeline plays both requests until the money goes missing">
+<img src="https://raw.githubusercontent.com/henit-chobisa/deck/d33dee03406e5dadf8263b2ea16c683b43bb7e27/readme/hero.gif" alt="A deck explaining why checkout slows down every hour: as the narration is read, the code lights line by line, the service map lights Postgres, and a timeline of requests piles up behind an expired cache">
 
 <p align="center"><i>An agent leverages deck to walk you through intent, one claim at a time, until the whole decision is yours. Argue, decide and lock.</i></p>
 
@@ -30,38 +30,20 @@ Focused on engineers, built for agents.
 ## Why
 
 Your agent finishes a change and writes you a paragraph. It names four files and
-six line numbers. Now you open each one, find the line, hold the argument in your
-head while you go and look at the next one, and try to remember what the third
-one was for. By the time you have the whole picture you have done the work of
-assembling it yourself — which is the work you asked for. Then you type *looks
-good*, and neither of you is quite sure what you approved.
+six line numbers. You open each one, hold the argument in your head, and by the
+time you have the whole picture you have done the assembling yourself. Then you
+type *looks good*, and neither of you is quite sure what you approved.
 
-Or you ask it to explain something, or for a plan. Maybe it tells you the
-limitations, maybe it tells you where the architecture is broken. But it
-**tells** you. It never **shows** you. And you are too tired to read all of it,
-so you say "do what's good and move on".
+My favourite: code reviews. The PR is 20,000 lines, the agent gives you five
+paragraphs in a language you understand fifty per cent of, and no root context.
+Either you become a proxy, "okay", and get an alert at three in the morning, or
+you dig in yourself, coffee in hand.
 
-My favourite: code reviews. A PR comes to you, you ask the agent to review it,
-and it gives you five paragraphs in a language you understand fifty per cent of.
-Now you are too tired to go and sniff into the code — 20,000 lines of it, by the
-way. No architecture was explained. No root
-context was given. There are only two outcomes. Either you become a proxy,
-"okay", and get an alert at three in the morning. Or you discard the review and
-dig in yourself, coffee in hand, rewriting everything you thought you knew.
-
-Engineers cannot keep up with the pace their agents work at. Nobody decides to
-stop understanding their own system; it is given up, one "looks good" at a time,
-and in a team building seven things at once, soon nobody knows what is happening
-behind the scenes. So instead of another harness for agents, deck is **focused on
-engineers, but built for agents**: the agent does the explaining, and you keep
-the understanding.
-
-Explanation as *text* is the bottleneck now. People run four, six, eight agents
-at once, and their own reading speed is the ceiling — the agents finish and then
-wait on a human reading prose. Deck is built for that
-moment. It is not a diff viewer and not a chat window: it is the surface where an
-agent makes an argument about code, draws the flow it is describing, and a
-person answers it in the fewest keystrokes that can carry the answer.
+Engineers cannot keep up with the pace their agents work at, and understanding
+is given up one *looks good* at a time. So instead of another harness for agents,
+deck is **focused on engineers, but built for agents**: the agent points at the
+code, draws what it means, and you answer it in the fewest keystrokes that can
+carry the answer.
 
 ## Install
 
@@ -112,7 +94,9 @@ reply full of `file:line` locations back to become a deck.
 
 Two requests read the same balance, both write, and one deposit is gone. The
 agent puts the lines beside a timeline of both requests and plays it, sentence by
-sentence, until the money goes missing. That is the recording at the top.
+sentence, until the money goes missing.
+
+<img src="https://raw.githubusercontent.com/henit-chobisa/deck/2117df7f35e002a3e02e26387056487525676ef7/readme/race.gif" alt="Two cash-outs racing on one wallet: the code lights line by line while a timeline plays both requests until the balance is wrong">
 
 ### Planning with your agent: decide before a line is written
 
