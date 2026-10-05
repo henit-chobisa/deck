@@ -473,14 +473,13 @@ mod tests {
         // menu keyed by the question gets the right shape the first time.
         for said in [
             "A catalog of shapes that have worked",
-            "Pick the shape by the question the group answers, not by habit",
-            "Why does this break only under load or concurrency?",
+            "pick by the question, not by",
+            "the commonest one to overuse: use them only when two or",
             "Should we make this change?",
-            "What happens to the input on its way through?",
             "Why is this number what it is?",
-            "Where does the time go?",
-            "Why does the total not add up?",
             "Why does the user see an old value?",
+            "Some of these have a shape that has already landed with readers",
+            "When nothing here fits, name the question first",
         ] {
             assert!(SKILL.contains(said), "the skill never says `{said}`");
         }
