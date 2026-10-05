@@ -65,17 +65,6 @@ pub const ABOVE: f32 = 68.;
 /// How tall the bar itself is.
 const BAR_H: f32 = 48.;
 
-/// How far the Open button recedes while there is nothing to open.
-///
-/// Toward the page rather than to a grey of its own, so it stays the same
-/// button in the same palette — a control waiting its turn, not a different
-/// control.
-const WAITING: f32 = 0.62;
-
-/// How long the button takes to come up to colour once there is something to
-/// read. Long enough to be seen as a change, short enough not to be waited on.
-const WAKE: Duration = Duration::from_millis(520);
-
 /// The bar that says a deck is ready.
 pub struct Pill {
     /// Which of the decks waiting the bar is showing, and would open.
@@ -171,9 +160,6 @@ impl Pill {
     /// window ends the command — taking the bar away first left a moment with
     /// no window at all, which quit the program on its way to opening a deck.
     fn open(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if !self.readable(cx) {
-            return;
-        }
         let Some(session) = crate::queue::take(self.at, cx) else {
             return;
         };
@@ -204,18 +190,6 @@ impl Pill {
         }
     }
 
-    /// Whether there is anything to read yet.
-    ///
-    /// The bar goes up when the agent starts rather than when it finishes, so
-    /// that a person can see something is being written for them — which means
-    /// it now spends its first moments over a deck with nothing in it. Opening
-    /// that would be a window of empty page, and the reader would read it as
-    /// the deck being broken rather than as their being early.
-    fn readable(&self, cx: &App) -> bool {
-        crate::queue::about(self.at, cx, |session| !session.deck.groups().is_empty())
-            .unwrap_or(false)
-    }
-
     /// Where the reader is up to, in as few words as it takes.
     fn count(&self, cx: &App) -> String {
         let Some(said) = crate::queue::about(self.at, cx, |session| {
@@ -230,12 +204,21 @@ impl Pill {
             return String::new();
         };
         let (_, here, claimed, sealed, remarks) = said;
-        let total = claimed.map_or(here, |total| (total as usize).max(here));
+        // Sealed, the groups that arrived are the deck; a header that promised
+        // more was only a guess, and saying "3 groups" over a window with
+        // nothing in it is a promise Open now has to keep.
+        let total = if sealed {
+            here
+        } else {
+            claimed.map_or(here, |total| (total as usize).max(here))
+        };
 
         // What it is doing, said the way the reader would ask it. A count on
         // its own answers a question nobody has: they want to know whether
         // there is anything to read yet, and whether it is finished.
-        let where_at = if sealed {
+        let where_at = if sealed && total == 0 {
+            "Nothing readable".to_string()
+        } else if sealed {
             format!("{total} group{}", if total == 1 { "" } else { "s" })
         } else {
             format!("Getting deck ready… {here}/{total}")
@@ -452,15 +435,13 @@ impl Render for Pill {
         // Filled, not outlined. There is one thing to do here, and an outline
         // is what you give the other one.
         //
-        // Held back until there is a group to read. Waiting is drawn by taking
-        // the colour out rather than by hiding it: a button that appears once
-        // something lands is a bar that changes shape while you are looking at
-        // it, and a person cannot learn where a control is if it moves.
-        let ready = self.readable(cx);
+        // Live from the moment the bar is up. It used to stay dark until the
+        // first group landed, and the first group is the one the agent spends
+        // longest on — so for the first minute the bar's one button looked
+        // broken. The window has its own word for a deck still being written,
+        // and the groups arrive in it as they land.
         let (accent, on_accent) = (palette.accent, palette.on_accent);
-        let resting = accent.mix(palette.bg, WAITING);
-        let quiet = on_accent.mix(resting, WAITING);
-
+        let hover = accent.mix(palette.fg, 0.16);
         let open = div()
             .id("open")
             .flex_none()
@@ -469,34 +450,13 @@ impl Render for Pill {
             .rounded(px(7.))
             .text_size(px(11.5))
             .font_medium()
-            .opacity(tail);
-
-        let open = if ready {
-            // Coming up to colour rather than arriving at it. The moment the
-            // first group lands is the one moment the reader is watching this
-            // button, and a swap reads as a redraw where a rise reads as the
-            // deck becoming ready. Eased at both ends so it neither jumps nor
-            // stops dead.
-            let hover = accent.mix(palette.fg, 0.16);
-            open.cursor_pointer()
-                .hover(move |this| this.bg(paint(hover)))
-                .on_click(cx.listener(|pill, _, window, cx| pill.open(window, cx)))
-                .child("Open")
-                .with_animation(
-                    "open-wakes",
-                    Animation::new(WAKE).with_easing(ease_in_out),
-                    move |this, out| {
-                        this.bg(paint(resting.mix(accent, out)))
-                            .text_color(paint(quiet.mix(on_accent, out)))
-                    },
-                )
-                .into_any_element()
-        } else {
-            open.bg(paint(resting))
-                .text_color(paint(quiet))
-                .child("Open")
-                .into_any_element()
-        };
+            .opacity(tail)
+            .bg(paint(accent))
+            .text_color(paint(on_accent))
+            .cursor_pointer()
+            .hover(move |this| this.bg(paint(hover)))
+            .on_click(cx.listener(|pill, _, window, cx| pill.open(window, cx)))
+            .child("Open");
 
         let later = div()
             .id("later")

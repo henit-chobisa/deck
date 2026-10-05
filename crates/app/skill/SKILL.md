@@ -1004,7 +1004,9 @@ Run it **second**, right after `deck new`, before the research — and then neve
 that deck. A bar appears at the bottom of the screen showing the title and `writing group
 1…`. Everything after this point is them waiting on *less and less*.
 
-The Open button stays dark until the first group lands, so opening this early is safe.
+The reader can open the deck straight away. Until the first group lands the window says
+the deck is being written, and each group appears in it as you write it — so opening this
+early is safe, and the first group is worth getting to them quickly.
 
 **You never open the deck itself.** There is no flag for it and there must be no attempt
 at one. The bar is the whole invitation; when to read is theirs to choose, and it is

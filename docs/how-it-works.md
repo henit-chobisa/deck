@@ -11,10 +11,10 @@ open.
 agent                        disk                        you
 ─────                        ────                        ───
 deck new        ────────►  deck.json
-deck open       ────────►                      ────►  a bar appears
-                                                      (Open stays dark)
-deck group      ────────►  g1.json             ────►  the bar lights up
-   "                       g2.json             ────►  you open it, and read
+deck open       ────────►                      ────►  a bar appears; Open works
+                                                      at once
+deck group      ────────►  g1.json             ────►  group 1 appears in the window
+   "                       g2.json             ────►  you read on
 deck seal       ────────►  done
 deck wait       ◄────────  <id>.review         ◄────  you comment and submit
 ```
