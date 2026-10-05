@@ -107,7 +107,9 @@ cargo install --git https://github.com/henit-chobisa/deck deck-app
 
 Two requests read the same balance, both write, and one deposit is gone. The
 agent puts the lines beside a timeline of both requests and plays it, sentence by
-sentence, until the money goes missing. That is the recording at the top.
+sentence, until the money goes missing.
+
+<img src="https://raw.githubusercontent.com/henit-chobisa/deck/pr-assets/readme/race.gif" alt="Two requests racing on one wallet: the code lights line by line while a timeline plays both requests until the balance is wrong">
 
 ### Planning with your agent: decide before a line is written
 
