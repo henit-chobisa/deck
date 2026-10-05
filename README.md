@@ -17,7 +17,7 @@ Focused on engineers, built for agents.
 
 </div>
 
-<img src="https://raw.githubusercontent.com/henit-chobisa/deck/d33dee03406e5dadf8263b2ea16c683b43bb7e27/readme/hero.gif" alt="A deck explaining why checkout slows down every hour: as the narration is read, the code lights line by line, the service map lights Postgres, and a timeline of requests piles up behind an expired cache">
+<img src="assets/hero.gif" alt="A deck explaining why checkout slows down every hour: as the narration is read, the code lights line by line, the service map lights Postgres, and a timeline of requests piles up behind an expired cache">
 
 <p align="center"><i>An agent leverages deck to walk you through intent, one claim at a time, until the whole decision is yours. Argue, decide and lock.</i></p>
 
