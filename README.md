@@ -31,160 +31,191 @@ Focused on engineers, built for agents.
 
 ## Why
 
-Your agent finishes a change and writes you a paragraph. It names four files and
-six line numbers. You open each one, hold the argument in your head, and by the
-time you have the whole picture you have done the assembling yourself. Then you
-type *looks good*, and neither of you is quite sure what you approved.
+Agents read and write code faster than any of us can follow. We cannot keep up,
+so we give our understanding up, one *looks good* at a time, and in a team
+building seven things at once, soon nobody knows what is happening behind the
+scenes.
 
-My favourite: code reviews. The PR is 20,000 lines, the agent gives you five
-paragraphs in a language you understand fifty per cent of, and no root context.
-Either you become a proxy, "okay", and get an alert at three in the morning, or
-you discard the review and dig in yourself, coffee in hand, rewriting everything
-you thought you knew.
+So instead of building another harness for agents, deck is **focused on
+engineers, but built for agents**. The agent does the explaining, and you keep
+the understanding.
 
-Engineers cannot keep up with the pace their agents work at, and understanding
-is given up one *looks good* at a time. So instead of another harness for agents,
-deck is **focused on engineers, but built for agents**: the agent does the
-explaining, and you keep the understanding.
+You have seen the problem. Your agent finishes a change and writes you a
+paragraph that names four files and six line numbers. You open each one and hold
+the argument in your head, and by the time you have the whole picture you have
+done the assembling yourself. Then you type *looks good*, and neither of you is
+quite sure what you approved.
+
+My favourite is code review. The PR is 20,000 lines, and the agent's review is
+five paragraphs in a language you understand fifty per cent of, with no root
+context. Either you become a proxy, say "okay", and get an alert at three in the
+morning, or you discard the review and dig in yourself, coffee in hand,
+rewriting everything you thought you knew.
 
 ## Install
 
-One command. It downloads the deck built for your machine, checks it, puts it
-on your PATH, clears away any other deck on it — a Homebrew one, a `cargo
-install`, a binary you were handed — and runs `deck setup`. Run it as yourself,
-not with `sudo`.
+Run one script. It downloads deck for your machine, checks that the download is
+intact, and puts it on your PATH. Then it runs `deck setup`, which asks you a few
+questions.
 
-**macOS and Linux**
+On macOS or Linux, run this in a terminal:
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/henit-chobisa/deck/main/install | sh
 ```
 
-**Windows** (PowerShell)
+On Windows, run this in PowerShell:
 
 ```powershell
 irm https://raw.githubusercontent.com/henit-chobisa/deck/main/install | iex
 ```
 
-Nothing is compiled and nothing else is installed. Your settings and decks in
-`~/.deck` are kept. After that, deck keeps itself current on macOS and Linux;
-on Windows, `deck upgrade` brings in the next release when you ask.
+Run it as yourself, not with `sudo`. Your settings and decks are kept if you run
+it again. Deck updates itself on macOS and Linux; on Windows, run `deck upgrade`
+when you want the next release.
 
 <details>
-<summary>Choices, and building it yourself</summary>
+<summary>Build it from source instead</summary>
 
-- `DECK_VERSION=v0.1.3` installs that release rather than the newest.
-- `DECK_INSTALL=<dir>` puts it somewhere other than `~/.local/bin`
-  (`%LOCALAPPDATA%\Programs\deck` on Windows).
-- `DECK_NO_SETUP=1` stops before `deck setup`.
-
-On Linux the window needs WebKitGTK; the installer says which package if it is
-missing. To build from source instead:
+You need Rust. On Linux you also need WebKitGTK, which the window uses to draw
+pages.
 
 ```sh
 cargo install --git https://github.com/henit-chobisa/deck deck-app
+deck setup
 ```
 
 </details>
-
-`deck setup` also offers to turn on [the catch](docs/the-catch.md), which sends a
-reply full of `file:line` locations back to become a deck.
 
 ## Where deck helps
 
 ### Debugging a race condition: the books don't balance
 
-Two $80 cash-outs land on a $100 wallet milliseconds apart, and both are paid.
-The agent puts the lines beside a timeline of both requests and plays it,
-sentence by sentence, until $80 is missing; then it shows the fix.
+Say finance tells you the ledger is $80 short, and every line of the withdrawal
+code looks right. You ask your agent why.
 
-<img src="https://raw.githubusercontent.com/henit-chobisa/deck/2117df7f35e002a3e02e26387056487525676ef7/readme/race.gif" alt="Two cash-outs racing on one wallet: the code lights line by line while a timeline plays both requests until $80 is missing, then the fix, where the second cash-out is refused and the books balance">
+In the recording below, the agent puts the withdrawal code beside a timeline of
+two $80 cash-outs landing on a $100 wallet, milliseconds apart. As each sentence
+is read, the line it describes lights up and the timeline moves forward, until
+both cash-outs are paid and $80 is missing. The second group shows the fix and
+replays the same moment.
+
+<img src="https://raw.githubusercontent.com/henit-chobisa/deck/2117df7f35e002a3e02e26387056487525676ef7/readme/race.gif" alt="Two cash-outs racing on one wallet: the code lights line by line while a timeline plays both requests until $80 is missing, then the fix, where one cash-out is refused and the books balance">
 
 ### Planning with your agent: decide before a line is written
 
-Checkout is slow and the fix is to move work off the request. Before touching
-anything, the agent shows the plan against today's code, projects the latency it
-buys, and the backlog it costs on the busiest day. You decide with the numbers in
-front of you.
+Say checkout is slow because it renders the receipt while the customer waits,
+and your agent wants to move that work to a queue. Before it writes any code,
+you ask it to show you the plan.
+
+Below, the agent shows today's checkout code beside the change it would make,
+and a chart of what the change buys: the p99 falls from 4.2 seconds to 260
+milliseconds. Then it shows the cost. On Black Friday the queue backs up, and
+receipts arrive nine minutes late. You decide with both numbers in front of you.
 
 <img src="https://raw.githubusercontent.com/henit-chobisa/deck/2117df7f35e002a3e02e26387056487525676ef7/readme/planning.gif" alt="A plan walked as a deck: today's checkout code beside the proposed change, a latency chart moving from today to the plan, and a day of traffic building a backlog">
 
 ### Learning a system you didn't build: one query, end to end
 
-One search query from the box to the results: the map of the service, the code
-at each stop, and the query taken apart as it goes. Ask why popularity is
-weighted 0.3 and the answer comes back inside the deck, with the experiment that
-decided it.
+Say you have just joined the team that owns search, and the person who built it
+has left. You ask your agent to walk you through it.
+
+Below, the agent follows one real query, *red running shoes under $80*, from the
+search box to the results: a map of the service, the code at each stop, and the
+query being taken apart into filters and terms. When you ask why popularity
+counts for 30 per cent, the answer comes back inside the deck, with a chart of
+the experiment that chose the number.
 
 <img src="https://raw.githubusercontent.com/henit-chobisa/deck/2117df7f35e002a3e02e26387056487525676ef7/readme/learning.gif" alt="A search request walked end to end, then a question asked mid-walk answered with a chart of the experiment behind the number">
 
 ### Reviewing a 20,000-line PR: chapters, agreed first
 
-You say *review this branch*. The agent reads it, proposes the review as
-chapters — the layers the branch was built in, inside out — and asks before it
-starts. Chapter one is a deck: the map of the branch, a retried payment played
-out in milliseconds, the test, and what the test does not prove. Your review of
-it shapes the next chapter.
+Say a teammate's branch changes 20,000 lines across payments, the ledger and the
+dashboard, and you have to approve it. You ask your agent to review it.
+
+Below, the agent reads the branch and proposes the review as three chapters, one
+for each layer the branch was built in, and asks before it starts. Chapter one
+opens as a deck: a map of the branch, the new middleware beside a timeline of a
+retried payment, and the test, with what the test does not prove. Your review of
+chapter one shapes chapter two.
 
 <img src="https://raw.githubusercontent.com/henit-chobisa/deck/2117df7f35e002a3e02e26387056487525676ef7/readme/review.gif" alt="An agent proposes a 20,000-line review as three chapters, then the first chapter opens as a deck: a map of the branch, the middleware beside a timeline of a retried payment, and the test">
 
 ## How it works
 
-Four commands and a wait. No daemon, no editor plugin, no protocol to speak —
-which is why it works the same with **Claude Code, Codex, Cursor and Amp**, or
-whatever comes next. A deck is a review, a walkthrough, a plan, or an
-explanation — whatever an agent would otherwise have written as prose.
+You install deck once, and after that your agent does the work. It works the
+same way with Claude Code, Codex, Cursor and Amp, because all an agent needs is
+a shell.
 
-```sh
-deck new --title "The batch counter stalls at 63" --total 2
-# prints the deck's path
+1. **You run `deck setup`.** It asks how deck should look, and can borrow your
+   editor's theme. It installs a short skill into each agent it finds, so they
+   know when to reach for deck. And it offers to turn on [the
+   catch](docs/the-catch.md), which sends a reply full of `file:line` locations
+   back to the agent to become a deck.
+2. **You ask your agent about some code.** A bug, a plan, or a review.
+3. **The agent writes a deck.** A deck is a folder of small files: a title, then
+   one group at a time. Each group is one thing the agent wants to say, and the
+   code that shows it. Deck refuses a group that points at a file or a line that
+   does not exist.
+4. **A bar appears at the bottom of your screen.** You open it when you are
+   ready. The agent cannot open it for you.
+5. **You walk through it.** Each sentence lights the code it is about. Press `w`
+   to have it read aloud.
+6. **You answer.** Select lines and press `c` to comment. **Ask now** sends the
+   question straight away; **Add to review** keeps it until you submit.
+7. **The agent gets your answer.** The command that opened the deck is still
+   waiting. When you submit, ask, or close the deck, it ends and hands the agent
+   what you said, pinned to the lines you said it about.
 
-deck open <path>          # a bar appears; you open it when you are ready.
-                          # holds until you answer, then prints the review
-
-deck group <path> \
-  --say "The counter is decremented on the **error path** too." \
-  --ref "src/batch.ts:140-148 decremented *twice* when the write fails" \
-  --ref "src/queue.ts:88 the only caller"
-
-deck seal <path>
+```mermaid
+flowchart LR
+  you([You]) -- asks --> agent[Your agent]
+  agent -- "writes a deck" --> folder[("a folder of small files")]
+  folder --> bar[A bar on your screen]
+  bar -- "you open it" --> window[The deck window]
+  window -- "comments and questions" --> waiting["deck open, still waiting"]
+  waiting -- "your review" --> agent
 ```
 
-Most of the time you will not run any of this. `deck setup` installs a skill into
-your agents and they reach for it on their own.
-
 <details>
-<summary>Why <code>deck open</code> is also the listener</summary>
+<summary>What the agent runs</summary>
 
-`deck open` is the listener as well as the window, and it ends — handing the
-agent what happened — on every way you can reach it: a review, a question asked
-mid-walk, an interruption, or closing it without answering. So there is no
-second command for an agent to forget. `-d` detaches it if you would rather do
-the listening yourself, and `deck wait` is there for that case.
+Four commands. Most of the time you will never type them; the skill tells your
+agent when and how.
 
-The rule underneath is that **a process wakes an agent by ending**, so whatever
-wakes it has to be something that can afford to die. A window cannot — somebody
-asking a question still wants the deck in front of them — so the window is a
-process of its own and the listener is the one you ran.
+```sh
+deck new --title "The batch counter stalls at 63" --total 2   # prints the deck's path
+deck open <path>                                               # the bar, and the wait
+deck group <path> --say "The counter is decremented on the **error path** too." \
+  --ref "src/batch.ts:140-148 decremented *twice* when the write fails"
+deck seal <path>                                               # no more groups
+```
 
 </details>
 
 <details>
-<summary>A deck is a directory</summary>
+<summary>Why the waiting command is the one that ends</summary>
 
-That shape does something: the agent writes the header, then a group at a time,
-then `done`. You can start reading group one while group four is still being
-written.
+An agent is woken by a process ending, so whatever wakes it has to be something
+that can end. The window cannot: somebody asking a question still wants the deck
+in front of them. So the window runs as a process of its own, and `deck open`,
+the command the agent ran, is the one that ends with your answer.
+
+</details>
+
+<details>
+<summary>A deck on disk</summary>
 
 ```
 d-1788265010-8842.deck/
-  deck.json      the header — title, project, how many groups are coming
+  deck.json      the header: title, project, how many groups are coming
   g1.json        one claim, and the code that shows it
   g2.json
   done           written last
 d-1788265010-8842.review    your answer, written beside it
 ```
 
+You can start reading group one while group four is still being written.
 [`PROTOCOL.md`](PROTOCOL.md) is the full specification, frozen at version 1.
 
 </details>
