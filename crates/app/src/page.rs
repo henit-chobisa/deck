@@ -271,19 +271,35 @@ impl Paper {
     ///
     /// A card deck draws cannot be drawn over a native view, so the page fades
     /// with it rather than vanishing the moment it starts: a page cut out in
-    /// one frame beside a card easing in read as a stutter. The view is
-    /// see-through on a Mac, so the document's own opacity is the page's.
+    /// one frame beside a card easing in read as a stutter.
+    ///
+    /// On a Mac it is the native view's own alpha, not the document's: that
+    /// takes effect at once, outlives a reload of the page, and cannot be lost
+    /// to a document that has not finished loading — a script setting the
+    /// document's opacity could, leaving the page whole over a fading card.
     pub(crate) fn dim(&mut self, cover: f32) {
         let opacity = ((1. - cover.clamp(0., 1.)) * 20.).round() / 20.;
         if (opacity - self.faded).abs() < f32::EPSILON {
             return;
         }
-        if let Some(view) = self.view.as_ref() {
-            let _ = view.evaluate_script(&format!(
-                "document.documentElement.style.opacity='{opacity}'"
-            ));
-            self.faded = opacity;
+        let Some(view) = self.view.as_ref() else {
+            return;
+        };
+        #[cfg(target_os = "macos")]
+        {
+            use wry::WebViewExtMacOS as _;
+            let native = view.webview();
+            // SAFETY: a live view, on the main thread every page lives on,
+            // given a CGFloat as `setAlphaValue:` takes.
+            unsafe {
+                let _: () = objc2::msg_send![&*native, setAlphaValue: f64::from(opacity)];
+            }
         }
+        #[cfg(not(target_os = "macos"))]
+        let _ = view.evaluate_script(&format!(
+            "document.documentElement.style.opacity='{opacity}'"
+        ));
+        self.faded = opacity;
     }
 
     /// Put the view where the pane was drawn, making it if there is none yet.

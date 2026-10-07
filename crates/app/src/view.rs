@@ -3346,6 +3346,10 @@ impl DeckView {
                 continue;
             };
             if still {
+                // Faded before it is shown, so a page coming back from a fold
+                // or from under a card does not show one frame at its old
+                // opacity; and again after, for a view made just now.
+                paper.dim(cover);
                 paper.settle(window, &palette);
                 paper.dim(cover);
             } else {
