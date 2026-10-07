@@ -499,10 +499,36 @@ fn catch() -> anyhow::Result<()> {
         "  {}",
         dim("file:line locations, sends it back to build the deck instead.")
     );
+    println!(
+        "  {}",
+        dim("And when a long session is compacted, which cuts the skill off,")
+    );
+    println!(
+        "  {}",
+        dim("it tells the agent to load the skill again before the next deck.")
+    );
     println!();
 
     if crate::hook::installed(&home) {
         println!("  {} {}", accent("·"), dim("already on"));
+        return Ok(());
+    }
+    // The catch was turned on before the reload existed. That was the yes;
+    // the half that is missing is added, and said, rather than asked about
+    // as though nothing were installed.
+    if crate::hook::half(&home) {
+        if let crate::hook::Put::Written(at) = crate::hook::install(&home)? {
+            println!(
+                "  {} {}",
+                accent("·"),
+                dim("already on; added the reload after a compaction")
+            );
+            println!("    {} {}", accent("+"), short(&at, &home));
+            println!(
+                "    {}",
+                dim("Takes effect in agent sessions started from now on.")
+            );
+        }
         return Ok(());
     }
     if !ask_yes("Turn it on for Claude Code?")? {
