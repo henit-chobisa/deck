@@ -14,7 +14,7 @@
 
 use std::path::PathBuf;
 
-use gpui_kit::{Bounds, Pixels, Point, Size, px};
+use gpui_kit::{Bounds, Pixels, Point, Size, point, px, size};
 use serde::{Deserialize, Serialize};
 
 /// What was last left behind.
@@ -128,6 +128,54 @@ fn write_to(path: &std::path::Path, bounds: Option<Bounds<Pixels>>, turn: Option
     let _ = std::fs::write(path, json);
 }
 
+/// Where the deck window goes: where it was last left, if that is still on a
+/// screen, and otherwise where a deck opens the first time.
+///
+/// The remembered place was trusted as it was. A deck moved onto a second
+/// display came back there after the display was unplugged or rearranged —
+/// off every screen, or with a sliver showing at an edge — so Open took the
+/// bar away and, as far as the reader could tell, nothing opened (Nikhil).
+/// The size is kept when it still fits; only the place is given up.
+#[must_use]
+pub fn placed(
+    remembered: Option<Bounds<Pixels>>,
+    screens: &[Bounds<Pixels>],
+    primary: Option<Bounds<Pixels>>,
+) -> Bounds<Pixels> {
+    if let Some(remembered) = remembered
+        && reachable(remembered, screens)
+    {
+        return remembered;
+    }
+    let mut wanted = remembered.map_or(size(px(1180.), px(860.)), |remembered| remembered.size);
+    let mut origin = point(px(120.), px(80.));
+    if let Some(screen) = primary {
+        wanted.width = wanted.width.min(screen.size.width * 0.92);
+        wanted.height = wanted.height.min(screen.size.height * 0.86);
+        origin.x = screen.origin.x + (screen.size.width - wanted.width) / 2.;
+        origin.y = screen.origin.y + px(80.);
+    }
+    Bounds {
+        origin,
+        size: wanted,
+    }
+}
+
+/// Whether a window here could be taken hold of: enough of its top strip, the
+/// part it is moved by, on one screen to see it and drag it back.
+#[must_use]
+pub fn reachable(window: Bounds<Pixels>, screens: &[Bounds<Pixels>]) -> bool {
+    let strip = Bounds {
+        origin: window.origin,
+        size: size(window.size.width, px(48.)),
+    };
+    let enough = px(200.).min(window.size.width);
+    screens.iter().any(|screen| {
+        let seen = screen.intersect(&strip);
+        seen.size.width >= enough && seen.size.height >= px(24.)
+    })
+}
+
 #[cfg(test)]
 mod tests {
     // Spelled out rather than `#[test]`: this module glob-imports GPUI, which
@@ -209,5 +257,60 @@ mod tests {
         assert_eq!(read_from(&path).turn, Some(2), "the turn survived a resize");
 
         let _ = std::fs::remove_file(&path);
+    }
+
+    fn rect(x: f32, y: f32, w: f32, h: f32) -> Bounds<Pixels> {
+        Bounds {
+            origin: point(px(x), px(y)),
+            size: size(px(w), px(h)),
+        }
+    }
+
+    // A tall main display, and a second one to its left — the arrangement the
+    // off-screen deck was reproduced on.
+    fn screens() -> Vec<Bounds<Pixels>> {
+        vec![rect(0., 0., 1296., 2304.), rect(-900., 481., 900., 1600.)]
+    }
+
+    #[test]
+    fn a_deck_left_on_a_screen_comes_back_where_it_was() {
+        let left = rect(73., 590., 1190., 1448.);
+        assert_eq!(placed(Some(left), &screens(), Some(screens()[0])), left);
+        // On the second display is still on a screen.
+        let side = rect(-850., 600., 800., 900.);
+        assert_eq!(placed(Some(side), &screens(), Some(screens()[0])), side);
+    }
+
+    #[test]
+    fn a_deck_left_with_a_sliver_showing_opens_where_it_can_be_seen() {
+        // Reproduced: Open took the bar away and the deck arrived at x 1256 on
+        // a 1296-wide screen, forty pixels of it showing.
+        let sliver = rect(1256., 300., 1190., 1448.);
+        let got = placed(Some(sliver), &screens(), Some(screens()[0]));
+        assert!(reachable(got, &screens()), "{got:?}");
+        assert_eq!(got.size, sliver.size, "the size it was left at still fits");
+    }
+
+    #[test]
+    fn a_deck_left_on_a_display_that_is_gone_comes_back_to_the_main_one() {
+        let unplugged = rect(3000., 300., 1190., 860.);
+        let got = placed(Some(unplugged), &[screens()[0]], Some(screens()[0]));
+        assert!(reachable(got, &[screens()[0]]), "{got:?}");
+    }
+
+    #[test]
+    fn a_deck_too_big_for_the_screen_it_returns_to_is_made_to_fit() {
+        let huge = rect(5000., 0., 4000., 3000.);
+        let got = placed(Some(huge), &screens(), Some(screens()[0]));
+        assert!(
+            got.size.width <= px(1296.) && got.size.height <= px(2304.),
+            "{got:?}"
+        );
+    }
+
+    #[test]
+    fn a_window_whose_top_is_above_every_screen_cannot_be_taken_hold_of() {
+        // Its body may show, but the strip it is dragged by does not.
+        assert!(!reachable(rect(100., -400., 1000., 800.), &screens()));
     }
 }
