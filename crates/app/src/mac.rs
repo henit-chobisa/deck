@@ -47,13 +47,23 @@ pub fn never_key(window: &Window) {
         return;
     };
     let object: &AnyObject = native.as_ref();
-    // gpui's own panel class and no other. The method is looked up through
-    // superclasses, so on a class that did not define it this would rewrite
-    // AppKit's own answer for every window in the program.
-    if object.class().name() != c"GPUIPanel" {
+    // gpui's own panel class, and taught on that class and no other. The
+    // method is looked up through superclasses, so taught on a class that did
+    // not define it this would rewrite AppKit's own answer for every window in
+    // the program.
+    //
+    // But the window may be an instance of a subclass the system made from it:
+    // an app that watches windows — a window manager, a switcher — has macOS
+    // swap in `NSKVONotifying_GPUIPanel`. Matching the name alone skipped such
+    // a window entirely, and on macOS 27, which hands panels the keyboard on a
+    // click, the bar then took it.
+    let Some(panel) = AnyClass::get(c"GPUIPanel") else {
+        return;
+    };
+    if !descends(object.class(), panel) {
         return;
     }
-    teach(object.class());
+    teach(panel);
     mark(object);
     // Not expected to be key yet — this runs straight after the window is
     // shown, before the system has had a turn — but if it is, it is taken off
@@ -110,6 +120,18 @@ pub fn step_back() {
     before.activateWithOptions(NSApplicationActivationOptions::empty());
 }
 
+/// Whether `class` is `ancestor` or was made from it.
+fn descends(class: &AnyClass, ancestor: &AnyClass) -> bool {
+    let mut at = Some(class);
+    while let Some(class) = at {
+        if std::ptr::eq(class, ancestor) {
+            return true;
+        }
+        at = class.superclass();
+    }
+    false
+}
+
 /// Mark an object as one that must never hold the keyboard.
 fn mark(object: &AnyObject) {
     let mark = NSObject::new();
@@ -161,7 +183,7 @@ fn swap(class: &AnyClass) {
 
 #[cfg(test)]
 mod tests {
-    use super::{mark, swap};
+    use super::{descends, mark, swap};
     use objc2::runtime::{AnyObject, Bool, ClassBuilder, NSObject, Sel};
     use objc2::{ClassType, msg_send, sel};
 
@@ -200,5 +222,23 @@ mod tests {
             assert!(!bar_key.as_bool() && !bar_main.as_bool());
             assert!(deck_key.as_bool());
         }
+    }
+
+    /// A window macOS has given a renamed subclass of the panel class is still
+    /// the panel; an unrelated class is not. The first was skipped (#119).
+    #[test]
+    fn a_renamed_panel_is_still_the_panel() {
+        let panel = ClassBuilder::new(c"DeckTestPanelBase", NSObject::class())
+            .expect("a fresh class")
+            .register();
+        let renamed = ClassBuilder::new(c"NSKVONotifying_DeckTestPanelBase", panel)
+            .expect("a fresh class")
+            .register();
+        let other = ClassBuilder::new(c"DeckTestOther", NSObject::class())
+            .expect("a fresh class")
+            .register();
+        assert!(descends(panel, panel));
+        assert!(descends(renamed, panel));
+        assert!(!descends(other, panel));
     }
 }
