@@ -48,7 +48,8 @@ use serde_json::{Value, json};
 /// point themselves. That assembly is the work deck exists to do.
 const ENOUGH: usize = 2;
 
-/// Read a `Stop` event on stdin and decide whether to let the turn end.
+/// Read a hook event on stdin: a `Stop`, and decide whether to let the turn
+/// end; or a `SessionStart` after a compaction, and say to load the skill again.
 ///
 /// Always exits zero. A hook that fails loudly on a malformed event turns every
 /// bug in this file into a wedged agent, so anything unreadable is a silence.
@@ -134,7 +135,9 @@ fn after(again: &str) -> Value {
 
 /// Whether the agent in this session has built a deck, or loaded the skill to.
 ///
-/// Only its own tool calls count. A transcript also records every instruction
+/// Only its own tool calls count — a shell command that so much as names
+/// `deck group` is taken for one, which errs towards a reminder in a session
+/// that is working on deck itself. A transcript also records every instruction
 /// file that was loaded and everything a tool printed, and a machine with
 /// deck's commands in its global instructions has `deck group` in every
 /// session it ever starts — matching the words alone told agents that had
@@ -535,7 +538,9 @@ fn reloaded(settings: &Value) -> bool {
             entries.iter().any(|entry| {
                 let matcher = entry.get("matcher").and_then(Value::as_str);
                 names_deck(entry)
-                    && matcher.is_none_or(|matcher| matcher.is_empty() || matcher.contains(COMPACT))
+                    && matcher.is_none_or(|matcher| {
+                        matcher.is_empty() || matcher == "*" || matcher.contains(COMPACT)
+                    })
             })
         })
 }
@@ -718,7 +723,15 @@ mod tests {
                 r#"{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Skill","input":{"skill":"deck"}}]}}"#,
             ],
         );
-        assert!(used_deck(&built) && used_deck(&loaded));
+        // As Claude Code writes it, with the fields a real row carries, and a
+        // plugin's copy of the skill.
+        let plugin = write(
+            "plugin.jsonl",
+            &[
+                r#"{"type":"assistant","message":{"content":[{"type":"tool_use","id":"toolu_1","name":"Skill","input":{"skill":"tools:deck","args":"x"},"caller":{"type":"direct"}}]}}"#,
+            ],
+        );
+        assert!(used_deck(&built) && used_deck(&loaded) && used_deck(&plugin));
         assert!(!used_deck(&home.join("missing.jsonl")));
     }
 
@@ -740,6 +753,20 @@ mod tests {
         )
         .unwrap();
         assert!(!used_deck(&at));
+
+        // A skill that only ends like deck's name, and a call recorded on a row
+        // that is not the agent's.
+        let near = home.join("near.jsonl");
+        std::fs::write(
+            &near,
+            [
+                r#"{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Skill","input":{"skill":"mydeck"}}]}}"#,
+                r#"{"type":"user","message":{"content":[{"type":"tool_use","name":"Skill","input":{"skill":"deck"}}]}}"#,
+            ]
+            .join("\n"),
+        )
+        .unwrap();
+        assert!(!used_deck(&near));
     }
 
     #[test]
@@ -820,6 +847,12 @@ mod tests {
             { "hooks": [{ "type": "command", "command": "deck hook" }] }
         ] } });
         assert!(reloaded(&any), "no matcher lets every start through");
+        for through in ["*", "", "startup|compact", "compact|resume"] {
+            let entry = json!({ "hooks": { "SessionStart": [
+                { "matcher": through, "hooks": [{ "type": "command", "command": "deck hook" }] }
+            ] } });
+            assert!(reloaded(&entry), "`{through}` lets a compaction through");
+        }
         assert!(!registered(&any), "and it is not the catch");
     }
 

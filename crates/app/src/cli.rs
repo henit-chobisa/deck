@@ -340,12 +340,14 @@ enum What {
         stable: bool,
     },
 
-    /// Read a `Stop` event and say whether the reply should have been a deck.
+    /// Read a hook event from Claude Code and answer it.
     ///
-    /// Run by the agent, never by a person: `deck setup` offers to register it,
-    /// and from then on it reads each finished reply and refuses the ones that
-    /// name two or more `file:line` locations — the shape of an argument the
-    /// reader would otherwise have to assemble themselves.
+    /// Run by the agent, never by a person: `deck setup` offers to register it.
+    /// On a `Stop` it reads the finished reply and refuses one that names two
+    /// or more `file:line` locations — the shape of an argument the reader
+    /// would otherwise have to assemble themselves. On a `SessionStart` after
+    /// a compaction, in a session that has used deck, it says to load the deck
+    /// skill again, which the compaction cut off.
     #[command(hide = true)]
     Hook,
 

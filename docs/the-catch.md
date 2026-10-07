@@ -26,10 +26,28 @@ reply about deck itself, the same location cited twice, a version number or a
 time of day that only looks like a citation. A hook that fires when it should
 not is worse than one that never fires, because you turn it off.
 
-Claude Code only, for now; it is the one agent with a hook that fires on the
-reply itself. Say no at the prompt and everything else still works. Turn it on
-later with `deck setup`, or take the `Stop` entry out of
-`~/.claude/settings.json` to turn it off.
+## And after a compaction
+
+A skill is loaded once, and when a long session is compacted only the start of
+it is kept. Measured on a real session: with the skill fresh, 98% of the groups
+an agent wrote pointed at their lines; after one compaction 66% did; after two,
+48%, with no drawings and no files brought in. The rules had not changed. The
+agent had lost them.
+
+So the same hook answers one more moment. When a session picks up after a
+compaction, and that session has used deck, it tells the agent to load the deck
+skill again before the next group or answer. It says nothing on a fresh start,
+and nothing in a session that never touched deck.
+
+## Turning it on and off
+
+Claude Code only, for now; it is the one agent with these hooks. Say no at the
+prompt and everything else still works. Turn it on later with `deck setup`.
+
+Both are entries in `~/.claude/settings.json` that run `deck hook`: one under
+`Stop`, the catch, and one under `SessionStart` with the matcher `compact`, the
+reload. To turn deck's hooks off, take out both. They are one choice: with the
+catch left in, `deck setup` puts the reload back.
 
 ---
 

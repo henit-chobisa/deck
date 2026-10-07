@@ -524,6 +524,10 @@ fn catch() -> anyhow::Result<()> {
                 dim("already on; added the reload after a compaction")
             );
             println!("    {} {}", accent("+"), short(&at, &home));
+            println!(
+                "    {}",
+                dim("Takes effect in agent sessions started from now on.")
+            );
         }
         return Ok(());
     }
