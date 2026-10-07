@@ -128,52 +128,78 @@ fn write_to(path: &std::path::Path, bounds: Option<Bounds<Pixels>>, turn: Option
     let _ = std::fs::write(path, json);
 }
 
-/// Where the deck window goes: where it was last left, if that is still on a
-/// screen, and otherwise where a deck opens the first time.
+/// Where the deck window goes: where it was last left, made to fit the display
+/// it opens on, or where a first deck opens when that place cannot be reached.
 ///
-/// The remembered place was trusted as it was. A deck moved onto a second
-/// display came back there after the display was unplugged or rearranged —
-/// off every screen, or with a sliver showing at an edge — so Open took the
-/// bar away and, as far as the reader could tell, nothing opened (Nikhil).
-/// The size is kept when it still fits; only the place is given up.
+/// Checked against the main display alone, because that is where the window
+/// opens. On macOS every display reports itself at the origin and a window's
+/// place is saved relative to the display it was on, so a deck left at x 1800
+/// on an external monitor came back at x 1800 on a 1512-wide laptop screen,
+/// off it entirely. Open took the bar away and nothing seemed to open (#117).
+///
+/// A place that can be reached is kept, but the window is shrunk to the display
+/// and moved onto it, so all of it shows: a size left on a tall monitor would
+/// otherwise hang off the bottom of a laptop's. With no main display, as on
+/// Wayland, the compositor places the window and what was remembered is passed
+/// through as it is.
 #[must_use]
 pub fn placed(
     remembered: Option<Bounds<Pixels>>,
-    screens: &[Bounds<Pixels>],
     primary: Option<Bounds<Pixels>>,
 ) -> Bounds<Pixels> {
+    let first = Bounds {
+        origin: point(px(120.), px(80.)),
+        size: size(px(1180.), px(860.)),
+    };
+    let Some(screen) = primary else {
+        return remembered.unwrap_or(first);
+    };
     if let Some(remembered) = remembered
-        && reachable(remembered, screens)
+        && reachable(remembered, screen)
     {
-        return remembered;
+        return fitted(remembered, screen);
     }
-    let mut wanted = remembered.map_or(size(px(1180.), px(860.)), |remembered| remembered.size);
-    let mut origin = point(px(120.), px(80.));
-    if let Some(screen) = primary {
-        wanted.width = wanted.width.min(screen.size.width * 0.92);
-        wanted.height = wanted.height.min(screen.size.height * 0.86);
-        origin.x = screen.origin.x + (screen.size.width - wanted.width) / 2.;
-        origin.y = screen.origin.y + px(80.);
-    }
+    let mut wanted = remembered.map_or(first.size, |remembered| remembered.size);
+    wanted.width = wanted.width.min(screen.size.width * 0.92);
+    wanted.height = wanted.height.min(screen.size.height * 0.86);
     Bounds {
-        origin,
+        origin: point(
+            screen.origin.x + (screen.size.width - wanted.width) / 2.,
+            screen.origin.y + px(80.),
+        ),
         size: wanted,
     }
 }
 
-/// Whether a window here could be taken hold of: enough of its top strip, the
-/// part it is moved by, on one screen to see it and drag it back.
+/// Whether enough of a window's top strip, the part it is moved by, shows on
+/// the display to see it and drag it back.
 #[must_use]
-pub fn reachable(window: Bounds<Pixels>, screens: &[Bounds<Pixels>]) -> bool {
+pub fn reachable(window: Bounds<Pixels>, screen: Bounds<Pixels>) -> bool {
     let strip = Bounds {
         origin: window.origin,
         size: size(window.size.width, px(48.)),
     };
-    let enough = px(200.).min(window.size.width);
-    screens.iter().any(|screen| {
-        let seen = screen.intersect(&strip);
-        seen.size.width >= enough && seen.size.height >= px(24.)
-    })
+    let seen = screen.intersect(&strip);
+    seen.size.width >= px(200.).min(window.size.width) && seen.size.height >= px(24.)
+}
+
+/// The window, no larger than the display and moved the least it takes to lie
+/// wholly on it.
+fn fitted(window: Bounds<Pixels>, screen: Bounds<Pixels>) -> Bounds<Pixels> {
+    let width = window.size.width.min(screen.size.width);
+    let height = window.size.height.min(screen.size.height);
+    let x = window
+        .origin
+        .x
+        .clamp(screen.origin.x, screen.origin.x + screen.size.width - width);
+    let y = window.origin.y.clamp(
+        screen.origin.y,
+        screen.origin.y + screen.size.height - height,
+    );
+    Bounds {
+        origin: point(x, y),
+        size: size(width, height),
+    }
 }
 
 #[cfg(test)]
@@ -259,58 +285,67 @@ mod tests {
         let _ = std::fs::remove_file(&path);
     }
 
-    fn rect(x: f32, y: f32, w: f32, h: f32) -> Bounds<Pixels> {
-        Bounds {
-            origin: point(px(x), px(y)),
-            size: size(px(w), px(h)),
-        }
+    // A laptop's main display, in its own coordinates, which is how gpui
+    // reports every display on macOS.
+    fn laptop() -> Bounds<Pixels> {
+        bounds(0., 0., 1512., 982.)
     }
 
-    // A tall main display, and a second one to its left — the arrangement the
-    // off-screen deck was reproduced on.
-    fn screens() -> Vec<Bounds<Pixels>> {
-        vec![rect(0., 0., 1296., 2304.), rect(-900., 481., 900., 1600.)]
+    fn inside(window: Bounds<Pixels>, screen: Bounds<Pixels>) -> bool {
+        window.origin.x >= screen.origin.x
+            && window.origin.y >= screen.origin.y
+            && window.origin.x + window.size.width <= screen.origin.x + screen.size.width
+            && window.origin.y + window.size.height <= screen.origin.y + screen.size.height
     }
 
     #[test]
-    fn a_deck_left_on_a_screen_comes_back_where_it_was() {
-        let left = rect(73., 590., 1190., 1448.);
-        assert_eq!(placed(Some(left), &screens(), Some(screens()[0])), left);
-        // On the second display is still on a screen.
-        let side = rect(-850., 600., 800., 900.);
-        assert_eq!(placed(Some(side), &screens(), Some(screens()[0])), side);
+    fn a_deck_left_on_the_screen_comes_back_where_it_was() {
+        let left = bounds(73., 60., 1180., 860.);
+        assert_eq!(placed(Some(left), Some(laptop())), left);
+    }
+
+    #[test]
+    fn a_deck_left_on_an_external_monitor_opens_on_the_laptop_screen() {
+        // Saved relative to the external display, reopened on the main one:
+        // x 1800 on a 1512-wide screen is off it entirely (#117).
+        let got = placed(Some(bounds(1800., 300., 1190., 860.)), Some(laptop()));
+        assert!(inside(got, laptop()), "{got:?}");
     }
 
     #[test]
     fn a_deck_left_with_a_sliver_showing_opens_where_it_can_be_seen() {
-        // Reproduced: Open took the bar away and the deck arrived at x 1256 on
-        // a 1296-wide screen, forty pixels of it showing.
-        let sliver = rect(1256., 300., 1190., 1448.);
-        let got = placed(Some(sliver), &screens(), Some(screens()[0]));
-        assert!(reachable(got, &screens()), "{got:?}");
-        assert_eq!(got.size, sliver.size, "the size it was left at still fits");
+        // Reproduced: the deck arrived at x 1256 on a 1296-wide screen, forty
+        // pixels of it showing.
+        let portrait = bounds(0., 0., 1296., 2304.);
+        let got = placed(Some(bounds(1256., 300., 1190., 1448.)), Some(portrait));
+        assert!(inside(got, portrait), "{got:?}");
     }
 
     #[test]
-    fn a_deck_left_on_a_display_that_is_gone_comes_back_to_the_main_one() {
-        let unplugged = rect(3000., 300., 1190., 860.);
-        let got = placed(Some(unplugged), &[screens()[0]], Some(screens()[0]));
-        assert!(reachable(got, &[screens()[0]]), "{got:?}");
+    fn a_deck_sized_on_a_tall_monitor_is_made_to_fit_a_shorter_one() {
+        // Its top is on the screen, so the place is kept, but 1448 tall on a
+        // 982-tall screen would leave the bottom edge out of reach.
+        let got = placed(Some(bounds(100., 100., 1190., 1448.)), Some(laptop()));
+        assert!(inside(got, laptop()), "{got:?}");
+        assert_eq!(got.origin.x, px(100.), "moved no more than it had to");
     }
 
     #[test]
-    fn a_deck_too_big_for_the_screen_it_returns_to_is_made_to_fit() {
-        let huge = rect(5000., 0., 4000., 3000.);
-        let got = placed(Some(huge), &screens(), Some(screens()[0]));
-        assert!(
-            got.size.width <= px(1296.) && got.size.height <= px(2304.),
-            "{got:?}"
-        );
+    fn a_window_whose_top_is_above_the_screen_cannot_be_taken_hold_of() {
+        assert!(!reachable(bounds(100., -400., 1000., 800.), laptop()));
     }
 
     #[test]
-    fn a_window_whose_top_is_above_every_screen_cannot_be_taken_hold_of() {
-        // Its body may show, but the strip it is dragged by does not.
-        assert!(!reachable(rect(100., -400., 1000., 800.), &screens()));
+    fn a_first_deck_opens_on_the_main_display() {
+        let got = placed(None, Some(laptop()));
+        assert!(inside(got, laptop()), "{got:?}");
+    }
+
+    #[test]
+    fn without_a_main_display_the_remembered_shape_passes_through() {
+        // Wayland: the compositor places windows, and there is no main display
+        // to fit to.
+        let left = bounds(3000., 300., 1190., 860.);
+        assert_eq!(placed(Some(left), None), left);
     }
 }

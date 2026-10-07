@@ -394,13 +394,8 @@ pub fn open_deck(session: Session, cx: &mut App) {
     // explicitly rather than centred: a deck is read from the top down, so it
     // sits high on the screen, and centring a panel put it most of the way off
     // the bottom edge. Where it was last left, if it has been anywhere.
-    let screens: Vec<Bounds<Pixels>> = cx
-        .displays()
-        .iter()
-        .map(|display| display.bounds())
-        .collect();
     let primary = cx.primary_display().map(|display| display.bounds());
-    let bounds = state::placed(state::remembered(), &screens, primary);
+    let bounds = state::placed(state::remembered(), primary);
 
     let options = WindowOptions {
         // A real titlebar, made invisible — not no titlebar.
