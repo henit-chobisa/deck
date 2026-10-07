@@ -86,6 +86,9 @@ pub struct Paper {
     hole: Rc<Cell<Option<Bounds<Pixels>>>>,
     /// Whether it is on screen right now.
     shown: bool,
+    /// The opacity the document was last given, so a card fading in over the
+    /// window is followed in steps rather than with a script every frame.
+    faded: f32,
     /// The window the view lives in, on Windows, where it cannot be a child
     /// of the deck's. After `view`, so the view is dropped before the window
     /// it was built in.
@@ -129,6 +132,7 @@ impl Paper {
             at: None,
             hole: Rc::new(Cell::new(None)),
             shown: false,
+            faded: 1.,
             #[cfg(target_os = "windows")]
             host: None,
             #[cfg(target_os = "windows")]
@@ -169,6 +173,13 @@ impl Paper {
         let _ = view.evaluate_script("window.deck && (window.deck.at = null)");
         self.pointed.clear();
         self.told = None;
+        // Where the page is faded by a script, the fresh document has lost it,
+        // so the next `dim` has to send it again. A Mac fades the view itself,
+        // which a reload does not touch.
+        #[cfg(not(target_os = "macos"))]
+        {
+            self.faded = 1.;
+        }
     }
 
     /// Light these elements, and tell the page it happened.
@@ -260,6 +271,42 @@ impl Paper {
             host.show(false);
         }
         self.shown = false;
+    }
+
+    /// Let what is laid over the window show through: the page goes from whole
+    /// at a `cover` of nought to gone at one.
+    ///
+    /// A card deck draws cannot be drawn over a native view, so the page fades
+    /// with it rather than vanishing the moment it starts: a page cut out in
+    /// one frame beside a card easing in read as a stutter.
+    ///
+    /// On a Mac it is the native view's own alpha, not the document's: that
+    /// takes effect at once, outlives a reload of the page, and cannot be lost
+    /// to a document that has not finished loading — a script setting the
+    /// document's opacity could, leaving the page whole over a fading card.
+    pub(crate) fn dim(&mut self, cover: f32) {
+        let opacity = ((1. - cover.clamp(0., 1.)) * 20.).round() / 20.;
+        if (opacity - self.faded).abs() < f32::EPSILON {
+            return;
+        }
+        let Some(view) = self.view.as_ref() else {
+            return;
+        };
+        #[cfg(target_os = "macos")]
+        {
+            use wry::WebViewExtMacOS as _;
+            let native = view.webview();
+            // SAFETY: a live view, on the main thread every page lives on,
+            // given a CGFloat as `setAlphaValue:` takes.
+            unsafe {
+                let _: () = objc2::msg_send![&*native, setAlphaValue: f64::from(opacity)];
+            }
+        }
+        #[cfg(not(target_os = "macos"))]
+        let _ = view.evaluate_script(&format!(
+            "document.documentElement.style.opacity='{opacity}'"
+        ));
+        self.faded = opacity;
     }
 
     /// Put the view where the pane was drawn, making it if there is none yet.

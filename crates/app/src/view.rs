@@ -3298,6 +3298,27 @@ impl DeckView {
         if moving {
             window.request_animation_frame();
         }
+        // A card laid over the window — the release notes, the warning before
+        // quitting, the note that *Ask now* is off — is drawn by deck, and a
+        // page is a native view drawn over everything deck draws: the page's
+        // legend and axes came through the middle of the notes. So the page
+        // fades out as the card comes in and back as it goes, and is taken off
+        // only while the card is all the way in. On Windows the page stands in
+        // a window of its own that cannot be seen through, so any card at all
+        // takes it off.
+        let cover = self
+            .notes_fade
+            .level()
+            .max(self.quit_fade.level())
+            .max(self.explain_fade.level());
+        let covered = if cfg!(target_os = "windows") {
+            cover > 0.
+        } else {
+            cover > 0.98
+        };
+        if self.notes_fade.moving() || self.quit_fade.moving() || self.explain_fade.moving() {
+            window.request_animation_frame();
+        }
         let palette = self.palette;
         for ix in 0..self.panes.len() {
             // Shaded, mid-turn or folding: a native view cannot join in with
@@ -3320,12 +3341,17 @@ impl DeckView {
             // rail sliding reshapes the hole every frame, and the view —
             // told where to stand a frame late each time — wobbled along
             // after it, relaying out its page at every step.
-            let still = !spread && !folding && !moving;
+            let still = !spread && !folding && !moving && !covered;
             let Some(paper) = self.panes.get_mut(ix).and_then(Sheet::paper_mut) else {
                 continue;
             };
             if still {
+                // Faded before it is shown, so a page coming back from a fold
+                // or from under a card does not show one frame at its old
+                // opacity; and again after, for a view made just now.
+                paper.dim(cover);
                 paper.settle(window, &palette);
+                paper.dim(cover);
             } else {
                 paper.hide();
             }
