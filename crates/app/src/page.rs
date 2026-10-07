@@ -173,6 +173,13 @@ impl Paper {
         let _ = view.evaluate_script("window.deck && (window.deck.at = null)");
         self.pointed.clear();
         self.told = None;
+        // Where the page is faded by a script, the fresh document has lost it,
+        // so the next `dim` has to send it again. A Mac fades the view itself,
+        // which a reload does not touch.
+        #[cfg(not(target_os = "macos"))]
+        {
+            self.faded = 1.;
+        }
     }
 
     /// Light these elements, and tell the page it happened.
