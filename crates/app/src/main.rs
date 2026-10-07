@@ -394,21 +394,10 @@ pub fn open_deck(session: Session, cx: &mut App) {
     // explicitly rather than centred: a deck is read from the top down, so it
     // sits high on the screen, and centring a panel put it most of the way off
     // the bottom edge. Where it was last left, if it has been anywhere.
-    let bounds = state::remembered().unwrap_or_else(|| {
-        let mut wanted = size(px(1180.), px(860.));
-        let mut origin = point(px(120.), px(80.));
-        if let Some(display) = cx.primary_display() {
-            let screen = display.bounds();
-            wanted.width = wanted.width.min(screen.size.width * 0.92);
-            wanted.height = wanted.height.min(screen.size.height * 0.86);
-            origin.x = screen.origin.x + (screen.size.width - wanted.width) / 2.;
-            origin.y = screen.origin.y + px(80.);
-        }
-        Bounds {
-            origin,
-            size: wanted,
-        }
-    });
+    // The part of the main display a window can use: not the menu bar, the
+    // Dock or the taskbar.
+    let primary = cx.primary_display().map(|display| display.visible_bounds());
+    let bounds = state::placed(state::remembered(), primary);
 
     let options = WindowOptions {
         // A real titlebar, made invisible — not no titlebar.
