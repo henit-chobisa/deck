@@ -61,6 +61,24 @@ pub fn run() -> anyhow::Result<()> {
         return Ok(());
     };
 
+    // The other event this answers: a session picking up after a compaction.
+    if event.get("hook_event_name").and_then(Value::as_str) == Some(AFTER) {
+        let used = event
+            .get("transcript_path")
+            .and_then(Value::as_str)
+            .is_some_and(|at| used_deck(Path::new(at)));
+        if let Some(again) = reload(&event, used) {
+            println!(
+                "{}",
+                json!({ "hookSpecificOutput": {
+                    "hookEventName": AFTER,
+                    "additionalContext": again,
+                } })
+            );
+        }
+        return Ok(());
+    }
+
     // Already continuing from a stop hook. Saying it twice is nagging, and the
     // agent has already been told once this turn.
     if event.get("stop_hook_active").and_then(Value::as_bool) == Some(true) {
@@ -77,6 +95,46 @@ pub fn run() -> anyhow::Result<()> {
 
     println!("{}", json!({ "decision": "block", "reason": reason }));
     Ok(())
+}
+
+/// What to tell an agent whose conversation was just compacted, if anything.
+///
+/// A skill is loaded once and a compaction keeps only the start of it. Measured
+/// on a real session of 168 groups: with the skill fresh, 98% of groups pointed
+/// at their lines and the agent drew and brought files in; after one
+/// compaction 66% pointed; after two, 48% did, nothing was drawn, and no
+/// answer showed a file. The rules had not changed. The agent had lost them.
+///
+/// So it is told to load the skill again, and given the four things that go
+/// first in the meantime. Only for a compaction — a fresh session has nothing
+/// to have lost — and only when the session had used deck, because a reminder
+/// about a tool nobody is using is noise in every other conversation.
+///
+/// Split from [`run`] for the same reason [`judge`] is.
+#[must_use]
+fn reload(event: &Value, used: bool) -> Option<String> {
+    if event.get("source").and_then(Value::as_str) != Some("compact") || !used {
+        return None;
+    }
+    Some(
+        "This conversation was just compacted, and the deck skill you loaded \
+         earlier was cut off with it. Before you write another `deck group`, or \
+         answer in a deck, load the deck skill again with the Skill tool. Until \
+         you have: every sentence points at the lines it is about with \
+         `[point 12-14]`; a group has four panes at most; draw what moves, as a \
+         diagram or a page; and answer a question by showing it — `deck show` \
+         or `deck bring`, then point — never by naming files in prose."
+            .to_string(),
+    )
+}
+
+/// Whether this session has built a deck, or loaded the skill to.
+fn used_deck(transcript: &Path) -> bool {
+    std::fs::read_to_string(transcript).is_ok_and(|text| {
+        text.contains("deck group ")
+            || text.contains("deck new ")
+            || text.contains("\"skill\":\"deck\"")
+    })
 }
 
 /// Whether this reply should have been a deck, and what to say if so.
@@ -279,8 +337,12 @@ const fn word(byte: u8) -> bool {
 /// reply itself. The others are told by the skill alone until they grow one.
 const SETTINGS: &str = ".claude/settings.json";
 
-/// The event this answers.
+/// The event the catch answers.
 const WHEN: &str = "Stop";
+
+/// The event the reload answers, and the one cause of it that matters.
+const AFTER: &str = "SessionStart";
+const COMPACT: &str = "compact";
 
 /// What is written into the settings, and what an already-installed hook is
 /// recognised by.
@@ -309,7 +371,8 @@ pub fn installed(home: &Path) -> bool {
     let Ok(text) = std::fs::read_to_string(home.join(SETTINGS)) else {
         return false;
     };
-    serde_json::from_str::<Value>(&text).is_ok_and(|settings| registered(&settings))
+    serde_json::from_str::<Value>(&text)
+        .is_ok_and(|settings| registered(&settings) && reloaded(&settings))
 }
 
 /// Register the hook, leaving every other setting exactly as it was.
@@ -341,7 +404,10 @@ pub fn install(home: &Path) -> anyhow::Result<Put> {
         Err(why) => return Err(why.into()),
     };
 
-    if registered(&settings) {
+    // Two entries, and either may already be there: a machine set up before
+    // the reload existed has the catch and not the other.
+    let (caught, reloads) = (registered(&settings), reloaded(&settings));
+    if caught && reloads {
         return Ok(Put::Already);
     }
 
@@ -349,15 +415,24 @@ pub fn install(home: &Path) -> anyhow::Result<Put> {
         .as_object_mut()
         .ok_or_else(|| anyhow::anyhow!("{} is not a JSON object", at.display()))?
         .entry("hooks")
-        .or_insert_with(|| json!({}));
-    let stop = hooks
+        .or_insert_with(|| json!({}))
         .as_object_mut()
-        .ok_or_else(|| anyhow::anyhow!("`hooks` in {} is not an object", at.display()))?
-        .entry(WHEN)
-        .or_insert_with(|| json!([]));
-    stop.as_array_mut()
-        .ok_or_else(|| anyhow::anyhow!("`hooks.{WHEN}` in {} is not a list", at.display()))?
-        .push(json!({ "hooks": [{ "type": "command", "command": COMMAND }] }));
+        .ok_or_else(|| anyhow::anyhow!("`hooks` in {} is not an object", at.display()))?;
+    let run = json!([{ "type": "command", "command": COMMAND }]);
+    for (missing, event, entry) in [
+        (!caught, WHEN, json!({ "hooks": run })),
+        (!reloads, AFTER, json!({ "matcher": COMPACT, "hooks": run })),
+    ] {
+        if !missing {
+            continue;
+        }
+        hooks
+            .entry(event)
+            .or_insert_with(|| json!([]))
+            .as_array_mut()
+            .ok_or_else(|| anyhow::anyhow!("`hooks.{event}` in {} is not a list", at.display()))?
+            .push(entry);
+    }
 
     if let Some(dir) = at.parent() {
         std::fs::create_dir_all(dir)?;
@@ -371,21 +446,38 @@ pub fn install(home: &Path) -> anyhow::Result<Put> {
     Ok(Put::Written(at))
 }
 
-/// Whether these settings already name deck's hook, wherever it sits.
+/// Whether these settings already name the catch, wherever it sits.
 ///
-/// Looks at the whole document rather than the one place deck writes, because
-/// somebody may have moved it, and offering to install a hook that is already
-/// running would be deck failing to recognise its own work.
+/// Looks at every event but the reload's rather than the one place deck
+/// writes, because somebody may have moved it, and offering to install a hook
+/// that is already running would be deck failing to recognise its own work.
 fn registered(settings: &Value) -> bool {
-    fn anywhere(value: &Value) -> bool {
-        match value {
-            Value::String(text) => text.contains(COMMAND) || text.contains("deck-check"),
-            Value::Array(list) => list.iter().any(anywhere),
-            Value::Object(map) => map.values().any(anywhere),
-            _ => false,
-        }
+    settings
+        .get("hooks")
+        .and_then(Value::as_object)
+        .is_some_and(|hooks| {
+            hooks
+                .iter()
+                .any(|(event, entries)| event != AFTER && names_deck(entries))
+        })
+}
+
+/// Whether these settings already ask for the reload after a compaction.
+fn reloaded(settings: &Value) -> bool {
+    settings
+        .get("hooks")
+        .and_then(|hooks| hooks.get(AFTER))
+        .is_some_and(names_deck)
+}
+
+/// Whether deck's command is named anywhere in this part of the settings.
+fn names_deck(value: &Value) -> bool {
+    match value {
+        Value::String(text) => text.contains(COMMAND) || text.contains("deck-check"),
+        Value::Array(list) => list.iter().any(names_deck),
+        Value::Object(map) => map.values().any(names_deck),
+        _ => false,
     }
-    settings.get("hooks").is_some_and(anywhere)
 }
 
 #[cfg(test)]
@@ -510,5 +602,82 @@ mod tests {
         let home = scratch("absent");
         assert_eq!(install(&home).unwrap(), Put::Absent);
         assert!(!home.join(".claude").exists(), "and nothing was created");
+    }
+
+    #[test]
+    fn after_a_compaction_a_session_that_used_deck_is_told_to_reload() {
+        let compacted = json!({ "hook_event_name": "SessionStart", "source": "compact" });
+        let again = reload(&compacted, true).expect("told to reload");
+        assert!(again.contains("load the deck skill again"), "{again}");
+        assert!(
+            again.contains("[point 12-14]"),
+            "and the essentials meanwhile"
+        );
+    }
+
+    #[test]
+    fn a_fresh_session_or_one_without_a_deck_is_told_nothing() {
+        // Nothing was lost in a session that has just started, and a reminder
+        // about deck in a conversation that never used it is noise.
+        let compacted = json!({ "hook_event_name": "SessionStart", "source": "compact" });
+        assert!(reload(&compacted, false).is_none());
+        for source in ["startup", "resume", "clear"] {
+            let fresh = json!({ "hook_event_name": "SessionStart", "source": source });
+            assert!(reload(&fresh, true).is_none(), "{source}");
+        }
+    }
+
+    #[test]
+    fn a_session_is_known_to_have_used_deck_from_its_transcript() {
+        let home = scratch("used");
+        let built = home.join("built.jsonl");
+        std::fs::write(&built, r#"{"command":"deck group /tmp/d.deck --say x"}"#).unwrap();
+        let loaded = home.join("loaded.jsonl");
+        std::fs::write(&loaded, r#"{"name":"Skill","input":{"skill":"deck"}}"#).unwrap();
+        let other = home.join("other.jsonl");
+        std::fs::write(&other, r#"{"command":"cargo test"}"#).unwrap();
+        assert!(used_deck(&built) && used_deck(&loaded));
+        assert!(!used_deck(&other) && !used_deck(&home.join("missing.jsonl")));
+    }
+
+    #[test]
+    fn setup_registers_the_catch_and_the_reload() {
+        let home = scratch("both");
+        std::fs::create_dir_all(home.join(".claude")).unwrap();
+        assert!(matches!(install(&home).unwrap(), Put::Written(_)));
+        let after: Value =
+            serde_json::from_str(&std::fs::read_to_string(home.join(SETTINGS)).unwrap()).unwrap();
+        assert_eq!(after["hooks"]["Stop"][0]["hooks"][0]["command"], COMMAND);
+        assert_eq!(after["hooks"]["SessionStart"][0]["matcher"], "compact");
+        assert_eq!(
+            after["hooks"]["SessionStart"][0]["hooks"][0]["command"],
+            COMMAND
+        );
+        assert!(installed(&home));
+        assert_eq!(
+            install(&home).unwrap(),
+            Put::Already,
+            "twice changes nothing"
+        );
+    }
+
+    #[test]
+    fn a_machine_with_only_the_catch_gains_the_reload() {
+        // Set up before the reload existed: the catch is there, and must not
+        // be written a second time.
+        let home = scratch("older");
+        std::fs::create_dir_all(home.join(".claude")).unwrap();
+        std::fs::write(
+            home.join(SETTINGS),
+            r#"{ "hooks": { "Stop": [{ "hooks": [{ "type": "command", "command": "deck hook" }] }] } }"#,
+        )
+        .unwrap();
+        assert!(!installed(&home), "half of it is missing");
+        assert!(matches!(install(&home).unwrap(), Put::Written(_)));
+        let after: Value =
+            serde_json::from_str(&std::fs::read_to_string(home.join(SETTINGS)).unwrap()).unwrap();
+        assert_eq!(after["hooks"]["Stop"].as_array().unwrap().len(), 1);
+        assert_eq!(after["hooks"]["SessionStart"][0]["matcher"], "compact");
+        assert!(installed(&home));
     }
 }

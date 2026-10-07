@@ -499,6 +499,14 @@ fn catch() -> anyhow::Result<()> {
         "  {}",
         dim("file:line locations, sends it back to build the deck instead.")
     );
+    println!(
+        "  {}",
+        dim("And when a long session is compacted, which cuts the skill off,")
+    );
+    println!(
+        "  {}",
+        dim("it tells the agent to load the skill again before the next deck.")
+    );
     println!();
 
     if crate::hook::installed(&home) {
