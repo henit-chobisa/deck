@@ -335,11 +335,13 @@ pub fn open_pill_over(waiting: Vec<Session>, cx: &mut App) {
         // cut out of a rectangle.
         window_background: WindowBackgroundAppearance::Transparent,
         is_movable: true,
-        // Moved by deck, not by AppKit. macOS 27 holds back every click in a
-        // region AppKit can drag the window from, while it works out whether
-        // the press is a drag, a click or a double-click — and the whole bar
-        // was such a region, Open included. A reader on 27 could drag the bar
-        // and never open a deck. The bar now starts the move itself, from its
+        // Moved by deck, not by AppKit. macOS 27 holds back clicks in a
+        // window's titlebar while it works out whether the press is a drag, a
+        // click or a double-click. The bar has no visible titlebar, but gpui
+        // makes every macOS window titled, `titlebar: None` included, and
+        // hides it — so the top of the bar, where Open sits, was that strip. A
+        // reader on 27 could drag the bar and never open a deck. With this the
+        // strip is the app's, and the bar starts the move itself, from its
         // background only (see `pill`).
         app_owns_titlebar_drag: true,
         is_resizable: false,

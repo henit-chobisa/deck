@@ -52,11 +52,12 @@ pub fn never_key(window: &Window) {
     // not define it this would rewrite AppKit's own answer for every window in
     // the program.
     //
-    // But the window may be an instance of a subclass the system made from it:
-    // an app that watches windows — a window manager, a switcher — has macOS
-    // swap in `NSKVONotifying_GPUIPanel`. Matching the name alone skipped such
-    // a window entirely, and on macOS 27, which hands panels the keyboard on a
-    // click, the bar then took it.
+    // But the window may be an instance of a subclass made from it — key-value
+    // observing, for one, swaps in `NSKVONotifying_GPUIPanel` when anything in
+    // this process observes the window. Matching the name alone would skip
+    // such a window entirely and leave the bar free to take the keyboard,
+    // which macOS 27 hands panels on a click. So the class is matched by
+    // descent, not by name.
     let Some(panel) = AnyClass::get(c"GPUIPanel") else {
         return;
     };
@@ -224,8 +225,8 @@ mod tests {
         }
     }
 
-    /// A window macOS has given a renamed subclass of the panel class is still
-    /// the panel; an unrelated class is not. The first was skipped (#119).
+    /// A window whose class was made from the panel's is still the panel; an
+    /// unrelated class is not. The first would have been skipped (#119).
     #[test]
     fn a_renamed_panel_is_still_the_panel() {
         let panel = ClassBuilder::new(c"DeckTestPanelBase", NSObject::class())
@@ -240,5 +241,41 @@ mod tests {
         assert!(descends(panel, panel));
         assert!(descends(renamed, panel));
         assert!(!descends(other, panel));
+    }
+
+    /// What the fix is for: a marked window of a subclass refuses the keyboard
+    /// once only the base class has been taught.
+    #[test]
+    fn a_marked_window_of_a_subclass_refuses_the_keyboard() {
+        extern "C-unwind" fn yes(_: &AnyObject, _: Sel) -> Bool {
+            Bool::YES
+        }
+        let mut builder =
+            ClassBuilder::new(c"DeckTestBasePanel", NSObject::class()).expect("a fresh class");
+        // SAFETY: both take nothing and return a BOOL, as `yes` does.
+        unsafe {
+            builder.add_method(
+                sel!(canBecomeKeyWindow),
+                yes as extern "C-unwind" fn(_, _) -> _,
+            );
+            builder.add_method(
+                sel!(canBecomeMainWindow),
+                yes as extern "C-unwind" fn(_, _) -> _,
+            );
+        }
+        let base = builder.register();
+        let renamed = ClassBuilder::new(c"NSKVONotifying_DeckTestBasePanel", base)
+            .expect("a fresh class")
+            .register();
+        swap(base);
+
+        // SAFETY: plain `new` on a class with no state of its own, and a
+        // message it inherits an answer to.
+        unsafe {
+            let bar: objc2::rc::Retained<AnyObject> = msg_send![renamed, new];
+            mark(&bar);
+            let key: Bool = msg_send![&*bar, canBecomeKeyWindow];
+            assert!(!key.as_bool());
+        }
     }
 }
