@@ -510,10 +510,12 @@ impl Render for Pill {
             .border_1()
             .border_color(paint(palette.edge))
             .shadow_lg()
-            // Pressing the bar anywhere but its buttons moves it. The window
-            // asks AppKit not to (`app_owns_titlebar_drag`), so this is the
-            // only way it moves, and the buttons stop the press before it
-            // gets here.
+            // Where the platform lets an app move its own window — macOS and
+            // Wayland — pressing the bar anywhere but its buttons moves it. On
+            // a Mac the window asks AppKit not to drag it from its hidden
+            // titlebar (`app_owns_titlebar_drag`), so this is how it moves
+            // there. On Windows and X11 nothing moves, as before. The buttons
+            // stop the press before it gets here.
             .on_mouse_down(MouseButton::Left, |_, window, _| window.start_window_move())
             // The bar itself does nothing when clicked.
             //

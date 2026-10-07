@@ -339,10 +339,10 @@ pub fn open_pill_over(waiting: Vec<Session>, cx: &mut App) {
         // window's titlebar while it works out whether the press is a drag, a
         // click or a double-click. The bar has no visible titlebar, but gpui
         // makes every macOS window titled, `titlebar: None` included, and
-        // hides it — so the top of the bar, where Open sits, was that strip. A
-        // reader on 27 could drag the bar and never open a deck. With this the
-        // strip is the app's, and the bar starts the move itself, from its
-        // background only (see `pill`).
+        // hides it — so the top of the bar was that strip, and most of Open sat
+        // in it, its clicks held back (#119). With this the strip is the
+        // app's, and the bar starts the move itself, from its background only
+        // (see `pill`).
         app_owns_titlebar_drag: true,
         is_resizable: false,
         // Shown, not focused. gpui turns this into `makeKeyAndOrderFront:`,

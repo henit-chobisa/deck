@@ -273,9 +273,16 @@ mod tests {
         // message it inherits an answer to.
         unsafe {
             let bar: objc2::rc::Retained<AnyObject> = msg_send![renamed, new];
+            let deck: objc2::rc::Retained<AnyObject> = msg_send![renamed, new];
             mark(&bar);
-            let key: Bool = msg_send![&*bar, canBecomeKeyWindow];
-            assert!(!key.as_bool());
+            let bar_key: Bool = msg_send![&*bar, canBecomeKeyWindow];
+            let bar_main: Bool = msg_send![&*bar, canBecomeMainWindow];
+            let deck_key: Bool = msg_send![&*deck, canBecomeKeyWindow];
+            assert!(!bar_key.as_bool() && !bar_main.as_bool());
+            assert!(
+                deck_key.as_bool(),
+                "an unmarked window of the subclass still may"
+            );
         }
     }
 }
