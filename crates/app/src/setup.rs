@@ -513,6 +513,20 @@ fn catch() -> anyhow::Result<()> {
         println!("  {} {}", accent("·"), dim("already on"));
         return Ok(());
     }
+    // The catch was turned on before the reload existed. That was the yes;
+    // the half that is missing is added, and said, rather than asked about
+    // as though nothing were installed.
+    if crate::hook::half(&home) {
+        if let crate::hook::Put::Written(at) = crate::hook::install(&home)? {
+            println!(
+                "  {} {}",
+                accent("·"),
+                dim("already on; added the reload after a compaction")
+            );
+            println!("    {} {}", accent("+"), short(&at, &home));
+        }
+        return Ok(());
+    }
     if !ask_yes("Turn it on for Claude Code?")? {
         println!();
         println!(

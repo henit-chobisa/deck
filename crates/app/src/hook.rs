@@ -1,4 +1,5 @@
-//! Catching a reply that should have been a deck.
+//! Catching a reply that should have been a deck, and an agent that has
+//! forgotten how to write one.
 //!
 //! The skill in [`crate::skill`] is a suggestion, and the line it puts in front
 //! of an agent is a good one. Neither binds. An agent that has just finished an
@@ -62,19 +63,17 @@ pub fn run() -> anyhow::Result<()> {
     };
 
     // The other event this answers: a session picking up after a compaction.
+    // The cause is checked before the transcript is opened: these files run to
+    // hundreds of megabytes, and every other session start has nothing to say.
     if event.get("hook_event_name").and_then(Value::as_str) == Some(AFTER) {
-        let used = event
-            .get("transcript_path")
-            .and_then(Value::as_str)
-            .is_some_and(|at| used_deck(Path::new(at)));
+        let compacted = event.get("source").and_then(Value::as_str) == Some(COMPACT);
+        let used = compacted
+            && event
+                .get("transcript_path")
+                .and_then(Value::as_str)
+                .is_some_and(|at| used_deck(Path::new(at)));
         if let Some(again) = reload(&event, used) {
-            println!(
-                "{}",
-                json!({ "hookSpecificOutput": {
-                    "hookEventName": AFTER,
-                    "additionalContext": again,
-                } })
-            );
+            println!("{}", after(&again));
         }
         return Ok(());
     }
@@ -113,27 +112,75 @@ pub fn run() -> anyhow::Result<()> {
 /// Split from [`run`] for the same reason [`judge`] is.
 #[must_use]
 fn reload(event: &Value, used: bool) -> Option<String> {
-    if event.get("source").and_then(Value::as_str) != Some("compact") || !used {
+    if event.get("source").and_then(Value::as_str) != Some(COMPACT) || !used {
         return None;
     }
     Some(
         "This conversation was just compacted, and the deck skill you loaded \
          earlier was cut off with it. Before you write another `deck group`, or \
          answer in a deck, load the deck skill again with the Skill tool. Until \
-         you have: every sentence points at the lines it is about with \
-         `[point 12-14]`; a group has four panes at most; draw what moves, as a \
+         you have: every sentence points at the lines it is about with a bare \
+         [point 12-14], never in backticks; a group has four panes at most; draw what moves, as a \
          diagram or a page; and answer a question by showing it — `deck show` \
          or `deck bring`, then point — never by naming files in prose."
             .to_string(),
     )
 }
 
-/// Whether this session has built a deck, or loaded the skill to.
+/// What is printed for the session start: the words, as context to add.
+fn after(again: &str) -> Value {
+    json!({ "hookSpecificOutput": { "hookEventName": AFTER, "additionalContext": again } })
+}
+
+/// Whether the agent in this session has built a deck, or loaded the skill to.
+///
+/// Only its own tool calls count. A transcript also records every instruction
+/// file that was loaded and everything a tool printed, and a machine with
+/// deck's commands in its global instructions has `deck group` in every
+/// session it ever starts — matching the words alone told agents that had
+/// never touched deck to reload "the skill you loaded earlier".
+///
+/// Read a line at a time and left at the first one that counts, which is
+/// usually near the top: a long session's transcript is hundreds of megabytes,
+/// and this runs while the session waits to continue.
 fn used_deck(transcript: &Path) -> bool {
-    std::fs::read_to_string(transcript).is_ok_and(|text| {
-        text.contains("deck group ")
-            || text.contains("deck new ")
-            || text.contains("\"skill\":\"deck\"")
+    use std::io::BufRead as _;
+    let Ok(file) = std::fs::File::open(transcript) else {
+        return false;
+    };
+    std::io::BufReader::new(file)
+        .lines()
+        .map_while(Result::ok)
+        // Cheap before dear: nearly every line names none of these.
+        .filter(|line| {
+            line.contains("deck group ") || line.contains("deck new ") || line.contains("deck\"")
+        })
+        .any(|line| serde_json::from_str::<Value>(&line).is_ok_and(|row| called_deck(&row)))
+}
+
+/// Whether this row of a transcript is the agent calling deck.
+fn called_deck(row: &Value) -> bool {
+    if row.get("type").and_then(Value::as_str) != Some("assistant") {
+        return false;
+    }
+    let Some(parts) = row.pointer("/message/content").and_then(Value::as_array) else {
+        return false;
+    };
+    parts.iter().any(|part| {
+        if part.get("type").and_then(Value::as_str) != Some("tool_use") {
+            return false;
+        }
+        let input = |key: &str| part.get("input")?.get(key)?.as_str();
+        match part.get("name").and_then(Value::as_str) {
+            // A plugin's copy of the skill is called `plugin:deck`.
+            Some("Skill") => {
+                input("skill").is_some_and(|skill| skill == "deck" || skill.ends_with(":deck"))
+            }
+            Some("Bash") => input("command").is_some_and(|command| {
+                command.contains("deck group ") || command.contains("deck new ")
+            }),
+            _ => false,
+        }
     })
 }
 
@@ -375,6 +422,18 @@ pub fn installed(home: &Path) -> bool {
         .is_ok_and(|settings| registered(&settings) && reloaded(&settings))
 }
 
+/// Whether the catch is on and the reload is not: a machine set up before the
+/// reload existed. Setup adds the missing half without asking again, because
+/// the question was already answered.
+#[must_use]
+pub fn half(home: &Path) -> bool {
+    let Ok(text) = std::fs::read_to_string(home.join(SETTINGS)) else {
+        return false;
+    };
+    serde_json::from_str::<Value>(&text)
+        .is_ok_and(|settings| registered(&settings) && !reloaded(&settings))
+}
+
 /// Register the hook, leaving every other setting exactly as it was.
 ///
 /// The file belongs to the reader and has their own choices in it, so it is
@@ -463,11 +522,22 @@ fn registered(settings: &Value) -> bool {
 }
 
 /// Whether these settings already ask for the reload after a compaction.
+///
+/// Under a matcher that lets a compaction through: deck's command filed under
+/// `startup` alone would never run when it is needed, and calling that
+/// installed would leave it that way for good.
 fn reloaded(settings: &Value) -> bool {
     settings
         .get("hooks")
         .and_then(|hooks| hooks.get(AFTER))
-        .is_some_and(names_deck)
+        .and_then(Value::as_array)
+        .is_some_and(|entries| {
+            entries.iter().any(|entry| {
+                let matcher = entry.get("matcher").and_then(Value::as_str);
+                names_deck(entry)
+                    && matcher.is_none_or(|matcher| matcher.is_empty() || matcher.contains(COMPACT))
+            })
+        })
 }
 
 /// Whether deck's command is named anywhere in this part of the settings.
@@ -621,23 +691,62 @@ mod tests {
         // about deck in a conversation that never used it is noise.
         let compacted = json!({ "hook_event_name": "SessionStart", "source": "compact" });
         assert!(reload(&compacted, false).is_none());
-        for source in ["startup", "resume", "clear"] {
+        for source in ["startup", "resume", "clear", "fork"] {
             let fresh = json!({ "hook_event_name": "SessionStart", "source": source });
             assert!(reload(&fresh, true).is_none(), "{source}");
         }
     }
 
     #[test]
-    fn a_session_is_known_to_have_used_deck_from_its_transcript() {
+    fn a_session_is_known_to_have_used_deck_from_its_own_tool_calls() {
         let home = scratch("used");
-        let built = home.join("built.jsonl");
-        std::fs::write(&built, r#"{"command":"deck group /tmp/d.deck --say x"}"#).unwrap();
-        let loaded = home.join("loaded.jsonl");
-        std::fs::write(&loaded, r#"{"name":"Skill","input":{"skill":"deck"}}"#).unwrap();
-        let other = home.join("other.jsonl");
-        std::fs::write(&other, r#"{"command":"cargo test"}"#).unwrap();
+        let write = |name: &str, rows: &[&str]| {
+            let at = home.join(name);
+            std::fs::write(&at, rows.join("\n")).unwrap();
+            at
+        };
+        let built = write(
+            "built.jsonl",
+            &[
+                r#"{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":"deck group /tmp/d.deck --say x"}}]}}"#,
+            ],
+        );
+        let loaded = write(
+            "loaded.jsonl",
+            &[
+                r#"{"type":"user","message":{"content":"review this"}}"#,
+                r#"{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Skill","input":{"skill":"deck"}}]}}"#,
+            ],
+        );
         assert!(used_deck(&built) && used_deck(&loaded));
-        assert!(!used_deck(&other) && !used_deck(&home.join("missing.jsonl")));
+        assert!(!used_deck(&home.join("missing.jsonl")));
+    }
+
+    #[test]
+    fn deck_named_in_instructions_or_tool_output_is_not_use() {
+        // The machine this was found on has deck's commands in its global
+        // instructions, recorded in every transcript; and any tool that prints
+        // deck's README names them too. Neither is the agent using deck.
+        let home = scratch("named");
+        let at = home.join("named.jsonl");
+        std::fs::write(
+            &at,
+            [
+                r#"{"type":"attachment","attachment":{"type":"instructions","content":"deck new --title x\ndeck group <path> --say y"}}"#,
+                r#"{"type":"user","message":{"content":[{"type":"tool_result","content":"run `deck group ` to add one; \"skill\":\"deck\""}]}}"#,
+                r#"{"type":"assistant","message":{"content":[{"type":"text","text":"You could run deck new --title x"}]}}"#,
+            ]
+            .join("\n"),
+        )
+        .unwrap();
+        assert!(!used_deck(&at));
+    }
+
+    #[test]
+    fn what_is_printed_after_a_compaction_is_context_for_the_session() {
+        let out = after("again");
+        assert_eq!(out["hookSpecificOutput"]["hookEventName"], "SessionStart");
+        assert_eq!(out["hookSpecificOutput"]["additionalContext"], "again");
     }
 
     #[test]
@@ -679,5 +788,53 @@ mod tests {
         assert_eq!(after["hooks"]["Stop"].as_array().unwrap().len(), 1);
         assert_eq!(after["hooks"]["SessionStart"][0]["matcher"], "compact");
         assert!(installed(&home));
+    }
+
+    #[test]
+    fn an_older_script_for_the_catch_still_counts_and_gains_the_reload() {
+        let home = scratch("legacy");
+        std::fs::create_dir_all(home.join(".claude")).unwrap();
+        std::fs::write(
+            home.join(SETTINGS),
+            r#"{ "hooks": { "Stop": [{ "hooks": [{ "type": "command", "command": "python3 ~/.claude/deck-check.py" }] }] } }"#,
+        )
+        .unwrap();
+        assert!(matches!(install(&home).unwrap(), Put::Written(_)));
+        let after: Value =
+            serde_json::from_str(&std::fs::read_to_string(home.join(SETTINGS)).unwrap()).unwrap();
+        assert_eq!(
+            after["hooks"]["Stop"].as_array().unwrap().len(),
+            1,
+            "no second catch"
+        );
+        assert_eq!(after["hooks"]["SessionStart"][0]["matcher"], "compact");
+    }
+
+    #[test]
+    fn a_reload_filed_where_a_compaction_never_reaches_it_is_not_one() {
+        let startup = json!({ "hooks": { "SessionStart": [
+            { "matcher": "startup", "hooks": [{ "type": "command", "command": "deck hook" }] }
+        ] } });
+        assert!(!reloaded(&startup));
+        let any = json!({ "hooks": { "SessionStart": [
+            { "hooks": [{ "type": "command", "command": "deck hook" }] }
+        ] } });
+        assert!(reloaded(&any), "no matcher lets every start through");
+        assert!(!registered(&any), "and it is not the catch");
+    }
+
+    #[test]
+    fn a_machine_with_only_the_catch_is_known_to_be_half_set_up() {
+        let home = scratch("half");
+        std::fs::create_dir_all(home.join(".claude")).unwrap();
+        assert!(!half(&home), "nothing installed is not half");
+        std::fs::write(
+            home.join(SETTINGS),
+            r#"{ "hooks": { "Stop": [{ "hooks": [{ "type": "command", "command": "deck hook" }] }] } }"#,
+        )
+        .unwrap();
+        assert!(half(&home));
+        install(&home).unwrap();
+        assert!(!half(&home), "and whole once the reload is added");
     }
 }
