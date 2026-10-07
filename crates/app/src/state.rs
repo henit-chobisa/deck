@@ -133,7 +133,7 @@ fn write_to(path: &std::path::Path, bounds: Option<Bounds<Pixels>>, turn: Option
 ///
 /// Checked against the main display alone, because that is where the window
 /// opens. On macOS every display reports itself at the origin and a window's
-/// place is saved relative to the display it was on, so a deck left at x 1800
+/// x is saved relative to the display it was on, so a deck left at x 1800
 /// on an external monitor came back at x 1800 on a 1512-wide laptop screen,
 /// off it entirely. Open took the bar away and nothing seemed to open (#117).
 ///
@@ -174,7 +174,7 @@ pub fn placed(
 /// Whether enough of a window's top strip, the part it is moved by, shows on
 /// the display to see it and drag it back.
 #[must_use]
-pub fn reachable(window: Bounds<Pixels>, screen: Bounds<Pixels>) -> bool {
+fn reachable(window: Bounds<Pixels>, screen: Bounds<Pixels>) -> bool {
     let strip = Bounds {
         origin: window.origin,
         size: size(window.size.width, px(48.)),
@@ -188,16 +188,15 @@ pub fn reachable(window: Bounds<Pixels>, screen: Bounds<Pixels>) -> bool {
 fn fitted(window: Bounds<Pixels>, screen: Bounds<Pixels>) -> Bounds<Pixels> {
     let width = window.size.width.min(screen.size.width);
     let height = window.size.height.min(screen.size.height);
-    let x = window
-        .origin
-        .x
-        .clamp(screen.origin.x, screen.origin.x + screen.size.width - width);
-    let y = window.origin.y.clamp(
-        screen.origin.y,
-        screen.origin.y + screen.size.height - height,
-    );
+    // Bounded by hand rather than with `clamp`, which panics when its floor is
+    // above its ceiling, and float rounding can put it there by a hair.
+    let furthest_x = (screen.origin.x + screen.size.width - width).max(screen.origin.x);
+    let furthest_y = (screen.origin.y + screen.size.height - height).max(screen.origin.y);
     Bounds {
-        origin: point(x, y),
+        origin: point(
+            window.origin.x.max(screen.origin.x).min(furthest_x),
+            window.origin.y.max(screen.origin.y).min(furthest_y),
+        ),
         size: size(width, height),
     }
 }
@@ -319,6 +318,11 @@ mod tests {
         let portrait = bounds(0., 0., 1296., 2304.);
         let got = placed(Some(bounds(1256., 300., 1190., 1448.)), Some(portrait));
         assert!(inside(got, portrait), "{got:?}");
+        assert_eq!(
+            got.size,
+            size(px(1190.), px(1448.)),
+            "the size still fits, so it is kept"
+        );
     }
 
     #[test]
@@ -347,5 +351,25 @@ mod tests {
         // to fit to.
         let left = bounds(3000., 300., 1190., 860.);
         assert_eq!(placed(Some(left), None), left);
+    }
+
+    #[test]
+    fn a_deck_hanging_off_the_right_edge_is_moved_the_least_it_takes() {
+        let got = placed(Some(bounds(1000., 100., 1180., 860.)), Some(laptop()));
+        assert_eq!(got, bounds(332., 100., 1180., 860.));
+    }
+
+    #[test]
+    fn a_deck_hanging_off_the_left_edge_is_moved_back_onto_it() {
+        let got = placed(Some(bounds(-300., 100., 1180., 860.)), Some(laptop()));
+        assert_eq!(got, bounds(0., 100., 1180., 860.));
+    }
+
+    #[test]
+    fn fitting_never_panics_on_a_display_not_at_the_origin() {
+        // `clamp` panicked here: rounding put its floor above its ceiling.
+        let screen = bounds(0.1, 0.1, 1512., 982.);
+        let got = fitted(bounds(0.1, 0.1, 1512., 982.), screen);
+        assert!(got.size.width <= screen.size.width, "{got:?}");
     }
 }

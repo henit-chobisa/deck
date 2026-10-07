@@ -394,7 +394,9 @@ pub fn open_deck(session: Session, cx: &mut App) {
     // explicitly rather than centred: a deck is read from the top down, so it
     // sits high on the screen, and centring a panel put it most of the way off
     // the bottom edge. Where it was last left, if it has been anywhere.
-    let primary = cx.primary_display().map(|display| display.bounds());
+    // The part of the main display a window can use: not the menu bar, the
+    // Dock or the taskbar.
+    let primary = cx.primary_display().map(|display| display.visible_bounds());
     let bounds = state::placed(state::remembered(), primary);
 
     let options = WindowOptions {
