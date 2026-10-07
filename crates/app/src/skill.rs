@@ -468,6 +468,20 @@ mod tests {
     }
 
     #[test]
+    fn a_page_keeps_its_words_apart() {
+        // A Gantt's counter was drawn over its own legend, and its last two
+        // times ran into each other, in a pane narrower than it was pictured.
+        let flat = SKILL.split_whitespace().collect::<Vec<_>>().join(" ");
+        for said in [
+            "No text touches other text",
+            "a legend, a counter and a title each get a band of their own",
+            "picture the page at about 400 pixels wide",
+        ] {
+            assert!(flat.contains(said), "the skill never says `{said}`");
+        }
+    }
+
+    #[test]
     fn the_skill_offers_a_catalog_of_shapes_by_question() {
         // Left to itself an agent draws boxes, then a Gantt for everything. A
         // menu keyed by the question gets the right shape the first time.

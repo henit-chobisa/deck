@@ -1880,6 +1880,13 @@ wide for the boxes they were written to fit — the page that started this secti
 rewrite looked exactly like that. Text is 11 to 13 pixels, set in CSS, always; the
 geometry grows to the room, and the words stay the size of the window's words.
 
+**No text touches other text.** The pane is often narrower than the one you pictured, so
+every label has to survive the narrow case: a legend, a counter and a title each get a
+band of their own rather than sharing a line; axis labels are spaced from the measured
+width and thinned when they would meet; a label that does not fit its bar goes beside it
+or nowhere. Before you send it, picture the page at about 400 pixels wide. Text drawn
+over text is the first thing a reader sees, and it tells them nobody looked at the page.
+
 ### Forty words, and that is the whole rule
 
 `deck group` counts the words a page shows and refuses it over forty. Numbers and
