@@ -224,7 +224,11 @@ button { font: inherit; color: inherit; }
 }
 
 /* play section */
-.play, .loop, .install { padding: clamp(80px, 12vw, 160px) 0; }
+.play, .install { padding: clamp(80px, 12vw, 160px) 0; }
+/* The loop and the free section are one pair: the same grid, the same
+   columns, the same rhythm, so their text and their cards line up. */
+.loop { padding: clamp(80px, 12vw, 160px) 0 clamp(48px, 6vw, 80px); }
+.free { padding: clamp(48px, 6vw, 80px) 0 0; }
 .play h2 { max-width: 16em; }
 .play .lede { margin-top: 18px; }
 .play .wrap.wide { margin-top: 44px; }
@@ -234,14 +238,13 @@ button { font: inherit; color: inherit; }
 .note { margin-bottom: 22px; font-size: 14px; color: var(--muted); }
 
 /* loop */
-.two { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 48px; align-items: center; }
-.loop .lede { margin-top: 20px; }
-@media (max-width: 900px) { .two { grid-template-columns: minmax(0, 1fr); } }
+.two, .free-box { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: clamp(32px, 6vw, 80px); align-items: center; }
+.two > :last-child, .free-box > :last-child { width: 100%; }
+
+@media (max-width: 900px) { .two, .free-box { grid-template-columns: minmax(0, 1fr); } }
 
 /* free */
-.free { padding: clamp(64px, 9vw, 120px) 0 0; }
-.free-box { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: clamp(32px, 6vw, 80px); align-items: center; }
-.free-copy h2 { margin-bottom: 22px; }
+.free-copy h2, .loop h2 { margin-bottom: 20px; }
 .free-copy .lede + .lede { margin-top: 14px; }
 .signed { margin-top: 22px; font-family: var(--mono); font-size: 14px; color: var(--muted); }
 .signed::before { content: "— "; }
@@ -252,7 +255,6 @@ button { font: inherit; color: inherit; }
 .free-facts { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 24px; font-size: 15px; color: var(--soft); width: 100%; }
 .free-facts li { display: flex; align-items: center; gap: 9px; }
 .free-facts li::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); flex: none; }
-@media (max-width: 900px) { .free-box { grid-template-columns: minmax(0, 1fr); } }
 
 /* install */
 .center { display: flex; flex-direction: column; align-items: center; text-align: center; }
