@@ -1,168 +1,162 @@
-// A working copy of the stampede deck from the recording: the same title, the
-// same narration and points, the same code, map and page. Everything runs in
-// the browser; the agent's answers are written in advance.
+// A real deck, running in the browser: the Black Friday plan, exactly as the
+// agent wrote it (js/deck-data.js), read and lit the way deck reads and lights
+// it. The narration is cut into pieces at its points; a click takes the
+// sentence it lands in and lights the point of the piece it lands in. Lights
+// come up in 150 ms when a hand raised them, hand over in 200, and go out in
+// 420, as in pane.rs. The page is the deck's own page, in a frame, wearing
+// deck's colours and hearing points through deck's own shim (page.rs).
 (function () {
   'use strict'
+  const DECK = window.DECK
+  if (!DECK) return
 
-  const PATH = 'services/catalog/src/pricing/pricing.service.ts'
-  const SRC = [
-    'import { CACHE_MANAGER } from "@nestjs/cache-manager";',
-    'import { Inject, Injectable, Logger } from "@nestjs/common";',
-    'import { InjectRepository } from "@nestjs/typeorm";',
-    'import type { Cache } from "cache-manager";',
-    'import { Repository } from "typeorm";',
-    '',
-    'import { PriceEntity } from "./price.entity";',
-    'import type { Price } from "./pricing.types";',
-    '',
-    'const ONE_HOUR = 60 * 60 * 1000;',
-    '',
-    '@Injectable()',
-    'export class PricingService {',
-    '  private readonly log = new Logger(PricingService.name);',
-    '',
-    '  constructor(',
-    '    @Inject(CACHE_MANAGER) private readonly cache: Cache,',
-    '    @InjectRepository(PriceEntity)',
-    '    private readonly prices: Repository<PriceEntity>,',
-    '  ) {}',
-    '',
-    '  /**',
-    '   * The price on every product page and in every cart.',
-    '   * About 2,000 calls a second, nearly all of them served from Redis.',
-    '   */',
-    '  async priceFor(sku: string, region: string): Promise<Price> {',
-    '    const key = `price:${region}:${sku}`;',
-    '',
-    '    const cached = await this.cache.get<Price>(key);',
-    '    if (cached) return cached;',
-    '',
-    '    // Miss: compute it from the catalog, with promotions and tax.',
-    '    const price = await this.prices.query(',
-    '      `SELECT * FROM effective_price($1, $2)`,',
-    '      [sku, region],',
-    '    );',
-    '',
-    '    await this.cache.set(key, price, ONE_HOUR);',
-    '    return price;',
-    '  }',
-    '}',
-  ]
+  // ------------------------------------------------------------------ prose
+  // A point is lines, names, or both: "19-21 today", "+23-24 offload", "spike".
+  function readPoint(text) {
+    const point = { lines: null, names: [] }
+    for (const part of (text || '').trim().split(/\s+/).filter(Boolean)) {
+      const m = /^(\+)?(\d+)(?:-(\d+))?$/.exec(part)
+      if (m && !point.lines) point.lines = { after: !!m[1], from: +m[2], to: +(m[3] || m[2]) }
+      else point.names.push(part)
+    }
+    return point
+  }
 
-  // Group 1 shows the file as it is; group 2 shows line 38 replaced.
-  const ROWS = [
-    SRC.map((text, i) => ({ n: i + 1, text, kind: '' })),
-    [
-      ...SRC.slice(0, 37).map((text, i) => ({ n: i + 1, text, kind: '' })),
-      { n: 38, text: SRC[37], kind: 'del' },
-      { n: 38, text: '    // Spread expiry over ±10 minutes so keys never expire together.', kind: 'add' },
-      { n: 39, text: '    await this.cache.set(key, price, ONE_HOUR + jitter(10 * 60 * 1000));', kind: 'add' },
-      ...SRC.slice(38).map((text, i) => ({ n: i + 40, text, kind: '' })),
-    ],
-  ]
+  // Paragraphs of words. Every word knows its sentence and the piece of the
+  // narration it falls in; a piece starts at each point.
+  function readSay(say, refNames) {
+    const pieces = [null]
+    const paras = []
+    let piece = 0, sentence = 0
+    for (const raw of say.split(/\n\s*\n/)) {
+      const segs = []
+      const re = /\[point(?:\s+([^\]]*))?\]|\[pause\]|\[([A-Za-z][\w-]*)\]|\*\*([^*]+)\*\*|\*([^*\n]+)\*|`([^`]+)`|([^[*`]+|[[*`])/g
+      let m
+      const text = raw.trim()
+      while ((m = re.exec(text))) {
+        if (m[0].startsWith('[point')) { pieces.push(readPoint(m[1])); piece = pieces.length - 1; continue }
+        if (m[0] === '[pause]') continue
+        if (m[2] !== undefined) { if (refNames.includes(m[2])) segs.push({ chip: m[2], piece }); else segs.push({ text: m[0], piece }); continue }
+        if (m[3] !== undefined) segs.push({ text: m[3], b: true, piece })
+        else if (m[4] !== undefined) segs.push({ text: m[4], em: true, piece })
+        else if (m[5] !== undefined) segs.push({ text: m[5], code: true, piece })
+        else segs.push({ text: m[6], piece })
+      }
+      // Words, each carrying the space after it, so a lit sentence is one
+      // continuous band rather than a row of islands.
+      const words = []
+      for (const s of segs) {
+        if (s.chip) { words.push({ chip: s.chip, text: s.chip, piece: s.piece }); continue }
+        const parts = s.text.match(/\S+\s*|\s+/g) || []
+        for (const p of parts) {
+          if (!p.trim()) { if (words.length) words[words.length - 1].text += p; continue }
+          words.push({ text: p, b: s.b, em: s.em, code: s.code, piece: s.piece })
+        }
+      }
+      for (const w of words) {
+        w.sentence = sentence
+        if (!w.chip && /[.!?]["”’)]?\s*$/.test(w.text)) sentence++
+      }
+      if (words.length && (words[words.length - 1].chip || !/[.!?]["”’)]?\s*$/.test(words[words.length - 1].text))) sentence++
+      paras.push(words)
+    }
+    return { paras, pieces }
+  }
 
-  const nm = (name) => '<span class="dk-nm">' + name + '</span>'
-  const TITLE = 'Every hour, on the hour, checkout p99 jumps to 4 seconds'
-  const GROUPS = [
-    {
-      ref: [26, 40], refLabel: PATH + ':26-40', note: 'the price on every page',
-      says: [
-        { html: 'Most of the hour, ' + nm('pricing') + ' answers from Redis in two milliseconds.', page: 'calm', lines: [29, 30], block: 'redis', talk: 'code' },
-        { html: 'At 10:00:00 every price key expires at once, so every request misses and runs the 40 ms query on Postgres.', page: 'expire', lines: [33, 36], block: 'pg', talk: 'code' },
-        { html: 'Forty connections fill in a blink and the rest queue, so a price that took two milliseconds now takes four seconds.', page: 'pile', lines: [26, 26], block: 'api', talk: 'page' },
-        { html: 'It clears when the cache refills, and comes back at 11:00, because every key was written with the same one-hour TTL.', page: 'refill', lines: [38, 38], block: 'redis', talk: 'code' },
-      ],
-    },
-    {
-      ref: [38, 39], refLabel: PATH + ':38', note: 'ttl, spread out',
-      says: [
-        { html: 'Spread the expiry, and ' + nm('requests') + ' stays quiet.', page: 'fix', talk: 'page' },
-        { html: 'In ' + nm('pricing') + ' each key lives an hour, give or take ten minutes, so they stop expiring together.', page: 'fix', lines: [38, 39], block: 'redis', talk: 'code' },
-        { html: '<b>Ship the jitter, or add a single-flight lock on a miss as well?</b>', page: 'fix', lines: [38, 39], talk: 'code' },
-      ],
-    },
-  ]
-
-  const ANSWERS = [
-    {
-      q: 'Why does it come back at 11:00?',
-      a: 'Because the refill writes every key again with the same TTL. Line 38 sets ONE_HOUR, and line 10 makes that exactly an hour, so the keys the 10:00 stampede wrote all expire together at 11:00, and it starts over.',
-      go: { g: 0, s: 3 },
-    },
-    {
-      q: 'How many are waiting at 10:00:01?',
-      a: 'All forty connections are busy and every other request queues behind them. The counter at the top of requests shows the pool full and the queue growing, which is the four seconds you see at the p99.',
-      go: { g: 0, s: 2 },
-    },
-    {
-      q: 'Why not a single-flight lock?',
-      a: 'A lock stops one key being computed a hundred times, but every key still expires at 10:00:00, so Postgres still gets thousands of different misses in the same second. Jitter spreads those out. The lock is worth adding on top if a few SKUs are very hot, which is the question the second group ends on.',
-      go: { g: 1, s: 0 },
-    },
-  ]
-  const UNKNOWN = 'This deck is running in your browser with three answers written in advance, so I cannot answer that one. In deck, your own agent answers whatever you ask, right here, and can bring a file or draw what it means.'
-
-  // ---------------------------------------------------------------- syntax
-  const KW = new Set(['import', 'from', 'type', 'const', 'await', 'async', 'return', 'if', 'export', 'class', 'private', 'readonly', 'new', 'this'])
+  // ------------------------------------------------------------------- code
+  const KW = new Set(['import', 'from', 'type', 'const', 'let', 'await', 'async', 'return', 'if', 'export', 'class', 'private', 'readonly', 'new', 'this', 'extends', 'super'])
   const esc = (s) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]))
   function paint(line) {
     const t = line.trimStart()
-    if (t.startsWith('//') || t.startsWith('/**') || t.startsWith('*')) return '<span class="c">' + esc(line) + '</span>'
-    const re = /(`[^`]*`|"[^"]*"|'[^']*')|(@\w+)|(\b\d[\d_]*\b)|([A-Za-z_$][\w$]*)(?=\s*[(<])|([A-Za-z_$][\w$]*)|(\s+|.)/g
+    if (t.startsWith('/**') || t.startsWith('*') || t.startsWith('//')) return '<span class="c">' + esc(line) + '</span>'
+    const re = /(\/\/.*$)|(`[^`]*`|"[^"]*"|'[^']*')|(@\w+)|(\b\d[\d_.]*\b)|([A-Za-z_$][\w$]*)(?=\s*[(<])|([A-Za-z_$][\w$]*)|(\s+|.)/g
     let out = '', m
     while ((m = re.exec(line))) {
-      if (m[1]) out += '<span class="s">' + esc(m[1]) + '</span>'
-      else if (m[2]) out += '<span class="d">' + esc(m[2]) + '</span>'
-      else if (m[3]) out += '<span class="nu">' + esc(m[3]) + '</span>'
-      else if (m[4]) out += KW.has(m[4]) ? '<span class="k">' + m[4] + '</span>' : /^[A-Z]/.test(m[4]) ? '<span class="ty">' + m[4] + '</span>' : '<span class="f">' + m[4] + '</span>'
-      else if (m[5]) out += KW.has(m[5]) ? '<span class="k">' + m[5] + '</span>' : /^[A-Z][a-z]/.test(m[5]) ? '<span class="ty">' + m[5] + '</span>' : esc(m[5])
-      else out += esc(m[6])
+      if (m[1]) out += '<span class="c">' + esc(m[1]) + '</span>'
+      else if (m[2]) out += '<span class="s">' + esc(m[2]) + '</span>'
+      else if (m[3]) out += '<span class="d">' + esc(m[3]) + '</span>'
+      else if (m[4]) out += '<span class="nu">' + esc(m[4]) + '</span>'
+      else if (m[5]) out += KW.has(m[5]) ? '<span class="k">' + m[5] + '</span>' : /^[A-Z]/.test(m[5]) ? '<span class="ty">' + m[5] + '</span>' : '<span class="f">' + m[5] + '</span>'
+      else if (m[6]) out += KW.has(m[6]) ? '<span class="k">' + m[6] + '</span>' : /^[A-Z][a-z]/.test(m[6]) ? '<span class="ty">' + m[6] + '</span>' : esc(m[6])
+      else out += esc(m[7])
     }
     return out
   }
 
-  // ------------------------------------------------------------------- map
-  const SVGNS = 'http://www.w3.org/2000/svg'
-  const cyl = (x, y, w, h) => 'M' + x + ' ' + (y + 8) + ' a' + w / 2 + ' 8 0 0 1 ' + w + ' 0 v' + (h - 16) + ' a' + w / 2 + ' 8 0 0 1 ' + (-w) + ' 0 Z M' + x + ' ' + (y + 8) + ' a' + w / 2 + ' 8 0 0 0 ' + w + ' 0'
-  const MAP = '<svg viewBox="104 8 426 330" preserveAspectRatio="xMidYMid meet" aria-hidden="true">' +
-    '<rect class="mp-cluster" x="112" y="112" width="410" height="236" rx="10"></rect><text class="mp-cluster-t" x="128" y="134">catalog</text>' +
-    '<g class="mp-edge" data-edge="page-api"><path d="M232 84 V150"></path><text x="242" y="122">GET /price</text></g>' +
-    '<g class="mp-edge" data-edge="api-redis"><path d="M232 210 V262"></path><text x="242" y="242">get</text></g>' +
-    '<g class="mp-edge" data-edge="api-pg"><path d="M322 180 H422 V262"></path><text x="336" y="171">on a miss</text></g>' +
-    '<g class="mp-node" data-node="page"><ellipse cx="232" cy="50" rx="92" ry="34"></ellipse><text x="232" y="47">product page</text><text class="sub" x="232" y="65">2,000 a second</text></g>' +
-    '<g class="mp-node accent" data-node="api"><rect x="142" y="150" width="180" height="60" rx="6"></rect><text x="232" y="176">catalog-api</text><text class="sub" x="232" y="195">PricingService</text></g>' +
-    '<g class="mp-node" data-node="redis"><path d="' + cyl(142, 262, 180, 66) + '"></path><text x="232" y="300">redis</text><text class="sub" x="232" y="317">price:* · ttl 1 h</text></g>' +
-    '<g class="mp-node" data-node="pg"><path d="' + cyl(332, 262, 180, 66) + '"></path><text x="422" y="300">postgres</text><text class="sub" x="422" y="317">effective_price() · 40 ms</text></g>' +
-    '<circle class="mp-spark" r="5" cx="-20" cy="-20"></circle></svg>'
-  const FLOWS = {
-    'most requests': { route: [[232, 84], [232, 150], [232, 210], [232, 262]], nodes: ['page', 'api', 'redis'], edges: ['page-api', 'api-redis'] },
-    'on the hour': { route: [[232, 84], [232, 150], [322, 180], [422, 180], [422, 262]], nodes: ['page', 'api', 'pg'], edges: ['page-api', 'api-pg'] },
+  // The rows a code ref draws: the whole file, with its range lit, or with the
+  // range replaced — every old line going, then every new line arriving, which
+  // is how deck draws a proposed change.
+  function rowsOf(ref) {
+    const [a, b] = ref.range
+    const src = ref.src
+    const rows = []
+    const plain = (i) => ({ n: i + 1, text: src[i], kind: '', lit: false })
+    for (let i = 0; i < a - 1; i++) rows.push(plain(i))
+    if (ref.after) {
+      for (let i = a - 1; i < b; i++) rows.push({ n: i + 1, text: src[i], kind: 'gone', lit: false })
+      ref.after.forEach((text, j) => rows.push({ n: a + j, text, kind: 'fresh', lit: false }))
+      const shift = ref.after.length - (b - a + 1)
+      for (let i = b; i < src.length; i++) rows.push({ n: i + 1 + shift, text: src[i], kind: '', lit: false })
+    } else if (ref.before !== undefined) {
+      for (let i = a - 1; i < b; i++) rows.push({ n: i + 1, text: src[i], kind: 'fresh', lit: false })
+      for (let i = b; i < src.length; i++) rows.push(plain(i))
+    } else {
+      for (let i = a - 1; i < b; i++) rows.push({ n: i + 1, text: src[i], kind: '', lit: true })
+      for (let i = b; i < src.length; i++) rows.push(plain(i))
+    }
+    return rows
   }
 
-  // --------------------------------------------------------------- the window
-  function build(dk) {
+  // Which rows a point's lines name. `+` reads the arriving side of a change;
+  // without it, a change's going side when it has one.
+  function rowsPointed(rows, lines) {
+    if (!lines) return []
+    const hasGone = rows.some((r) => r.kind === 'gone')
+    const side = lines.after ? 'fresh' : hasGone ? 'gone' : null
+    const out = []
+    rows.forEach((r, i) => {
+      const onSide = side ? r.kind === side : r.kind !== 'gone'
+      if (onSide && r.n >= lines.from && r.n <= lines.to) out.push(i)
+    })
+    return out
+  }
+
+  // ------------------------------------------------------------------- page
+  // deck's own palette variables and shim, from page.rs `dressed` and `SHIM`,
+  // with two differences: points arrive by message, since the frame is sandboxed,
+  // and the ground is the pane's own colour, since Safari paints a frame white
+  // behind a transparent page.
+  const PALETTE = { bg: '#1a1a1a', fg: '#ebdbb2', accent: '#fe8019', on_accent: '#282828', muted: '#a89984', edge: '#3a3735', wash: '#1a1a1a', add: '#b8bb26', del: '#fb4934', comment: '#928374' }
+  const DRESS = '<style>:root{--deck-bg:' + PALETTE.bg + ';--deck-fg:' + PALETTE.fg + ';--deck-accent:' + PALETTE.accent +
+    ';--deck-on-accent:' + PALETTE.on_accent + ';--deck-muted:' + PALETTE.muted + ';--deck-edge:' + PALETTE.edge +
+    ';--deck-wash:' + PALETTE.wash + ';--deck-add:' + PALETTE.add + ';--deck-del:' + PALETTE.del + ';--deck-comment:' + PALETTE.comment + ';}' +
+    'html,body{background:' + PALETTE.wash + ';color:var(--deck-fg);font:12px ui-monospace,SFMono-Regular,Menlo,monospace;}' +
+    '[data-show],[data-from]{transition:opacity .35s}[data-show]:not(.deck-seen),[data-from]:not(.deck-seen){opacity:0!important;pointer-events:none!important}</style>'
+  const SHIM = '<script>window.deck=window.deck||{at:null};(function(){var step=null;function apply(at){var meta=document.querySelector("meta[name=deck-points]");var order=meta?meta.content.split(/\\s+/):[];if(at===null){step=null;}else if(order.indexOf(at)>=0){step=at;}var here=order.indexOf(step);var names=function(e,k){var v=e.getAttribute(k);return v===null?null:v.split(/\\s+/);};document.querySelectorAll("[data-on]").forEach(function(e){e.classList.toggle("on",at!==null&&names(e,"data-on").indexOf(at)>=0);});document.querySelectorAll("[data-show],[data-from]").forEach(function(e){var show=names(e,"data-show"),from=names(e,"data-from"),seen=true;if(show){seen=at!==null&&show.indexOf(at)>=0;}if(from){var f=order.indexOf(from[0]);seen=seen&&here>=0&&f>=0&&here>=f;}e.classList.toggle("deck-seen",seen);});}' +
+    'addEventListener("deck:point",function(e){apply(e.detail);});addEventListener("DOMContentLoaded",function(){apply(window.deck.at);if(window.deck.at!==null){window.dispatchEvent(new CustomEvent("deck:point",{detail:window.deck.at}));}});' +
+    'addEventListener("message",function(e){var d=e.data;if(!d||d.deck!=="point")return;window.deck.at=d.at;window.dispatchEvent(new CustomEvent("deck:point",{detail:d.at}));});})();<\/script>'
+
+  // ---------------------------------------------------------------- answers
+  const ANSWERS = [
+    { q: 'Where does the 260 ms come from?', a: 'From last month\'s traces with the render taken out: charging the card and writing the order, and nothing else. That is the green bar in plan.', go: [1, 'offload'] },
+    { q: 'What if a worker crashes mid-receipt?', a: 'The job stays on the queue until a worker finishes it, so a crash means the receipt is retried, not lost. It can arrive late, which is the backlog in plan.', go: [1, 'backlog'] },
+    { q: 'Why not buy bigger checkout machines?', a: 'They would cut the render time, not remove it, and we would pay for Black Friday capacity all year. The worker idles at two the rest of the year.', go: [2, 'autoscale'] },
+  ]
+  const UNKNOWN = 'This deck is running in your browser with three answers written in advance, so I cannot answer that one. In deck, your own agent answers whatever you ask, right here, and can bring a file or draw what it means.'
+
+  // ----------------------------------------------------------------- window
+  function start() {
+    const dk = document.getElementById('dk')
+    if (!dk) return
     dk.innerHTML =
       '<div class="dk-band">' +
-        '<div class="dk-say">' +
-          '<div class="dk-title"></div>' +
-          '<div class="dk-prose"></div>' +
-          '<div class="dk-track">' +
-            '<button type="button" class="dk-play" aria-label="Walk the group">▶</button>' +
-            '<button type="button" class="dk-again-top" aria-label="Start the group again">↺</button>' +
-            '<div class="dk-line"><div class="dk-fill"></div><div class="dk-knob"></div></div>' +
-          '</div>' +
-        '</div>' +
+        '<div class="dk-say"><div class="dk-title"></div><div class="dk-prose"></div></div>' +
         '<div class="dk-keys"><p>KEYS</p>' +
           [['n', 'next'], ['p', 'previous'], ['w', 'walk'], ['c', 'comment'], ['t', 'turn'], ['⎋', 'clear'], ['z', 'lights'], ['h', 'hide'], ['s', 'submit'], ['q', 'close']]
-            .map(([k, l]) => '<button type="button" data-key="' + (k === '⎋' ? 'clear' : k) + '"><kbd>' + k + '</kbd>' + l + '</button>').join('') +
+            .map(([k, l]) => '<button type="button" data-key="' + (k === '⎋' ? 'Escape' : k) + '"><kbd>' + k + '</kbd>' + l + '</button>').join('') +
         '</div>' +
       '</div>' +
-      '<div class="dk-room">' +
-        '<div class="dk-panes">' +
-          '<section class="dk-pane code" data-pane="code"><div class="dk-head"><span class="nm">pricing</span><span class="path"></span></div><div class="dk-note"></div><div class="dk-code" data-lenis-prevent></div></section>' +
-          '<section class="dk-pane map" data-pane="map"><div class="dk-head"><span class="nm">map</span></div><div class="dk-note">a price, on the product page</div><div class="dk-map">' + MAP + '<div class="dk-flows"><button type="button" data-flow="most requests">most requests</button><button type="button" data-flow="on the hour">on the hour</button></div></div></section>' +
-          '<section class="dk-pane page" data-pane="page"><div class="dk-head"><span class="nm">requests</span></div><div class="dk-note">GET /price around 10:00:00</div><button type="button" class="dk-again">again ↺</button><div class="dk-page"><svg></svg></div></section>' +
-        '</div>' +
+      '<div class="dk-room"><div class="dk-panes"></div>' +
         '<aside class="dk-rail">' +
           '<button type="button" class="dk-rail-head" aria-expanded="false"><span class="chev">›</span><span class="lab">CHAT</span><span class="sub"></span><span class="dot"></span></button>' +
           '<div class="dk-chat" data-lenis-prevent><p class="dk-empty">The floor is yours</p></div>' +
@@ -170,22 +164,17 @@
             '<div class="row"><span>esc discard</span><button type="button" class="later">Add to review<span class="hint">⇧⌘↩</span></button><button type="button" class="now">Ask now<span class="hint">⌘↩</span></button></div></div>' +
         '</aside>' +
       '</div>' +
-      '<div class="dk-foot"><span class="grp"></span><span class="msg" aria-live="polite"></span><span class="r"><span class="cnt">0 comments</span><span>d-1791214494-5575</span><span>deck 0.1.4</span></span></div>'
-  }
+      '<div class="dk-foot"><span class="grp"></span><span class="msg" aria-live="polite"></span><span class="r"><span class="cnt">0 comments</span><span>' + DECK.id + '</span><span>deck 0.1.4</span></span></div>'
 
-  function start() {
-    const dk = document.getElementById('dk')
-    if (!dk) return
-    build(dk)
     const $ = (s) => dk.querySelector(s)
-    const prose = $('.dk-prose'), code = $('.dk-code'), fill = $('.dk-fill'), knob = $('.dk-knob'), line = $('.dk-line')
-    const mapBox = $('.dk-map'), spark = $('.mp-spark'), rail = $('.dk-rail'), chat = $('.dk-chat')
+    const prose = $('.dk-prose'), panes = $('.dk-panes'), rail = $('.dk-rail'), chat = $('.dk-chat')
     const compose = $('.dk-compose'), area = compose.querySelector('textarea'), foot = $('.dk-foot .msg')
-    $('.dk-title').textContent = TITLE
-    const page = window.deckRequests ? window.deckRequests.mount($('.dk-page svg')) : { setPoint() {} }
-
-    let started = false, armed = false
-    const st = { g: 0, s: 0, sel: null, lights: true, comments: [], walking: 0, flowing: 0, footTimer: 0, composing: false }
+    $('.dk-title').textContent = DECK.title
+    const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches
+    const ROW = 19.44
+    let pageHtml = null
+    const st = { g: 0, said: null, point: null, held: null, heldPane: -1, comments: [], composing: false, armed: false, footTimer: 0 }
+    let G = null
 
     function say(msg) {
       foot.textContent = msg
@@ -193,220 +182,271 @@
       st.footTimer = setTimeout(() => { foot.textContent = '' }, 4200)
     }
 
-    // ---- narration and track
-    function renderProse() {
-      const G = GROUPS[st.g]
-      prose.innerHTML = G.says.map((x, i) => '<span class="dk-sn" role="button" tabindex="-1" data-s="' + i + '">' + x.html + '</span>').join(' ')
-      line.querySelectorAll('.dk-tick').forEach((t) => t.remove())
-      G.says.forEach((_, i) => {
-        const b = document.createElement('button')
-        b.type = 'button'; b.className = 'dk-tick'; b.dataset.s = i
-        b.setAttribute('aria-label', 'Sentence ' + (i + 1))
-        b.style.left = (i / G.says.length * 100) + '%'
-        line.appendChild(b)
+    // ---- a group
+    function open(g) {
+      st.g = g; st.said = null; st.point = null; st.held = null
+      const group = DECK.groups[g]
+      const names = group.refs.map((r) => r.name).filter(Boolean)
+      const read = readSay(group.say, names)
+      G = { read, refs: group.refs, panes: [] }
+      prose.textContent = ''
+      read.paras.forEach((words) => {
+        const p = document.createElement('div'); p.className = 'dk-para'
+        words.forEach((w, i) => {
+          const el = document.createElement('span'); el.className = 'dk-w'
+          el.dataset.sentence = w.sentence; el.dataset.piece = w.piece
+          if (w.chip) {
+            const chip = document.createElement('span'); chip.className = 'dk-chip'; chip.textContent = w.chip
+            el.appendChild(chip); el.dataset.chip = w.chip
+            const rest = w.text.slice(w.chip.length)
+            const next = words[i + 1]
+            el.appendChild(document.createTextNode(rest || (next && !/^[,.;:!?)]/.test(next.text) ? ' ' : '')))
+          } else if (w.b || w.em || w.code) {
+            const inner = document.createElement(w.b ? 'b' : w.em ? 'em' : 'code')
+            const trail = w.text.match(/\s*$/)[0]
+            inner.textContent = w.text.slice(0, w.text.length - trail.length)
+            el.appendChild(inner); if (trail) el.appendChild(document.createTextNode(trail))
+          } else el.textContent = w.text
+          p.appendChild(el)
+        })
+        prose.appendChild(p)
       })
-      $('.dk-foot .grp').textContent = 'group ' + (st.g + 1) + '/' + GROUPS.length
-      $('.dk-code').scrollTop = 0
-    }
-
-    function renderCode() {
-      const G = GROUPS[st.g], S = G.says[st.s] || {}
-      const rows = ROWS[st.g]
-      const noted = new Set(st.comments.filter((c) => c.g === st.g && c.a).flatMap((c) => range(c.a, c.b)))
-      code.innerHTML = rows.map((r, i) => {
-        const inRef = r.n >= G.ref[0] && r.n <= G.ref[1] && (st.g === 0 || r.kind)
-        const pt = st.lights && S.lines && r.kind !== 'del' && r.n >= S.lines[0] && r.n <= S.lines[1]
-        const sel = st.sel && i >= Math.min(st.sel.a, st.sel.b) && i <= Math.max(st.sel.a, st.sel.b)
-        const cls = ['dk-ln', r.kind, st.lights && inRef ? 'lit' : '', pt ? 'pt' : '', sel ? 'sel' : '', noted.has(i) ? 'noted' : ''].filter(Boolean).join(' ')
-        const sign = r.kind === 'del' ? '-' : r.kind === 'add' ? '+' : ''
-        return '<div class="' + cls + '" data-i="' + i + '"><span class="g"></span><span class="sign">' + sign + '</span><span class="n">' + r.n + '</span><span class="t">' + (paint(r.text) || ' ') + '</span></div>'
-      }).join('')
-      $('.dk-pane.code .path').textContent = G.refLabel
-      $('.dk-pane.code .dk-note').textContent = G.note
-    }
-
-    const range = (a, b) => { const out = []; for (let i = Math.min(a, b); i <= Math.max(a, b); i++) out.push(i); return out }
-
-    function apply(scroll) {
-      const G = GROUPS[st.g], S = G.says[st.s] || {}
-      prose.querySelectorAll('.dk-sn').forEach((e, i) => e.classList.toggle('now', i === st.s))
-      const n = G.says.length
-      const at = (st.s + 1) / n * 100
-      fill.style.width = at + '%'
-      knob.style.left = (st.s / n * 100) + '%'
-      line.querySelectorAll('.dk-tick').forEach((t, i) => t.classList.toggle('past', i <= st.s))
-      renderCode()
-      if (S.page) page.setPoint(S.page)
-      lightMap(st.lights && S.block ? [S.block] : [], [])
-      dk.querySelectorAll('.dk-pane').forEach((p) => p.classList.toggle('talk', st.lights && p.dataset.pane === S.talk))
-      if (scroll) {
-        const first = code.querySelector('.dk-ln.pt') || code.querySelector('.dk-ln.lit')
-        if (first) {
-          // Measured against the pane, not offsetTop: the row's offset parent
-          // is the pane, whose header sits above the scrolling body.
-          const top = code.scrollTop + first.getBoundingClientRect().top - code.getBoundingClientRect().top - code.clientHeight / 3
-          const quick = !started || matchMedia('(prefers-reduced-motion: reduce)').matches
-          code.scrollTo({ top: Math.max(0, top), behavior: quick ? 'auto' : 'smooth' })
+      panes.textContent = ''
+      group.refs.forEach((ref, ix) => {
+        const pane = document.createElement('section'); pane.className = 'dk-pane'
+        const head = document.createElement('div'); head.className = 'dk-head'
+        const nm = document.createElement('span'); nm.className = 'nm'; nm.textContent = ref.name || ''
+        head.appendChild(nm)
+        if (ref.kind === 'code') { const path = document.createElement('span'); path.className = 'path'; path.textContent = ref.file + ':' + ref.range[0] + '-' + ref.range[1]; head.appendChild(path) }
+        const note = document.createElement('div'); note.className = 'dk-note'; note.textContent = ref.note || ''
+        const frame = document.createElement('div'); frame.className = 'dk-frame'
+        pane.append(head, note)
+        const P = { ref, el: pane }
+        if (ref.kind === 'code') {
+          const code = document.createElement('div'); code.className = 'dk-code'; code.setAttribute('data-lenis-prevent', '')
+          const box = document.createElement('div'); box.className = 'dk-rows'
+          P.rows = rowsOf(ref)
+          box.innerHTML = P.rows.map((r, i) => '<div class="dk-row' + (r.kind ? ' ' + r.kind : '') + (r.lit ? ' lit' : '') + '" data-i="' + i + '"><span class="bar">' + (r.kind === 'gone' ? '−' : r.kind === 'fresh' ? '+' : '▌') + '</span><span class="num">' + r.n + '</span><span class="txt">' + (paint(r.text || '') || ' ') + '</span></div>').join('')
+          code.appendChild(box)
+          pane.appendChild(code)
+          P.code = code; P.rowEls = Array.from(box.children)
+          wireRows(P, ix)
+        } else {
+          const again = document.createElement('button'); again.type = 'button'; again.className = 'dk-again'; again.textContent = 'again ↺'
+          const holder = document.createElement('div'); holder.className = 'dk-page'
+          pane.append(again, holder)
+          P.holder = holder
+          again.addEventListener('click', () => loadPage(P, true))
+          loadPage(P, false)
         }
-      }
+        pane.appendChild(frame)
+        panes.appendChild(pane)
+        G.panes.push(P)
+      })
+      $('.dk-foot .grp').textContent = 'group ' + (g + 1) + '/' + DECK.groups.length
+      dk.classList.remove('pointing')
+      requestAnimationFrame(() => G.panes.forEach((P) => { if (P.code) P.code.scrollTop = restingTop(P) }))
+      remarkMarks()
     }
 
-    function lightMap(nodes, edges) {
-      mapBox.classList.toggle('focus', nodes.length > 0)
-      mapBox.querySelectorAll('.mp-node').forEach((e) => e.classList.toggle('lit', nodes.includes(e.dataset.node)))
-      mapBox.querySelectorAll('.mp-edge').forEach((e) => e.classList.toggle('lit', edges.includes(e.dataset.edge)))
+    // Where a code pane rests: two lines above its range, or as far as it goes.
+    function restingTop(P) {
+      const first = P.rows.findIndex((r) => r.lit || r.kind)
+      if (first < 0) return 0
+      const max = Math.max(0, P.code.scrollHeight - P.code.clientHeight)
+      return Math.max(0, Math.min(max, (first - 2) * ROW))
     }
 
-    function go(g, s) {
-      const changed = g !== st.g
-      st.g = Math.max(0, Math.min(GROUPS.length - 1, g))
-      st.s = Math.max(0, Math.min(GROUPS[st.g].says.length - 1, s))
-      if (changed) { st.sel = null; renderProse() }
-      apply(true)
+    // ---- the page
+    function loadPage(P, again) {
+      if (pageHtml === null) return
+      const frame = document.createElement('iframe')
+      frame.setAttribute('sandbox', 'allow-scripts')
+      frame.setAttribute('title', (P.ref.name || 'page') + ': ' + (P.ref.note || ''))
+      frame.srcdoc = DRESS + SHIM + pageHtml
+      frame.addEventListener('load', () => { const at = pagePoint(st.point); if (at) send(P, at) })
+      P.holder.textContent = ''
+      P.holder.appendChild(frame)
+      P.frame = frame
+      if (again) say('From the top.')
     }
+    function send(P, at) { if (P.frame && P.frame.contentWindow) P.frame.contentWindow.postMessage({ deck: 'point', at }, '*') }
+    function pagePoint(point) { return point ? point.names.find((n) => !G.refs.some((r) => r.name === n)) || null : null }
 
-    // ---- walking without a voice: the track moves by itself
-    function walk(on) {
-      clearInterval(st.walking); st.walking = 0
-      $('.dk-play').textContent = on ? '❚❚' : '▶'
-      $('.dk-play').setAttribute('aria-label', on ? 'Hold' : 'Walk the group')
-      if (!on) return
-      st.walking = setInterval(() => {
-        const n = GROUPS[st.g].says.length
-        if (st.s >= n - 1) { walk(false); return }
-        go(st.g, st.s + 1)
-      }, 3400)
-    }
-
-    // ---- flows in the map
-    function flow(name) {
-      const F = FLOWS[name]
-      if (!F) return
-      cancelAnimationFrame(st.flowing)
-      mapBox.querySelectorAll('.dk-flows button').forEach((b) => b.classList.toggle('on', b.dataset.flow === name))
-      const pts = F.route, segs = []
-      let total = 0
-      for (let i = 1; i < pts.length; i++) { const d = Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]); segs.push(d); total += d }
-      const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches
-      const dur = reduce ? 0 : 1700
-      let t0 = null
-      const step = (now) => {
-        if (t0 === null) t0 = now
-        const k = dur ? Math.min(1, (now - t0) / dur) : 1
-        let d = k * total, i = 0
-        while (i < segs.length - 1 && d > segs[i]) { d -= segs[i]; i++ }
-        const r = segs[i] ? Math.min(1, d / segs[i]) : 1
-        const x = pts[i][0] + (pts[i + 1][0] - pts[i][0]) * r, y = pts[i][1] + (pts[i + 1][1] - pts[i][1]) * r
-        spark.setAttribute('cx', x); spark.setAttribute('cy', y)
-        const reached = Math.min(F.nodes.length, 1 + Math.floor(k * (F.nodes.length - 1) + 0.0001))
-        lightMap(F.nodes.slice(0, Math.max(1, reached)), F.edges.slice(0, Math.max(0, reached - 1)))
-        if (k < 1) st.flowing = requestAnimationFrame(step)
-        else {
-          lightMap(F.nodes, F.edges)
-          setTimeout(() => { spark.setAttribute('cx', -20); spark.setAttribute('cy', -20) }, 600)
+    // ---- lights
+    function light(point) {
+      st.point = point
+      const codeIx = G.refs.findIndex((r) => r.kind === 'code')
+      const named = point ? point.names.filter((n) => G.refs.some((r) => r.name === n)) : []
+      let pointing = false
+      G.panes.forEach((P, ix) => {
+        let talk = false
+        if (P.code) {
+          const hit = new Set(point && ix === codeIx ? rowsPointed(P.rows, point.lines) : [])
+          P.rowEls.forEach((el, i) => el.classList.toggle('pt', hit.has(i)))
+          if (hit.size) {
+            talk = true; pointing = true
+            // Glide to the lines, if they are not already in view.
+            const first = Math.min(...hit), last = Math.max(...hit)
+            const top = first * ROW, bottom = (last + 1) * ROW
+            if (top < P.code.scrollTop || bottom > P.code.scrollTop + P.code.clientHeight) {
+              P.code.scrollTo({ top: Math.max(0, top - 2 * ROW), behavior: reduce ? 'auto' : 'smooth' })
+            }
+          }
+        } else {
+          const at = pagePoint(point)
+          if (at) { send(P, at); talk = true }
         }
-      }
-      st.flowing = requestAnimationFrame(step)
-      dk.querySelectorAll('.dk-pane').forEach((p) => p.classList.toggle('talk', p.dataset.pane === 'map'))
+        if (named.includes(P.ref.name)) talk = true
+        P.el.classList.toggle('talk', talk)
+      })
+      dk.classList.toggle('pointing', pointing)
     }
 
-    // ---- the rail: comments and the conversation
-    function openRail(open) {
-      rail.classList.toggle('open', open)
-      $('.dk-rail-head').setAttribute('aria-expanded', String(open))
-      if (open) rail.classList.remove('unread')
+    function pickSentence(sentence, piece) {
+      st.said = sentence
+      prose.querySelectorAll('.dk-w').forEach((w) => w.classList.toggle('lit', +w.dataset.sentence === sentence))
+      light(G.read.pieces[piece] || null)
     }
+
+    function clear() {
+      st.said = null; st.held = null
+      prose.querySelectorAll('.dk-w.lit').forEach((w) => w.classList.remove('lit'))
+      showHeld()
+      light(null)
+    }
+
+    // ---- picking lines: press, drag, release; shift extends
+    let dragging = null, touchFrom = null, touchedAt = 0
+    function showHeld() {
+      G.panes.forEach((P, ix) => P.rowEls && P.rowEls.forEach((el, i) => {
+        const on = st.held && st.heldPane === ix && i >= Math.min(st.held.a, st.held.b) && i <= Math.max(st.held.a, st.held.b)
+        el.classList.toggle('held', !!on)
+      }))
+    }
+    function wireRows(P, ix) {
+      P.code.addEventListener('mousedown', (e) => {
+        const row = e.target.closest('.dk-row')
+        if (!row || e.button !== 0 || Date.now() - touchedAt < 800) return
+        const i = +row.dataset.i
+        st.held = e.shiftKey && st.held && st.heldPane === ix ? { a: st.held.a, b: i } : { a: i, b: i }
+        st.heldPane = ix; dragging = ix
+        showHeld()
+      })
+      P.code.addEventListener('mouseover', (e) => {
+        if (dragging !== ix) return
+        const row = e.target.closest('.dk-row')
+        if (row && st.held && st.held.b !== +row.dataset.i) { st.held.b = +row.dataset.i; showHeld() }
+      })
+      P.code.addEventListener('touchstart', (e) => { const t = e.touches[0]; touchFrom = t ? [t.clientX, t.clientY] : null }, { passive: true })
+      P.code.addEventListener('touchend', (e) => {
+        const row = e.target.closest('.dk-row'), t = e.changedTouches[0]
+        if (!row || !touchFrom || !t || Math.hypot(t.clientX - touchFrom[0], t.clientY - touchFrom[1]) > 10) return
+        touchedAt = Date.now()
+        st.held = { a: +row.dataset.i, b: +row.dataset.i }; st.heldPane = ix
+        showHeld(); say('Selected ' + where() + '. Open CHAT below to comment.')
+      }, { passive: true })
+    }
+    window.addEventListener('mouseup', () => { if (dragging !== null) { dragging = null; say('Selected ' + where() + '. Press c to comment.') } })
+
+    // A sentence: a click takes the whole of it, and the point it falls in.
+    prose.addEventListener('mousedown', (e) => { if (e.button === 0) e.preventDefault() })
+    prose.addEventListener('click', (e) => {
+      const w = e.target.closest('.dk-w')
+      if (w) pickSentence(+w.dataset.sentence, +w.dataset.piece)
+    })
+    prose.addEventListener('mouseover', (e) => {
+      const w = e.target.closest('.dk-w[data-chip]')
+      prose.querySelectorAll('.dk-w.on').forEach((x) => { if (x !== w) x.classList.remove('on') })
+      if (w) w.classList.add('on')
+    })
+    prose.addEventListener('mouseleave', () => prose.querySelectorAll('.dk-w.on').forEach((x) => x.classList.remove('on')))
 
     function where() {
-      if (!st.sel) return 'group ' + (st.g + 1)
-      const rows = ROWS[st.g]
-      const a = rows[Math.min(st.sel.a, st.sel.b)].n, b = rows[Math.max(st.sel.a, st.sel.b)].n
-      return 'pricing.service.ts:' + (a === b ? a : a + '-' + b)
+      if (st.held) {
+        const P = G.panes[st.heldPane]
+        const a = P.rows[Math.min(st.held.a, st.held.b)].n, b = P.rows[Math.max(st.held.a, st.held.b)].n
+        return P.ref.file.split('/').pop() + ':' + (a === b ? a : a + '-' + b)
+      }
+      return 'group ' + (st.g + 1)
     }
 
-    function compose_(open) {
-      st.composing = open
-      compose.classList.toggle('idle', !open)
-      if (open) {
+    // ---- the rail
+    function openRail(on) {
+      rail.classList.toggle('open', on)
+      $('.dk-rail-head').setAttribute('aria-expanded', String(on))
+      if (on) rail.classList.remove('unread')
+    }
+    function composeOpen(on) {
+      st.composing = on
+      compose.classList.toggle('idle', !on)
+      if (on) {
         openRail(true)
         compose.querySelector('.on').textContent = 'comment on ' + where()
         area.placeholder = 'Say what you would change…'
         setTimeout(() => area.focus({ preventScroll: true }), 30)
       } else {
-        area.value = ''
-        area.placeholder = 'Write a comment · c'
-        area.blur()
+        area.value = ''; area.placeholder = 'Write a comment · c'; area.blur()
         dk.focus({ preventScroll: true })
       }
     }
-
     function post(kind, who, text, extra) {
-      const empty = chat.querySelector('.dk-empty')
-      if (empty) empty.remove()
-      const m = document.createElement('div')
-      m.className = 'dk-msg ' + kind
-      const dot = document.createElement('i')
+      const empty = chat.querySelector('.dk-empty'); if (empty) empty.remove()
+      const m = document.createElement('div'); m.className = 'dk-msg ' + kind
       const w = document.createElement('div'); w.className = 'who'; w.textContent = who
-      m.append(dot, w)
+      m.append(document.createElement('i'), w)
       if (text !== null) { const p = document.createElement('p'); p.textContent = text; m.append(p) }
       if (extra) m.append(extra)
-      chat.append(m)
-      chat.scrollTop = chat.scrollHeight
+      chat.append(m); chat.scrollTop = chat.scrollHeight
       if (!rail.classList.contains('open')) rail.classList.add('unread')
       return m
     }
-
-    function stamp() {
-      const d = new Date()
-      return d.getHours() + ':' + String(d.getMinutes()).padStart(2, '0')
-    }
-
+    const stamp = () => { const d = new Date(); return d.getHours() + ':' + String(d.getMinutes()).padStart(2, '0') }
     function reply(text, then) {
       const pulse = document.createElement('div'); pulse.className = 'dk-pulse'
       const waiting = post('agent', 'agent · g' + (st.g + 1), null, pulse)
-      setTimeout(() => {
-        waiting.remove()
-        post('agent', 'agent · g' + (st.g + 1) + ' · ' + stamp(), text)
-        if (then) then()
-      }, 1300)
+      setTimeout(() => { waiting.remove(); post('agent', 'agent · g' + (st.g + 1) + ' · ' + stamp(), text); if (then) then() }, 1300)
     }
-
     function updateCount() {
       const n = st.comments.length
       $('.dk-foot .cnt').textContent = n + (n === 1 ? ' comment' : ' comments')
       $('.dk-rail-head .sub').textContent = n ? '· ' + n + ' to send' : ''
     }
-
+    function remarkMarks() {
+      G.panes.forEach((P, ix) => P.rowEls && P.rowEls.forEach((el, i) => {
+        el.classList.toggle('noted', st.comments.some((c) => c.g === st.g && c.pane === ix && i >= c.a && i <= c.b))
+      }))
+    }
     function finish(now) {
       const text = area.value.trim()
       if (!text) { say('Write something first, or press esc.'); return }
       const at = where()
       if (now) {
         post('you', 'you · ' + at + ' · ' + stamp(), text)
-        compose_(false)
-        reply(UNKNOWN)
+        composeOpen(false); reply(UNKNOWN)
       } else {
-        st.comments.push({ g: st.g, a: st.sel ? Math.min(st.sel.a, st.sel.b) : null, b: st.sel ? Math.max(st.sel.a, st.sel.b) : null, at, text })
+        const held = st.held ? { pane: st.heldPane, a: Math.min(st.held.a, st.held.b), b: Math.max(st.held.a, st.held.b) } : { pane: -1, a: -1, b: -1 }
+        st.comments.push(Object.assign({ g: st.g, at, text }, held))
         post('you', 'you · ' + at + ' · in review', text)
-        compose_(false)
-        updateCount()
-        renderCode()
+        composeOpen(false); updateCount(); remarkMarks()
         say('Kept for the review. Press s to submit.')
       }
     }
-
     function ask(i) {
       const A = ANSWERS[i]
+      if (st.composing) composeOpen(false)
+      st.armed = true; dk.focus({ preventScroll: true })
       openRail(true)
       post('you', 'you · group ' + (st.g + 1) + ' · ' + stamp(), A.q)
-      if (st.composing) compose_(false)
-      armed = true
-      dk.focus({ preventScroll: true })
-      reply(A.a, () => { walk(false); go(A.go.g, A.go.s) })
+      reply(A.a, () => {
+        if (st.g !== A.go[0]) open(A.go[0])
+        const piece = G.read.pieces.findIndex((p) => p && p.names.includes(A.go[1]))
+        const word = prose.querySelector('.dk-w[data-piece="' + piece + '"]')
+        if (word) pickSentence(+word.dataset.sentence, piece)
+      })
     }
-
     function submit() {
-      if (!st.comments.length) { say('Nothing to send yet. Click a line, press c, and add it to the review.'); return }
+      if (!st.comments.length) { say('Nothing to send yet. Select a line, press c, and add it to the review.'); return }
       const n = st.comments.length
       say('Review sent to your agent · ' + n + (n === 1 ? ' comment' : ' comments'))
       const list = document.getElementById('loop-comments'), cnt = document.getElementById('loop-count')
@@ -419,105 +459,62 @@
         })
         cnt.textContent = n + (n === 1 ? ' comment' : ' comments')
       }
-      st.comments = []
-      updateCount()
-      renderCode()
+      st.comments = []; updateCount(); remarkMarks()
     }
 
-    // ---- input
+    // ---- keys
     const MESSAGES = {
       w: 'w reads the deck aloud once deck walk has set up a voice.',
       t: 't turns the panes a quarter in the window.',
+      z: 'z dims the rest of your screen behind the deck.',
       h: 'h puts the deck back on the bar, comments and all.',
       q: 'q closes without answering. Your agent hears that you closed it.',
-      clear: 'esc clears what you selected; in a walk it also takes the agent\'s light off the page.',
     }
     function key(k) {
-      if (k === 'n') { walk(false); go(st.g + 1, 0) }
-      else if (k === 'p') { walk(false); go(st.g - 1, 0) }
-      else if (k === 'c') compose_(true)
+      if (k === 'n') { if (st.g < DECK.groups.length - 1) open(st.g + 1) }
+      else if (k === 'p') { if (st.g > 0) open(st.g - 1) }
+      else if (k === 'c') composeOpen(true)
       else if (k === 's') submit()
-      else if (k === 'z') { st.lights = !st.lights; apply(false); say(st.lights ? 'Lights on.' : 'Lights off.') }
-      else if (k === 'clear') { st.sel = null; renderCode(); say(MESSAGES.clear) }
+      else if (k === 'Escape') clear()
       else if (MESSAGES[k]) say(MESSAGES[k])
     }
-
-    // Safari does not focus the window when something inside it is clicked,
-    // so keys would go to the page. A press inside arms the keys, a press
-    // anywhere else disarms them, and the window takes focus itself.
-    document.addEventListener('pointerdown', (e) => {
-      armed = dk.contains(e.target)
-      if (armed && !e.target.closest('textarea, button, input')) dk.focus({ preventScroll: true })
-    })
-    document.addEventListener('keydown', (e) => {
-      if (!armed || dk.contains(e.target) || /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) return
-      onKey(e)
-    })
-    dk.addEventListener('keydown', (e) => onKey(e))
     function onKey(e) {
       if (e.target === area) {
-        if (e.key === 'Escape') { e.preventDefault(); compose_(false) }
+        if (e.key === 'Escape') { e.preventDefault(); composeOpen(false) }
         else if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); finish(!e.shiftKey) }
         return
       }
       if (e.metaKey || e.ctrlKey || e.altKey) return
-      if (e.key === 'Escape') { st.sel = null; renderCode(); return }
+      if (e.key === 'Escape') { e.preventDefault(); key('Escape'); return }
       const k = e.key.toLowerCase()
-      if ('npcszwthq'.includes(k) && k.length === 1) { e.preventDefault(); key(k) }
+      if (k.length === 1 && 'npcswtzhq'.includes(k)) { e.preventDefault(); key(k) }
     }
-
-    area.addEventListener('focus', () => { if (!st.composing) compose_(true) })
+    // Safari does not focus the window when something inside it is clicked,
+    // so keys would go to the page. A press inside arms them; a press
+    // anywhere else disarms them.
+    document.addEventListener('pointerdown', (e) => {
+      st.armed = dk.contains(e.target)
+      if (st.armed && !e.target.closest('textarea, button, input')) dk.focus({ preventScroll: true })
+    })
+    document.addEventListener('keydown', (e) => {
+      if (!st.armed || dk.contains(e.target) || /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) return
+      onKey(e)
+    })
+    dk.addEventListener('keydown', onKey)
+    area.addEventListener('focus', () => { if (!st.composing) composeOpen(true) })
     compose.querySelector('.later').addEventListener('click', () => finish(false))
     compose.querySelector('.now').addEventListener('click', () => finish(true))
     $('.dk-rail-head').addEventListener('click', () => openRail(!rail.classList.contains('open')))
     $('.dk-keys').addEventListener('click', (e) => { const b = e.target.closest('button'); if (b) key(b.dataset.key) })
-    $('.dk-play').addEventListener('click', () => walk(!st.walking))
-    $('.dk-again-top').addEventListener('click', () => { walk(false); go(st.g, 0) })
-    $('.dk-again').addEventListener('click', () => { const S = GROUPS[st.g].says[st.s]; if (S && S.page) { page.setPoint('calm'); setTimeout(() => page.setPoint(S.page), 60) } })
-    prose.addEventListener('click', (e) => { const sn = e.target.closest('.dk-sn'); if (sn) { walk(false); go(st.g, +sn.dataset.s) } })
-    line.addEventListener('click', (e) => { const t = e.target.closest('.dk-tick'); if (t) { walk(false); go(st.g, +t.dataset.s) } })
-    mapBox.querySelector('.dk-flows').addEventListener('click', (e) => { const b = e.target.closest('button'); if (b) flow(b.dataset.flow) })
-
-    // select lines: press, drag, release; shift extends
-    let dragging = false, touchedAt = 0
-    code.addEventListener('mousedown', (e) => {
-      const ln = e.target.closest('.dk-ln')
-      if (!ln || e.button !== 0 || Date.now() - touchedAt < 800) return
-      const i = +ln.dataset.i
-      st.sel = e.shiftKey && st.sel ? { a: st.sel.a, b: i } : { a: i, b: i }
-      dragging = true
-      renderCode()
-    })
-    code.addEventListener('mouseover', (e) => {
-      if (!dragging) return
-      const ln = e.target.closest('.dk-ln')
-      if (ln && st.sel && st.sel.b !== +ln.dataset.i) { st.sel.b = +ln.dataset.i; renderCode() }
-    })
-    window.addEventListener('mouseup', () => { if (dragging) { dragging = false; say('Selected ' + where().replace('pricing.service.ts:', 'lines ') + '. Press c to comment.') } })
-    let touchFrom = null
-    code.addEventListener('touchstart', (e) => { const t = e.touches[0]; touchFrom = t ? [t.clientX, t.clientY] : null }, { passive: true })
-    code.addEventListener('touchend', (e) => {
-      const ln = e.target.closest('.dk-ln')
-      const t = e.changedTouches[0]
-      const moved = !touchFrom || !t || Math.hypot(t.clientX - touchFrom[0], t.clientY - touchFrom[1]) > 10
-      if (!ln || moved) return
-      touchedAt = Date.now()
-      st.sel = { a: +ln.dataset.i, b: +ln.dataset.i }
-      renderCode()
-      say('Selected ' + where().replace('pricing.service.ts:', 'line ') + '. Open CHAT below and write your comment.')
-    }, { passive: true })
-
     document.querySelectorAll('[data-ask]').forEach((b) => b.addEventListener('click', () => ask(+b.dataset.ask)))
 
-    renderProse()
-    apply(true)
-    // Again once it is on screen: a pane that has not been laid out yet
-    // cannot be scrolled to the lit lines.
-    requestAnimationFrame(() => apply(true))
-    const seen = new IntersectionObserver((es) => {
-      if (es.some((x) => x.isIntersecting)) { seen.disconnect(); apply(true); started = true }
+    open(0)
+    fetch(DECK.page).then((r) => (r.ok ? r.text() : Promise.reject(r.status))).then((html) => {
+      pageHtml = html
+      G.panes.forEach((P) => { if (P.holder) loadPage(P, false) })
+    }).catch(() => {
+      G.panes.forEach((P) => { if (P.holder) P.holder.innerHTML = '<p class="dk-empty" style="padding:20px">The page could not be loaded.</p>' })
     })
-    seen.observe(dk)
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start)

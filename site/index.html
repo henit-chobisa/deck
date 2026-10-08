@@ -202,15 +202,15 @@
   <section class="play" id="play" aria-labelledby="play-title">
     <div class="wrap">
       <p class="eyebrow accent">Try it</p>
-      <h2 id="play-title">This is the deck from the recording. Review it yourself.</h2>
-      <p class="lede">Click a sentence: the code it rests on and the moment it describes come into view together. <kbd>n</kbd> moves to the fix. Select a line, press <kbd>c</kbd>, and say what you would change.</p>
+      <h2 id="play-title">A real deck. Review it yourself.</h2>
+      <p class="lede">Your agent was asked to take the receipt off checkout. This is the plan it wrote, before a line of code changed. Click a sentence to see what it rests on; <kbd>n</kbd> and <kbd>p</kbd> move through the plan. Select a line, press <kbd>c</kbd>, and say what you would change.</p>
     </div>
     <div class="wrap wide">
       <div class="asks" aria-label="Questions you can ask the agent">
         <span>Ask it:</span>
-        <button type="button" data-ask="0">Why does it come back at 11:00?</button>
-        <button type="button" data-ask="1">How many are waiting at 10:00:01?</button>
-        <button type="button" data-ask="2">Why not a single-flight lock?</button>
+        <button type="button" data-ask="0">Where does the 260 ms come from?</button>
+        <button type="button" data-ask="1">What if a worker crashes mid-receipt?</button>
+        <button type="button" data-ask="2">Why not buy bigger checkout machines?</button>
       </div>
       <p class="note">This deck runs in your browser, with answers written in advance. In the real window, your own agent answers whatever you type.</p>
       <div class="dk" id="dk" tabindex="0" aria-label="A working deck. Keys: n next group, p previous group, c comment on the selected lines, z lights, esc discard.">
@@ -231,8 +231,8 @@
         <div class="term-head"><i></i><i></i><i></i><span>your agent</span></div>
         <div class="term-body">
           <div class="out">review · <span id="loop-count">1 comment</span></div>
-          <div class="out" id="loop-comments"><span class="hl">pricing.service.ts:38</span>  "Ten minutes stale is fine for list prices, not for flash sales. Skip the jitter on sale rows."</div>
-          <div class="work"><b class="bullet">⏺</b> Got it. Jitter on list prices only; sale rows keep one hour. Updating <span class="hl">pricing.service.ts:38</span>.</div>
+          <div class="out" id="loop-comments"><span class="hl">invoice.worker.ts:9</span>  "Ship it with autoscaling. Cap it at twenty, and page us if a receipt waits more than a minute."</div>
+          <div class="work"><b class="bullet">⏺</b> Shipping the worker with autoscaling, capped at twenty, and an alert on queue age over sixty seconds.</div>
         </div>
       </div>
     </div>
@@ -305,7 +305,7 @@
 </footer>
 
 <script src="https://cdn.jsdelivr.net/npm/lenis@1.1.13/dist/lenis.min.js" integrity="sha384-B2WBjDzEjJpYvhmi2UyEn7rektqkf5suS6sNoyyrf0EBAwBHdkiXxIlU0V5Ru2ed" crossorigin="anonymous" defer></script>
-<script src="js/requests.js" defer></script>
+<script src="js/deck-data.js" defer></script>
 <script src="js/play.js" defer></script>
 <script src="js/main.js" defer></script>
 </body>
