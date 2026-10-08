@@ -16,6 +16,8 @@ The frames are not in this branch. Copy them in first:
 git fetch origin pr-assets
 git archive FETCH_HEAD site-frames | tar -x -C /tmp
 mkdir -p site/frames && cp -r /tmp/site-frames/l /tmp/site-frames/s site/frames/
+# Once the Retina export is published on pr-assets:
+cp -r /tmp/site-frames/retina site/frames/
 ```
 
 To try the changelog, write its releases out the way the workflow does:
@@ -28,6 +30,28 @@ gh api -H "Accept: application/vnd.github.html+json" "repos/henit-chobisa/deck/r
 
 `site/frames/` and `site/changelog/releases.json` are ignored, and `.github/workflows/site.yml` does the same copy
 when it publishes to GitHub Pages.
+
+## Check the layouts
+
+After copying the frames above, run:
+
+```sh
+cd site/tools
+npm ci
+npx playwright install chromium webkit
+npm test
+```
+
+The checks start their own local server on port 8765. They cover narrow phones,
+iPhone portrait and landscape sizes, desktop WebKit and Chromium, reduced motion,
+story controls, commenting, installation tabs, and navigation on the inner pages.
+Set `SCREENSHOTS` to an existing directory to save full-page captures. WebKit
+checks do not replace testing Safari on a physical iPhone.
+
+Phones and desktop share the pinned scroll story, stars, and background text.
+Only the system's reduced-motion setting uses Previous/Next controls instead.
+The stacked layout centres the caption and recording vertically as one group;
+text stays left-aligned.
 
 ## What is real
 
@@ -44,8 +68,24 @@ when it publishes to GitHub Pages.
 ## The frames
 
 Four stretches of three recordings, cropped to the window, the screen
-recorder's icon painted out in the band's own colour, and written as WebP at
-1200 and 720 wide (`l` and `s`; phones and Save-Data get `s`).
+recorder's icon painted out in the band's own colour. The legacy exports are
+1200 and 720 pixels wide. The new lossless exports in `retina/l` and `retina/h`
+are 1200 pixels and the native crop width (2326–2374 pixels).
+
+The player chooses by painted width × device pixel ratio, not by a phone
+breakpoint. It keeps at most eight decoded frames and three pending requests,
+rather than decoding the entire Retina recording into several GB of memory.
+The old 1200px frames are a fallback while the new assets are being published.
+
+To export from the original October 5 recordings (requires FFmpeg and Pillow):
+
+```sh
+python3 site/tools/export-frames.py ~/Desktop --output site/frames/retina
+```
+
+Publish that directory as `site-frames/retina/` on the **pr-assets** branch before
+deploying the site. Do not commit these large generated files to `main`.
+The site workflow copies both Retina tiers and checks their frame counts.
 
 | frames | from | shows |
 | --- | --- | --- |

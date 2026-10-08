@@ -1,0 +1,5 @@
+{
+  "private": true,
+  "scripts": { "test": "node check-ui.cjs" },
+  "devDependencies": { "playwright": "1.64.0" }
+}

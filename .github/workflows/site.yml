@@ -1,7 +1,7 @@
 # The website, deck's front door, published to GitHub Pages.
 #
 # The pages live in site/. The frames the scroll plays — 360 stills cut from
-# recordings of the window — do not: they are 25 MB, and committed here they
+# recordings of the window — do not: committed here they
 # would be in every clone forever. They sit on the pr-assets branch under
 # site-frames/, and are copied in at build time.
 name: Site
@@ -32,6 +32,11 @@ jobs:
           git archive FETCH_HEAD site-frames | tar -x
           mkdir -p site/frames
           cp -r site-frames/l site-frames/s site/frames/
+          if [ -d site-frames/retina ]; then
+            cp -r site-frames/retina site/frames/
+          else
+            echo '::warning::Retina frames are not published on pr-assets yet; the player will use the legacy frames.'
+          fi
       - name: The changelog, from the releases
         # GitHub's own rendering of each release, which it sanitises, so the
         # notes and their images read exactly as they do there.
@@ -49,6 +54,12 @@ jobs:
             n=$(ls site/frames/$set/*.webp | wc -l)
             [ "$n" -eq 360 ] || { echo "site/frames/$set has $n frames, not 360"; exit 1; }
           done
+          if [ -d site/frames/retina ]; then
+            for set in l h; do
+              n=$(ls site/frames/retina/$set/*.webp | wc -l)
+              [ "$n" -eq 360 ] || { echo "retina/$set has $n frames, not 360"; exit 1; }
+            done
+          fi
           for page in site/index.html site/docs/index.html site/changelog/index.html; do
             dir=$(dirname "$page")
             grep -oE '(src|href)="[^"#:]+"' "$page" | sed -E 's/^(src|href)="//; s/"$//' | while read -r ref; do
