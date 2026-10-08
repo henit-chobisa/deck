@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Guides: reviewing and understanding code your AI agent wrote | deck</title>
+<meta name="description" content="Practical guides for engineers working with coding agents: AI code review, large pull requests, comprehension debt, review fatigue, and keeping your judgement.">
+<link rel="canonical" href="https://trydeck.dev/guides/">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="deck">
+<meta property="og:title" content="Guides: reviewing and understanding code your AI agent wrote | deck">
+<meta property="og:description" content="Practical guides for engineers working with coding agents: AI code review, large pull requests, comprehension debt, review fatigue, and keeping your judgement.">
+<meta property="og:url" content="https://trydeck.dev/guides/">
+<meta property="og:image" content="https://trydeck.dev/assets/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Guides: reviewing and understanding code your AI agent wrote | deck">
+<meta name="twitter:description" content="Practical guides for engineers working with coding agents: AI code review, large pull requests, comprehension debt, review fatigue, and keeping your judgement.">
+<meta name="twitter:image" content="https://trydeck.dev/assets/og.png">
+<meta name="theme-color" content="#0d0f0f">
+<link rel="icon" href="/assets/mark.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/css/site.css">
+<link rel="stylesheet" href="/css/docs.css">
+<link rel="stylesheet" href="/css/guide.css">
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "CollectionPage", "name": "Guides: working with coding agents without losing the plot", "url": "https://trydeck.dev/guides/", "hasPart": [{"@type": "Article", "headline": "How to review code your agent wrote", "url": "https://trydeck.dev/ai-code-review/"}, {"@type": "Article", "headline": "Understanding code your agent wrote", "url": "https://trydeck.dev/understand-ai-generated-code/"}, {"@type": "Article", "headline": "How to review a 20,000-line pull request", "url": "https://trydeck.dev/review-large-pull-requests/"}, {"@type": "Article", "headline": "Reviewing what Claude Code changed", "url": "https://trydeck.dev/review-claude-code-changes/"}, {"@type": "Article", "headline": "Reviewing what Codex, Cursor or Amp changed", "url": "https://trydeck.dev/review-codex-cursor-changes/"}, {"@type": "Article", "headline": "How to stop rubber-stamping pull requests", "url": "https://trydeck.dev/stop-rubber-stamping-pull-requests/"}, {"@type": "Article", "headline": "Keeping code quality when your agent writes most of it", "url": "https://trydeck.dev/ai-code-quality/"}, {"@type": "Article", "headline": "Vibe coding without losing track of your system", "url": "https://trydeck.dev/vibe-coding/"}, {"@type": "Article", "headline": "Learning a codebase you didn't build", "url": "https://trydeck.dev/learn-unfamiliar-codebase/"}, {"@type": "Article", "headline": "Debugging with your agent: see the root cause", "url": "https://trydeck.dev/debug-with-ai-agent/"}, {"@type": "Article", "headline": "Plan with your agent before it writes code", "url": "https://trydeck.dev/plan-with-ai-agent/"}, {"@type": "Article", "headline": "Works with the agent you already use", "url": "https://trydeck.dev/works-with/"}, {"@type": "Article", "headline": "A different kind of CodeRabbit alternative", "url": "https://trydeck.dev/coderabbit-alternative/"}, {"@type": "Article", "headline": "AI code review tools, compared honestly", "url": "https://trydeck.dev/ai-code-review-tools/"}, {"@type": "Article", "headline": "When AI code review becomes noise", "url": "https://trydeck.dev/ai-code-review-noise/"}, {"@type": "Article", "headline": "Comprehension debt, and how to pay it down", "url": "https://trydeck.dev/comprehension-debt/"}, {"@type": "Article", "headline": "Review is the bottleneck now", "url": "https://trydeck.dev/code-review-bottleneck/"}]}</script>
+</head>
+<body class="docs">
+<a class="skip" href="#doc">Skip to content</a>
+<header class="nav solid">
+  <a class="brand" href="/" aria-label="deck, home"><img src="/assets/mark.svg" alt="" width="28" height="28"><span>deck</span></a>
+  <nav aria-label="Main">
+    <a href="/#agent">How it works</a>
+    <a href="/#play">Try it</a>
+    <a href="/docs/">Docs</a>
+    <a href="/guides/" aria-current="page">Guides</a>
+    <a href="https://github.com/henit-chobisa/deck">GitHub</a>
+    <a class="nav-install" href="/#install">Install</a>
+  </nav>
+</header>
+<main class="g-wrap wide" id="doc">
+  <header class="g-hub-head">
+    <p class="eyebrow accent">Guides</p>
+    <h1>Working with your agent, without losing the plot.</h1>
+    <p class="lede">Agents write code faster than anyone can follow. These guides are about the other half: reviewing it, understanding it, and keeping the decisions yours.</p>
+  </header>
+  <div class="g-grid"><a class="g-card" href="/ai-code-review/"><span class="eyebrow accent">AI code review</span><span class="g-card-t">How to review code your agent wrote</span><span class="g-card-d">Reviewing AI-generated code is not like reviewing a colleague&#x27;s. Here is what to look for, why diffs and summaries fall short, and how to see the decisions your agent made.</span></a><a class="g-card" href="/understand-ai-generated-code/"><span class="eyebrow accent">Understanding AI code</span><span class="g-card-t">Understanding code your agent wrote</span><span class="g-card-d">When an AI agent writes most of the code, understanding it becomes the hard part. A practical way to rebuild your mental model of what changed and why.</span></a><a class="g-card" href="/review-large-pull-requests/"><span class="eyebrow accent">Large pull requests</span><span class="g-card-t">How to review a 20,000-line pull request</span><span class="g-card-d">Huge PRs get rubber-stamped. A practical approach to reviewing very large pull requests by concern, in chapters, with the decisions shown on the lines.</span></a><a class="g-card" href="/review-claude-code-changes/"><span class="eyebrow accent">Claude Code</span><span class="g-card-t">Reviewing what Claude Code changed</span><span class="g-card-d">Claude Code can change dozens of files in one session. How to review its work properly: see each decision on the lines, push back where you disagree, and keep the judgement yours.</span></a><a class="g-card" href="/review-codex-cursor-changes/"><span class="eyebrow accent">Codex, Cursor, Amp</span><span class="g-card-t">Reviewing what Codex, Cursor or Amp changed</span><span class="g-card-d">Whichever coding agent you use, the review problem is the same: fast changes, long summaries, decisions you never made. How to see them on the lines instead.</span></a><a class="g-card" href="/stop-rubber-stamping-pull-requests/"><span class="eyebrow accent">LGTM fatigue</span><span class="g-card-t">How to stop rubber-stamping pull requests</span><span class="g-card-d">&quot;Looks good to me&quot; has become the review. Why rubber-stamping happens when agents write the code, and a practical way to review decisions instead of approving them.</span></a><a class="g-card" href="/ai-code-quality/"><span class="eyebrow accent">AI code quality</span><span class="g-card-t">Keeping code quality when your agent writes most of it</span><span class="g-card-d">AI agents write working code fast. Quality slips in the decisions nobody made on purpose. How to keep judgement over a codebase an agent mostly writes.</span></a><a class="g-card" href="/vibe-coding/"><span class="eyebrow accent">Vibe coding</span><span class="g-card-t">Vibe coding without losing track of your system</span><span class="g-card-d">Vibe coding is fast and fun until you cannot explain your own code. How to keep the speed and still know what you shipped.</span></a><a class="g-card" href="/learn-unfamiliar-codebase/"><span class="eyebrow accent">Onboarding</span><span class="g-card-t">Learning a codebase you didn&#x27;t build</span><span class="g-card-d">New team, unfamiliar service, the person who built it has left. How to get your agent to walk you through one real request end to end, on the actual code.</span></a><a class="g-card" href="/debug-with-ai-agent/"><span class="eyebrow accent">Debugging</span><span class="g-card-t">Debugging with your agent: see the root cause</span><span class="g-card-d">Your agent found the bug and wrote five paragraphs about it. How to get the root cause shown on the lines, with the timeline of what happened, so you can confirm it.</span></a><a class="g-card" href="/plan-with-ai-agent/"><span class="eyebrow accent">Planning</span><span class="g-card-t">Plan with your agent before it writes code</span><span class="g-card-d">The cheapest time to disagree with your agent is before the code exists. How to review a plan as code plus consequences, and decide with both numbers in front of you.</span></a><a class="g-card" href="/works-with/"><span class="eyebrow accent">Compatibility</span><span class="g-card-t">Works with the agent you already use</span><span class="g-card-d">deck works with any coding agent that can run a shell command, including Claude Code, Codex, Cursor and Amp. No new model, no API key, no account.</span></a><a class="g-card" href="/coderabbit-alternative/"><span class="eyebrow accent">CodeRabbit alternative</span><span class="g-card-t">A different kind of CodeRabbit alternative</span><span class="g-card-d">CodeRabbit and similar bots comment on your pull request after the fact. deck is the step before: your own agent shows you each decision on the lines, and you decide. Free and open source.</span></a><a class="g-card" href="/ai-code-review-tools/"><span class="eyebrow accent">AI code review tools</span><span class="g-card-t">AI code review tools, compared honestly</span><span class="g-card-d">CodeRabbit, Greptile, GitHub Copilot code review, Graphite, Qodo, Cursor BugBot and deck do different jobs. What each kind of tool is for, and how they fit together.</span></a><a class="g-card" href="/ai-code-review-noise/"><span class="eyebrow accent">Review fatigue</span><span class="g-card-t">When AI code review becomes noise</span><span class="g-card-d">Review bots that comment on everything train people to ignore them. Why AI code review gets noisy, and how to get signal: fewer claims, shown on the code, that you decide on.</span></a><a class="g-card" href="/comprehension-debt/"><span class="eyebrow accent">Comprehension debt</span><span class="g-card-t">Comprehension debt, and how to pay it down</span><span class="g-card-d">Comprehension debt (or cognitive debt) is the gap between the code your agent wrote and what your team understands. Why it grows, why it bites, and how to pay it down as you go.</span></a><a class="g-card" href="/code-review-bottleneck/"><span class="eyebrow accent">The review bottleneck</span><span class="g-card-t">Review is the bottleneck now</span><span class="g-card-d">Agents write code faster than anyone can read it, so the pressure moves to review. Why more code means less understanding, and how to review at the speed agents write.</span></a></div>
+  <aside class="cta" aria-label="Try deck">
+  <div>
+    <p class="cta-title">See your agent's decisions on the lines.</p>
+    <p>deck is free and open source. It works with Claude Code, Codex, Cursor, Amp and any agent with a shell.</p>
+  </div>
+  <div class="cta-actions">
+    <a class="star" href="/#install">Install deck</a>
+    <a class="cta-alt" href="/#play">Try a real deck in your browser</a>
+  </div>
+</aside>
+</main>
+<footer class="foot">
+  <div class="wrap foot-base">
+    <span>deck · free and open source · Apache-2.0</span>
+    <span>Made for people who still prefer quality.</span>
+  </div>
+</footer>
+</body>
+</html>

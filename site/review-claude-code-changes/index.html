@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>How to review what Claude Code changed</title>
+<meta name="description" content="Claude Code can change dozens of files in one session. How to review its work properly: see each decision on the lines, push back where you disagree, and keep the judgement yours.">
+<link rel="canonical" href="https://trydeck.dev/review-claude-code-changes/">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="deck">
+<meta property="og:title" content="How to review what Claude Code changed">
+<meta property="og:description" content="Claude Code can change dozens of files in one session. How to review its work properly: see each decision on the lines, push back where you disagree, and keep the judgement yours.">
+<meta property="og:url" content="https://trydeck.dev/review-claude-code-changes/">
+<meta property="og:image" content="https://trydeck.dev/assets/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="How to review what Claude Code changed">
+<meta name="twitter:description" content="Claude Code can change dozens of files in one session. How to review its work properly: see each decision on the lines, push back where you disagree, and keep the judgement yours.">
+<meta name="twitter:image" content="https://trydeck.dev/assets/og.png">
+<meta name="theme-color" content="#0d0f0f">
+<link rel="icon" href="/assets/mark.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/css/site.css">
+<link rel="stylesheet" href="/css/docs.css">
+<link rel="stylesheet" href="/css/guide.css">
+<script type="application/ld+json">[{"@context": "https://schema.org", "@type": "Article", "headline": "Reviewing what Claude Code changed", "description": "Claude Code can change dozens of files in one session. How to review its work properly: see each decision on the lines, push back where you disagree, and keep the judgement yours.", "author": {"@type": "Person", "name": "Henit Chobisa", "url": "https://github.com/henit-chobisa"}, "publisher": {"@type": "Organization", "name": "deck", "url": "https://trydeck.dev", "logo": {"@type": "ImageObject", "url": "https://trydeck.dev/assets/mark.svg"}}, "image": "https://trydeck.dev/assets/og.png", "mainEntityOfPage": "https://trydeck.dev/review-claude-code-changes/", "dateModified": "2026-10-08"}, {"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "deck", "item": "https://trydeck.dev/"}, {"@type": "ListItem", "position": 2, "name": "Guides", "item": "https://trydeck.dev/guides/"}, {"@type": "ListItem", "position": 3, "name": "Reviewing what Claude Code changed", "item": "https://trydeck.dev/review-claude-code-changes/"}]}, {"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "Does deck run its own model?", "acceptedAnswer": {"@type": "Answer", "text": "No. Claude Code writes the deck with a few shell commands and puts it on your screen. deck draws it and hands your answer back to the same session."}}, {"@type": "Question", "name": "Is the catch required?", "acceptedAnswer": {"@type": "Answer", "text": "No. It is offered during setup and can be turned off. Without it, Claude Code still uses deck when the skill suggests it."}}, {"@type": "Question", "name": "Does it work with other agents too?", "acceptedAnswer": {"@type": "Answer", "text": "Yes. Anything that can run a shell command can write a deck, including Codex, Cursor and Amp."}}]}]</script>
+</head>
+<body class="docs">
+<a class="skip" href="#doc">Skip to content</a>
+<header class="nav solid">
+  <a class="brand" href="/" aria-label="deck, home"><img src="/assets/mark.svg" alt="" width="28" height="28"><span>deck</span></a>
+  <nav aria-label="Main">
+    <a href="/#agent">How it works</a>
+    <a href="/#play">Try it</a>
+    <a href="/docs/">Docs</a>
+    <a href="/guides/">Guides</a>
+    <a href="https://github.com/henit-chobisa/deck">GitHub</a>
+    <a class="nav-install" href="/#install">Install</a>
+  </nav>
+</header>
+<main class="g-wrap" id="doc">
+  <nav class="crumbs" aria-label="Breadcrumb"><a href="/">deck</a> <span>/</span> <a href="/guides/">Guides</a></nav>
+  <article class="doc g-doc">
+    <p class="eyebrow accent">Claude Code</p>
+    <h1>Reviewing what Claude Code changed</h1>
+    <p class="lede">Claude Code can change dozens of files in one session. How to review its work properly: see each decision on the lines, push back where you disagree, and keep the judgement yours.</p>
+    <p>Claude Code is fast. One session can touch thirty files, and the summary at the end names a dozen of them with line numbers. Reviewing that properly is the hard part.</p>
+<h2 id="the-problem-with-the-end-of-session-summary">The problem with the end-of-session summary</h2>
+<p>The summary is accurate, and it is still hard to use. Each <code>file:line</code> is something you have to open, and the argument only exists once you have opened all of them and held them together in your head. Most people stop after the second file and type "looks good".</p>
+<h2 id="ask-for-the-review-as-a-deck">Ask for the review as a deck</h2>
+<p><a href="/">deck</a> gives Claude Code another way to answer. Instead of a paragraph, it writes a short deck: one claim per group, with the code that proves it. A bar appears at the bottom of your screen, and you open it when you are ready.</p>
+<p>Inside:</p>
+<ul><li>each sentence lights the lines it is about</li><li>a proposed change shows as the old lines going and the new lines arriving</li><li>behaviour over time, like a queue backing up, plays as a chart in step with the words</li><li>you select lines and comment, or ask, and the same session answers</li></ul>
+<p>When you submit, the command Claude Code ran ends and hands your review back, pinned to the lines. It continues with your decision in hand, in the same session with the same context.</p>
+<h2 id="setting-it-up">Setting it up</h2>
+<p>Run the installer, then <code>deck setup</code>. Setup installs a short skill so Claude Code knows when to reach for a deck, and it offers <strong>the catch</strong>: a hook that notices when a reply names two or more <code>file:line</code> locations and asks for a deck instead. After a long session is compacted, the same hook reminds it to load the skill again, so decks late in a session are as good as early ones.</p>
+<h2 id="what-to-ask-for">What to ask for</h2>
+<ul><li>"Show me what you changed, one decision at a time."</li><li>"Before you write it, show me the plan."</li><li>"Why does this break only under load? Show me."</li></ul>
+<p>The answer comes back as something you can check, not something you have to believe.</p>
+    <aside class="cta" aria-label="Try deck">
+  <div>
+    <p class="cta-title">See your agent's decisions on the lines.</p>
+    <p>deck is free and open source. It works with Claude Code, Codex, Cursor, Amp and any agent with a shell.</p>
+  </div>
+  <div class="cta-actions">
+    <a class="star" href="/#install">Install deck</a>
+    <a class="cta-alt" href="/#play">Try a real deck in your browser</a>
+  </div>
+</aside>
+    <section class="g-faq" aria-labelledby="faq"><h2 id="faq">Questions</h2><details><summary>Does deck run its own model?</summary><p>No. Claude Code writes the deck with a few shell commands and puts it on your screen. deck draws it and hands your answer back to the same session.</p></details><details><summary>Is the catch required?</summary><p>No. It is offered during setup and can be turned off. Without it, Claude Code still uses deck when the skill suggests it.</p></details><details><summary>Does it work with other agents too?</summary><p>Yes. Anything that can run a shell command can write a deck, including Codex, Cursor and Amp.</p></details></section>
+    <section class="g-related" aria-labelledby="more"><h2 id="more">Keep reading</h2><ul><li><a href="/review-codex-cursor-changes/">Reviewing what Codex, Cursor or Amp changed</a></li><li><a href="/stop-rubber-stamping-pull-requests/">How to stop rubber-stamping pull requests</a></li><li><a href="/ai-code-quality/">Keeping code quality when your agent writes most of it</a></li></ul></section>
+  </article>
+</main>
+<footer class="foot">
+  <div class="wrap foot-base">
+    <span>deck · free and open source · Apache-2.0</span>
+    <span>Made for people who still prefer quality.</span>
+  </div>
+</footer>
+</body>
+</html>

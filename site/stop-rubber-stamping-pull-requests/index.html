@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LGTM fatigue: how to stop rubber-stamping pull requests</title>
+<meta name="description" content="&quot;Looks good to me&quot; has become the review. Why rubber-stamping happens when agents write the code, and a practical way to review decisions instead of approving them.">
+<link rel="canonical" href="https://trydeck.dev/stop-rubber-stamping-pull-requests/">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="deck">
+<meta property="og:title" content="LGTM fatigue: how to stop rubber-stamping pull requests">
+<meta property="og:description" content="&quot;Looks good to me&quot; has become the review. Why rubber-stamping happens when agents write the code, and a practical way to review decisions instead of approving them.">
+<meta property="og:url" content="https://trydeck.dev/stop-rubber-stamping-pull-requests/">
+<meta property="og:image" content="https://trydeck.dev/assets/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="LGTM fatigue: how to stop rubber-stamping pull requests">
+<meta name="twitter:description" content="&quot;Looks good to me&quot; has become the review. Why rubber-stamping happens when agents write the code, and a practical way to review decisions instead of approving them.">
+<meta name="twitter:image" content="https://trydeck.dev/assets/og.png">
+<meta name="theme-color" content="#0d0f0f">
+<link rel="icon" href="/assets/mark.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/css/site.css">
+<link rel="stylesheet" href="/css/docs.css">
+<link rel="stylesheet" href="/css/guide.css">
+<script type="application/ld+json">[{"@context": "https://schema.org", "@type": "Article", "headline": "How to stop rubber-stamping pull requests", "description": "\"Looks good to me\" has become the review. Why rubber-stamping happens when agents write the code, and a practical way to review decisions instead of approving them.", "author": {"@type": "Person", "name": "Henit Chobisa", "url": "https://github.com/henit-chobisa"}, "publisher": {"@type": "Organization", "name": "deck", "url": "https://trydeck.dev", "logo": {"@type": "ImageObject", "url": "https://trydeck.dev/assets/mark.svg"}}, "image": "https://trydeck.dev/assets/og.png", "mainEntityOfPage": "https://trydeck.dev/stop-rubber-stamping-pull-requests/", "dateModified": "2026-10-08"}, {"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "deck", "item": "https://trydeck.dev/"}, {"@type": "ListItem", "position": 2, "name": "Guides", "item": "https://trydeck.dev/guides/"}, {"@type": "ListItem", "position": 3, "name": "How to stop rubber-stamping pull requests", "item": "https://trydeck.dev/stop-rubber-stamping-pull-requests/"}]}, {"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "What does rubber-stamping a pull request mean?", "acceptedAnswer": {"@type": "Answer", "text": "Approving it without really reviewing it, usually because a proper review would take longer than anyone has."}}, {"@type": "Question", "name": "How do I get my team to review AI-generated code properly?", "acceptedAnswer": {"@type": "Answer", "text": "Make it cheaper: one concern per review, decisions shown first, and the code beside every claim. deck gives your agent that format."}}, {"@type": "Question", "name": "Will this slow us down?", "acceptedAnswer": {"@type": "Answer", "text": "It moves time earlier. A few minutes deciding before the merge is cheaper than an incident review after it."}}]}]</script>
+</head>
+<body class="docs">
+<a class="skip" href="#doc">Skip to content</a>
+<header class="nav solid">
+  <a class="brand" href="/" aria-label="deck, home"><img src="/assets/mark.svg" alt="" width="28" height="28"><span>deck</span></a>
+  <nav aria-label="Main">
+    <a href="/#agent">How it works</a>
+    <a href="/#play">Try it</a>
+    <a href="/docs/">Docs</a>
+    <a href="/guides/">Guides</a>
+    <a href="https://github.com/henit-chobisa/deck">GitHub</a>
+    <a class="nav-install" href="/#install">Install</a>
+  </nav>
+</header>
+<main class="g-wrap" id="doc">
+  <nav class="crumbs" aria-label="Breadcrumb"><a href="/">deck</a> <span>/</span> <a href="/guides/">Guides</a></nav>
+  <article class="doc g-doc">
+    <p class="eyebrow accent">LGTM fatigue</p>
+    <h1>How to stop rubber-stamping pull requests</h1>
+    <p class="lede">&quot;Looks good to me&quot; has become the review. Why rubber-stamping happens when agents write the code, and a practical way to review decisions instead of approving them.</p>
+    <p>"LGTM" used to mean you looked. Now it often means you trust the tests, the agent, or the person who asked the agent. Everyone knows it, and the approvals keep coming.</p>
+<h2 id="why-it-happens">Why it happens</h2>
+<p>Rubber-stamping is not laziness. It is what people do when reviewing properly costs more than they have:</p>
+<ul><li>the change is too big to hold in your head</li><li>the explanation is prose you have to translate back into code</li><li>the author, human or agent, has moved on to the next thing</li></ul>
+<p>So the review becomes a check that nothing looks alarming, and the decisions go through unexamined.</p>
+<h2 id="lower-the-cost-of-a-real-review">Lower the cost of a real review</h2>
+<p>You will not fix this by asking people to try harder. Make a real review cheaper than a fake one:</p>
+<ol><li><strong>Smaller units.</strong> One concern per review.</li><li><strong>Decisions first.</strong> The author says where the choices are.</li><li><strong>Evidence beside the claim.</strong> No "see line 412". Show line 412.</li><li><strong>A cheap way to disagree.</strong> A comment on the exact line, answered by whoever holds the context.</li></ol>
+<h2 id="where-deck-fits">Where deck fits</h2>
+<p><a href="/">deck</a> is that cheaper review, when an agent did the work. The agent shows you its changes as a short deck, one claim at a time with the code lit beside it. Disagreeing is selecting a line and typing. The same agent answers, in the same session, on the same lines.</p>
+<p>It is not a gate and it does not replace your PR process. It is the moment before you approve, where you actually decide.</p>
+<h2 id="signs-it-is-working">Signs it is working</h2>
+<ul><li>Review comments name a decision, not a style choice.</li><li>People can explain a change a week after merging it.</li><li>"Why did we do it this way?" has an answer someone remembers choosing.</li></ul>
+    <aside class="cta" aria-label="Try deck">
+  <div>
+    <p class="cta-title">See your agent's decisions on the lines.</p>
+    <p>deck is free and open source. It works with Claude Code, Codex, Cursor, Amp and any agent with a shell.</p>
+  </div>
+  <div class="cta-actions">
+    <a class="star" href="/#install">Install deck</a>
+    <a class="cta-alt" href="/#play">Try a real deck in your browser</a>
+  </div>
+</aside>
+    <section class="g-faq" aria-labelledby="faq"><h2 id="faq">Questions</h2><details><summary>What does rubber-stamping a pull request mean?</summary><p>Approving it without really reviewing it, usually because a proper review would take longer than anyone has.</p></details><details><summary>How do I get my team to review AI-generated code properly?</summary><p>Make it cheaper: one concern per review, decisions shown first, and the code beside every claim. deck gives your agent that format.</p></details><details><summary>Will this slow us down?</summary><p>It moves time earlier. A few minutes deciding before the merge is cheaper than an incident review after it.</p></details></section>
+    <section class="g-related" aria-labelledby="more"><h2 id="more">Keep reading</h2><ul><li><a href="/ai-code-quality/">Keeping code quality when your agent writes most of it</a></li><li><a href="/vibe-coding/">Vibe coding without losing track of your system</a></li><li><a href="/learn-unfamiliar-codebase/">Learning a codebase you didn&#x27;t build</a></li></ul></section>
+  </article>
+</main>
+<footer class="foot">
+  <div class="wrap foot-base">
+    <span>deck · free and open source · Apache-2.0</span>
+    <span>Made for people who still prefer quality.</span>
+  </div>
+</footer>
+</body>
+</html>

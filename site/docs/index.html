@@ -3,9 +3,23 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>deck docs — how to use it</title>
+<title>deck docs — install, set up, and review what your agent changed</title>
 <meta name="description" content="Install deck, set it up once, and read your agent's decks: the window, comments, the walk, diagrams and pages, theming, the catch, and the commands your agent runs.">
+<link rel="canonical" href="https://trydeck.dev/docs/">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="deck">
+<meta property="og:title" content="deck docs — install, set up, and review what your agent changed">
+<meta property="og:description" content="Install deck, set it up once, and read your agent&#x27;s decks: the window, comments, the walk, diagrams and pages, theming, the catch, and the commands your agent runs.">
+<meta property="og:url" content="https://trydeck.dev/docs/">
+<meta property="og:image" content="https://trydeck.dev/assets/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="deck docs — install, set up, and review what your agent changed">
+<meta name="twitter:description" content="Install deck, set it up once, and read your agent&#x27;s decks: the window, comments, the walk, diagrams and pages, theming, the catch, and the commands your agent runs.">
+<meta name="twitter:image" content="https://trydeck.dev/assets/og.png">
 <meta name="theme-color" content="#0d0f0f">
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "Does it cost anything?", "acceptedAnswer": {"@type": "Answer", "text": "No. deck is free and open source under Apache-2.0: no paid tier, no account, and no plan to add either. It was made to give back to the community."}}, {"@type": "Question", "name": "Does deck run its own agent or model?", "acceptedAnswer": {"@type": "Answer", "text": "No. Your agent writes the deck and opens it. deck draws it, waits for you, and hands your answer back to that same agent."}}, {"@type": "Question", "name": "Which agents work with it?", "acceptedAnswer": {"@type": "Answer", "text": "Any agent that can run a shell command. deck setup installs the skill into each one it finds on your machine."}}, {"@type": "Question", "name": "Does my code leave my machine?", "acceptedAnswer": {"@type": "Answer", "text": "Your code stays on your machine. deck checks GitHub for new releases, and the optional voice sends the narration (the prose your agent wrote, not your code) to Google to be spoken, only once you have set up a key."}}, {"@type": "Question", "name": "Can the agent open the window on me?", "acceptedAnswer": {"@type": "Answer", "text": "No. A deck arrives as a bar. Only you open it."}}, {"@type": "Question", "name": "What if the file changes after I comment?", "acceptedAnswer": {"@type": "Answer", "text": "Comments carry the text they were written against, and come back marked diff, fingerprint or stale, so your agent knows how far to trust the location."}}, {"@type": "Question", "name": "Where do I report a problem?", "acceptedAnswer": {"@type": "Answer", "text": "GitHub issues. Nearly every fix so far has come from somebody hitting something while reading a deck of their own."}}]}</script>
 <link rel="icon" href="../assets/mark.svg" type="image/svg+xml">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -25,6 +39,7 @@
     <a href="../#agent">How it works</a>
     <a href="../#play">Try it</a>
     <a href="./" aria-current="page">Docs</a>
+    <a href="../guides/">Guides</a>
     <a href="../changelog/">Changelog</a>
     <a href="https://github.com/henit-chobisa/deck">GitHub</a>
     <a class="nav-install" href="#install">Install</a>

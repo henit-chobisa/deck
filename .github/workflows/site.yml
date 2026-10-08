@@ -58,7 +58,7 @@ jobs:
             done
           done
       - name: Leave out what is not part of the site
-        run: rm -f site/README.md
+        run: rm -rf site/README.md site/tools
       - uses: actions/upload-pages-artifact@v3
         with:
           path: site

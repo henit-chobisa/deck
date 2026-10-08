@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Looking for a CodeRabbit alternative? A different kind of AI code review</title>
+<meta name="description" content="CodeRabbit and similar bots comment on your pull request after the fact. deck is the step before: your own agent shows you each decision on the lines, and you decide. Free and open source.">
+<link rel="canonical" href="https://trydeck.dev/coderabbit-alternative/">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="deck">
+<meta property="og:title" content="Looking for a CodeRabbit alternative? A different kind of AI code review">
+<meta property="og:description" content="CodeRabbit and similar bots comment on your pull request after the fact. deck is the step before: your own agent shows you each decision on the lines, and you decide. Free and open source.">
+<meta property="og:url" content="https://trydeck.dev/coderabbit-alternative/">
+<meta property="og:image" content="https://trydeck.dev/assets/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Looking for a CodeRabbit alternative? A different kind of AI code review">
+<meta name="twitter:description" content="CodeRabbit and similar bots comment on your pull request after the fact. deck is the step before: your own agent shows you each decision on the lines, and you decide. Free and open source.">
+<meta name="twitter:image" content="https://trydeck.dev/assets/og.png">
+<meta name="theme-color" content="#0d0f0f">
+<link rel="icon" href="/assets/mark.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/css/site.css">
+<link rel="stylesheet" href="/css/docs.css">
+<link rel="stylesheet" href="/css/guide.css">
+<script type="application/ld+json">[{"@context": "https://schema.org", "@type": "Article", "headline": "A different kind of CodeRabbit alternative", "description": "CodeRabbit and similar bots comment on your pull request after the fact. deck is the step before: your own agent shows you each decision on the lines, and you decide. Free and open source.", "author": {"@type": "Person", "name": "Henit Chobisa", "url": "https://github.com/henit-chobisa"}, "publisher": {"@type": "Organization", "name": "deck", "url": "https://trydeck.dev", "logo": {"@type": "ImageObject", "url": "https://trydeck.dev/assets/mark.svg"}}, "image": "https://trydeck.dev/assets/og.png", "mainEntityOfPage": "https://trydeck.dev/coderabbit-alternative/", "dateModified": "2026-10-08"}, {"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "deck", "item": "https://trydeck.dev/"}, {"@type": "ListItem", "position": 2, "name": "Guides", "item": "https://trydeck.dev/guides/"}, {"@type": "ListItem", "position": 3, "name": "A different kind of CodeRabbit alternative", "item": "https://trydeck.dev/coderabbit-alternative/"}]}, {"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "Is deck a CodeRabbit competitor?", "acceptedAnswer": {"@type": "Answer", "text": "Not directly. CodeRabbit comments on pull requests. deck lets your own agent show you its changes before you approve. You can use both."}}, {"@type": "Question", "name": "Does deck integrate with GitHub?", "acceptedAnswer": {"@type": "Answer", "text": "No integration is needed. It runs on your machine with the agent you already use; your PR process stays as it is."}}, {"@type": "Question", "name": "How much does deck cost?", "acceptedAnswer": {"@type": "Answer", "text": "Nothing. It is free and open source under Apache-2.0."}}]}]</script>
+</head>
+<body class="docs">
+<a class="skip" href="#doc">Skip to content</a>
+<header class="nav solid">
+  <a class="brand" href="/" aria-label="deck, home"><img src="/assets/mark.svg" alt="" width="28" height="28"><span>deck</span></a>
+  <nav aria-label="Main">
+    <a href="/#agent">How it works</a>
+    <a href="/#play">Try it</a>
+    <a href="/docs/">Docs</a>
+    <a href="/guides/">Guides</a>
+    <a href="https://github.com/henit-chobisa/deck">GitHub</a>
+    <a class="nav-install" href="/#install">Install</a>
+  </nav>
+</header>
+<main class="g-wrap" id="doc">
+  <nav class="crumbs" aria-label="Breadcrumb"><a href="/">deck</a> <span>/</span> <a href="/guides/">Guides</a></nav>
+  <article class="doc g-doc">
+    <p class="eyebrow accent">CodeRabbit alternative</p>
+    <h1>A different kind of CodeRabbit alternative</h1>
+    <p class="lede">CodeRabbit and similar bots comment on your pull request after the fact. deck is the step before: your own agent shows you each decision on the lines, and you decide. Free and open source.</p>
+    <p>If you are searching for a CodeRabbit alternative, you probably have a specific complaint. The most common ones are too many comments, comments that miss the point, or a feeling that the bot reviewed the code and nobody on the team did.</p>
+<p>Tools like CodeRabbit, Greptile, GitHub Copilot code review, Graphite's reviewer, Qodo and Cursor BugBot all do a similar job: they read a pull request and leave comments on it. They are useful for catching things. They are not designed to make <em>you</em> understand what changed.</p>
+<h2 id="a-different-question">A different question</h2>
+<p>A review bot answers "is anything wrong with this diff?". The question that is usually harder, when an agent wrote the change, is "what did we just decide, and do I agree?".</p>
+<p><a href="/">deck</a> answers that one. It is not a bot and it is not a service. It is a window on your machine that the agent you already use (Claude Code, Codex, Cursor, Amp) opens to show you its work: one claim at a time, with the lines that prove it lit beside it, and a chart when the point is about behaviour. You push back on the line; the same agent answers with its full context.</p>
+<h2 id="how-they-compare">How they compare</h2>
+<ul><li><strong>When it happens.</strong> A review bot runs after the PR is open. deck happens before, while the agent still holds everything it just read.</li><li><strong>Who explains.</strong> A bot explains its own findings. With deck, the agent that wrote the code explains the code, and answers your questions.</li><li><strong>What you get.</strong> A bot gives you comments to triage. deck gives you the decisions to agree with or change.</li><li><strong>Cost.</strong> deck is free and open source, with no account and no seats.</li></ul>
+<h2 id="use-both-if-you-like">Use both, if you like</h2>
+<p>Nothing stops you running a review bot on the PR and using deck before it. Many teams will want both: a bot to catch slips, and a way for the person approving to actually understand the change.</p>
+<p><a href="/#play">Try a real deck in your browser</a>, or <a href="/#install">install it</a>.</p>
+    <aside class="cta" aria-label="Try deck">
+  <div>
+    <p class="cta-title">See your agent's decisions on the lines.</p>
+    <p>deck is free and open source. It works with Claude Code, Codex, Cursor, Amp and any agent with a shell.</p>
+  </div>
+  <div class="cta-actions">
+    <a class="star" href="/#install">Install deck</a>
+    <a class="cta-alt" href="/#play">Try a real deck in your browser</a>
+  </div>
+</aside>
+    <section class="g-faq" aria-labelledby="faq"><h2 id="faq">Questions</h2><details><summary>Is deck a CodeRabbit competitor?</summary><p>Not directly. CodeRabbit comments on pull requests. deck lets your own agent show you its changes before you approve. You can use both.</p></details><details><summary>Does deck integrate with GitHub?</summary><p>No integration is needed. It runs on your machine with the agent you already use; your PR process stays as it is.</p></details><details><summary>How much does deck cost?</summary><p>Nothing. It is free and open source under Apache-2.0.</p></details></section>
+    <section class="g-related" aria-labelledby="more"><h2 id="more">Keep reading</h2><ul><li><a href="/ai-code-review-tools/">AI code review tools, compared honestly</a></li><li><a href="/ai-code-review-noise/">When AI code review becomes noise</a></li><li><a href="/comprehension-debt/">Comprehension debt, and how to pay it down</a></li></ul></section>
+  </article>
+</main>
+<footer class="foot">
+  <div class="wrap foot-base">
+    <span>deck · free and open source · Apache-2.0</span>
+    <span>Made for people who still prefer quality.</span>
+  </div>
+</footer>
+</body>
+</html>

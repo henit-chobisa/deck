@@ -95,6 +95,9 @@
         const px = clamp(12 / s.z, 8, w < 700 ? 30 : 46) * (1 - c * 0.85)
         const near = s.z < 0.22 ? s.z / 0.22 : 1
         let a = clamp((1.22 - s.z) * 0.95, 0, 0.9) * near * (1 - c * 0.92)
+        // Keep the strip under the nav clear, so a passing line never sits
+        // behind the links.
+        if (y < 110) a *= Math.max(0, (y - 30) / 80)
         if (quiet > 0) {
           const e = ((x - cx) / (w * (w < 700 ? 0.72 : 0.4))) ** 2 + ((y - cy) / (h * (w < 700 ? 0.36 : 0.3))) ** 2
           if (e < 1) a *= 1 - quiet * (1 - e ** 4)

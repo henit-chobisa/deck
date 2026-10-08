@@ -1,0 +1,27 @@
+/* The guides: a single readable column, the CTA, related reading, the hub grid. */
+.g-wrap { max-width: 760px; margin: 0 auto; padding: 112px var(--gut) 96px; }
+.g-wrap.wide { max-width: 1120px; }
+.crumbs { font-family: var(--mono); font-size: 12.5px; color: var(--faint); margin-bottom: 26px; }
+.crumbs a { color: var(--muted); }
+.crumbs span { margin: 0 6px; }
+.g-doc h2 { margin-top: 44px; }
+.g-doc > .lede { margin: 18px 0 8px; }
+.g-doc p + p { margin-top: 14px; }
+.cta { margin: 56px 0 8px; padding: 28px; border: 1px solid var(--edge-2); border-radius: 16px; background: radial-gradient(120% 120% at 0% 0%, rgba(254,128,25,0.08), rgba(254,128,25,0) 60%), #121414; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 22px; }
+.cta p { margin: 0; color: var(--soft); font-size: 15.5px; line-height: 1.6; max-width: 34em; }
+.cta .cta-title { color: var(--fg); font-weight: 600; font-size: 19px; margin-bottom: 6px; }
+.cta-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 16px; }
+.cta .star { text-decoration: none; }
+.cta-alt { font-size: 15px; }
+.g-faq { margin-top: 48px; }
+.g-related ul { list-style: none; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.g-related a { font-size: 16.5px; }
+.g-hub-head { max-width: 760px; margin-bottom: 48px; }
+.g-hub-head h1 { font-size: clamp(36px, 5vw, 58px); letter-spacing: -0.035em; }
+.g-hub-head .lede { margin-top: 18px; }
+.g-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 16px; }
+.g-card { display: flex; flex-direction: column; gap: 10px; padding: 22px; border: 1px solid var(--edge-2); border-radius: 14px; background: #121414; color: var(--fg); transition: border-color .2s, background .2s; }
+.g-card:hover { border-color: var(--accent); background: #161818; color: var(--fg); }
+.g-card .eyebrow { margin: 0; }
+.g-card-t { font-size: 19px; font-weight: 600; letter-spacing: -0.015em; line-height: 1.3; }
+.g-card-d { font-size: 14.5px; line-height: 1.6; color: var(--muted); }

@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Learning a codebase you didn&#x27;t build, with your agent</title>
+<meta name="description" content="New team, unfamiliar service, the person who built it has left. How to get your agent to walk you through one real request end to end, on the actual code.">
+<link rel="canonical" href="https://trydeck.dev/learn-unfamiliar-codebase/">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="deck">
+<meta property="og:title" content="Learning a codebase you didn&#x27;t build, with your agent">
+<meta property="og:description" content="New team, unfamiliar service, the person who built it has left. How to get your agent to walk you through one real request end to end, on the actual code.">
+<meta property="og:url" content="https://trydeck.dev/learn-unfamiliar-codebase/">
+<meta property="og:image" content="https://trydeck.dev/assets/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Learning a codebase you didn&#x27;t build, with your agent">
+<meta name="twitter:description" content="New team, unfamiliar service, the person who built it has left. How to get your agent to walk you through one real request end to end, on the actual code.">
+<meta name="twitter:image" content="https://trydeck.dev/assets/og.png">
+<meta name="theme-color" content="#0d0f0f">
+<link rel="icon" href="/assets/mark.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/css/site.css">
+<link rel="stylesheet" href="/css/docs.css">
+<link rel="stylesheet" href="/css/guide.css">
+<script type="application/ld+json">[{"@context": "https://schema.org", "@type": "Article", "headline": "Learning a codebase you didn't build", "description": "New team, unfamiliar service, the person who built it has left. How to get your agent to walk you through one real request end to end, on the actual code.", "author": {"@type": "Person", "name": "Henit Chobisa", "url": "https://github.com/henit-chobisa"}, "publisher": {"@type": "Organization", "name": "deck", "url": "https://trydeck.dev", "logo": {"@type": "ImageObject", "url": "https://trydeck.dev/assets/mark.svg"}}, "image": "https://trydeck.dev/assets/og.png", "mainEntityOfPage": "https://trydeck.dev/learn-unfamiliar-codebase/", "dateModified": "2026-10-08"}, {"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "deck", "item": "https://trydeck.dev/"}, {"@type": "ListItem", "position": 2, "name": "Guides", "item": "https://trydeck.dev/guides/"}, {"@type": "ListItem", "position": 3, "name": "Learning a codebase you didn't build", "item": "https://trydeck.dev/learn-unfamiliar-codebase/"}]}, {"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "How do I learn a large codebase quickly?", "acceptedAnswer": {"@type": "Answer", "text": "Follow one real request end to end, from the user's side, through the code that decides what happens. Then follow a second one."}}, {"@type": "Question", "name": "Can an AI agent help with onboarding?", "acceptedAnswer": {"@type": "Answer", "text": "Yes, especially if it shows you the code at each step instead of describing it. deck gives it a way to do that."}}, {"@type": "Question", "name": "Does my code leave my machine?", "acceptedAnswer": {"@type": "Answer", "text": "No. deck opens your files locally."}}]}]</script>
+</head>
+<body class="docs">
+<a class="skip" href="#doc">Skip to content</a>
+<header class="nav solid">
+  <a class="brand" href="/" aria-label="deck, home"><img src="/assets/mark.svg" alt="" width="28" height="28"><span>deck</span></a>
+  <nav aria-label="Main">
+    <a href="/#agent">How it works</a>
+    <a href="/#play">Try it</a>
+    <a href="/docs/">Docs</a>
+    <a href="/guides/">Guides</a>
+    <a href="https://github.com/henit-chobisa/deck">GitHub</a>
+    <a class="nav-install" href="/#install">Install</a>
+  </nav>
+</header>
+<main class="g-wrap" id="doc">
+  <nav class="crumbs" aria-label="Breadcrumb"><a href="/">deck</a> <span>/</span> <a href="/guides/">Guides</a></nav>
+  <article class="doc g-doc">
+    <p class="eyebrow accent">Onboarding</p>
+    <h1>Learning a codebase you didn&#x27;t build</h1>
+    <p class="lede">New team, unfamiliar service, the person who built it has left. How to get your agent to walk you through one real request end to end, on the actual code.</p>
+    <p>You have joined the team that owns search, and the person who built it has left. The code is there, the docs are thin, and you are on call next week.</p>
+<h2 id="follow-one-real-thing-end-to-end">Follow one real thing, end to end</h2>
+<p>The fastest way into an unfamiliar system is not reading it top to bottom. It is following one real request from the outside in: what a user does, which service receives it, which lines decide what happens, and what comes back.</p>
+<p>Pick a concrete case: "red running shoes under $80". Then follow it.</p>
+<h2 id="ask-for-the-journey-not-the-tour">Ask for the journey, not the tour</h2>
+<p>A tour of the directories teaches you where files live. A journey teaches you how the system thinks. Ask your agent for:</p>
+<ol><li>a map of the parts this request touches</li><li>the code at each stop, in order</li><li>the numbers that were chosen (weights, limits, timeouts) and why</li></ol>
+<h2 id="see-it-as-you-learn-it">See it as you learn it</h2>
+<p><a href="/">deck</a> lets your agent give you that journey as something you click through. A map of the service, with the request's path drawn through it. The code at each stop, lit sentence by sentence. When you ask why popularity counts for 30 per cent, the answer comes back in the same window, sometimes as a chart of the experiment that chose the number.</p>
+<p>You learn the system the way you would from the person who built it, at your own pace, and the questions you ask are pinned to the lines they are about.</p>
+<h2 id="make-it-stick">Make it stick</h2>
+<ul><li>Follow two or three different requests, not one.</li><li>End each one by writing down what you would change. That is the start of owning it.</li></ul>
+    <aside class="cta" aria-label="Try deck">
+  <div>
+    <p class="cta-title">See your agent's decisions on the lines.</p>
+    <p>deck is free and open source. It works with Claude Code, Codex, Cursor, Amp and any agent with a shell.</p>
+  </div>
+  <div class="cta-actions">
+    <a class="star" href="/#install">Install deck</a>
+    <a class="cta-alt" href="/#play">Try a real deck in your browser</a>
+  </div>
+</aside>
+    <section class="g-faq" aria-labelledby="faq"><h2 id="faq">Questions</h2><details><summary>How do I learn a large codebase quickly?</summary><p>Follow one real request end to end, from the user's side, through the code that decides what happens. Then follow a second one.</p></details><details><summary>Can an AI agent help with onboarding?</summary><p>Yes, especially if it shows you the code at each step instead of describing it. deck gives it a way to do that.</p></details><details><summary>Does my code leave my machine?</summary><p>No. deck opens your files locally.</p></details></section>
+    <section class="g-related" aria-labelledby="more"><h2 id="more">Keep reading</h2><ul><li><a href="/debug-with-ai-agent/">Debugging with your agent: see the root cause</a></li><li><a href="/plan-with-ai-agent/">Plan with your agent before it writes code</a></li><li><a href="/works-with/">Works with the agent you already use</a></li></ul></section>
+  </article>
+</main>
+<footer class="foot">
+  <div class="wrap foot-base">
+    <span>deck · free and open source · Apache-2.0</span>
+    <span>Made for people who still prefer quality.</span>
+  </div>
+</footer>
+</body>
+</html>

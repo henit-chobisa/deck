@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>How to review a large pull request (even 20,000 lines)</title>
+<meta name="description" content="Huge PRs get rubber-stamped. A practical approach to reviewing very large pull requests by concern, in chapters, with the decisions shown on the lines.">
+<link rel="canonical" href="https://trydeck.dev/review-large-pull-requests/">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="deck">
+<meta property="og:title" content="How to review a large pull request (even 20,000 lines)">
+<meta property="og:description" content="Huge PRs get rubber-stamped. A practical approach to reviewing very large pull requests by concern, in chapters, with the decisions shown on the lines.">
+<meta property="og:url" content="https://trydeck.dev/review-large-pull-requests/">
+<meta property="og:image" content="https://trydeck.dev/assets/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="How to review a large pull request (even 20,000 lines)">
+<meta name="twitter:description" content="Huge PRs get rubber-stamped. A practical approach to reviewing very large pull requests by concern, in chapters, with the decisions shown on the lines.">
+<meta name="twitter:image" content="https://trydeck.dev/assets/og.png">
+<meta name="theme-color" content="#0d0f0f">
+<link rel="icon" href="/assets/mark.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/css/site.css">
+<link rel="stylesheet" href="/css/docs.css">
+<link rel="stylesheet" href="/css/guide.css">
+<script type="application/ld+json">[{"@context": "https://schema.org", "@type": "Article", "headline": "How to review a 20,000-line pull request", "description": "Huge PRs get rubber-stamped. A practical approach to reviewing very large pull requests by concern, in chapters, with the decisions shown on the lines.", "author": {"@type": "Person", "name": "Henit Chobisa", "url": "https://github.com/henit-chobisa"}, "publisher": {"@type": "Organization", "name": "deck", "url": "https://trydeck.dev", "logo": {"@type": "ImageObject", "url": "https://trydeck.dev/assets/mark.svg"}}, "image": "https://trydeck.dev/assets/og.png", "mainEntityOfPage": "https://trydeck.dev/review-large-pull-requests/", "dateModified": "2026-10-08"}, {"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "deck", "item": "https://trydeck.dev/"}, {"@type": "ListItem", "position": 2, "name": "Guides", "item": "https://trydeck.dev/guides/"}, {"@type": "ListItem", "position": 3, "name": "How to review a 20,000-line pull request", "item": "https://trydeck.dev/review-large-pull-requests/"}]}, {"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "How long should a pull request be?", "acceptedAnswer": {"@type": "Answer", "text": "Short enough that one concern fits in one sitting. When that is not possible, review it in chapters, one concern at a time."}}, {"@type": "Question", "name": "Can an AI agent help review a large PR?", "acceptedAnswer": {"@type": "Answer", "text": "Yes, if it shows you the decisions rather than summarising them. deck lets your agent propose chapters and walk each one on the actual lines."}}, {"@type": "Question", "name": "Does deck post comments to GitHub?", "acceptedAnswer": {"@type": "Answer", "text": "No. Your comments go back to your agent, pinned to the lines. What it does next, including updating the PR, is up to you and it."}}]}]</script>
+</head>
+<body class="docs">
+<a class="skip" href="#doc">Skip to content</a>
+<header class="nav solid">
+  <a class="brand" href="/" aria-label="deck, home"><img src="/assets/mark.svg" alt="" width="28" height="28"><span>deck</span></a>
+  <nav aria-label="Main">
+    <a href="/#agent">How it works</a>
+    <a href="/#play">Try it</a>
+    <a href="/docs/">Docs</a>
+    <a href="/guides/">Guides</a>
+    <a href="https://github.com/henit-chobisa/deck">GitHub</a>
+    <a class="nav-install" href="/#install">Install</a>
+  </nav>
+</header>
+<main class="g-wrap" id="doc">
+  <nav class="crumbs" aria-label="Breadcrumb"><a href="/">deck</a> <span>/</span> <a href="/guides/">Guides</a></nav>
+  <article class="doc g-doc">
+    <p class="eyebrow accent">Large pull requests</p>
+    <h1>How to review a 20,000-line pull request</h1>
+    <p class="lede">Huge PRs get rubber-stamped. A practical approach to reviewing very large pull requests by concern, in chapters, with the decisions shown on the lines.</p>
+    <p>Nobody reviews a 20,000-line pull request. They scroll, check that CI is green, leave a comment on something small, and approve. Then the incident review finds the decision that mattered on page forty.</p>
+<h2 id="split-by-concern-not-by-file">Split by concern, not by file</h2>
+<p>A large branch is usually several changes stacked together: a new data model, the code that writes it, the UI that shows it, a migration. Reviewing it file by file mixes all of them on every screen.</p>
+<p>Review it in <strong>chapters</strong>, one concern each:</p>
+<ol><li>Agree the chapters first. Usually three to five.</li><li>Review chapter one completely before looking at chapter two.</li><li>Let what you learned in one chapter shape the next.</li></ol>
+<h2 id="inside-each-chapter-find-the-decisions">Inside each chapter, find the decisions</h2>
+<p>In each chapter there are only a few places where something was chosen. Those deserve your full attention. The rest is consequence, and a skim is enough for it.</p>
+<p>Ask the author, or the agent, for:</p>
+<ul><li>the entry point, from the user's side</li><li>the two or three lines where behaviour actually changed</li><li>what the tests prove, and what they do not</li></ul>
+<h2 id="how-deck-handles-a-big-review">How deck handles a big review</h2>
+<p><a href="/">deck</a> was shaped by exactly this case. Ask your agent to review the branch with deck, and it proposes the chapters first and asks before it starts. Each chapter opens as its own deck: a map of the branch, then the changes one claim at a time, with the code lit beside each sentence. A change shows as the old lines going and the new lines arriving.</p>
+<p>When something looks wrong you comment on the line. Your review of chapter one goes back to the agent before it writes chapter two, so the review gets sharper as it goes instead of more tired.</p>
+<h2 id="if-you-are-the-author">If you are the author</h2>
+<p>Make the reviewer's job possible. Split the branch, or at least say what the chapters are. Put the risky decisions first. Say plainly what you could not test. A reviewer who trusts your map will read the parts that matter.</p>
+    <aside class="cta" aria-label="Try deck">
+  <div>
+    <p class="cta-title">See your agent's decisions on the lines.</p>
+    <p>deck is free and open source. It works with Claude Code, Codex, Cursor, Amp and any agent with a shell.</p>
+  </div>
+  <div class="cta-actions">
+    <a class="star" href="/#install">Install deck</a>
+    <a class="cta-alt" href="/#play">Try a real deck in your browser</a>
+  </div>
+</aside>
+    <section class="g-faq" aria-labelledby="faq"><h2 id="faq">Questions</h2><details><summary>How long should a pull request be?</summary><p>Short enough that one concern fits in one sitting. When that is not possible, review it in chapters, one concern at a time.</p></details><details><summary>Can an AI agent help review a large PR?</summary><p>Yes, if it shows you the decisions rather than summarising them. deck lets your agent propose chapters and walk each one on the actual lines.</p></details><details><summary>Does deck post comments to GitHub?</summary><p>No. Your comments go back to your agent, pinned to the lines. What it does next, including updating the PR, is up to you and it.</p></details></section>
+    <section class="g-related" aria-labelledby="more"><h2 id="more">Keep reading</h2><ul><li><a href="/review-claude-code-changes/">Reviewing what Claude Code changed</a></li><li><a href="/review-codex-cursor-changes/">Reviewing what Codex, Cursor or Amp changed</a></li><li><a href="/stop-rubber-stamping-pull-requests/">How to stop rubber-stamping pull requests</a></li></ul></section>
+  </article>
+</main>
+<footer class="foot">
+  <div class="wrap foot-base">
+    <span>deck · free and open source · Apache-2.0</span>
+    <span>Made for people who still prefer quality.</span>
+  </div>
+</footer>
+</body>
+</html>

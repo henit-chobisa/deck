@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Keeping code quality when an AI agent writes most of it</title>
+<meta name="description" content="AI agents write working code fast. Quality slips in the decisions nobody made on purpose. How to keep judgement over a codebase an agent mostly writes.">
+<link rel="canonical" href="https://trydeck.dev/ai-code-quality/">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="deck">
+<meta property="og:title" content="Keeping code quality when an AI agent writes most of it">
+<meta property="og:description" content="AI agents write working code fast. Quality slips in the decisions nobody made on purpose. How to keep judgement over a codebase an agent mostly writes.">
+<meta property="og:url" content="https://trydeck.dev/ai-code-quality/">
+<meta property="og:image" content="https://trydeck.dev/assets/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Keeping code quality when an AI agent writes most of it">
+<meta name="twitter:description" content="AI agents write working code fast. Quality slips in the decisions nobody made on purpose. How to keep judgement over a codebase an agent mostly writes.">
+<meta name="twitter:image" content="https://trydeck.dev/assets/og.png">
+<meta name="theme-color" content="#0d0f0f">
+<link rel="icon" href="/assets/mark.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/css/site.css">
+<link rel="stylesheet" href="/css/docs.css">
+<link rel="stylesheet" href="/css/guide.css">
+<script type="application/ld+json">[{"@context": "https://schema.org", "@type": "Article", "headline": "Keeping code quality when your agent writes most of it", "description": "AI agents write working code fast. Quality slips in the decisions nobody made on purpose. How to keep judgement over a codebase an agent mostly writes.", "author": {"@type": "Person", "name": "Henit Chobisa", "url": "https://github.com/henit-chobisa"}, "publisher": {"@type": "Organization", "name": "deck", "url": "https://trydeck.dev", "logo": {"@type": "ImageObject", "url": "https://trydeck.dev/assets/mark.svg"}}, "image": "https://trydeck.dev/assets/og.png", "mainEntityOfPage": "https://trydeck.dev/ai-code-quality/", "dateModified": "2026-10-08"}, {"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "deck", "item": "https://trydeck.dev/"}, {"@type": "ListItem", "position": 2, "name": "Guides", "item": "https://trydeck.dev/guides/"}, {"@type": "ListItem", "position": 3, "name": "Keeping code quality when your agent writes most of it", "item": "https://trydeck.dev/ai-code-quality/"}]}, {"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "Is AI-generated code lower quality?", "acceptedAnswer": {"@type": "Answer", "text": "Not line by line. The risk is decisions made quickly and approved without being understood. Review the decisions and quality holds."}}, {"@type": "Question", "name": "How do I keep an AI-written codebase maintainable?", "acceptedAnswer": {"@type": "Answer", "text": "Make sure every decision that adds state or changes failure handling is shown to someone and chosen on purpose."}}, {"@type": "Question", "name": "Where does deck help with quality?", "acceptedAnswer": {"@type": "Answer", "text": "It makes your agent show its decisions on the actual lines, so you can agree or push back before they ship."}}]}]</script>
+</head>
+<body class="docs">
+<a class="skip" href="#doc">Skip to content</a>
+<header class="nav solid">
+  <a class="brand" href="/" aria-label="deck, home"><img src="/assets/mark.svg" alt="" width="28" height="28"><span>deck</span></a>
+  <nav aria-label="Main">
+    <a href="/#agent">How it works</a>
+    <a href="/#play">Try it</a>
+    <a href="/docs/">Docs</a>
+    <a href="/guides/">Guides</a>
+    <a href="https://github.com/henit-chobisa/deck">GitHub</a>
+    <a class="nav-install" href="/#install">Install</a>
+  </nav>
+</header>
+<main class="g-wrap" id="doc">
+  <nav class="crumbs" aria-label="Breadcrumb"><a href="/">deck</a> <span>/</span> <a href="/guides/">Guides</a></nav>
+  <article class="doc g-doc">
+    <p class="eyebrow accent">AI code quality</p>
+    <h1>Keeping code quality when your agent writes most of it</h1>
+    <p class="lede">AI agents write working code fast. Quality slips in the decisions nobody made on purpose. How to keep judgement over a codebase an agent mostly writes.</p>
+    <p>Code written by agents is usually fine line by line. Where quality slips is between the lines: three caches that each made sense alone, a retry added twice, an error swallowed because the test only checked the happy path.</p>
+<h2 id="quality-is-a-series-of-decisions">Quality is a series of decisions</h2>
+<p>A codebase stays good when the decisions in it were made on purpose by someone who understood the trade-off. With an agent writing most of the code, those decisions still get made. They just get made quickly, inside a task, and approved in bulk.</p>
+<h2 id="keep-judgement-where-it-matters">Keep judgement where it matters</h2>
+<p>You do not need to review everything equally. Watch the decisions that compound:</p>
+<ul><li><strong>New state.</strong> Caches, queues, tables, flags. Each one is forever.</li><li><strong>Failure handling.</strong> Retries, timeouts, fallbacks, swallowed errors.</li><li><strong>Boundaries.</strong> What calls what, and who is allowed to.</li><li><strong>Tests.</strong> Whether they pin behaviour or just the implementation the agent wrote.</li></ul>
+<h2 id="make-the-agent-argue-for-its-choices">Make the agent argue for its choices</h2>
+<p>Agents are good at explaining, if you ask for the right shape. The useful shape is a claim, the lines that support it, and the alternative it rejected.</p>
+<p><a href="/">deck</a> gives your agent that shape. It writes the explanation as a short deck you click through: each sentence lights the code it is about, and when it matters the agent draws the behaviour, like latency before and after or a queue on its busiest day. You push back on the line, and the same agent answers.</p>
+<p>The result is a codebase where each decision was shown to someone and chosen. That is most of what quality is.</p>
+<h2 id="a-small-habit">A small habit</h2>
+<p>At the end of any change that adds state or changes failure handling, ask your agent to show you that part before you approve. It takes a minute, and you will catch the second cache before there is a third.</p>
+    <aside class="cta" aria-label="Try deck">
+  <div>
+    <p class="cta-title">See your agent's decisions on the lines.</p>
+    <p>deck is free and open source. It works with Claude Code, Codex, Cursor, Amp and any agent with a shell.</p>
+  </div>
+  <div class="cta-actions">
+    <a class="star" href="/#install">Install deck</a>
+    <a class="cta-alt" href="/#play">Try a real deck in your browser</a>
+  </div>
+</aside>
+    <section class="g-faq" aria-labelledby="faq"><h2 id="faq">Questions</h2><details><summary>Is AI-generated code lower quality?</summary><p>Not line by line. The risk is decisions made quickly and approved without being understood. Review the decisions and quality holds.</p></details><details><summary>How do I keep an AI-written codebase maintainable?</summary><p>Make sure every decision that adds state or changes failure handling is shown to someone and chosen on purpose.</p></details><details><summary>Where does deck help with quality?</summary><p>It makes your agent show its decisions on the actual lines, so you can agree or push back before they ship.</p></details></section>
+    <section class="g-related" aria-labelledby="more"><h2 id="more">Keep reading</h2><ul><li><a href="/vibe-coding/">Vibe coding without losing track of your system</a></li><li><a href="/learn-unfamiliar-codebase/">Learning a codebase you didn&#x27;t build</a></li><li><a href="/debug-with-ai-agent/">Debugging with your agent: see the root cause</a></li></ul></section>
+  </article>
+</main>
+<footer class="foot">
+  <div class="wrap foot-base">
+    <span>deck · free and open source · Apache-2.0</span>
+    <span>Made for people who still prefer quality.</span>
+  </div>
+</footer>
+</body>
+</html>

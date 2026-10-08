@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Plan a change with your agent before it writes code</title>
+<meta name="description" content="The cheapest time to disagree with your agent is before the code exists. How to review a plan as code plus consequences, and decide with both numbers in front of you.">
+<link rel="canonical" href="https://trydeck.dev/plan-with-ai-agent/">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="deck">
+<meta property="og:title" content="Plan a change with your agent before it writes code">
+<meta property="og:description" content="The cheapest time to disagree with your agent is before the code exists. How to review a plan as code plus consequences, and decide with both numbers in front of you.">
+<meta property="og:url" content="https://trydeck.dev/plan-with-ai-agent/">
+<meta property="og:image" content="https://trydeck.dev/assets/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Plan a change with your agent before it writes code">
+<meta name="twitter:description" content="The cheapest time to disagree with your agent is before the code exists. How to review a plan as code plus consequences, and decide with both numbers in front of you.">
+<meta name="twitter:image" content="https://trydeck.dev/assets/og.png">
+<meta name="theme-color" content="#0d0f0f">
+<link rel="icon" href="/assets/mark.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/css/site.css">
+<link rel="stylesheet" href="/css/docs.css">
+<link rel="stylesheet" href="/css/guide.css">
+<script type="application/ld+json">[{"@context": "https://schema.org", "@type": "Article", "headline": "Plan with your agent before it writes code", "description": "The cheapest time to disagree with your agent is before the code exists. How to review a plan as code plus consequences, and decide with both numbers in front of you.", "author": {"@type": "Person", "name": "Henit Chobisa", "url": "https://github.com/henit-chobisa"}, "publisher": {"@type": "Organization", "name": "deck", "url": "https://trydeck.dev", "logo": {"@type": "ImageObject", "url": "https://trydeck.dev/assets/mark.svg"}}, "image": "https://trydeck.dev/assets/og.png", "mainEntityOfPage": "https://trydeck.dev/plan-with-ai-agent/", "dateModified": "2026-10-08"}, {"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "deck", "item": "https://trydeck.dev/"}, {"@type": "ListItem", "position": 2, "name": "Guides", "item": "https://trydeck.dev/guides/"}, {"@type": "ListItem", "position": 3, "name": "Plan with your agent before it writes code", "item": "https://trydeck.dev/plan-with-ai-agent/"}]}, {"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "Should I make my AI agent plan before coding?", "acceptedAnswer": {"@type": "Answer", "text": "For anything that adds state, changes failure handling or touches money, yes. Disagreeing with a plan is much cheaper than rewriting code."}}, {"@type": "Question", "name": "What should a good plan include?", "acceptedAnswer": {"@type": "Answer", "text": "The code that will change, what it becomes, and what it costs under real load, ideally with numbers."}}, {"@type": "Question", "name": "Can I try a planning deck without installing anything?", "acceptedAnswer": {"@type": "Answer", "text": "Yes. The Black Friday plan runs in the browser on the deck home page."}}]}]</script>
+</head>
+<body class="docs">
+<a class="skip" href="#doc">Skip to content</a>
+<header class="nav solid">
+  <a class="brand" href="/" aria-label="deck, home"><img src="/assets/mark.svg" alt="" width="28" height="28"><span>deck</span></a>
+  <nav aria-label="Main">
+    <a href="/#agent">How it works</a>
+    <a href="/#play">Try it</a>
+    <a href="/docs/">Docs</a>
+    <a href="/guides/">Guides</a>
+    <a href="https://github.com/henit-chobisa/deck">GitHub</a>
+    <a class="nav-install" href="/#install">Install</a>
+  </nav>
+</header>
+<main class="g-wrap" id="doc">
+  <nav class="crumbs" aria-label="Breadcrumb"><a href="/">deck</a> <span>/</span> <a href="/guides/">Guides</a></nav>
+  <article class="doc g-doc">
+    <p class="eyebrow accent">Planning</p>
+    <h1>Plan with your agent before it writes code</h1>
+    <p class="lede">The cheapest time to disagree with your agent is before the code exists. How to review a plan as code plus consequences, and decide with both numbers in front of you.</p>
+    <p>The cheapest moment to disagree with your agent is before it writes anything. Once there are four hundred lines, the conversation is about fixing them, not about whether they should exist.</p>
+<h2 id="review-the-plan-as-code-plus-consequences">Review the plan as code plus consequences</h2>
+<p>A plan you can actually review has three parts:</p>
+<ol><li><strong>Today's code.</strong> The lines that will change.</li><li><strong>The change.</strong> What they become.</li><li><strong>What it buys and what it costs.</strong> In numbers, under real load.</li></ol>
+<p>Most plans are written as bullet points. They read well and hide the cost.</p>
+<h2 id="a-real-example">A real example</h2>
+<p>Checkout is slow because it renders the receipt PDF while the customer waits. The agent proposes moving the render to a queue. The p99 drops from 4.2 seconds to 260 milliseconds.</p>
+<p>The cost is in the other number. On Black Friday, orders rise twelve-fold by noon, four workers fall behind, and receipts arrive nine minutes late. Autoscaling the workers keeps that under forty seconds.</p>
+<p>That is the decision, and it is only visible with both numbers in front of you.</p>
+<h2 id="plan-in-a-deck">Plan in a deck</h2>
+<p><a href="/">deck</a> lets your agent present a plan exactly like that: today's checkout code, the proposed change shown as old lines going and new lines arriving, and a chart of what the change does to latency and to the busiest day of the year. You can <a href="/#play">try that exact deck here</a>.</p>
+<p>You decide, comment on the lines you want different, and the agent writes the code with your decision in hand.</p>
+    <aside class="cta" aria-label="Try deck">
+  <div>
+    <p class="cta-title">See your agent's decisions on the lines.</p>
+    <p>deck is free and open source. It works with Claude Code, Codex, Cursor, Amp and any agent with a shell.</p>
+  </div>
+  <div class="cta-actions">
+    <a class="star" href="/#install">Install deck</a>
+    <a class="cta-alt" href="/#play">Try a real deck in your browser</a>
+  </div>
+</aside>
+    <section class="g-faq" aria-labelledby="faq"><h2 id="faq">Questions</h2><details><summary>Should I make my AI agent plan before coding?</summary><p>For anything that adds state, changes failure handling or touches money, yes. Disagreeing with a plan is much cheaper than rewriting code.</p></details><details><summary>What should a good plan include?</summary><p>The code that will change, what it becomes, and what it costs under real load, ideally with numbers.</p></details><details><summary>Can I try a planning deck without installing anything?</summary><p>Yes. The Black Friday plan runs in the browser on the deck home page.</p></details></section>
+    <section class="g-related" aria-labelledby="more"><h2 id="more">Keep reading</h2><ul><li><a href="/works-with/">Works with the agent you already use</a></li><li><a href="/coderabbit-alternative/">A different kind of CodeRabbit alternative</a></li><li><a href="/ai-code-review-tools/">AI code review tools, compared honestly</a></li></ul></section>
+  </article>
+</main>
+<footer class="foot">
+  <div class="wrap foot-base">
+    <span>deck · free and open source · Apache-2.0</span>
+    <span>Made for people who still prefer quality.</span>
+  </div>
+</footer>
+</body>
+</html>

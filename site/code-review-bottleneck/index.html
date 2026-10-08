@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Code review is the bottleneck now that AI writes the code</title>
+<meta name="description" content="Agents write code faster than anyone can read it, so the pressure moves to review. Why more code means less understanding, and how to review at the speed agents write.">
+<link rel="canonical" href="https://trydeck.dev/code-review-bottleneck/">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="deck">
+<meta property="og:title" content="Code review is the bottleneck now that AI writes the code">
+<meta property="og:description" content="Agents write code faster than anyone can read it, so the pressure moves to review. Why more code means less understanding, and how to review at the speed agents write.">
+<meta property="og:url" content="https://trydeck.dev/code-review-bottleneck/">
+<meta property="og:image" content="https://trydeck.dev/assets/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Code review is the bottleneck now that AI writes the code">
+<meta name="twitter:description" content="Agents write code faster than anyone can read it, so the pressure moves to review. Why more code means less understanding, and how to review at the speed agents write.">
+<meta name="twitter:image" content="https://trydeck.dev/assets/og.png">
+<meta name="theme-color" content="#0d0f0f">
+<link rel="icon" href="/assets/mark.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/css/site.css">
+<link rel="stylesheet" href="/css/docs.css">
+<link rel="stylesheet" href="/css/guide.css">
+<script type="application/ld+json">[{"@context": "https://schema.org", "@type": "Article", "headline": "Review is the bottleneck now", "description": "Agents write code faster than anyone can read it, so the pressure moves to review. Why more code means less understanding, and how to review at the speed agents write.", "author": {"@type": "Person", "name": "Henit Chobisa", "url": "https://github.com/henit-chobisa"}, "publisher": {"@type": "Organization", "name": "deck", "url": "https://trydeck.dev", "logo": {"@type": "ImageObject", "url": "https://trydeck.dev/assets/mark.svg"}}, "image": "https://trydeck.dev/assets/og.png", "mainEntityOfPage": "https://trydeck.dev/code-review-bottleneck/", "dateModified": "2026-10-08"}, {"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "deck", "item": "https://trydeck.dev/"}, {"@type": "ListItem", "position": 2, "name": "Guides", "item": "https://trydeck.dev/guides/"}, {"@type": "ListItem", "position": 3, "name": "Review is the bottleneck now", "item": "https://trydeck.dev/code-review-bottleneck/"}]}, {"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "Why is code review a bottleneck with AI coding tools?", "acceptedAnswer": {"@type": "Answer", "text": "Agents generate code faster than people can read it, so understanding and approving becomes the slow step."}}, {"@type": "Question", "name": "How do I review AI-written pull requests faster?", "acceptedAnswer": {"@type": "Answer", "text": "Review the decisions, not every line, and have the author, human or agent, show you where they are and why."}}, {"@type": "Question", "name": "Does deck speed up review?", "acceptedAnswer": {"@type": "Answer", "text": "It makes the review smaller: your agent shows you its few decisions with the evidence, instead of handing you the whole diff."}}]}]</script>
+</head>
+<body class="docs">
+<a class="skip" href="#doc">Skip to content</a>
+<header class="nav solid">
+  <a class="brand" href="/" aria-label="deck, home"><img src="/assets/mark.svg" alt="" width="28" height="28"><span>deck</span></a>
+  <nav aria-label="Main">
+    <a href="/#agent">How it works</a>
+    <a href="/#play">Try it</a>
+    <a href="/docs/">Docs</a>
+    <a href="/guides/">Guides</a>
+    <a href="https://github.com/henit-chobisa/deck">GitHub</a>
+    <a class="nav-install" href="/#install">Install</a>
+  </nav>
+</header>
+<main class="g-wrap" id="doc">
+  <nav class="crumbs" aria-label="Breadcrumb"><a href="/">deck</a> <span>/</span> <a href="/guides/">Guides</a></nav>
+  <article class="doc g-doc">
+    <p class="eyebrow accent">The review bottleneck</p>
+    <h1>Review is the bottleneck now</h1>
+    <p class="lede">Agents write code faster than anyone can read it, so the pressure moves to review. Why more code means less understanding, and how to review at the speed agents write.</p>
+    <p>Writing code got fast. Reviewing it did not. A teammate opens an 800-line pull request written in three hours instead of three days, and someone has to approve it before lunch.</p>
+<h2 id="the-pressure-moved">The pressure moved</h2>
+<p>When generation gets cheap, the expensive part is everything after it: understanding, deciding, owning. Teams feel this as more pull requests, bigger diffs, and approvals that mean less each week.</p>
+<h2 id="faster-reading-will-not-fix-it">Faster reading will not fix it</h2>
+<p>You cannot read 800 lines faster. You can read fewer of them: the decisions, with their evidence beside them, and skip the consequences.</p>
+<p>That only works if someone tells you where the decisions are. The person best placed to do that is the one who made them, which is now often the agent.</p>
+<h2 id="let-the-author-do-the-explaining">Let the author do the explaining</h2>
+<p><a href="/">deck</a> gives your agent a way to hand you its decisions instead of its diff. One claim per group, the lines lit beside each sentence, a chart when the claim is about load or timing. You review the argument in minutes and push back on the lines that matter. The agent answers with everything it knew when it wrote the code.</p>
+<p>Review stays a human decision. It just stops being a reading contest.</p>
+    <aside class="cta" aria-label="Try deck">
+  <div>
+    <p class="cta-title">See your agent's decisions on the lines.</p>
+    <p>deck is free and open source. It works with Claude Code, Codex, Cursor, Amp and any agent with a shell.</p>
+  </div>
+  <div class="cta-actions">
+    <a class="star" href="/#install">Install deck</a>
+    <a class="cta-alt" href="/#play">Try a real deck in your browser</a>
+  </div>
+</aside>
+    <section class="g-faq" aria-labelledby="faq"><h2 id="faq">Questions</h2><details><summary>Why is code review a bottleneck with AI coding tools?</summary><p>Agents generate code faster than people can read it, so understanding and approving becomes the slow step.</p></details><details><summary>How do I review AI-written pull requests faster?</summary><p>Review the decisions, not every line, and have the author, human or agent, show you where they are and why.</p></details><details><summary>Does deck speed up review?</summary><p>It makes the review smaller: your agent shows you its few decisions with the evidence, instead of handing you the whole diff.</p></details></section>
+    <section class="g-related" aria-labelledby="more"><h2 id="more">Keep reading</h2><ul><li><a href="/ai-code-review/">How to review code your agent wrote</a></li><li><a href="/understand-ai-generated-code/">Understanding code your agent wrote</a></li><li><a href="/review-large-pull-requests/">How to review a 20,000-line pull request</a></li></ul></section>
+  </article>
+</main>
+<footer class="foot">
+  <div class="wrap foot-base">
+    <span>deck · free and open source · Apache-2.0</span>
+    <span>Made for people who still prefer quality.</span>
+  </div>
+</footer>
+</body>
+</html>

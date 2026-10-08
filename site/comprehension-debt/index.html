@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Comprehension debt: the cost of code nobody on the team understands</title>
+<meta name="description" content="Comprehension debt (or cognitive debt) is the gap between the code your agent wrote and what your team understands. Why it grows, why it bites, and how to pay it down as you go.">
+<link rel="canonical" href="https://trydeck.dev/comprehension-debt/">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="deck">
+<meta property="og:title" content="Comprehension debt: the cost of code nobody on the team understands">
+<meta property="og:description" content="Comprehension debt (or cognitive debt) is the gap between the code your agent wrote and what your team understands. Why it grows, why it bites, and how to pay it down as you go.">
+<meta property="og:url" content="https://trydeck.dev/comprehension-debt/">
+<meta property="og:image" content="https://trydeck.dev/assets/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Comprehension debt: the cost of code nobody on the team understands">
+<meta name="twitter:description" content="Comprehension debt (or cognitive debt) is the gap between the code your agent wrote and what your team understands. Why it grows, why it bites, and how to pay it down as you go.">
+<meta name="twitter:image" content="https://trydeck.dev/assets/og.png">
+<meta name="theme-color" content="#0d0f0f">
+<link rel="icon" href="/assets/mark.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/css/site.css">
+<link rel="stylesheet" href="/css/docs.css">
+<link rel="stylesheet" href="/css/guide.css">
+<script type="application/ld+json">[{"@context": "https://schema.org", "@type": "Article", "headline": "Comprehension debt, and how to pay it down", "description": "Comprehension debt (or cognitive debt) is the gap between the code your agent wrote and what your team understands. Why it grows, why it bites, and how to pay it down as you go.", "author": {"@type": "Person", "name": "Henit Chobisa", "url": "https://github.com/henit-chobisa"}, "publisher": {"@type": "Organization", "name": "deck", "url": "https://trydeck.dev", "logo": {"@type": "ImageObject", "url": "https://trydeck.dev/assets/mark.svg"}}, "image": "https://trydeck.dev/assets/og.png", "mainEntityOfPage": "https://trydeck.dev/comprehension-debt/", "dateModified": "2026-10-08"}, {"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "deck", "item": "https://trydeck.dev/"}, {"@type": "ListItem", "position": 2, "name": "Guides", "item": "https://trydeck.dev/guides/"}, {"@type": "ListItem", "position": 3, "name": "Comprehension debt, and how to pay it down", "item": "https://trydeck.dev/comprehension-debt/"}]}, {"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "What is comprehension debt?", "acceptedAnswer": {"@type": "Answer", "text": "The gap between the code in your system and what your team understands of it. It grows quickly when AI agents write code that gets approved without being understood."}}, {"@type": "Question", "name": "Is comprehension debt the same as technical debt?", "acceptedAnswer": {"@type": "Answer", "text": "No. Technical debt is known shortcuts. Comprehension debt is code that may be fine but nobody can reason about."}}, {"@type": "Question", "name": "How does deck help with comprehension debt?", "acceptedAnswer": {"@type": "Answer", "text": "It has your agent show you each change on the actual lines while it still has the context, so understanding is built at the moment it is cheapest."}}]}]</script>
+</head>
+<body class="docs">
+<a class="skip" href="#doc">Skip to content</a>
+<header class="nav solid">
+  <a class="brand" href="/" aria-label="deck, home"><img src="/assets/mark.svg" alt="" width="28" height="28"><span>deck</span></a>
+  <nav aria-label="Main">
+    <a href="/#agent">How it works</a>
+    <a href="/#play">Try it</a>
+    <a href="/docs/">Docs</a>
+    <a href="/guides/">Guides</a>
+    <a href="https://github.com/henit-chobisa/deck">GitHub</a>
+    <a class="nav-install" href="/#install">Install</a>
+  </nav>
+</header>
+<main class="g-wrap" id="doc">
+  <nav class="crumbs" aria-label="Breadcrumb"><a href="/">deck</a> <span>/</span> <a href="/guides/">Guides</a></nav>
+  <article class="doc g-doc">
+    <p class="eyebrow accent">Comprehension debt</p>
+    <h1>Comprehension debt, and how to pay it down</h1>
+    <p class="lede">Comprehension debt (or cognitive debt) is the gap between the code your agent wrote and what your team understands. Why it grows, why it bites, and how to pay it down as you go.</p>
+    <p>Technical debt is code you know is wrong. <strong>Comprehension debt</strong> is code that might be fine, but nobody understands it well enough to say. Some people call it cognitive debt. Either way, it grows fastest when an agent writes the code.</p>
+<h2 id="how-it-builds-up">How it builds up</h2>
+<p>Every change your agent makes is reasonable. You approve it, because it works and you are busy. The understanding you would have built by writing it never gets built. A month later, a bug lands in that code, and nobody can reason about it quickly. That delay is the interest on the debt.</p>
+<h2 id="why-it-bites">Why it bites</h2>
+<ul><li>Incidents take longer, because nobody holds the model of the system.</li><li>Changes get riskier, because nobody knows what relies on what.</li><li>The agent itself gets worse: you cannot correct what you do not understand, so its mistakes compound.</li></ul>
+<h2 id="pay-it-down-as-you-go">Pay it down as you go</h2>
+<p>The cheapest time to understand a change is the moment it is made, while the agent still holds the whole context. A few minutes then saves hours later.</p>
+<p><a href="/">deck</a> makes that moment cheap. Your agent shows you the change as a short deck: the situation, the lines that carry it, and the decision, each sentence lighting the code it is about. You ask where it does not add up, and the answer comes back on the lines. You end up understanding the decision, not just having approved it.</p>
+<h2 id="a-rule-of-thumb">A rule of thumb</h2>
+<p>If you could not explain a change to a teammate in two minutes, ask your agent to show it to you before you merge it.</p>
+    <aside class="cta" aria-label="Try deck">
+  <div>
+    <p class="cta-title">See your agent's decisions on the lines.</p>
+    <p>deck is free and open source. It works with Claude Code, Codex, Cursor, Amp and any agent with a shell.</p>
+  </div>
+  <div class="cta-actions">
+    <a class="star" href="/#install">Install deck</a>
+    <a class="cta-alt" href="/#play">Try a real deck in your browser</a>
+  </div>
+</aside>
+    <section class="g-faq" aria-labelledby="faq"><h2 id="faq">Questions</h2><details><summary>What is comprehension debt?</summary><p>The gap between the code in your system and what your team understands of it. It grows quickly when AI agents write code that gets approved without being understood.</p></details><details><summary>Is comprehension debt the same as technical debt?</summary><p>No. Technical debt is known shortcuts. Comprehension debt is code that may be fine but nobody can reason about.</p></details><details><summary>How does deck help with comprehension debt?</summary><p>It has your agent show you each change on the actual lines while it still has the context, so understanding is built at the moment it is cheapest.</p></details></section>
+    <section class="g-related" aria-labelledby="more"><h2 id="more">Keep reading</h2><ul><li><a href="/code-review-bottleneck/">Review is the bottleneck now</a></li><li><a href="/ai-code-review/">How to review code your agent wrote</a></li><li><a href="/understand-ai-generated-code/">Understanding code your agent wrote</a></li></ul></section>
+  </article>
+</main>
+<footer class="foot">
+  <div class="wrap foot-base">
+    <span>deck · free and open source · Apache-2.0</span>
+    <span>Made for people who still prefer quality.</span>
+  </div>
+</footer>
+</body>
+</html>
