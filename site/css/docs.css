@@ -1,7 +1,7 @@
 .nav.solid { background: rgba(13,15,15,0.94); border-bottom: 1px solid #1d1f1f; backdrop-filter: blur(8px); }
 .doc-wrap { max-width: 1200px; margin: 0 auto; padding: 108px var(--gut) 96px; display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 64px; }
 .toc { position: sticky; top: 96px; align-self: start; display: flex; flex-direction: column; gap: 2px; max-height: calc(100vh - 120px); overflow: auto; font-size: 14.5px; }
-.toc p { font-family: var(--mono); font-size: 11.5px; letter-spacing: 0.1em; text-transform: uppercase; color: #665c54; margin: 18px 0 6px; }
+.toc p { font-family: var(--mono); font-size: 11.5px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--faint); margin: 18px 0 6px; }
 .toc p:first-child { margin-top: 0; }
 .toc a { color: var(--muted); padding: 5px 10px; border-left: 2px solid transparent; margin-left: -12px; }
 .toc a:hover { color: var(--fg); }

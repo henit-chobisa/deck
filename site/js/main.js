@@ -60,13 +60,17 @@
       canvas.width = Math.round(w * dpr); canvas.height = Math.round(h * dpr)
     }
     size()
-    addEventListener('resize', size)
+    // Sized from the element itself: Safari settles the stage's height (100svh)
+    // after the first layout and fires no resize when it does, which left the
+    // drawing buffer at the wrong height and the text stretched.
+    new ResizeObserver(size).observe(canvas)
     let font = '"JetBrains Mono", ui-monospace, monospace'
     // quiet: how much of the middle to keep clear for the headline (0 to 1)
     function draw(dt, p, quiet) {
       const c = smooth((p - 0.46) / 0.3)            // the collapse
       const speed = reduce ? 0 : 0.045 + smooth(p / 0.5) * 0.55
       const F = Math.min(w, h) * 0.62, cx = w / 2, cy = h / 2
+      if (canvas.width !== Math.round(canvas.clientWidth * dpr) || canvas.height !== Math.round(canvas.clientHeight * dpr)) size()
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
       ctx.clearRect(0, 0, w, h)
       const pull = 1 - c
@@ -327,8 +331,10 @@
   })
   tabs()
 
+  const nav = document.querySelector('.nav'), hero = document.querySelector('.hero')
   function frame(now) {
     if (lenis) lenis.raf(now)
+    if (nav && hero) nav.classList.toggle('solid', hero.getBoundingClientRect().bottom < innerHeight * 0.6)
     for (const { s, thing } of scenes) {
       if (thing === scenes[0].thing || visible(s)) thing.update(progress(s), now)
     }

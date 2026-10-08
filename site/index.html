@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>deck — make your agent show you</title>
-<meta name="description" content="deck is a window your coding agent opens on your screen. It puts the code beside the claim, lights the lines where the decision lives, draws what moves, and waits for your call.">
+<meta name="description" content="deck is a window your coding agent puts on your screen, as a bar you open when you are ready. It puts the code beside the claim, lights the lines where the decision lives, draws what moves, and waits for your call.">
 <meta property="og:title" content="deck — make your agent show you">
 <meta property="og:description" content="Focused on engineers, built for agents. Your agent writes faster than anyone can read. Make it show you.">
 <meta property="og:type" content="website">
@@ -49,7 +49,7 @@
       <div class="signal">
         <img class="signal-mark" src="assets/mark.svg" alt="" width="112" height="112">
         <h2>Make it show you.</h2>
-        <p class="lede">deck is a window your agent opens on your screen. It puts the code beside the claim, lights the lines where the decision lives, draws what moves, and waits for your call.</p>
+        <p class="lede">deck is a window your agent puts on your screen, as a bar you open when you are ready. It puts the code beside the claim, lights the lines where the decision lives, draws what moves, and waits for your call.</p>
       </div>
       <div class="cue" aria-hidden="true"><span>scroll</span><i></i></div>
     </div>
@@ -138,7 +138,7 @@
           <div class="work" data-show="1"><b class="bullet">⏺</b> Read <span class="hl">pricing.service.ts</span>, <span class="hl">map of the catalog</span>, <span class="hl">10:00 traffic</span>. Two or more locations: this is a deck.</div>
           <div class="cmd" data-show="2"><b>$</b> deck new --title <s>"Every hour, on the hour, checkout p99 jumps to 4 seconds"</s> --total 2</div>
           <div class="out" data-show="2">~/.deck/decks/d-1791214494-5575.deck</div>
-          <div class="cmd" data-show="3"><b>$</b> deck open d-1791214494-5575.deck <span class="dim">&amp;  # waits for your review</span></div>
+          <div class="cmd" data-show="3"><b>$</b> D=~/.deck/decks/d-1791214494-5575.deck; deck open $D <span class="dim">&amp;  # waits for your review</span></div>
           <div class="cmd" data-show="4"><b>$</b> deck group $D --say <s>"[point calm] Most of the hour, [point 29-30 redis] [pricing] answers from Redis in two milliseconds. [point expire] At 10:00:00 every price key expires at once…"</s> \<br>&nbsp;&nbsp;--ref <s>"services/catalog/src/pricing/pricing.service.ts:26-40 [pricing]"</s> \<br>&nbsp;&nbsp;--diagram <s>"map.json [map]"</s> --page <s>"requests.html [requests]"</s></div>
           <div class="cmd" data-show="5"><b>$</b> deck group $D --say <s>"[point fix] Spread the expiry, and [requests] stays quiet…"</s> --ref <s>"…pricing.service.ts:38 [pricing]"</s> --after <s>"…"</s></div>
           <div class="cmd" data-show="5"><b>$</b> deck seal $D</div>
@@ -205,8 +205,6 @@
       <p class="lede">Click a sentence and its lines light. Press <kbd>n</kbd> and <kbd>p</kbd> to move between groups. Click a line, press <kbd>c</kbd>, and say what you would change. Press <b>on the hour</b> in the map.</p>
     </div>
     <div class="wrap wide">
-      <div class="dk" id="dk" tabindex="0" aria-label="A working deck. Keys: n next group, p previous group, c comment on the selected lines, z lights, esc discard.">
-      </div>
       <div class="asks" aria-label="Questions you can ask the agent">
         <span>Ask it:</span>
         <button type="button" data-ask="0">Why does it come back at 11:00?</button>
@@ -214,6 +212,9 @@
         <button type="button" data-ask="2">Why not a single-flight lock?</button>
       </div>
       <p class="note">This deck runs in your browser, with answers written in advance. In the real window, your own agent answers whatever you type.</p>
+      <div class="dk" id="dk" tabindex="0" aria-label="A working deck. Keys: n next group, p previous group, c comment on the selected lines, z lights, esc discard.">
+        <noscript><p class="dk-nojs">This deck needs JavaScript to run. The recordings above show the real window.</p></noscript>
+      </div>
     </div>
   </section>
 
@@ -277,7 +278,7 @@
   </div>
 </footer>
 
-<script src="https://cdn.jsdelivr.net/npm/lenis@1.1.13/dist/lenis.min.js" defer></script>
+<script src="https://cdn.jsdelivr.net/npm/lenis@1.1.13/dist/lenis.min.js" integrity="sha384-B2WBjDzEjJpYvhmi2UyEn7rektqkf5suS6sNoyyrf0EBAwBHdkiXxIlU0V5Ru2ed" crossorigin="anonymous" defer></script>
 <script src="js/requests.js" defer></script>
 <script src="js/play.js" defer></script>
 <script src="js/main.js" defer></script>

@@ -17,10 +17,6 @@ on:
 permissions:
   contents: read
 
-concurrency:
-  group: pages
-  cancel-in-progress: false
-
 jobs:
   build:
     name: Build
@@ -47,6 +43,8 @@ jobs:
               [ -e "$target" ] || { echo "$page links to $ref, which is not there"; exit 1; }
             done
           done
+      - name: Leave out what is not part of the site
+        run: rm -f site/README.md
       - uses: actions/upload-pages-artifact@v3
         with:
           path: site
@@ -56,6 +54,10 @@ jobs:
     if: github.event_name != 'pull_request'
     needs: build
     runs-on: ubuntu-latest
+    # Only deploys share a group, so a pull request can never cancel one.
+    concurrency:
+      group: pages
+      cancel-in-progress: false
     permissions:
       pages: write
       id-token: write

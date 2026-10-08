@@ -155,8 +155,8 @@
           '</div>' +
         '</div>' +
         '<div class="dk-keys"><p>KEYS</p>' +
-          [['n', 'next'], ['p', 'previous'], ['w', 'walk'], ['c', 'comment'], ['t', 'turn'], ['⟲', 'clear'], ['z', 'lights'], ['h', 'hide'], ['s', 'submit'], ['q', 'close']]
-            .map(([k, l]) => '<button type="button" data-key="' + (k === '⟲' ? 'clear' : k) + '"><kbd>' + k + '</kbd>' + l + '</button>').join('') +
+          [['n', 'next'], ['p', 'previous'], ['w', 'walk'], ['c', 'comment'], ['t', 'turn'], ['⎋', 'clear'], ['z', 'lights'], ['h', 'hide'], ['s', 'submit'], ['q', 'close']]
+            .map(([k, l]) => '<button type="button" data-key="' + (k === '⎋' ? 'clear' : k) + '"><kbd>' + k + '</kbd>' + l + '</button>').join('') +
         '</div>' +
       '</div>' +
       '<div class="dk-room">' +
@@ -172,7 +172,7 @@
             '<div class="row"><span>esc discard</span><button type="button" class="later">Add to review<span class="hint">⇧⌘↩</span></button><button type="button" class="now">Ask now<span class="hint">⌘↩</span></button></div></div>' +
         '</aside>' +
       '</div>' +
-      '<div class="dk-foot"><span class="grp"></span><span class="msg" aria-live="polite"></span><span class="r"><span class="cnt">0 comments</span><span>d-1791214494-5575</span><span>deck 0.1.5</span></span></div>'
+      '<div class="dk-foot"><span class="grp"></span><span class="msg" aria-live="polite"></span><span class="r"><span class="cnt">0 comments</span><span>d-1791214494-5575</span><span>deck 0.1.4</span></span></div>'
   }
 
   function start() {
@@ -186,6 +186,7 @@
     $('.dk-title').textContent = TITLE
     const page = window.deckRequests ? window.deckRequests.mount($('.dk-page svg')) : { setPoint() {} }
 
+    let started = false, armed = false
     const st = { g: 0, s: 0, sel: null, lights: true, comments: [], walking: 0, flowing: 0, footTimer: 0, composing: false }
 
     function say(msg) {
@@ -242,7 +243,13 @@
       dk.querySelectorAll('.dk-pane').forEach((p) => p.classList.toggle('talk', st.lights && p.dataset.pane === S.talk))
       if (scroll) {
         const first = code.querySelector('.dk-ln.pt') || code.querySelector('.dk-ln.lit')
-        if (first) code.scrollTo({ top: Math.max(0, first.offsetTop - code.clientHeight / 3), behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' })
+        if (first) {
+          // Measured against the pane, not offsetTop: the row's offset parent
+          // is the pane, whose header sits above the scrolling body.
+          const top = code.scrollTop + first.getBoundingClientRect().top - code.getBoundingClientRect().top - code.clientHeight / 3
+          const quick = !started || matchMedia('(prefers-reduced-motion: reduce)').matches
+          code.scrollTo({ top: Math.max(0, top), behavior: quick ? 'auto' : 'smooth' })
+        }
       }
     }
 
@@ -394,6 +401,9 @@
       const A = ANSWERS[i]
       openRail(true)
       post('you', 'you · group ' + (st.g + 1) + ' · ' + stamp(), A.q)
+      if (st.composing) compose_(false)
+      armed = true
+      dk.focus({ preventScroll: true })
       reply(A.a, () => { walk(false); go(A.go.g, A.go.s) })
     }
 
@@ -411,6 +421,9 @@
         })
         cnt.textContent = n + (n === 1 ? ' comment' : ' comments')
       }
+      st.comments = []
+      updateCount()
+      renderCode()
     }
 
     // ---- input
@@ -419,7 +432,7 @@
       t: 't turns the panes a quarter in the window.',
       h: 'h puts the deck back on the bar, comments and all.',
       q: 'q closes without answering. Your agent hears that you closed it.',
-      clear: 'The agent clears the lights when it finishes a point.',
+      clear: 'esc clears what you selected; in a walk it also takes the agent\'s light off the page.',
     }
     function key(k) {
       if (k === 'n') { walk(false); go(st.g + 1, 0) }
@@ -427,10 +440,23 @@
       else if (k === 'c') compose_(true)
       else if (k === 's') submit()
       else if (k === 'z') { st.lights = !st.lights; apply(false); say(st.lights ? 'Lights on.' : 'Lights off.') }
+      else if (k === 'clear') { st.sel = null; renderCode(); say(MESSAGES.clear) }
       else if (MESSAGES[k]) say(MESSAGES[k])
     }
 
-    dk.addEventListener('keydown', (e) => {
+    // Safari does not focus the window when something inside it is clicked,
+    // so keys would go to the page. A press inside arms the keys, a press
+    // anywhere else disarms them, and the window takes focus itself.
+    document.addEventListener('pointerdown', (e) => {
+      armed = dk.contains(e.target)
+      if (armed && !e.target.closest('textarea, button, input')) dk.focus({ preventScroll: true })
+    })
+    document.addEventListener('keydown', (e) => {
+      if (!armed || dk.contains(e.target) || /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) return
+      onKey(e)
+    })
+    dk.addEventListener('keydown', (e) => onKey(e))
+    function onKey(e) {
       if (e.target === area) {
         if (e.key === 'Escape') { e.preventDefault(); compose_(false) }
         else if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); finish(!e.shiftKey) }
@@ -440,7 +466,7 @@
       if (e.key === 'Escape') { st.sel = null; renderCode(); return }
       const k = e.key.toLowerCase()
       if ('npcszwthq'.includes(k) && k.length === 1) { e.preventDefault(); key(k) }
-    })
+    }
 
     area.addEventListener('focus', () => { if (!st.composing) compose_(true) })
     compose.querySelector('.later').addEventListener('click', () => finish(false))
@@ -470,9 +496,13 @@
       if (ln && st.sel && st.sel.b !== +ln.dataset.i) { st.sel.b = +ln.dataset.i; renderCode() }
     })
     window.addEventListener('mouseup', () => { if (dragging) { dragging = false; say('Selected ' + where().replace('pricing.service.ts:', 'lines ') + '. Press c to comment.') } })
+    let touchFrom = null
+    code.addEventListener('touchstart', (e) => { const t = e.touches[0]; touchFrom = t ? [t.clientX, t.clientY] : null }, { passive: true })
     code.addEventListener('touchend', (e) => {
       const ln = e.target.closest('.dk-ln')
-      if (!ln) return
+      const t = e.changedTouches[0]
+      const moved = !touchFrom || !t || Math.hypot(t.clientX - touchFrom[0], t.clientY - touchFrom[1]) > 10
+      if (!ln || moved) return
       touchedAt = Date.now()
       st.sel = { a: +ln.dataset.i, b: +ln.dataset.i }
       renderCode()
@@ -483,6 +513,13 @@
 
     renderProse()
     apply(true)
+    // Again once it is on screen: a pane that has not been laid out yet
+    // cannot be scrolled to the lit lines.
+    requestAnimationFrame(() => apply(true))
+    const seen = new IntersectionObserver((es) => {
+      if (es.some((x) => x.isIntersecting)) { seen.disconnect(); apply(true); started = true }
+    })
+    seen.observe(dk)
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start)

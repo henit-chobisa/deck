@@ -181,7 +181,7 @@ editor = "vscode"   # nvim | zed | vscode | cursor | windsurf</code></pre>
       <h2>The catch</h2>
       <p>A skill is a suggestion, and an agent that has just finished an investigation is very inclined to type out what it found. So setup offers the catch: it reads each finished reply, and when one names two or more <code>file:line</code> locations, it sends the reply back and asks for a deck instead, while the agent still holds everything it just learned.</p>
       <p>It stays quiet whenever it might be wrong: when a deck was already built in that turn, when the reply is about deck itself, when one location is repeated, or for a version number or a time that only looks like a location.</p>
-      <p>The same hook also helps after a long session is compacted. When a session that has used deck picks up after a compaction, it tells the agent to load the deck skill again, so the decks it writes afterwards are as good as the first ones.</p>
+      <p>From 0.1.5, the same hook also helps after a long session is compacted. When a session that has used deck picks up after a compaction, it tells the agent to load the deck skill again, so the decks it writes afterwards are as good as the first ones.</p>
       <p>The catch needs an agent with reply hooks. <code>deck setup</code> offers it when yours has them. Say no and everything else still works; turn it on later by running <code>deck setup</code> again.</p>
     </section>
 
