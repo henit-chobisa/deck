@@ -31,17 +31,20 @@
   const visible = (el) => { const r = el.getBoundingClientRect(); return r.bottom > -100 && r.top < innerHeight + 100 }
 
   // ------------------------------------------------------------- the chatter
+  // What review sounds like when an agent writes the code: every line is about
+  // approving work nobody read, or a decision nobody made on purpose.
   const CHATTER = [
     'merged 4,000 lines I did not read', 'the agent said it was fine', 'who approved this?',
-    'it passed CI so…', 'LGTM', 'the diff is 12k lines', 'nobody knows why this works',
+    'it passed CI, so…', 'LGTM', 'the diff is 12k lines', 'nobody on the team wrote this',
     'reverted. again.', 'I am a PR approver now, not an engineer', 'what does this function even do',
-    'the agent wrote 40 files while I got coffee', 'ship it', 'I skimmed it', 'wait, where did the retry go?',
-    'looks good to me (did not run it)', 'can someone explain this migration', 'it works on my machine',
-    'just trust the tests', 'the PR description was longer than the code', 'approved from my phone',
-    'which file is the actual change?', 'I asked why and got 900 words', 'we have no idea what is in prod',
-    'rubber stamp', 'why are there three caches now', 'tab 37 of 41', 'see pricing.service.ts:42',
-    'nit: looks fine', 'it is 3am and the pager is going off', 'who wrote this? oh. the agent did',
-    'approve and pray', 'I will read it later', 'the review was five paragraphs', 'what did we just ship',
+    'the agent wrote 40 files while I got coffee', 'I skimmed it', 'wait, where did the retry go?',
+    'looks good to me (did not run it)', 'what did the agent change in billing?', 'which file is the actual change?',
+    'I asked why and got 900 words', 'see pricing.service.ts:42, cache.ts:17, pool.ts:9', 'the review was five paragraphs',
+    'why are there three caches now', 'tab 37 of 41', 'approved from my phone', 'the agent rewrote the migration',
+    'who decided to drop that index?', 'the summary says "minor refactor"', '1. (Recommended)',
+    'what did we just ship?', 'I will read it later', 'it compiles, so…', 'can someone explain this PR to me?',
+    'the agent fixed the test by changing the test', '20,000 lines, one approval', 'the PR description was longer than the code',
+    'I trust the tests the agent wrote', 'nobody knows why this works', 'did anyone read the agent\'s plan?',
   ]
 
   function Sky(canvas) {
@@ -110,6 +113,108 @@
       }
     }
     return { draw }
+  }
+
+  // ------------------------------------------------------- the flap board
+  // The headline as an airport board: two rows of 24 tiles that keep turning
+  // over to the next thing deck does. The first line is what a screen reader
+  // hears, and it never changes.
+  const BOARD = [
+    ['YOUR AGENT WRITES FASTER', 'THAN ANYONE CAN READ.'],
+    ['EVERY SENTENCE LIGHTS', 'THE LINES IT IS ABOUT.'],
+    ['WHAT MOVES, IT DRAWS,', 'IN STEP WITH THE WORDS.'],
+    ['DISAGREE ON THE LINE.', 'IT ANSWERS ON THE LINE.'],
+    ['A 20,000 LINE PR,', 'ONE CHAPTER AT A TIME.'],
+    ['SAME AGENT, SAME SESSION', 'NO NEW MODEL TO TRUST.'],
+    ['IT ARRIVES AS A BAR.', 'ONLY YOU CAN OPEN IT.'],
+    ['YOU DECIDE.', 'IT IMPLEMENTS.'],
+  ]
+  const DRUM = ' ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.,:-'
+  function Board(el, copy) {
+    // Two rows of 24 on a wide screen; four rows of 15 on a phone, where 24
+    // tiles across would be too small to read. Each message is wrapped by word.
+    let cols = 0, rows = 0, cells = [], at = 0
+    const wrap = (text, width) => {
+      const out = []; let line = ''
+      for (const w of text.split(' ')) {
+        if (!line) line = w
+        else if (line.length + 1 + w.length <= width) line += ' ' + w
+        else { out.push(line); line = w }
+      }
+      out.push(line)
+      return out
+    }
+    const lines = (msg) => cols === 24 ? msg : wrap(msg.join(' '), cols)
+    function build() {
+      const want = innerWidth < 600 ? [15, 4] : [24, 2]
+      if (want[0] === cols) return false
+      ;[cols, rows] = want
+      cells.forEach((o) => clearTimeout(o.timer))
+      el.textContent = ''
+      el.style.setProperty('--cols', cols)
+      cells = []
+      for (let i = 0; i < cols * rows; i++) {
+        const cell = document.createElement('span'); cell.className = 'cell blank'
+        const ch = document.createElement('span'); ch.className = 'ch'; ch.textContent = ' '
+        cell.appendChild(ch); el.appendChild(cell); cells.push({ cell, ch, now: ' ', timer: 0 })
+      }
+      return true
+    }
+    const layout = (msg) => {
+      const ls = lines(msg)
+      const top = Math.floor((rows - ls.length) / 2)
+      const grid = []
+      for (let r = 0; r < rows; r++) {
+        const row = ls[r - top] || ''
+        const pad = Math.floor((cols - row.length) / 2)
+        for (let c = 0; c < cols; c++) grid.push(row[c - pad] || ' ')
+      }
+      return grid
+    }
+    function set(o, c) {
+      o.now = c
+      o.ch.textContent = c
+      o.cell.classList.toggle('blank', c === ' ')
+      if (!reduce) { o.ch.classList.remove('tick'); void o.ch.offsetWidth; o.ch.classList.add('tick') }
+    }
+    function show(msg, instant) {
+      const want = layout(msg)
+      cells.forEach((o, i) => {
+        clearTimeout(o.timer)
+        const to = want[i]
+        if (o.now === to) return
+        if (instant || reduce) { set(o, to); return }
+        // Turn through a few of the drum's letters on the way, like a real
+        // board, in a wave from the left.
+        const steps = 3 + Math.floor(Math.random() * 7)
+        let k = 0
+        const turn = () => {
+          k++
+          set(o, k >= steps ? to : DRUM[1 + Math.floor(Math.random() * (DRUM.length - 1))])
+          if (k < steps) o.timer = setTimeout(turn, 60 + Math.random() * 40)
+        }
+        o.timer = setTimeout(turn, (i % cols) * 22 + Math.floor(i / cols) * 90)
+      })
+    }
+    // The tile size is set here rather than in CSS: WebKit does not recompute
+    // a custom property written in vw when the window is resized.
+    function fit() {
+      const room = el.parentElement.clientWidth
+      const gap = Math.max(2, Math.min(5, innerWidth * 0.0035))
+      const cw = Math.min(46, (room - (cols - 1) * gap) / cols)
+      el.style.setProperty('--gap', gap + 'px')
+      el.style.setProperty('--cw', cw.toFixed(2) + 'px')
+    }
+    build(); fit()
+    show(BOARD[0], false)
+    addEventListener('resize', () => { if (build()) show(BOARD[at], true); fit() })
+    if (reduce) return
+    setInterval(() => {
+      // Only while the headline is on screen and the tab is in front.
+      if (document.hidden || +(copy.style.opacity || 1) < 0.05) return
+      at = (at + 1) % BOARD.length
+      show(BOARD[at], false)
+    }, 4200)
   }
 
   // ------------------------------------------------------------ step scenes
@@ -268,6 +373,8 @@
     const copy = section.querySelector('.hero-copy'), signal = section.querySelector('.signal')
     const hush = section.querySelector('.hush'), cue = section.querySelector('.cue')
     const mark = section.querySelector('.signal-mark')
+    const board = section.querySelector('.board')
+    if (board) Board(board, copy)
     let last = performance.now()
     return {
       update(p, now) {

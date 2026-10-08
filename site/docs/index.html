@@ -44,6 +44,7 @@
     <a href="#pictures">Diagrams and pages</a>
     <p>Making it yours</p>
     <a href="#theme">Theming</a>
+    <a href="#config">Configuration</a>
     <a href="#catch">The catch</a>
     <p>Reference</p>
     <a href="#commands">What your agent runs</a>
@@ -175,6 +176,53 @@ editor = "vscode"   # nvim | zed | vscode | cursor | windsurf</code></pre>
       <pre><code>deck open &lt;deck&gt; --theme "vscode:Solarized Dark"</code></pre>
       <p>Light or dark follows your machine unless you pin it, which is worth doing for a recording:</p>
       <pre><code>deck open &lt;deck&gt; --mode dark --paper warm</code></pre>
+    </section>
+
+    <section id="config">
+      <h2>Configuration</h2>
+      <p>Everything lives in one file, <code>~/.deck/config.toml</code>. <code>deck setup</code> and <code>deck walk</code> write it for you, and every setting has a default, so an empty file and no file behave the same. Here is every setting, at its default unless a comment says otherwise. <code>editor</code> and <code>voice</code> show example values.</p>
+      <pre><code># ~/.deck/config.toml
+
+[theme]
+# Borrow an editor's colours: nvim, zed, vscode, cursor or windsurf,
+# or one of its themes, as "vscode:Solarized Dark". Default: none.
+editor = "vscode"
+paper  = "grey"      # the neutrals when nothing is borrowed: grey or warm
+mode   = "auto"      # auto follows your machine: auto, light or dark
+
+[theme.colors]
+# None by default. Any set here wins over everything else.
+# These values are only examples, from gruvbox.
+accent  = "#fe8019"  # lit lines, names and buttons
+bg      = "#282828"  # the page
+fg      = "#ebdbb2"  # the text
+muted   = "#a89984"  # secondary text
+edge    = "#3a3735"  # borders and seams
+add     = "#b8bb26"  # added lines in a diff
+del     = "#fb4934"  # removed lines in a diff
+comment = "#928374"  # comments in code
+# Also: band, wash, focus, on_accent, gone, fresh, ground.
+
+[layout]
+arrange        = "stacked"  # how panes fill: stacked, columns or grid
+max_columns    = 3          # never more columns than this
+min_pane_width = 60         # drop a column before a pane gets narrower
+max_panes      = 4          # more refs than this go to the next page
+
+[zen]                # z, the lights: how the screen behind dims
+dim  = 0.7           # 0 to 0.92, how far down the rest goes
+blur = true          # blur what is behind, as well as dim it
+
+[speech]             # written by deck walk
+aloud = true         # read the narration aloud while walking
+voice = "en-US-Chirp3-HD-Kore"  # deck walk lists the voices
+rate  = 165          # words per minute
+pause = 420          # milliseconds between paragraphs
+# key = "…"          # better in DECK_SPEECH_KEY, which is read first
+
+[updates]
+automatic = true     # false stops every request deck makes by itself</code></pre>
+      <p>Colours are hex, as <code>"#rrggbb"</code>. A key deck does not know is an error that names the key, rather than a setting quietly ignored: a misspelt <code>acent</code> tells you so instead of leaving the deck looking the same all afternoon.</p>
     </section>
 
     <section id="catch">

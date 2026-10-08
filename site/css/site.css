@@ -83,6 +83,18 @@ button { font: inherit; color: inherit; }
 .hush { position: absolute; inset: 0; pointer-events: none; background: radial-gradient(ellipse min(46vw, 640px) min(30vh, 300px) at 50% 52%, rgba(13,15,15,0.97) 0%, rgba(13,15,15,0.78) 52%, rgba(13,15,15,0) 100%); }
 .hero-copy, .signal { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 0 var(--gut); }
 .hero-copy h1 { font-size: clamp(40px, 6.6vw, 92px); max-width: 13.5em; letter-spacing: -0.04em; line-height: 1.02; }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+/* the title, as a split-flap board: 2 rows of 24 tiles */
+.flap { max-width: none !important; width: 100%; }
+.board { --cols: 24; --gap: clamp(2px, 0.35vw, 5px); --cw: min(46px, calc((100vw - 2 * var(--gut) - (var(--cols) - 1) * var(--gap)) / var(--cols))); display: grid; grid-template-columns: repeat(var(--cols), var(--cw)); gap: calc(var(--gap) * 1.6) var(--gap); justify-content: center; }
+.board .cell { position: relative; height: calc(var(--cw) * 1.42); border-radius: calc(var(--cw) * 0.1); background: linear-gradient(#1b1d1d 50%, #171919 50%); box-shadow: inset 0 0 0 1px #262828, 0 1px 0 rgba(0,0,0,0.6); display: flex; align-items: center; justify-content: center; overflow: hidden; perspective: 300px; }
+.board .cell::after { content: ""; position: absolute; left: 0; right: 0; top: 50%; height: 1px; margin-top: -0.5px; background: rgba(0,0,0,0.75); }
+.board .ch { font-family: var(--mono); font-weight: 600; font-size: calc(var(--cw) * 1.12); line-height: 1; letter-spacing: 0; color: var(--fg); transform-origin: 50% 50%; }
+.board .ch.tick { animation: flap .11s linear; }
+@keyframes flap { 0% { transform: rotateX(-80deg) scaleY(.6); filter: brightness(.45); } 100% { transform: none; filter: none; } }
+.board .cell.blank { background: linear-gradient(#141616 50%, #121414 50%); box-shadow: inset 0 0 0 1px #1d1f1f; }
+.board .cell.hot .ch { color: var(--accent); }
 .hero-copy .lede { margin-top: 26px; }
 .js .signal { opacity: 0; pointer-events: none; }
 .signal h2 { font-size: clamp(48px, 8vw, 112px); letter-spacing: -0.045em; margin-top: 34px; }
