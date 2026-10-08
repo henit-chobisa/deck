@@ -4,12 +4,13 @@
   'use strict'
 
   const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches
+  const reading = matchMedia('(prefers-reduced-motion: reduce)')
   const clamp = (v, a, b) => Math.min(b, Math.max(a, v))
   const smooth = (v) => { v = clamp(v, 0, 1); return v * v * (3 - 2 * v) }
 
   // ---------------------------------------------------------------- scroll
   let lenis = null
-  if (!reduce && window.Lenis) {
+  if (!reduce && !reading.matches && window.Lenis) {
     lenis = new window.Lenis({ lerp: 0.11, smoothWheel: true })
     document.addEventListener('click', (e) => {
       const a = e.target.closest('a[href^="#"]')
@@ -23,9 +24,15 @@
     })
   }
 
+  reading.addEventListener('change', () => {
+    if (reading.matches && lenis) { lenis.destroy(); lenis = null }
+  })
+
   function progress(section) {
     const r = section.getBoundingClientRect()
-    const run = r.height - innerHeight
+    // Safari's browser bars change innerHeight without changing the sticky
+    // stage's svh height; using two different heights made captions jump.
+    const run = r.height - section.querySelector('.stage').offsetHeight
     return run > 0 ? clamp(-r.top / run, 0, 1) : (r.top < 0 ? 1 : 0)
   }
   const visible = (el) => { const r = el.getBoundingClientRect(); return r.bottom > -100 && r.top < innerHeight + 100 }
@@ -155,10 +162,10 @@
   // `lines` in turn, written into `el`; `shown` says whether anybody can see
   // it, and nothing moves while they cannot.
   function Ask(el, lines, shown) {
-    if (reduce) return
+    if (reading.matches) return
     let at = 0, timers = []
     const later = (fn, ms) => timers.push(setTimeout(fn, ms))
-    const quiet = () => document.hidden || !shown()
+    const quiet = () => document.hidden || reading.matches || !shown()
     function write(text) {
       timers.forEach(clearTimeout); timers = []
       el.classList.remove('out')
@@ -210,12 +217,17 @@
     function set(s) {
       if (s === step) return
       step = s
+      section.classList.toggle('advanced', s > 0)
       section.querySelectorAll('[data-at]').forEach((e) => {
         const at = +e.dataset.at
+        e.setAttribute('aria-hidden', String(e.parentElement.classList.contains('beats') ? at > s : at !== s))
         e.classList.toggle('on', e.parentElement.classList.contains('beats') ? at <= s : at === s)
         e.classList.toggle('now', at === s)
       })
-      section.querySelectorAll('[data-show]').forEach((e) => e.classList.toggle('on', s >= +e.dataset.show))
+      section.querySelectorAll('[data-show]').forEach((e) => {
+        e.classList.toggle('on', s >= +e.dataset.show)
+        e.classList.toggle('past', s > +e.dataset.show)
+      })
       section.querySelectorAll('[data-hide]').forEach((e) => e.classList.toggle('off', s >= +e.dataset.hide))
       section.querySelectorAll('[data-only]').forEach((e) => e.classList.toggle('on', s === +e.dataset.only))
       section.querySelectorAll('.dots li').forEach((e, i) => e.classList.toggle('on', i <= s))
@@ -224,10 +236,21 @@
         const total = { words: shown.reduce((a, e) => a + words(e), 0), refs: shown.reduce((a, e) => a + refs(e), 0) }
         counts.forEach((c) => countTo(c, total[c.dataset.count]))
       }
-      if (roll && body) requestAnimationFrame(() => scrollRoll(s))
+      if (roll && body) {
+        if (reading.matches) scrollRoll(s)
+        else requestAnimationFrame(() => scrollRoll(s))
+      }
     }
 
     function scrollRoll(s) {
+      if (reading.matches) {
+        // Each phone step is a readable excerpt, not a translated slice of
+        // one long transcript. Safari can move the outer page when a hidden
+        // excerpt is revealed and its nested scroller jumps in the same tap.
+        roll.style.transform = 'none'
+        body.scrollTop = 0
+        return
+      }
       const shown = Array.from(roll.querySelectorAll(':scope > [data-show]')).filter((e) => +e.dataset.show === s)
       const style = getComputedStyle(body)
       const view = body.clientHeight - parseFloat(style.paddingTop) - parseFloat(style.paddingBottom)
@@ -238,6 +261,7 @@
         y = bottom ? last.offsetTop + last.offsetHeight - view : first.offsetTop - 8
         if (!bottom && s === 1) y = 0
       }
+      body.scrollTop = 0
       roll.style.transform = 'translateY(' + (-clamp(y, 0, max)) + 'px)'
     }
 
@@ -265,50 +289,75 @@
     const canvas = section.querySelector('.reel-canvas')
     const ctx = canvas.getContext('2d')
     const bar = section.querySelector('.reel-load'), barFill = bar.querySelector('i')
-    const set = (innerWidth < 900 || (navigator.connection && navigator.connection.saveData)) ? 's' : 'l'
-    const imgs = new Array(FRAMES).fill(null)
-    let want = 0, shown = -1, loaded = 0, started = false, cut = -1
-    const url = (i) => 'frames/' + set + '/' + String(i).padStart(3, '0') + '.webp'
+    // 360 native Retina frames would occupy several GB decoded. Keep only
+    // the current neighbourhood, and always request the wanted frame first.
+    const imgs = new Map(), pending = new Set(), failed = new Set()
+    let tier = 'l', want = 0, shown = -1, started = false, cut = -1, generation = 0
+    const filename = (i) => String(i).padStart(3, '0') + '.webp'
+    const url = (i, size = tier) => 'frames/retina/' + size + '/' + filename(i)
 
-    function begin() {
-      if (started) return
-      started = true
-      const order = [], seen = new Set()
-      for (const stride of [24, 12, 6, 3, 1]) for (let i = 0; i < FRAMES; i += stride) if (!seen.has(i)) { seen.add(i); order.push(i) }
-      let next = 0
-      const pump = () => {
-        if (next >= order.length) return
-        const i = order[next++]
+    function pump() {
+      if (!started) return
+      const order = reading.matches ? [want] : [want, want + 1, want - 1, want + 2, want - 2, want + 3, want - 3]
+      for (const i of order) {
+        if (pending.size >= 3) break
+        if (i < 0 || i >= FRAMES || imgs.has(i) || pending.has(i) || failed.has(i)) continue
+        pending.add(i)
+        const epoch = generation
         const im = new Image()
         im.decoding = 'async'
-        im.onload = () => { imgs[i] = im; loaded++; barFill.style.width = (loaded / FRAMES * 100) + '%'; if (loaded === FRAMES) bar.classList.add('done'); if (Math.abs(i - want) < Math.abs(shown - want) || shown < 0) draw(); pump() }
-        im.onerror = () => { loaded++; pump() }
+        let fallback = false
+        const finish = (ok) => {
+          if (epoch !== generation) return
+          pending.delete(i)
+          if (ok) {
+            imgs.set(i, im)
+            while (imgs.size > 8) {
+              const farthest = [...imgs.keys()].sort((a, b) => Math.abs(b - want) - Math.abs(a - want))[0]
+              imgs.delete(farthest)
+            }
+            draw()
+          } else failed.add(i)
+          pump()
+        }
+        im.onload = () => finish(true)
+        im.onerror = () => {
+          // Asset publication can lag the HTML deployment. Keep the existing
+          // recording working during that interval, never a blank canvas.
+          if (!fallback) { fallback = true; im.src = 'frames/l/' + filename(i) }
+          else finish(false)
+        }
         im.src = url(i)
       }
-      for (let k = 0; k < 6; k++) pump()
     }
 
+    function begin() { started = true; pump() }
+
     function nearest(i) {
-      for (let d = 0; d < FRAMES; d++) {
-        if (i - d >= 0 && imgs[i - d]) return i - d
-        if (i + d < FRAMES && imgs[i + d]) return i + d
-      }
-      return -1
+      return [...imgs.keys()].sort((a, b) => Math.abs(a - i) - Math.abs(b - i))[0] ?? -1
     }
 
     function fit() {
-      const dpr = Math.min(2, devicePixelRatio || 1)
+      const dpr = Math.min(3, devicePixelRatio || 1)
       canvas.width = Math.round(canvas.clientWidth * dpr)
       canvas.height = Math.round(canvas.clientHeight * dpr)
+      // A narrow Retina window still needs more than a 720px phone export.
+      // Use the painted image width, not the browser's CSS breakpoint.
+      const pixels = Math.min(canvas.width, canvas.height * 1.254)
+      const next = pixels > 1200 ? 'h' : 'l'
+      if (next !== tier) {
+        tier = next; generation++
+        imgs.clear(); pending.clear(); failed.clear()
+      }
       shown = -1
-      draw()
+      draw(); pump()
     }
 
     function draw() {
       const i = nearest(want)
       if (i < 0 || i === shown) return
       shown = i
-      const im = imgs[i], W = canvas.width, H = canvas.height
+      const im = imgs.get(i), W = canvas.width, H = canvas.height
       const k = Math.min(W / im.naturalWidth, H / im.naturalHeight)
       const dw = im.naturalWidth * k, dh = im.naturalHeight * k, x = (W - dw) / 2, y = (H - dh) / 2
       ctx.clearRect(0, 0, W, H)
@@ -317,8 +366,12 @@
       const r = dw * 0.012
       if (ctx.roundRect) ctx.roundRect(x, y, dw, dh, r); else ctx.rect(x, y, dw, dh)
       ctx.clip()
+      ctx.imageSmoothingEnabled = true
+      ctx.imageSmoothingQuality = 'high'
       ctx.drawImage(im, x, y, dw, dh)
       ctx.restore()
+      barFill.style.width = (i === want ? 100 : 40) + '%'
+      bar.classList.toggle('done', i === want)
     }
 
     function caption(c) {
@@ -327,6 +380,7 @@
       section.querySelectorAll('[data-at]').forEach((e) => {
         const at = +e.dataset.at
         e.classList.toggle('on', at === c)
+        e.setAttribute('aria-hidden', String(at !== c))
         e.classList.toggle('done', at < c)
       })
     }
@@ -335,8 +389,10 @@
     new ResizeObserver(fit).observe(canvas)
     caption(0)
     return {
+      frameUrl(index) { return url(CUTS[index], 'h') },
       update(p) {
         want = Math.round(p * (FRAMES - 1))
+        pump()
         let c = 0
         for (let k = 0; k < CUTS.length; k++) if (want >= CUTS[k]) c = k
         caption(c)
@@ -359,7 +415,11 @@
     return {
       update(p, now) {
         const dt = Math.min(0.05, (now - last) / 1000); last = now
-        
+        if (reading.matches) {
+          for (const el of [copy, signal, mark]) el.removeAttribute('style')
+          return
+        }
+
         const out = 1 - smooth((p - 0.1) / 0.2)
         const inn = smooth((p - 0.7) / 0.18)
         if (visible(section)) sky.draw(dt, p, Math.max(out, inn))
@@ -414,7 +474,45 @@
   document.querySelectorAll('[data-scene]').forEach((s) => {
     const kind = s.dataset.scene
     const thing = kind === 'hero' ? Hero(s) : kind === 'reel' ? Reel(s) : Steps(s)
-    scenes.push({ s, thing })
+    let manual = 0
+    if (kind !== 'hero') {
+      const total = kind === 'reel' ? CUTS.length : +s.dataset.steps
+      const controls = document.createElement('div')
+      controls.className = 'scene-controls'
+      controls.setAttribute('role', 'group')
+      controls.setAttribute('aria-label', s.querySelector('.eyebrow').textContent + ' steps')
+      const prev = document.createElement('button'), next = document.createElement('button')
+      const count = document.createElement('output')
+      const position = document.createElement('div')
+      position.className = 'scene-position'
+      position.appendChild(count)
+      let fullSize = null
+      if (kind === 'reel') {
+        fullSize = document.createElement('a')
+        fullSize.textContent = 'View image'
+        fullSize.setAttribute('aria-label', 'Open recording frame full size in a new tab')
+        fullSize.target = '_blank'; fullSize.rel = 'noopener'
+        position.appendChild(fullSize)
+      }
+      count.setAttribute('aria-live', 'polite')
+      prev.type = next.type = 'button'
+      prev.textContent = 'Previous'; next.textContent = 'Next'
+      let index = 0
+      const pick = (i) => {
+        index = clamp(i, 0, total - 1)
+        manual = kind === 'reel' ? CUTS[index] / (FRAMES - 1) : (index + 0.5) / total
+        prev.disabled = index === 0; next.disabled = index === total - 1
+        count.textContent = (index + 1) + ' of ' + total
+        if (fullSize) fullSize.href = thing.frameUrl(index)
+        if (reading.matches) thing.update(manual)
+      }
+      prev.addEventListener('click', () => pick(index - 1))
+      next.addEventListener('click', () => pick(index + 1))
+      controls.append(prev, position, next)
+      s.querySelector('.stage').appendChild(controls)
+      pick(0)
+    }
+    scenes.push({ s, thing, manual: () => manual })
   })
   tabs()
 
@@ -434,9 +532,9 @@
   const nav = document.querySelector('.nav'), hero = document.querySelector('.hero')
   function frame(now) {
     if (lenis) lenis.raf(now)
-    if (nav && hero) nav.classList.toggle('solid', hero.getBoundingClientRect().bottom < innerHeight * 0.6)
-    for (const { s, thing } of scenes) {
-      if (thing === scenes[0].thing || visible(s)) thing.update(progress(s), now)
+    if (nav && hero) nav.classList.toggle('solid', reading.matches || hero.getBoundingClientRect().bottom < innerHeight * 0.6)
+    for (const { s, thing, manual } of scenes) {
+      if (thing === scenes[0].thing || visible(s)) thing.update(reading.matches ? manual() : progress(s), now)
     }
     requestAnimationFrame(frame)
   }

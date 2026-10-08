@@ -19,7 +19,7 @@
 .g-hub-head { max-width: 760px; margin-bottom: 48px; }
 .g-hub-head h1 { font-size: clamp(36px, 5vw, 58px); letter-spacing: -0.035em; }
 .g-hub-head .lede { margin-top: 18px; }
-.g-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 16px; }
+.g-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr)); gap: 16px; }
 .g-card { display: flex; flex-direction: column; gap: 10px; padding: 22px; border: 1px solid var(--edge-2); border-radius: 14px; background: #121414; color: var(--fg); transition: border-color .2s, background .2s; }
 .g-card:hover { border-color: var(--accent); background: #161818; color: var(--fg); }
 .g-card .eyebrow { margin: 0; }

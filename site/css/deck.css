@@ -23,13 +23,13 @@
   display: grid;
   grid-template-rows: auto minmax(0, 1fr) auto;
   height: 820px;
-  border: 2px solid var(--accent);
+  border: 1px solid #66503a;
   border-radius: 12px;
   overflow: hidden;
   background: var(--wash);
   color: var(--fg);
   font-family: var(--sans);
-  box-shadow: 0 50px 140px rgba(0, 0, 0, 0.6);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.2);
   user-select: none;
   -webkit-user-select: none;
 }
@@ -142,7 +142,18 @@
 @media (max-width: 860px) {
   .dk { height: auto; grid-template-rows: auto auto auto; }
   .dk-band { grid-template-columns: minmax(0, 1fr); }
-  .dk-keys { display: none; }
+  .dk-keys { display: flex; flex-wrap: wrap; gap: 6px; padding: 12px; border-left: 0; border-top: 1px solid var(--seam); }
+  .dk-keys p, .dk-keys kbd { display: none; }
+  .dk-keys button { width: auto; min-height: 44px; padding: 0 12px; border: 1px solid var(--edge-2); border-radius: 6px; font: 13px var(--sans); }
+  .dk-keys button[data-key="w"], .dk-keys button[data-key="t"], .dk-keys button[data-key="z"], .dk-keys button[data-key="h"], .dk-keys button[data-key="q"] { display: none; }
+  .dk-keys button[data-key="p"] { order: -1; }
+  .dk-say { padding: 16px; }
+  .dk-prose { font-size: 14px; line-height: 1.65; }
+  .dk-compose textarea { font-size: 16px; }
+  .dk-compose .row { flex-wrap: wrap; }
+  .dk-compose .row > span, .dk-compose .hint { display: none; }
+  .dk-compose .row button, .dk-rail-head, .dk-again { min-height: 44px; }
+  .dk-foot { gap: 10px; padding: 10px 12px; font-size: 10px; }
   .dk-room { grid-template-columns: minmax(0, 1fr); }
   .dk-panes { grid-template-columns: minmax(0, 1fr); padding: 0; }
   .dk-pane { height: 380px; }
