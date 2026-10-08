@@ -31,20 +31,20 @@
   const visible = (el) => { const r = el.getBoundingClientRect(); return r.bottom > -100 && r.top < innerHeight + 100 }
 
   // ------------------------------------------------------------- the chatter
-  // What review sounds like when an agent writes the code: every line is about
-  // approving work nobody read, or a decision nobody made on purpose.
+  // What a team sounds like when the decisions slip past it: not the agent's
+  // fault and not the people's, just nobody choosing on purpose.
   const CHATTER = [
-    'merged 4,000 lines I did not read', 'the agent said it was fine', 'who approved this?',
-    'it passed CI, so…', 'LGTM', 'the diff is 12k lines', 'nobody on the team wrote this',
-    'reverted. again.', 'I am a PR approver now, not an engineer', 'what does this function even do',
-    'the agent wrote 40 files while I got coffee', 'I skimmed it', 'wait, where did the retry go?',
-    'looks good to me (did not run it)', 'what did the agent change in billing?', 'which file is the actual change?',
-    'I asked why and got 900 words', 'see pricing.service.ts:42, cache.ts:17, pool.ts:9', 'the review was five paragraphs',
-    'why are there three caches now', 'tab 37 of 41', 'approved from my phone', 'the agent rewrote the migration',
-    'who decided to drop that index?', 'the summary says "minor refactor"', '1. (Recommended)',
-    'what did we just ship?', 'I will read it later', 'it compiles, so…', 'can someone explain this PR to me?',
-    'the agent fixed the test by changing the test', '20,000 lines, one approval', 'the PR description was longer than the code',
-    'I trust the tests the agent wrote', 'nobody knows why this works', 'did anyone read the agent\'s plan?',
+    'who decided this?', 'the agent said it was fine', 'nobody remembers why we did that',
+    'it passed CI, so…', 'LGTM', 'the diff is 12k lines', 'nobody on the team knows why',
+    'reverted. again.', 'I approve things now, I do not decide them', 'what does this function even do',
+    'wait, where did the retry go?', 'looks good to me?', 'what changed in billing?',
+    'which file is the actual change?', 'I asked why and got 900 words', 'see pricing.service.ts:42, cache.ts:17, pool.ts:9',
+    'the review was five paragraphs', 'why are there three caches now', 'tab 37 of 41', 'approved from my phone',
+    'when did the migration change?', 'who decided to drop that index?', 'the summary says "minor refactor"',
+    '1. (Recommended)', 'what did we just ship?', 'I will understand it later', 'it compiles, so…',
+    'can someone explain this PR to me?', '20,000 lines, one approval', 'did anyone agree to that plan?',
+    'when did we decide that?', 'I did not choose that, did I?', 'nobody knows why this works',
+    'the PR description was longer than the code', 'which of these was my call?',
   ]
 
   function Sky(canvas) {
@@ -138,14 +138,16 @@
     'Why does it work? Do you know?',
     'What did you used to know about your own system?',
   ]
-  // And the answer, asked back the same way when the chatter collapses.
+  // And the answer: not what deck does, but what it gives back. Keep the
+  // agent and its speed, and own what it builds together.
   const ANSWERS = [
     'Make it show you.',
-    'Make it point at the line.',
-    'Make it draw what moves.',
-    'Make it answer on the line.',
-    'Make it wait for your call.',
-    'Make it yours again.',
+    'Own every decision, with your agent.',
+    'Keep its speed. Keep your judgement.',
+    'Know why it works, not just that it does.',
+    'Disagree early, while it is cheap.',
+    'Ship fast, and still know what shipped.',
+    'Enjoy building with your agent again.',
   ]
   // `lines` in turn, written into `el`; `shown` says whether anybody can see
   // it, and nothing moves while they cannot.

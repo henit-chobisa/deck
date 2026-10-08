@@ -88,8 +88,8 @@ button { font: inherit; color: inherit; }
    a caret at the end of what has been said so far. Two lines are always held,
    so the page below does not move as the question changes. */
 .ask-line { min-height: 2.04em; display: flex; align-items: center; justify-content: center; }
-.signal .ask-line { min-height: 1.1em; }
-@media (max-width: 700px) { .hero-copy .ask-line { min-height: 3.1em; } .signal .ask-line { min-height: 2.1em; } }
+.signal .ask-line { min-height: 2.1em; }
+@media (max-width: 700px) { .hero-copy .ask-line { min-height: 3.1em; } .signal .ask-line { min-height: 3.15em; } }
 .stream { display: inline-block; transition: opacity .45s ease, filter .45s ease, transform .45s ease; }
 .stream.out { opacity: 0; filter: blur(6px); transform: translateY(-8px); }
 .stream .w { display: inline-block; opacity: 0; filter: blur(8px); transform: translateY(6px); transition: opacity .32s ease, filter .32s ease, transform .32s ease; }
