@@ -18,7 +18,15 @@ git archive FETCH_HEAD site-frames | tar -x -C /tmp
 mkdir -p site/frames && cp -r /tmp/site-frames/l /tmp/site-frames/s site/frames/
 ```
 
-`site/frames/` is ignored, and `.github/workflows/site.yml` does the same copy
+To try the changelog, write its releases out the way the workflow does:
+
+```sh
+gh api -H "Accept: application/vnd.github.html+json" "repos/henit-chobisa/deck/releases?per_page=100" \
+  --jq '[.[] | select(.draft | not) | {tag: .tag_name, name, prerelease, published: .published_at, url: .html_url, html: .body_html}]' \
+  > site/changelog/releases.json
+```
+
+`site/frames/` and `site/changelog/releases.json` are ignored, and `.github/workflows/site.yml` does the same copy
 when it publishes to GitHub Pages.
 
 ## What is real

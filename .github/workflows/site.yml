@@ -12,6 +12,9 @@ on:
     paths: [site/**, .github/workflows/site.yml]
   pull_request:
     paths: [site/**, .github/workflows/site.yml]
+  # A new or edited release changes the changelog.
+  release:
+    types: [published, edited, deleted]
   workflow_dispatch:
 
 permissions:
@@ -29,13 +32,24 @@ jobs:
           git archive FETCH_HEAD site-frames | tar -x
           mkdir -p site/frames
           cp -r site-frames/l site-frames/s site/frames/
+      - name: The changelog, from the releases
+        # GitHub's own rendering of each release, which it sanitises, so the
+        # notes and their images read exactly as they do there.
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api -H "Accept: application/vnd.github.html+json" \
+            "repos/${{ github.repository }}/releases?per_page=100" \
+            --jq '[.[] | select(.draft | not) | {tag: .tag_name, name, prerelease, published: .published_at, url: .html_url, html: .body_html}]' \
+            > site/changelog/releases.json
+          [ "$(jq length site/changelog/releases.json)" -gt 0 ] || { echo "no releases came back"; exit 1; }
       - name: Check that every frame and every local link is there
         run: |
           for set in l s; do
             n=$(ls site/frames/$set/*.webp | wc -l)
             [ "$n" -eq 360 ] || { echo "site/frames/$set has $n frames, not 360"; exit 1; }
           done
-          for page in site/index.html site/docs/index.html; do
+          for page in site/index.html site/docs/index.html site/changelog/index.html; do
             dir=$(dirname "$page")
             grep -oE '(src|href)="[^"#:]+"' "$page" | sed -E 's/^(src|href)="//; s/"$//' | while read -r ref; do
               target="$dir/$ref"
