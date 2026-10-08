@@ -115,6 +115,55 @@
     return { draw }
   }
 
+  // ------------------------------------------------------- the question
+  // The headline is a question, asked one way and then another, each time
+  // written out the way a reply arrives in a chat: a word at a time.
+  const QUESTIONS = [
+    'Do you know what your agent just shipped?',
+    'What did you just approve?',
+    'Who made that decision, you or your agent?',
+    'When did you last read what your agent wrote?',
+    'Could you explain your last merge?',
+  ]
+  function Ask(el, copy) {
+    if (reduce) return
+    let at = 0, timers = []
+    const later = (fn, ms) => timers.push(setTimeout(fn, ms))
+    const quiet = () => document.hidden || +(copy.style.opacity || 1) < 0.05
+    function write(text) {
+      timers.forEach(clearTimeout); timers = []
+      el.classList.remove('out')
+      el.textContent = ''
+      const words = text.split(' ')
+      const caret = document.createElement('span'); caret.className = 'caret typing'
+      // The last two words are held together, so the question mark never
+      // sits alone on the second line.
+      const cut = Math.max(0, words.length - 2)
+      const tail = document.createElement('span'); tail.style.whiteSpace = 'nowrap'
+      const spans = words.map((w, i) => {
+        const s = document.createElement('span'); s.className = 'w'; s.textContent = w
+        if (i < cut) { el.appendChild(s); el.appendChild(document.createTextNode(' ')) }
+        else { if (i > cut) tail.appendChild(document.createTextNode(' ')); tail.appendChild(s) }
+        return s
+      })
+      el.appendChild(tail)
+      el.appendChild(caret)
+      let t = 280
+      spans.forEach((s, i) => {
+        later(() => { s.classList.add('in'); s.after(caret) }, t)
+        t += 70 + Math.random() * 90 + (/[,?]$/.test(words[i]) ? 160 : 0)
+      })
+      later(() => caret.classList.remove('typing'), t)
+      later(next, t + 3600)
+    }
+    function next() {
+      if (quiet()) { later(next, 800); return }
+      el.classList.add('out')
+      later(() => { at = (at + 1) % QUESTIONS.length; write(QUESTIONS[at]) }, 480)
+    }
+    write(QUESTIONS[0])
+  }
+
   // ------------------------------------------------------------ step scenes
   function Steps(section) {
     const n = +section.dataset.steps
@@ -271,6 +320,8 @@
     const copy = section.querySelector('.hero-copy'), signal = section.querySelector('.signal')
     const hush = section.querySelector('.hush'), cue = section.querySelector('.cue')
     const mark = section.querySelector('.signal-mark')
+    const stream = section.querySelector('.stream')
+    if (stream) Ask(stream, copy)
     let last = performance.now()
     return {
       update(p, now) {

@@ -83,6 +83,18 @@ button { font: inherit; color: inherit; }
 .hush { position: absolute; inset: 0; pointer-events: none; background: radial-gradient(ellipse min(46vw, 640px) min(30vh, 300px) at 50% 52%, rgba(13,15,15,0.97) 0%, rgba(13,15,15,0.78) 52%, rgba(13,15,15,0) 100%); }
 .hero-copy, .signal { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 0 var(--gut); }
 .hero-copy h1 { font-size: clamp(40px, 6.6vw, 92px); max-width: 13.5em; letter-spacing: -0.04em; line-height: 1.02; }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+/* The headline streams in like a reply: a word at a time, out of a blur, with
+   a caret at the end of what has been said so far. Two lines are always held,
+   so the page below does not move as the question changes. */
+.ask-line { min-height: 2.04em; display: flex; align-items: center; justify-content: center; }
+.stream { display: inline-block; transition: opacity .45s ease, filter .45s ease, transform .45s ease; }
+.stream.out { opacity: 0; filter: blur(6px); transform: translateY(-8px); }
+.stream .w { display: inline-block; opacity: 0; filter: blur(8px); transform: translateY(6px); transition: opacity .32s ease, filter .32s ease, transform .32s ease; }
+.stream .w.in { opacity: 1; filter: none; transform: none; }
+.stream .caret { display: inline-block; width: 0.07em; height: 0.82em; margin-left: 0.08em; vertical-align: -0.06em; border-radius: 2px; background: var(--accent); animation: caret 1s steps(1) infinite; }
+.stream .caret.typing { animation: none; }
+@keyframes caret { 50% { opacity: 0; } }
 .hero-copy .lede { margin-top: 26px; }
 .js .signal { opacity: 0; pointer-events: none; }
 .signal h2 { font-size: clamp(48px, 8vw, 112px); letter-spacing: -0.045em; margin-top: 34px; }
