@@ -184,3 +184,19 @@
   .dk-chat { max-height: 320px; }
   .dk-foot .r span:not(:first-child) { display: none; }
 }
+
+/* On the site the window is pared down to what the argument needs: the
+   narration, the code and the timeline. The key list, the walk track and the
+   map are in the real window; here they are one more thing to read. */
+.dk { height: auto; min-height: 0; }
+.dk-band { grid-template-columns: minmax(0, 1fr); }
+.dk-keys, .dk-track, .dk-pane.map { display: none; }
+.dk-say { padding: 20px 24px 18px; }
+.dk-prose { font-size: 14.5px; line-height: 1.8; min-height: 0; }
+.dk-title { font-size: 16px; }
+.dk-panes { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-rows: 440px; }
+.dk-pane.page { grid-column: auto; }
+@media (max-width: 860px) {
+  .dk-panes { grid-template-columns: minmax(0, 1fr); grid-template-rows: none; }
+  .dk-pane, .dk-pane.code, .dk-pane.page { height: 360px; }
+}

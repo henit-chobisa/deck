@@ -243,8 +243,8 @@ button { font: inherit; color: inherit; }
 .free-box { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: clamp(32px, 6vw, 80px); align-items: center; }
 .free-copy h2 { margin-bottom: 22px; }
 .free-copy .lede + .lede { margin-top: 14px; }
-.sign { margin-top: 22px; font-family: var(--mono); font-size: 14px; color: var(--muted); }
-.sign::before { content: "— "; }
+.signed { margin-top: 22px; font-family: var(--mono); font-size: 14px; color: var(--muted); }
+.signed::before { content: "— "; }
 .free-cta { display: flex; flex-direction: column; align-items: flex-start; gap: 22px; padding: 32px; border: 1px solid var(--edge-2); border-radius: 16px; background: radial-gradient(120% 120% at 0% 0%, rgba(254,128,25,0.08), rgba(254,128,25,0) 60%), #121414; }
 .star { display: inline-flex; align-items: center; gap: 10px; min-height: 48px; padding: 0 20px; border-radius: 10px; background: var(--fg); color: var(--ground); font-weight: 600; font-size: 16px; }
 .star:hover { background: #fff3d6; color: var(--ground); }

@@ -71,7 +71,6 @@
         { html: 'At 10:00:00 every price key expires at once, so every request misses and runs the 40 ms query on Postgres.', page: 'expire', lines: [33, 36], block: 'pg', talk: 'code' },
         { html: 'Forty connections fill in a blink and the rest queue, so a price that took two milliseconds now takes four seconds.', page: 'pile', lines: [26, 26], block: 'api', talk: 'page' },
         { html: 'It clears when the cache refills, and comes back at 11:00, because every key was written with the same one-hour TTL.', page: 'refill', lines: [38, 38], block: 'redis', talk: 'code' },
-        { html: 'Press <b>on the hour</b> in ' + nm('map') + ' to watch a request take that path.', talk: 'map' },
       ],
     },
     {
@@ -79,8 +78,7 @@
       says: [
         { html: 'Spread the expiry, and ' + nm('requests') + ' stays quiet.', page: 'fix', talk: 'page' },
         { html: 'In ' + nm('pricing') + ' each key lives an hour, give or take ten minutes, so they stop expiring together.', page: 'fix', lines: [38, 39], block: 'redis', talk: 'code' },
-        { html: 'On the ' + nm('map') + ', Postgres sees one miss at a time instead of a wall.', page: 'fix', block: 'pg', talk: 'map' },
-        { html: '<b>Ship the jitter, or add a single-flight lock on a miss as well?</b>', page: 'fix' },
+        { html: '<b>Ship the jitter, or add a single-flight lock on a miss as well?</b>', page: 'fix', lines: [38, 39], talk: 'code' },
       ],
     },
   ]

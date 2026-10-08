@@ -85,7 +85,10 @@
       count.textContent = fixed ? 'pool 1 / 40 · nobody waiting'
         : t < 0 ? 'pool 0 / 40' : waiting ? 'pool 40 / 40 · ' + (waiting * 180) + ' waiting' : 'pool ' + (inDb ? 40 : 0) + ' / 40'
       count.setAttribute('class', waiting ? 'rq-t rq-count bad' : 'rq-t rq-count')
-      let kx = L
+      // The key starts over the bars, or further left when the pane is too
+      // narrow to hold it there.
+      const keyWidth = keys.reduce((w, [, label]) => w + 30 + label.textContent.length * 7, 0)
+      let kx = Math.max(12, Math.min(L, W - 12 - keyWidth))
       keys.forEach(([r, label]) => {
         r.setAttribute('x', kx); r.setAttribute('y', 36); r.setAttribute('width', 16); r.setAttribute('height', 10); r.setAttribute('rx', 2)
         label.setAttribute('x', kx + 22); label.setAttribute('y', 45)
