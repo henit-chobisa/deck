@@ -415,6 +415,19 @@
   })
   tabs()
 
+  // The star count, when GitHub will say. Nothing shows if it will not.
+  const count = document.querySelector('.star-count')
+  if (count) {
+    fetch('https://api.github.com/repos/henit-chobisa/deck', { headers: { Accept: 'application/vnd.github+json' } })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((repo) => {
+        if (!repo || typeof repo.stargazers_count !== 'number') return
+        count.textContent = repo.stargazers_count.toLocaleString('en')
+        count.hidden = false
+      })
+      .catch(() => {})
+  }
+
   const nav = document.querySelector('.nav'), hero = document.querySelector('.hero')
   function frame(now) {
     if (lenis) lenis.raf(now)

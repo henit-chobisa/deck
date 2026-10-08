@@ -43,7 +43,7 @@
       <canvas class="sky" aria-hidden="true"></canvas>
       <div class="hush" aria-hidden="true"></div>
       <div class="hero-copy">
-        <p class="eyebrow">Focused on engineers, built for agents</p>
+        <p class="eyebrow">Free and open source · Focused on engineers, built for agents</p>
         <h1 class="ask-line"><span class="sr">Do you know what your agent just shipped?</span><span class="stream" aria-hidden="true">Do you know what your agent just&nbsp;shipped?</span></h1>
         <p class="lede">It moves faster than anyone can follow, so decisions get made that nobody chose. Scroll, and listen.</p>
       </div>
@@ -238,12 +238,38 @@
     </div>
   </section>
 
-  <!-- 5: install -->
+  <!-- 5: why it is free -->
+  <section class="free" aria-labelledby="free-title">
+    <div class="wrap free-box">
+      <div class="free-copy">
+        <p class="eyebrow accent">Free and open source</p>
+        <h2 id="free-title">No price. No plan to charge.</h2>
+        <p class="lede">I built deck to give something back to the community that taught me most of what I know. There is no paid tier, no account to make, and nothing to upgrade to later. The code is all on GitHub under Apache-2.0.</p>
+        <p class="lede">If it helps you understand what your agent is doing, that is the win. A star is the only thanks I am after.</p>
+        <p class="sign">Henit</p>
+      </div>
+      <div class="free-cta">
+        <a class="star" href="https://github.com/henit-chobisa/deck" aria-label="Star deck on GitHub">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M12 2.8l2.83 5.73 6.33.92-4.58 4.46 1.08 6.3L12 17.24l-5.66 2.97 1.08-6.3L2.84 9.45l6.33-.92z"/></svg>
+          <span>Star on GitHub</span>
+          <span class="star-count" hidden></span>
+        </a>
+        <ul class="free-facts">
+          <li>Apache-2.0</li>
+          <li>No account</li>
+          <li>No paid tier</li>
+          <li>Built in the open</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- 6: install -->
   <section class="install" id="install" aria-labelledby="install-title">
     <div class="wrap center">
       <img src="assets/mark.svg" alt="" width="64" height="64">
       <h2 id="install-title">Install deck</h2>
-      <p class="lede">One script. It downloads deck for your machine, checks the download, puts it on your PATH and runs <code>deck setup</code>. Run it as yourself, not with <code>sudo</code>.</p>
+      <p class="lede">Free, now and later. One script: it downloads deck for your machine, checks the download, puts it on your PATH and runs <code>deck setup</code>. Run it as yourself, not with <code>sudo</code>.</p>
       <div class="tabs" role="tablist" aria-label="Your system">
         <button type="button" role="tab" id="tab-unix" aria-selected="true" aria-controls="pane-unix">macOS and Linux</button>
         <button type="button" role="tab" id="tab-win" aria-selected="false" aria-controls="pane-win" tabindex="-1">Windows</button>
@@ -265,7 +291,7 @@
   <div class="wrap foot-top">
     <div class="foot-brand">
       <a class="brand" href="./" aria-label="deck, home"><img src="assets/mark.svg" alt="" width="28" height="28"><span>deck</span></a>
-      <p>Focused on engineers, built for agents.</p>
+      <p>Focused on engineers, built for agents.<br>Free and open source, under Apache-2.0.</p>
     </div>
     <nav class="foot-cols" aria-label="Footer">
       <div><h3>Product</h3><a href="#play">Try it</a><a href="#install">Install</a><a href="docs/">Docs</a><a href="changelog/">Changelog</a></div>
