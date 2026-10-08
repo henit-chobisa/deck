@@ -1,0 +1,325 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>deck — see what your AI coding agent decided, on the lines</title>
+<meta name="description" content="Free, open-source AI code review you can see. Your coding agent (Claude Code, Codex, Cursor, Amp) shows each decision on the code it changed, you push back on the line, and you decide what ships.">
+<link rel="canonical" href="https://trydeck.dev/">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="deck">
+<meta property="og:title" content="deck — see what your AI coding agent decided, on the lines">
+<meta property="og:description" content="Free, open-source AI code review you can see. Your coding agent (Claude Code, Codex, Cursor, Amp) shows each decision on the code it changed, you push back on the line, and you decide what ships.">
+<meta property="og:url" content="https://trydeck.dev/">
+<meta property="og:image" content="https://trydeck.dev/assets/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="deck — see what your AI coding agent decided, on the lines">
+<meta name="twitter:description" content="Free, open-source AI code review you can see. Your coding agent (Claude Code, Codex, Cursor, Amp) shows each decision on the code it changed, you push back on the line, and you decide what ships.">
+<meta name="twitter:image" content="https://trydeck.dev/assets/og.png">
+<meta name="theme-color" content="#0d0f0f">
+<script type="application/ld+json">{"@context": "https://schema.org", "@graph": [{"@type": "SoftwareApplication", "name": "deck", "url": "https://trydeck.dev/", "description": "Free, open-source AI code review you can see. Your coding agent (Claude Code, Codex, Cursor, Amp) shows each decision on the code it changed, you push back on the line, and you decide what ships.", "applicationCategory": "DeveloperApplication", "applicationSubCategory": "Code review", "operatingSystem": "macOS, Linux, Windows", "softwareVersion": "0.1.4", "license": "https://www.apache.org/licenses/LICENSE-2.0", "isAccessibleForFree": true, "offers": {"@type": "Offer", "price": "0", "priceCurrency": "USD"}, "downloadUrl": "https://github.com/henit-chobisa/deck/releases", "codeRepository": "https://github.com/henit-chobisa/deck", "image": "https://trydeck.dev/assets/og.png", "author": {"@type": "Person", "name": "Henit Chobisa", "url": "https://github.com/henit-chobisa"}, "keywords": "AI code review, code review, coding agent, Claude Code, Codex, Cursor, Amp, pull request review, comprehension debt"}, {"@type": "WebSite", "name": "deck", "url": "https://trydeck.dev/"}]}</script>
+<script>document.documentElement.classList.add('js')</script>
+<link rel="icon" href="/assets/mark.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/site.css">
+<link rel="stylesheet" href="css/deck.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="nav" id="top">
+  <a class="brand" href="./" aria-label="deck, home">
+    <img src="assets/mark.svg" alt="" width="28" height="28">
+    <span>deck</span>
+  </a>
+  <nav aria-label="Main">
+    <a href="#agent">How it works</a>
+    <a href="#play">Try it</a>
+    <a href="docs/">Docs</a>
+    <a href="guides/">Guides</a>
+    <a href="changelog/">Changelog</a>
+    <a href="https://github.com/henit-chobisa/deck">GitHub</a>
+    <a class="nav-install" href="#install">Install</a>
+  </nav>
+</header>
+
+<main id="main">
+
+  <!-- 0 + 1: the chatter, and the signal -->
+  <section class="scene hero" data-scene="hero" aria-label="Introduction">
+    <div class="stage">
+      <canvas class="sky" aria-hidden="true"></canvas>
+      <div class="hush" aria-hidden="true"></div>
+      <div class="hero-copy">
+        <p class="eyebrow">Free and open source · Focused on engineers, built for agents</p>
+        <h1 class="ask-line"><span class="sr">Do you know what your agent just shipped?</span><span class="stream" aria-hidden="true">Do you know what your agent just&nbsp;shipped?</span></h1>
+        <p class="lede">It moves faster than anyone can follow, so decisions get made that nobody chose. Scroll, and listen.</p>
+      </div>
+      <div class="signal">
+        <img class="signal-mark" src="assets/mark.svg" alt="" width="112" height="112">
+        <h2 class="ask-line"><span class="sr">Make it show you.</span><span class="stream" aria-hidden="true">Make it show you.</span></h2>
+        <p class="lede">Not less agent, and not more trust. A better way to work with the one you have: it shows you each decision on the lines where it lives, you push back where you disagree, and what ships is something you both chose.</p>
+      </div>
+      <div class="cue" aria-hidden="true"><span>scroll</span><i></i></div>
+    </div>
+  </section>
+
+  <!-- 2a: without deck -->
+  <section class="scene steps" data-scene="bare" data-steps="4" id="without" aria-labelledby="bare-title">
+    <div class="stage split">
+      <div class="side">
+        <p class="eyebrow">Without deck</p>
+        <h2 id="bare-title" class="swap">
+          <span data-at="0">You ask.</span>
+          <span data-at="1">It answers. All of it.</span>
+          <span data-at="2">You push back.</span>
+          <span data-at="3">Then the menu.</span>
+        </h2>
+        <p class="lede swap">
+          <span data-at="0">A fair question about your own code.</span>
+          <span data-at="1">The decision is in there somewhere. Go and find it.</span>
+          <span data-at="2">Ask about one line. Get another essay.</span>
+          <span data-at="3">You pick Recommended. Everyone does.</span>
+        </p>
+        <dl class="tally" data-show="1">
+          <div><dt>words</dt><dd data-count="words">0</dd></div>
+          <div><dt>file:line</dt><dd data-count="refs">0</dd></div>
+          <div><dt>lines shown</dt><dd>0</dd></div>
+        </dl>
+        <ol class="dots" aria-hidden="true"><li></li><li></li><li></li><li></li></ol>
+      </div>
+      <div class="term" role="img" aria-label="A terminal where an agent answers a question with long paragraphs and a multiple-choice menu">
+        <div class="term-head"><i></i><i></i><i></i><span>your agent · ~/acme/catalog</span></div>
+        <div class="term-body"><div class="term-roll">
+          <div class="ask"><b>&gt;</b> why does checkout stall at the top of every hour?</div>
+          <div class="work"><b class="spin">✻</b> Reading pricing.service.ts, cache.module.ts, price.entity.ts, database.ts… <span class="dim">(6 files)</span></div>
+          <div class="wall" data-show="1" data-words>
+            <p><b class="bullet">⏺</b> The stall comes from a cache stampede. In <u>services/catalog/src/pricing/pricing.service.ts:26-40</u>, <u>priceFor()</u> reads from Redis through <u>this.cache.get()</u> at <u>pricing.service.ts:29</u>, and on a miss falls back to Postgres with <u>effective_price()</u> at <u>pricing.service.ts:33</u>. Every key is written at <u>pricing.service.ts:38</u> with <u>ONE_HOUR</u>, defined at <u>pricing.service.ts:10</u>, so they all expire together.</p>
+            <p>When they expire, every in-flight request misses at once. Each miss takes a connection from the pool configured in <u>src/config/database.ts:9</u> with a maximum of 40, and requests beyond that queue until one frees, which is why the p99 reaches roughly four seconds on the dashboard referenced in <u>docs/runbooks/checkout.md:112</u>.</p>
+            <p>Note also that <u>CheckoutController.quote()</u> at <u>checkout.controller.ts:33</u> calls <u>priceFor()</u> once per line item rather than batching, which amplifies the effect for larger carts, and <u>CartService.total()</u> at <u>cart.service.ts:87</u> calls it again…</p>
+            <p>There are several ways to address this. Option A is to add jitter to the TTL at <u>pricing.service.ts:38</u>. Option B is request coalescing with a single-flight lock around the miss at <u>pricing.service.ts:33</u>. Option C is a background refresher in <u>src/jobs/refresh.ts</u>. Option D is raising the pool in <u>database.ts:9</u>, though this may shift load onto Postgres…</p>
+          </div>
+          <div class="more" data-show="2" data-words>
+            <div class="ask"><b>&gt;</b> wait. which line actually sets the TTL? and is a stale price ok for us?</div>
+            <p><b class="bullet">⏺</b> Great question! Let me break this down in detail.</p>
+            <p><b class="h">## 1. Where the TTL is set</b><br>The TTL is passed as the third argument to <u>this.cache.set()</u> at <u>pricing.service.ts:38</u>, using <u>ONE_HOUR</u> from <u>pricing.service.ts:10</u>. It may also be influenced by the default <u>ttl</u> in <u>cache.module.ts:14</u>, although that value appears to be overridden…</p>
+            <p><b class="h">## 2. Staleness considerations</b><br>Whether stale prices are acceptable depends on several factors:<br>• How often prices change in your catalog<br>• Whether flash sales or time-limited promotions exist<br>• Regulatory requirements around displayed versus charged price<br>• Customer trust implications of…</p>
+            <p><b class="h">## 3. Trade-offs</b><br>| Approach | Staleness | Complexity | Load |</p>
+          </div>
+          <div class="menu" data-show="3">
+            <p class="menu-tag">☐ Fix approach</p>
+            <p class="menu-q">How should we fix the stampede?</p>
+            <ol>
+              <li class="pick"><span>❯ 1. TTL jitter + single-flight lock <b>(Recommended)</b></span><small>Spread expiries and coalesce refills.</small></li>
+              <li><span>2. Background refresher job</span><small>Rewrite keys before they expire.</small></li>
+              <li><span>3. Raise the pool to 120 connections</span><small>More headroom during the spike.</small></li>
+              <li><span>4. Type something.</span></li>
+            </ol>
+            <p class="menu-keys">Enter to select · ↑/↓ to navigate · Esc to cancel</p>
+            <svg class="pointer" width="26" height="32" viewBox="0 0 28 34" aria-hidden="true"><path d="M2 2 L2 28 L9 21 L14 32 L19 30 L14 19 L24 19 Z" fill="#ebdbb2" stroke="#0d0f0f" stroke-width="1.6" stroke-linejoin="round"/></svg>
+          </div>
+        </div></div>
+        <p class="term-verdict" data-show="3">Did you read options 2 and 3?<br><span>Did you decide anything at all?</span></p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 2b: the same agent opens deck -->
+  <section class="scene steps" data-scene="agent" data-steps="6" id="agent" aria-labelledby="agent-title">
+    <div class="stage split">
+      <div class="side">
+        <p class="eyebrow accent">With deck</p>
+        <h2 id="agent-title">Same question. Same agent.</h2>
+        <p class="lede">deck never runs a model. The agent you are already talking to, in the same session with everything it just read, writes the deck with a few shell commands and puts it on your screen.</p>
+        <ul class="beats">
+          <li data-at="0">You ask, exactly as before.</li>
+          <li data-at="1">It reads the code, exactly as before.</li>
+          <li data-at="2"><code>deck new</code> starts a deck.</li>
+          <li data-at="3"><code>deck open</code> puts a bar on your screen.</li>
+          <li data-at="4"><code>deck group</code> adds one claim and the code that proves it. A ref to a line that does not exist is refused.</li>
+          <li data-at="5"><code>deck seal</code>. Open it when you are ready. The agent cannot open it for you.</li>
+        </ul>
+      </div>
+      <div class="term launch" role="img" aria-label="Your agent's terminal running deck new, deck open, deck group and deck seal, while a bar appears at the bottom of the screen">
+        <div class="term-head"><i></i><i></i><i></i><span>your agent · ~/acme/catalog</span></div>
+        <div class="term-body"><div class="term-roll">
+          <div class="ask"><b>&gt;</b> why does checkout stall at the top of every hour?</div>
+          <div class="work" data-show="1"><b class="bullet">⏺</b> Read <span class="hl">pricing.service.ts</span>, <span class="hl">map of the catalog</span>, <span class="hl">10:00 traffic</span>. Two or more locations: this is a deck.</div>
+          <div class="cmd" data-show="2"><b>$</b> deck new --title <s>"Every hour, on the hour, checkout p99 jumps to 4 seconds"</s> --total 2</div>
+          <div class="out" data-show="2">~/.deck/decks/d-1791214494-5575.deck</div>
+          <div class="cmd" data-show="3"><b>$</b> D=~/.deck/decks/d-1791214494-5575.deck; deck open $D <span class="dim">&amp;  # waits for your review</span></div>
+          <div class="cmd" data-show="4"><b>$</b> deck group $D --say <s>"[point calm] Most of the hour, [point 29-30 redis] [pricing] answers from Redis in two milliseconds. [point expire] At 10:00:00 every price key expires at once…"</s> \<br>&nbsp;&nbsp;--ref <s>"services/catalog/src/pricing/pricing.service.ts:26-40 [pricing]"</s> \<br>&nbsp;&nbsp;--diagram <s>"map.json [map]"</s> --page <s>"requests.html [requests]"</s></div>
+          <div class="cmd" data-show="5"><b>$</b> deck group $D --say <s>"[point fix] Spread the expiry, and [requests] stays quiet…"</s> --ref <s>"…pricing.service.ts:38 [pricing]"</s> --after <s>"…"</s></div>
+          <div class="cmd" data-show="5"><b>$</b> deck seal $D</div>
+          <div class="work" data-show="5"><b class="bullet">⏺</b> The deck is on your screen. I'll wait for your review.</div>
+        </div></div>
+        <div class="desk" aria-hidden="true">
+          <div class="pill" data-show="3">
+            <span class="pill-mark"><i></i><i></i></span>
+            <span class="pill-name">deck</span>
+            <span class="pill-rule"></span>
+            <span class="pill-title">Every hour, on the hour, checkout p99 jumps to 4 seconds</span>
+            <span class="pill-dot" data-hide="5"></span>
+            <span class="pill-count">
+              <span data-only="3">Getting deck ready… 0/2</span>
+              <span data-only="4">Getting deck ready… 1/2</span>
+              <span data-only="5">2 groups</span>
+            </span>
+            <span class="pill-open">Open</span>
+            <span class="pill-x">×</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 2c: in the window, real frames scrubbed by scroll -->
+  <section class="scene reel" data-scene="reel" id="window" aria-labelledby="reel-title">
+    <div class="stage split wide">
+      <div class="side">
+        <p class="eyebrow accent">In the window</p>
+        <h2 id="reel-title" class="swap">
+          <span data-at="0">Every claim arrives with its evidence.</span>
+          <span data-at="1">See the failure, not a description of it.</span>
+          <span data-at="2">Judge the fix against the same moment.</span>
+          <span data-at="3">Big changes, one concern at a time.</span>
+          <span data-at="4">Push back where the decision is.</span>
+          <span data-at="5">Questions come back with proof.</span>
+        </h2>
+        <p class="lede swap">
+          <span data-at="0">Your agent states what it found, and the lines that prove it are already in view. You check the reasoning instead of hunting for it.</span>
+          <span data-at="1">At ten o'clock the requests queue behind forty connections. A timeline you can watch is harder to misread than a paragraph about one.</span>
+          <span data-at="2">The proposed fix replays the same seconds with the expiry spread out, so you weigh it against the failure it claims to remove.</span>
+          <span data-at="3">A large branch comes as chapters. Each one brings only the files its argument needs, and the change lands as a diff beside its reason.</span>
+          <span data-at="4">Select the lines and say what you would change. Ask now, or hold it for the review; either way it reaches your agent pinned to those lines.</span>
+          <span data-at="5">Ask why popularity counts for 30 per cent, and the answer is the experiment that chose it: from the same agent, in the same session.</span>
+        </p>
+        <ol class="chapters" aria-hidden="true">
+          <li data-at="0">evidence</li><li data-at="1">behaviour</li><li data-at="2">the fix</li><li data-at="3">chapters</li><li data-at="4">your call</li><li data-at="5">answers</li>
+        </ol>
+        <p class="real">Real recordings of deck 0.1.4. Nothing on the right is a mock-up.</p>
+      </div>
+      <figure class="reel-frame">
+        <canvas class="reel-canvas" role="img" aria-label="Recordings of deck: a narrated walk lighting code line by line, a request timeline piling up, a diff arriving, a comment typed on a line, and the agent's answer as a chart"></canvas>
+        <div class="reel-load" aria-hidden="true"><i></i></div>
+      </figure>
+    </div>
+  </section>
+
+  <!-- 3: play -->
+  <section class="play" id="play" aria-labelledby="play-title">
+    <div class="wrap">
+      <p class="eyebrow accent">Try it</p>
+      <h2 id="play-title">A real deck. Review it yourself.</h2>
+      <p class="lede">Your agent was asked to take the receipt off checkout. This is the plan it wrote, before a line of code changed. Click a sentence to see what it rests on; <kbd>n</kbd> and <kbd>p</kbd> move through the plan. Select a line, press <kbd>c</kbd>, and say what you would change.</p>
+    </div>
+    <div class="wrap wide">
+      <div class="asks" aria-label="Questions you can ask the agent">
+        <span>Ask it:</span>
+        <button type="button" data-ask="0">Where does the 260 ms come from?</button>
+        <button type="button" data-ask="1">What if a worker crashes mid-receipt?</button>
+        <button type="button" data-ask="2">Why not buy bigger checkout machines?</button>
+      </div>
+      <p class="note">This deck runs in your browser, with answers written in advance. In the real window, your own agent answers whatever you type.</p>
+      <div class="dk" id="dk" tabindex="0" aria-label="A working deck. Keys: n next group, p previous group, c comment on the selected lines, z lights, esc discard.">
+        <noscript><p class="dk-nojs">This deck needs JavaScript to run. The recordings above show the real window.</p></noscript>
+      </div>
+    </div>
+  </section>
+
+  <!-- 4: the loop -->
+  <section class="loop" aria-labelledby="loop-title">
+    <div class="wrap two">
+      <div>
+        <p class="eyebrow">Then</p>
+        <h2 id="loop-title">You decide. It implements.</h2>
+        <p class="lede">When you submit, <code>deck open</code> ends and hands your agent what you said, pinned to the lines you said it about. It picks up where it was, with your decision in hand.</p>
+      </div>
+      <div class="term small" role="img" aria-label="Your agent receiving the review and making the change">
+        <div class="term-head"><i></i><i></i><i></i><span>your agent</span></div>
+        <div class="term-body">
+          <div class="out">review · <span id="loop-count">1 comment</span></div>
+          <div class="out" id="loop-comments"><span class="hl">invoice.worker.ts:9</span>  "Ship it with autoscaling. Cap it at twenty, and page us if a receipt waits more than a minute."</div>
+          <div class="work"><b class="bullet">⏺</b> Shipping the worker with autoscaling, capped at twenty, and an alert on queue age over sixty seconds.</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 5: why it is free -->
+  <section class="free" aria-labelledby="free-title">
+    <div class="wrap free-box">
+      <div class="free-copy">
+        <p class="eyebrow accent">Free and open source</p>
+        <h2 id="free-title">No price. No plan to charge.</h2>
+        <p class="lede">I built deck to give something back to the community that taught me most of what I know. There is no paid tier, no account to make, and nothing to upgrade to later. The code is all on GitHub under Apache-2.0.</p>
+        <p class="signed">Henit</p>
+      </div>
+      <div class="free-cta">
+        <a class="star" href="https://github.com/henit-chobisa/deck" aria-label="Star deck on GitHub">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M12 2.8l2.83 5.73 6.33.92-4.58 4.46 1.08 6.3L12 17.24l-5.66 2.97 1.08-6.3L2.84 9.45l6.33-.92z"/></svg>
+          <span>Star on GitHub</span>
+          <span class="star-count" hidden></span>
+        </a>
+        <ul class="free-facts">
+          <li>Apache-2.0</li>
+          <li>No account</li>
+          <li>No paid tier</li>
+          <li>Built in the open</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- 6: install -->
+  <section class="install" id="install" aria-labelledby="install-title">
+    <div class="wrap center">
+      <img src="assets/mark.svg" alt="" width="64" height="64">
+      <h2 id="install-title">Install deck</h2>
+      <p class="lede">Free, now and later. One script: it downloads deck for your machine, checks the download, puts it on your PATH and runs <code>deck setup</code>. Run it as yourself, not with <code>sudo</code>.</p>
+      <div class="tabs" role="tablist" aria-label="Your system">
+        <button type="button" role="tab" id="tab-unix" aria-selected="true" aria-controls="pane-unix">macOS and Linux</button>
+        <button type="button" role="tab" id="tab-win" aria-selected="false" aria-controls="pane-win" tabindex="-1">Windows</button>
+      </div>
+      <div class="cmdline" role="tabpanel" id="pane-unix" aria-labelledby="tab-unix">
+        <code><span class="dim">$</span> curl -fsSL https://raw.githubusercontent.com/henit-chobisa/deck/main/install | sh</code>
+        <button type="button" class="copy" data-copy="curl -fsSL https://raw.githubusercontent.com/henit-chobisa/deck/main/install | sh" aria-label="Copy the install command">Copy</button>
+      </div>
+      <div class="cmdline" role="tabpanel" id="pane-win" aria-labelledby="tab-win" hidden>
+        <code><span class="dim">&gt;</span> irm https://raw.githubusercontent.com/henit-chobisa/deck/main/install | iex</code>
+        <button type="button" class="copy" data-copy="irm https://raw.githubusercontent.com/henit-chobisa/deck/main/install | iex" aria-label="Copy the install command">Copy</button>
+      </div>
+      <p class="after">Then ask your agent about some code. <a href="docs/">Read the docs</a> · <a href="docs/#from-source">Build from source</a> · <a href="https://github.com/henit-chobisa/deck">Star on GitHub</a></p>
+    </div>
+  </section>
+</main>
+
+<footer class="foot">
+  <div class="wrap foot-top">
+    <div class="foot-brand">
+      <a class="brand" href="./" aria-label="deck, home"><img src="assets/mark.svg" alt="" width="28" height="28"><span>deck</span></a>
+      <p>Focused on engineers, built for agents.<br>Free and open source, under Apache-2.0.</p>
+    </div>
+    <nav class="foot-cols" aria-label="Footer">
+      <div><h3>Product</h3><a href="#play">Try it</a><a href="#install">Install</a><a href="docs/">Docs</a><a href="changelog/">Changelog</a></div>
+      <div><h3>Project</h3><a href="https://github.com/henit-chobisa/deck">GitHub</a><a href="https://github.com/henit-chobisa/deck/issues">Issues</a><a href="docs/#from-source">Build from source</a><a href="https://github.com/henit-chobisa/deck/blob/main/LICENSE">Apache-2.0</a></div>
+      <div><h3>Guides</h3><a href="ai-code-review/">Reviewing AI-written code</a><a href="review-large-pull-requests/">Large pull requests</a><a href="comprehension-debt/">Comprehension debt</a><a href="coderabbit-alternative/">A CodeRabbit alternative</a><a href="guides/">All guides</a></div>
+      <div><h3>Writing</h3><a href="https://henit.blog">henit.blog</a></div>
+    </nav>
+  </div>
+  <div class="wrap foot-base">
+    <span>deck · Apache-2.0</span>
+    <span>Made for people who still prefer quality.</span>
+  </div>
+</footer>
+
+<script src="https://cdn.jsdelivr.net/npm/lenis@1.1.13/dist/lenis.min.js" integrity="sha384-B2WBjDzEjJpYvhmi2UyEn7rektqkf5suS6sNoyyrf0EBAwBHdkiXxIlU0V5Ru2ed" crossorigin="anonymous" defer></script>
+<script src="js/deck-data.js" defer></script>
+<script src="js/play.js" defer></script>
+<script src="js/main.js" defer></script>
+</body>
+</html>

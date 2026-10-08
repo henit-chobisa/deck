@@ -1,0 +1,317 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>deck docs — install, set up, and review what your agent changed</title>
+<meta name="description" content="Install deck, set it up once, and read your agent's decks: the window, comments, the walk, diagrams and pages, theming, the catch, and the commands your agent runs.">
+<link rel="canonical" href="https://trydeck.dev/docs/">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="deck">
+<meta property="og:title" content="deck docs — install, set up, and review what your agent changed">
+<meta property="og:description" content="Install deck, set it up once, and read your agent&#x27;s decks: the window, comments, the walk, diagrams and pages, theming, the catch, and the commands your agent runs.">
+<meta property="og:url" content="https://trydeck.dev/docs/">
+<meta property="og:image" content="https://trydeck.dev/assets/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="deck docs — install, set up, and review what your agent changed">
+<meta name="twitter:description" content="Install deck, set it up once, and read your agent&#x27;s decks: the window, comments, the walk, diagrams and pages, theming, the catch, and the commands your agent runs.">
+<meta name="twitter:image" content="https://trydeck.dev/assets/og.png">
+<meta name="theme-color" content="#0d0f0f">
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "Does it cost anything?", "acceptedAnswer": {"@type": "Answer", "text": "No. deck is free and open source under Apache-2.0: no paid tier, no account, and no plan to add either. It was made to give back to the community."}}, {"@type": "Question", "name": "Does deck run its own agent or model?", "acceptedAnswer": {"@type": "Answer", "text": "No. Your agent writes the deck and opens it. deck draws it, waits for you, and hands your answer back to that same agent."}}, {"@type": "Question", "name": "Which agents work with it?", "acceptedAnswer": {"@type": "Answer", "text": "Any agent that can run a shell command. deck setup installs the skill into each one it finds on your machine."}}, {"@type": "Question", "name": "Does my code leave my machine?", "acceptedAnswer": {"@type": "Answer", "text": "Your code stays on your machine. deck checks GitHub for new releases, and the optional voice sends the narration (the prose your agent wrote, not your code) to Google to be spoken, only once you have set up a key."}}, {"@type": "Question", "name": "Can the agent open the window on me?", "acceptedAnswer": {"@type": "Answer", "text": "No. A deck arrives as a bar. Only you open it."}}, {"@type": "Question", "name": "What if the file changes after I comment?", "acceptedAnswer": {"@type": "Answer", "text": "Comments carry the text they were written against, and come back marked diff, fingerprint or stale, so your agent knows how far to trust the location."}}, {"@type": "Question", "name": "Where do I report a problem?", "acceptedAnswer": {"@type": "Answer", "text": "GitHub issues. Nearly every fix so far has come from somebody hitting something while reading a deck of their own."}}]}</script>
+<link rel="icon" href="../assets/mark.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../css/site.css">
+<link rel="stylesheet" href="../css/docs.css">
+</head>
+<body class="docs">
+<a class="skip" href="#doc">Skip to content</a>
+
+<header class="nav solid">
+  <a class="brand" href="../" aria-label="deck, home">
+    <img src="../assets/mark.svg" alt="" width="28" height="28">
+    <span>deck</span>
+  </a>
+  <nav aria-label="Main">
+    <a href="../#agent">How it works</a>
+    <a href="../#play">Try it</a>
+    <a href="./" aria-current="page">Docs</a>
+    <a href="../guides/">Guides</a>
+    <a href="../changelog/">Changelog</a>
+    <a href="https://github.com/henit-chobisa/deck">GitHub</a>
+    <a class="nav-install" href="#install">Install</a>
+  </nav>
+</header>
+
+<div class="doc-wrap">
+  <aside class="toc" aria-label="On this page">
+    <p>Start</p>
+    <a href="#install">Install</a>
+    <a href="#setup">Set it up once</a>
+    <a href="#first">Your first deck</a>
+    <p>Reading a deck</p>
+    <a href="#window">The window</a>
+    <a href="#keys">Keys</a>
+    <a href="#comments">Comments and questions</a>
+    <a href="#walk">The walk and the voice</a>
+    <a href="#pictures">Diagrams and pages</a>
+    <p>Making it yours</p>
+    <a href="#theme">Theming</a>
+    <a href="#config">Configuration</a>
+    <a href="#catch">The catch</a>
+    <p>Reference</p>
+    <a href="#commands">What your agent runs</a>
+    <a href="#disk">A deck on disk</a>
+    <a href="#trust">Can it make things up?</a>
+    <a href="#faq">Questions</a>
+  </aside>
+
+  <article class="doc" id="doc">
+    <p class="eyebrow accent">Docs</p>
+    <h1>How to use deck</h1>
+    <p class="lede">You install deck once and answer a few questions. After that your agent does the work: when it has something to show you, a bar appears at the bottom of your screen. There is nothing else to learn until you open it.</p>
+
+    <section id="install">
+      <h2>Install</h2>
+      <p>One script. It downloads deck for your machine, checks that the download is intact, puts it on your PATH, and then runs <code>deck setup</code>.</p>
+      <h3>macOS and Linux</h3>
+      <div class="cmdline"><code><span class="dim">$</span> curl -fsSL https://raw.githubusercontent.com/henit-chobisa/deck/main/install | sh</code><button type="button" class="copy" data-copy="curl -fsSL https://raw.githubusercontent.com/henit-chobisa/deck/main/install | sh" aria-label="Copy the macOS and Linux install command">Copy</button></div>
+      <h3>Windows, in PowerShell</h3>
+      <div class="cmdline"><code><span class="dim">&gt;</span> irm https://raw.githubusercontent.com/henit-chobisa/deck/main/install | iex</code><button type="button" class="copy" data-copy="irm https://raw.githubusercontent.com/henit-chobisa/deck/main/install | iex" aria-label="Copy the Windows install command">Copy</button></div>
+      <ul>
+        <li>Run it as yourself, not with <code>sudo</code>.</li>
+        <li>Running it again keeps your settings and your decks.</li>
+        <li>deck updates itself on macOS and Linux. On Windows, run <code>deck upgrade</code> when you want the next release.</li>
+      </ul>
+      <h3 id="from-source">Build it from source</h3>
+      <p>You need Rust. On Linux you also need WebKitGTK, which the window uses to draw pages.</p>
+      <pre><code>cargo install --git https://github.com/henit-chobisa/deck deck-app
+deck setup</code></pre>
+    </section>
+
+    <section id="setup">
+      <h2>Set it up once</h2>
+      <p><code>deck setup</code> is the one thing only you can answer. It:</p>
+      <ol>
+        <li><b>Asks how deck should look.</b> It can borrow your editor's colours, so a deck looks like the code you already read all day.</li>
+        <li><b>Teaches your agents.</b> It installs a short skill into each coding agent it finds on your machine, so they know when to reach for deck and how to write a good one.</li>
+        <li><b>Offers <a href="#catch">the catch</a>.</b> A hook that sends a reply full of <code>file:line</code> locations back to your agent to become a deck instead.</li>
+      </ol>
+      <p>It writes your answers to <code>~/.deck/config.toml</code>. Run it again any time to change them.</p>
+    </section>
+
+    <section id="first">
+      <h2>Your first deck</h2>
+      <p>Ask your agent about some code, the way you already do: a bug, a plan, a review, or how something works.</p>
+      <div class="callout"><b>deck never runs a model.</b> The agent you are already talking to, in the same session and with everything it just read, writes the deck with a few shell commands. Any agent that can run a shell command can use it.</div>
+      <ol>
+        <li><b>The agent writes a deck.</b> A title, then one group at a time. Each group is one thing it wants to say, and the code that shows it. deck refuses a group that points at a file or a line that does not exist.</li>
+        <li><b>A bar appears at the bottom of your screen.</b> It names the deck and shows how far along it is. Open it when you are ready. The agent cannot open it for you, and there is no flag that lets it.</li>
+        <li><b>You read it.</b> Each sentence lights the code it is about.</li>
+        <li><b>You answer.</b> Comment on the lines you disagree with, ask a question, or submit.</li>
+        <li><b>The agent gets your answer.</b> The command that opened the deck has been waiting the whole time. When you submit, ask, or close the deck, it ends and hands your agent what you said, pinned to the lines you said it about.</li>
+      </ol>
+    </section>
+
+    <section id="window">
+      <h2>The window</h2>
+      <h3>Walk the argument, not the diff</h3>
+      <p>A deck is a sequence of groups. Each group is one claim with the code that proves it: an enum and the column that stores it, a writer and the reader that consumes it. The relationship is on screen instead of in your head. <kbd>n</kbd> and <kbd>p</kbd> move between groups.</p>
+      <p>The light follows the sentence being read, not your scrolling. Press a sentence in the narration and the code it is about lights up, in whichever pane is showing it.</p>
+      <h3>Put it away without losing it</h3>
+      <p>Press <kbd>h</kbd> and the deck goes back to the bar with your comments still in it. When several decks are waiting, the bar says which one you are on, as in <em>2 of 3</em>.</p>
+      <h3>Arrange it the way you read</h3>
+      <p>Drag a seam to resize a pane, press <kbd>t</kbd> to turn the panes a quarter, and the shape is remembered for next time.</p>
+    </section>
+
+    <section id="keys">
+      <h2>Keys</h2>
+      <table>
+        <thead><tr><th scope="col">Key</th><th scope="col">Does</th></tr></thead>
+        <tbody>
+          <tr><td><kbd>n</kbd> <kbd>p</kbd></td><td>Next or previous group</td></tr>
+          <tr><td><kbd>c</kbd></td><td>Comment on the selection, or on the group</td></tr>
+          <tr><td><kbd>w</kbd></td><td>Walk: read the deck aloud, and its answers (once a voice is set up)</td></tr>
+          <tr><td><kbd>t</kbd></td><td>Turn the panes</td></tr>
+          <tr><td><kbd>h</kbd></td><td>Put the deck away, back to the bar</td></tr>
+          <tr><td><kbd>s</kbd></td><td>Submit the review</td></tr>
+          <tr><td><kbd>q</kbd></td><td>Close without answering</td></tr>
+          <tr><td><kbd>f</kbd></td><td>During a walk, let the agent move your eyes again</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="comments">
+      <h2>Comments and questions</h2>
+      <p>Drag across lines and press <kbd>c</kbd>. Drag across the narration itself to answer a sentence rather than a line; that is where <em>this whole approach is wrong</em> goes. Then finish it one of two ways:</p>
+      <table>
+        <thead><tr><th scope="col">Button</th><th scope="col">macOS</th><th scope="col">Windows and Linux</th><th scope="col">What happens</th></tr></thead>
+        <tbody>
+          <tr><td><b>Ask now</b></td><td><kbd>⌘</kbd> <kbd>↩</kbd></td><td><kbd>Ctrl</kbd> <kbd>Enter</kbd></td><td>Goes to your agent straight away. The answer comes back in the deck.</td></tr>
+          <tr><td><b>Add to review</b></td><td><kbd>⇧</kbd> <kbd>⌘</kbd> <kbd>↩</kbd></td><td><kbd>Ctrl</kbd> <kbd>Shift</kbd> <kbd>Enter</kbd></td><td>Held until you submit.</td></tr>
+        </tbody>
+      </table>
+      <p><kbd>esc</kbd> discards. When the agent is not listening, <b>Ask now</b> is off and says why; the review still takes the comment.</p>
+      <p>Every comment is pinned to the lines it was about, together with the text it was written against, so it survives the file moving underneath it. When it comes back to your agent it says how far to trust the location: <code>diff</code>, <code>fingerprint</code>, or <code>stale</code>.</p>
+      <p>Asked something mid-deck, your agent can answer with a pane rather than a paragraph: a file it brings in, or a chart drawn there and then, folded in beside what you were already looking at.</p>
+    </section>
+
+    <section id="walk">
+      <h2>The walk and the voice</h2>
+      <p>The rail beside the panes holds everything said in the deck. The agent that wrote it can move your eyes while it talks: show you lines, bring in a file the group never showed, fold a pane away to its spine, or say something new.</p>
+      <p>Movement is yours the moment you take it. Scroll, select, or start typing and the agent stops moving you; the rail says <b>paused</b>. It lapses by itself after a few seconds of stillness, and <kbd>f</kbd> hands control back straight away.</p>
+      <h3>Reading aloud</h3>
+      <p>With a voice set up, <kbd>w</kbd> reads the deck aloud and the light moves through the code in time with the words, timed from the sound itself. Set it up once:</p>
+      <pre><code>deck walk</code></pre>
+      <p>It lists the Google Chirp 3 HD voices and plays one before you choose. Until you do, the window does not offer <kbd>w</kbd> at all, and everything else works without it.</p>
+      <p>The key can live in <code>DECK_SPEECH_KEY</code> rather than in a file. To be plain about it: the narration is sent to Google to be turned into sound. The narration, not your code, and nothing is sent until a key is set up.</p>
+      <h3>What comes back</h3>
+      <p>For a walked deck your agent also gets a transcript: what you were shown, in what order, and what you said about each part.</p>
+    </section>
+
+    <section id="pictures">
+      <h2>Diagrams and pages</h2>
+      <h3>Diagrams</h3>
+      <p>Some things are in no file at all: how a click reaches a controller, or the order four services touch one request. A group can carry a picture beside its code. A <b>flow</b> is a named path through it. Press the flow and a current travels the route while the rest of the picture steps back.</p>
+      <p>A sentence can light lines and a block in the picture at once. That is what a diff or a diagram cannot do on its own. Drag the drawing anywhere. Hold <kbd>⌘</kbd> or <kbd>Ctrl</kbd> and scroll, or pinch, to zoom.</p>
+      <h3>Pages, for the idea that only moves</h3>
+      <p>Two workers racing for one count, a queue filling until the producer is told to stop, a latency chart bending when the cache goes cold. When the argument <em>is</em> the movement, a group can carry a page: a small piece of HTML your agent writes, drawn in deck's own colours. It hears the same points the code does, so it moves with the sentence being read rather than with a clock.</p>
+      <p>Pages are narrow on purpose: at most forty words on screen, nothing fetched from the network, and deck's palette instead of their own.</p>
+    </section>
+
+    <section id="theme">
+      <h2>Theming</h2>
+      <p>deck borrows your editor's colours: the page, the text, an accent and the syntax. The shapes and the spacing are always deck's.</p>
+      <pre><code># ~/.deck/config.toml
+[theme]
+editor = "vscode"   # nvim | zed | vscode | cursor | windsurf</code></pre>
+      <p>Try a theme on without changing your editor:</p>
+      <pre><code>deck open &lt;deck&gt; --theme "vscode:Solarized Dark"</code></pre>
+      <p>Light or dark follows your machine unless you pin it, which is worth doing for a recording:</p>
+      <pre><code>deck open &lt;deck&gt; --mode dark --paper warm</code></pre>
+    </section>
+
+    <section id="config">
+      <h2>Configuration</h2>
+      <p>Everything lives in one file, <code>~/.deck/config.toml</code>. <code>deck setup</code> and <code>deck walk</code> write it for you, and every setting has a default, so an empty file and no file behave the same. Here is every setting, at its default unless a comment says otherwise. <code>editor</code> and <code>voice</code> show example values.</p>
+      <pre><code># ~/.deck/config.toml
+
+[theme]
+# Borrow an editor's colours: nvim, zed, vscode, cursor or windsurf,
+# or one of its themes, as "vscode:Solarized Dark". Default: none.
+editor = "vscode"
+paper  = "grey"      # the neutrals when nothing is borrowed: grey or warm
+mode   = "auto"      # auto follows your machine: auto, light or dark
+
+[theme.colors]
+# None by default. Any set here wins over everything else.
+# These values are only examples, from gruvbox.
+accent  = "#fe8019"  # lit lines, names and buttons
+bg      = "#282828"  # the page
+fg      = "#ebdbb2"  # the text
+muted   = "#a89984"  # secondary text
+edge    = "#3a3735"  # borders and seams
+add     = "#b8bb26"  # added lines in a diff
+del     = "#fb4934"  # removed lines in a diff
+comment = "#928374"  # comments in code
+# Also: band, wash, focus, on_accent, gone, fresh, ground.
+
+[layout]
+arrange        = "stacked"  # how panes fill: stacked, columns or grid
+max_columns    = 3          # never more columns than this
+min_pane_width = 60         # drop a column before a pane gets narrower
+max_panes      = 4          # more refs than this go to the next page
+
+[zen]                # z, the lights: how the screen behind dims
+dim  = 0.7           # 0 to 0.92, how far down the rest goes
+blur = true          # blur what is behind, as well as dim it
+
+[speech]             # written by deck walk
+aloud = true         # read the narration aloud while walking
+voice = "en-US-Chirp3-HD-Kore"  # deck walk lists the voices
+rate  = 165          # words per minute
+pause = 420          # milliseconds between paragraphs
+# key = "…"          # better in DECK_SPEECH_KEY, which is read first
+
+[updates]
+automatic = true     # false stops every request deck makes by itself</code></pre>
+      <p>Colours are hex, as <code>"#rrggbb"</code>. A key deck does not know is an error that names the key, rather than a setting quietly ignored: a misspelt <code>acent</code> tells you so instead of leaving the deck looking the same all afternoon.</p>
+    </section>
+
+    <section id="catch">
+      <h2>The catch</h2>
+      <p>A skill is a suggestion, and an agent that has just finished an investigation is very inclined to type out what it found. So setup offers the catch: it reads each finished reply, and when one names two or more <code>file:line</code> locations, it sends the reply back and asks for a deck instead, while the agent still holds everything it just learned.</p>
+      <p>It stays quiet whenever it might be wrong: when a deck was already built in that turn, when the reply is about deck itself, when one location is repeated, or for a version number or a time that only looks like a location.</p>
+      <p>From 0.1.5, the same hook also helps after a long session is compacted. When a session that has used deck picks up after a compaction, it tells the agent to load the deck skill again, so the decks it writes afterwards are as good as the first ones.</p>
+      <p>The catch needs an agent with reply hooks. <code>deck setup</code> offers it when yours has them. Say no and everything else still works; turn it on later by running <code>deck setup</code> again.</p>
+    </section>
+
+    <section id="commands">
+      <h2>What your agent runs</h2>
+      <p>You will rarely type these. The skill tells your agent when and how. They are plain shell commands, which is why deck works with any agent.</p>
+      <h3>Writing a deck</h3>
+      <pre><code>deck new --title "The batch counter stalls at 63" --total 2   # prints the deck's path
+deck open &lt;path&gt;                                               # the bar, then the wait
+deck group &lt;path&gt; --say "The counter is decremented on the **error path** too." \
+  --ref "src/batch.ts:140-148 decremented *twice* when the write fails"
+deck seal &lt;path&gt;                                               # no more groups</code></pre>
+      <h3>While you read</h3>
+      <pre><code>deck show  &lt;deck&gt; --ref "src/view.rs:106-110"   # move your eyes here
+deck say   &lt;deck&gt; --text "…"                    # say something, aloud if there is a voice
+deck next  &lt;deck&gt; --after &lt;cursor&gt;              # wait until you do something
+deck fold  &lt;deck&gt; --pane protocol               # fold a pane away to its spine
+deck bring &lt;deck&gt; --ref "src/live.rs:40-60"     # bring a file the group never showed
+deck clear &lt;deck&gt;                               # put the borrowed panes back</code></pre>
+      <h3>Yours</h3>
+      <table>
+        <tbody>
+          <tr><td><code>deck setup</code></td><td>Choose how deck looks, teach your agents, and turn on the catch.</td></tr>
+          <tr><td><code>deck walk</code></td><td>Choose a voice, so a deck can read itself to you.</td></tr>
+          <tr><td><code>deck upgrade</code></td><td>Replace deck with the newest release, after checking its checksum and that it starts.</td></tr>
+        </tbody>
+      </table>
+      <p>Why the waiting command is the one that ends: an agent is woken by a process ending. The window cannot be that process, because someone asking a question still wants the deck in front of them. So the window runs on its own, and <code>deck open</code>, the command your agent ran, is the one that ends with your answer.</p>
+    </section>
+
+    <section id="disk">
+      <h2>A deck on disk</h2>
+      <pre><code>d-1788265010-8842.deck/
+  deck.json      the header: title, project, how many groups are coming
+  g1.json        one claim, and the code that shows it
+  g2.json
+  done           written last
+d-1788265010-8842.review    your answer, written beside it</code></pre>
+      <p>You can start reading group one while group four is still being written. <a href="https://github.com/henit-chobisa/deck/blob/main/PROTOCOL.md">PROTOCOL.md</a> is the full specification, frozen at version 1.</p>
+    </section>
+
+    <section id="trust">
+      <h2>Can it make things up?</h2>
+      <p>Not the half that can be checked. <code>deck group</code> opens every file a ref points at and refuses the group if the file is missing or the range runs past its end. A deck cannot be written against code that does not exist, and your agent is told while it is still working, so it can go and look.</p>
+      <p>The other half is whether the claim about those lines is true. deck's answer is that you are looking at the lines while you read the claim. A summary in chat asks you to believe it. A deck puts the evidence next to the argument and gives you a key to disagree on.</p>
+    </section>
+
+    <section id="faq">
+      <h2>Questions</h2>
+      <details><summary>Does it cost anything?</summary><p>No. deck is free and open source under Apache-2.0: no paid tier, no account, and no plan to add either. It was made to give back to the community.</p></details>
+      <details><summary>Does deck run its own agent or model?</summary><p>No. Your agent writes the deck and opens it. deck draws it, waits for you, and hands your answer back to that same agent.</p></details>
+      <details><summary>Which agents work with it?</summary><p>Any agent that can run a shell command. <code>deck setup</code> installs the skill into each one it finds on your machine.</p></details>
+      <details><summary>Does my code leave my machine?</summary><p>Your code stays on your machine. deck checks GitHub for new releases, and the optional voice sends the narration (the prose your agent wrote, not your code) to Google to be spoken, only once you have set up a key.</p></details>
+      <details><summary>Can the agent open the window on me?</summary><p>No. A deck arrives as a bar. Only you open it.</p></details>
+      <details><summary>What if the file changes after I comment?</summary><p>Comments carry the text they were written against, and come back marked <code>diff</code>, <code>fingerprint</code> or <code>stale</code>, so your agent knows how far to trust the location.</p></details>
+      <details><summary>Where do I report a problem?</summary><p><a href="https://github.com/henit-chobisa/deck/issues">GitHub issues</a>. Nearly every fix so far has come from somebody hitting something while reading a deck of their own.</p></details>
+    </section>
+  </article>
+</div>
+
+<footer class="foot">
+  <div class="wrap foot-base">
+    <span>deck · Apache-2.0</span>
+    <span>Made for people who still prefer quality.</span>
+  </div>
+</footer>
+<script src="../js/docs.js" defer></script>
+</body>
+</html>

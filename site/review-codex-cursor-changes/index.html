@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Reviewing changes from Codex, Cursor and Amp</title>
+<meta name="description" content="Whichever coding agent you use, the review problem is the same: fast changes, long summaries, decisions you never made. How to see them on the lines instead.">
+<link rel="canonical" href="https://trydeck.dev/review-codex-cursor-changes/">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="deck">
+<meta property="og:title" content="Reviewing changes from Codex, Cursor and Amp">
+<meta property="og:description" content="Whichever coding agent you use, the review problem is the same: fast changes, long summaries, decisions you never made. How to see them on the lines instead.">
+<meta property="og:url" content="https://trydeck.dev/review-codex-cursor-changes/">
+<meta property="og:image" content="https://trydeck.dev/assets/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Reviewing changes from Codex, Cursor and Amp">
+<meta name="twitter:description" content="Whichever coding agent you use, the review problem is the same: fast changes, long summaries, decisions you never made. How to see them on the lines instead.">
+<meta name="twitter:image" content="https://trydeck.dev/assets/og.png">
+<meta name="theme-color" content="#0d0f0f">
+<link rel="icon" href="/assets/mark.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/css/site.css">
+<link rel="stylesheet" href="/css/docs.css">
+<link rel="stylesheet" href="/css/guide.css">
+<script type="application/ld+json">[{"@context": "https://schema.org", "@type": "Article", "headline": "Reviewing what Codex, Cursor or Amp changed", "description": "Whichever coding agent you use, the review problem is the same: fast changes, long summaries, decisions you never made. How to see them on the lines instead.", "author": {"@type": "Person", "name": "Henit Chobisa", "url": "https://github.com/henit-chobisa"}, "publisher": {"@type": "Organization", "name": "deck", "url": "https://trydeck.dev", "logo": {"@type": "ImageObject", "url": "https://trydeck.dev/assets/mark.svg"}}, "image": "https://trydeck.dev/assets/og.png", "mainEntityOfPage": "https://trydeck.dev/review-codex-cursor-changes/", "dateModified": "2026-10-08"}, {"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "deck", "item": "https://trydeck.dev/"}, {"@type": "ListItem", "position": 2, "name": "Guides", "item": "https://trydeck.dev/guides/"}, {"@type": "ListItem", "position": 3, "name": "Reviewing what Codex, Cursor or Amp changed", "item": "https://trydeck.dev/review-codex-cursor-changes/"}]}, {"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "Which agents does deck support?", "acceptedAnswer": {"@type": "Answer", "text": "Any agent that can run a shell command. Setup installs its skill into Claude Code, Codex, Cursor and Amp when it finds them."}}, {"@type": "Question", "name": "Do I need an API key?", "acceptedAnswer": {"@type": "Answer", "text": "No. deck uses the agent you already run. A key is only needed for the optional voice."}}, {"@type": "Question", "name": "Is deck free?", "acceptedAnswer": {"@type": "Answer", "text": "Yes. Free and open source under Apache-2.0, with no account and no paid tier."}}]}]</script>
+</head>
+<body class="docs">
+<a class="skip" href="#doc">Skip to content</a>
+<header class="nav solid">
+  <a class="brand" href="/" aria-label="deck, home"><img src="/assets/mark.svg" alt="" width="28" height="28"><span>deck</span></a>
+  <nav aria-label="Main">
+    <a href="/#agent">How it works</a>
+    <a href="/#play">Try it</a>
+    <a href="/docs/">Docs</a>
+    <a href="/guides/">Guides</a>
+    <a href="https://github.com/henit-chobisa/deck">GitHub</a>
+    <a class="nav-install" href="/#install">Install</a>
+  </nav>
+</header>
+<main class="g-wrap" id="doc">
+  <nav class="crumbs" aria-label="Breadcrumb"><a href="/">deck</a> <span>/</span> <a href="/guides/">Guides</a></nav>
+  <article class="doc g-doc">
+    <p class="eyebrow accent">Codex, Cursor, Amp</p>
+    <h1>Reviewing what Codex, Cursor or Amp changed</h1>
+    <p class="lede">Whichever coding agent you use, the review problem is the same: fast changes, long summaries, decisions you never made. How to see them on the lines instead.</p>
+    <p>Every coding agent has the same shape of problem at the end of a task. The work is done, it is mostly right, and the explanation is a block of prose with file names in it.</p>
+<h2 id="the-agent-is-not-the-problem">The agent is not the problem</h2>
+<p>Codex, Cursor and Amp are all good at writing code. The gap is on the other side: you need to understand what was decided before you ship it, and prose is a poor way to carry that.</p>
+<h2 id="one-format-for-any-agent">One format for any agent</h2>
+<p><a href="/">deck</a> works with any agent that can run a shell command. The agent writes a deck with four commands: start it, open it, add a group per claim, seal it. Each group says one thing and points at the lines that show it. deck checks that every file and line it points at exists before it accepts the group.</p>
+<p>On your side, a bar appears. You open the deck when you are ready, click through the claims, see the code lit beside each one, and comment where you disagree. Your review goes back to the same agent, which carries on from there.</p>
+<h2 id="what-changes-in-practice">What changes in practice</h2>
+<ul><li><strong>Reviews get shorter.</strong> You look at the decisions, not the formatting.</li><li><strong>Disagreements get earlier.</strong> You push back on the plan before the code exists.</li><li><strong>Context survives.</strong> The agent that did the work is the one answering your questions.</li></ul>
+<h2 id="setup">Setup</h2>
+<p>Install deck and run <code>deck setup</code>. It finds the agents on your machine and installs a short skill into each, so they know when a deck is the better answer. See <a href="/works-with/">which agents deck works with</a>.</p>
+    <aside class="cta" aria-label="Try deck">
+  <div>
+    <p class="cta-title">See your agent's decisions on the lines.</p>
+    <p>deck is free and open source. It works with Claude Code, Codex, Cursor, Amp and any agent with a shell.</p>
+  </div>
+  <div class="cta-actions">
+    <a class="star" href="/#install">Install deck</a>
+    <a class="cta-alt" href="/#play">Try a real deck in your browser</a>
+  </div>
+</aside>
+    <section class="g-faq" aria-labelledby="faq"><h2 id="faq">Questions</h2><details><summary>Which agents does deck support?</summary><p>Any agent that can run a shell command. Setup installs its skill into Claude Code, Codex, Cursor and Amp when it finds them.</p></details><details><summary>Do I need an API key?</summary><p>No. deck uses the agent you already run. A key is only needed for the optional voice.</p></details><details><summary>Is deck free?</summary><p>Yes. Free and open source under Apache-2.0, with no account and no paid tier.</p></details></section>
+    <section class="g-related" aria-labelledby="more"><h2 id="more">Keep reading</h2><ul><li><a href="/stop-rubber-stamping-pull-requests/">How to stop rubber-stamping pull requests</a></li><li><a href="/ai-code-quality/">Keeping code quality when your agent writes most of it</a></li><li><a href="/vibe-coding/">Vibe coding without losing track of your system</a></li></ul></section>
+  </article>
+</main>
+<footer class="foot">
+  <div class="wrap foot-base">
+    <span>deck · free and open source · Apache-2.0</span>
+    <span>Made for people who still prefer quality.</span>
+  </div>
+</footer>
+</body>
+</html>

@@ -1,0 +1,89 @@
+<meta name="deck-points" content="today slow offload spike backlog autoscale">
+<style>
+  body { margin: 0; height: 100vh }
+  svg  { display: block; width: 100%; height: 100% }
+  text { font: 12px ui-monospace, monospace; fill: var(--deck-muted) }
+  .head { fill: var(--deck-fg); font-size: 13px; font-weight: 600 }
+  .pct  { fill: var(--deck-fg) } .tick { text-anchor: middle }
+  .grid { stroke: var(--deck-edge); stroke-dasharray: 2 6 }
+  .bar  { transition: fill .4s, opacity .4s }
+  .bar.now { fill: var(--deck-muted) } .bar.bad { fill: var(--deck-del) } .bar.ghost { fill: var(--deck-muted); opacity: .25 }
+  .bar.new { fill: var(--deck-add) }
+  .num  { fill: var(--deck-fg); font-size: 12px; transition: opacity .35s } .num.bad { fill: var(--deck-del); font-weight: 600 } .num.ok { fill: var(--deck-add); font-weight: 600 }
+  .traffic { stroke: var(--deck-fg); stroke-width: 1.6; fill: none }
+  .queue { fill: var(--deck-del); opacity: .55 } .auto { fill: var(--deck-add); opacity: .7 }
+  .note { font-weight: 600; transition: opacity .35s } .note.bad { fill: var(--deck-del) } .note.ok { fill: var(--deck-add) }
+</style>
+<svg id="s"></svg>
+<script>
+// From last month's traces: checkout p50/p95/p99, today and with the PDF off the request.
+const at = { today: 1, slow: 2, offload: 3, spike: 4, backlog: 5, autoscale: 6 }
+const pct = [['p50', 820, 140], ['p95', 2400, 210], ['p99', 4200, 260]]
+// Black Friday, by hour: orders a minute, ×12 at the peak.
+const traffic = h => 1 + 11 * Math.exp(-((h - 12) ** 2) / 6)
+const fixedQ = h => Math.max(0, 9 * Math.exp(-((h - 13.2) ** 2) / 5))       // minutes late, 4 workers
+const autoQ = h => Math.max(0, 0.67 * Math.exp(-((h - 12.4) ** 2) / 3))     // minutes late, 2–20 workers
+const svg = document.getElementById('s'), NS = 'http://www.w3.org/2000/svg'
+const make = (tag, cls, text) => { const e = document.createElementNS(NS, tag)
+  if (cls) e.setAttribute('class', cls); if (text != null) e.textContent = text; return svg.appendChild(e) }
+const h1 = make('text', 'head', 'checkout latency'), h2 = make('text', 'head', 'Black Friday: receipts late, minutes')
+const names = pct.map(p => make('text', 'pct', p[0]))
+const nowBars = pct.map(() => make('rect', 'bar now')), newBars = pct.map(() => make('rect', 'bar new'))
+const nowNum = pct.map(() => make('text', 'num')), newNum = pct.map(() => make('text', 'num ok'))
+const grid = [0, 6, 12, 18, 24].map(() => make('line', 'grid')), hours = ['00:00', '06:00', '12:00', '18:00', '24:00'].map(s => make('text', 'tick', s))
+const queue = make('path', 'queue'), auto = make('path', 'auto'), line = make('path', 'traffic')
+const lateN = make('text', 'note bad', '9 min late, 4 workers'), autoN = make('text', 'note ok', '40 s, autoscaled 2–20')
+const spikeN = make('text', 'note', '×12 orders')
+
+let W = 0, H = 0, shown = 0, from = 0, to = 0, t0 = null, frame = 0
+const px = v => Math.round(v * devicePixelRatio) / devicePixelRatio
+const ease = k => k * k * (3 - 2 * k), clamp = v => Math.max(0, Math.min(1, v)), step = (t, a) => ease(clamp(t - a + 1))
+function area(f, X, Y, upto) { let d = `M ${X(0)} ${Y(0)}`
+  for (let h = 0; h <= upto; h += 0.25) d += ` L ${X(h)} ${Y(f(h))}`
+  return d + ` L ${X(upto)} ${Y(0)} Z` }
+function place(t) {
+  const left = 70, right = W - 120, top = 40, lane = 34
+  const X1 = ms => px(left + (right - left) * ms / 4400)
+  h1.setAttribute('x', 12); h1.setAttribute('y', top - 16)
+  pct.forEach(([p, now, next], i) => {
+    const y = top + lane * i, grow = step(t, 1), shrink = step(t, 3)
+    names[i].setAttribute('x', 12); names[i].setAttribute('y', y + 15)
+    nowBars[i].setAttribute('x', left); nowBars[i].setAttribute('y', y); nowBars[i].setAttribute('height', 20); nowBars[i].setAttribute('rx', 3)
+    nowBars[i].setAttribute('width', Math.max(0, X1(now * grow) - left))
+    nowBars[i].setAttribute('class', t >= 3 ? 'bar ghost' : t >= 2 && i === 2 ? 'bar bad' : 'bar now')
+    nowNum[i].textContent = (now >= 1000 ? (now / 1000).toFixed(1) + ' s' : now + ' ms') + (i === 2 && t >= 2 && t < 3 ? ' of spinner' : '')
+    nowNum[i].setAttribute('x', X1(now) + 8); nowNum[i].setAttribute('y', y + 15); nowNum[i].style.opacity = grow >= 1 ? (t >= 3 ? .35 : 1) : 0
+    nowNum[i].setAttribute('class', i === 2 && t >= 2 && t < 3 ? 'num bad' : 'num')
+    newBars[i].setAttribute('x', left); newBars[i].setAttribute('y', y + 4); newBars[i].setAttribute('height', 12); newBars[i].setAttribute('rx', 3)
+    newBars[i].setAttribute('width', Math.max(0, X1(next) - left) * shrink)
+    newNum[i].textContent = next + ' ms'; newNum[i].setAttribute('x', X1(next) + 8); newNum[i].setAttribute('y', y + 15)
+    newNum[i].style.opacity = shrink >= 1 ? 1 : 0
+  })
+  // The day of the spike.
+  const top2 = top + lane * 3 + 70, bottom = Math.max(top2 + 120, H - 40), X = h => px(left + (right - left) * h / 24)
+  const Y = m => px(bottom - (bottom - top2) * m / 10), T = v => px(bottom - (bottom - top2) * v / 13)
+  h2.setAttribute('x', 12); h2.setAttribute('y', top2 - 24)
+  grid.forEach((e, i) => { e.setAttribute('x1', X(i * 6)); e.setAttribute('x2', X(i * 6)); e.setAttribute('y1', top2); e.setAttribute('y2', bottom) })
+  hours.forEach((e, i) => { e.setAttribute('x', X(i * 6)); e.setAttribute('y', bottom + 18) })
+  const day = 24 * step(t, 4)
+  let d = `M ${X(0)} ${T(traffic(0))}`; for (let h = 0; h <= day; h += 0.25) d += ` L ${X(h)} ${T(traffic(h))}`
+  line.setAttribute('d', day > 0 ? d : ''); spikeN.setAttribute('x', X(12) + 8); spikeN.setAttribute('y', T(12) - 6); spikeN.style.opacity = day >= 12 ? 1 : 0
+  const q = 24 * step(t, 5), a = 24 * step(t, 6)
+  queue.setAttribute('d', q > 0 ? area(fixedQ, X, Y, q) : ''); auto.setAttribute('d', a > 0 ? area(autoQ, X, Y, a) : '')
+  lateN.setAttribute('x', X(13.2) + 12); lateN.setAttribute('y', Y(9) + 4); lateN.style.opacity = q >= 14 ? 1 : 0
+  autoN.setAttribute('x', X(12.4) + 12); autoN.setAttribute('y', Y(0.67) - 8); autoN.style.opacity = a >= 13 ? 1 : 0
+}
+function run(now) {
+  if (t0 === null) t0 = now
+  const k = Math.min(1, (now - t0) / (to >= 4 ? 1600 : 900))
+  shown = from + (to - from) * ease(k); place(shown)
+  frame = k < 1 ? requestAnimationFrame(run) : 0
+}
+addEventListener('deck:point', (e) => {
+  if (!(e.detail in at)) return
+  from = shown; to = at[e.detail]; t0 = null; cancelAnimationFrame(frame)
+  if (matchMedia('(prefers-reduced-motion: reduce)').matches) { shown = to; place(to) }
+  else frame = requestAnimationFrame(run)
+})
+new ResizeObserver(() => { W = svg.clientWidth; H = svg.clientHeight; place(shown) }).observe(svg)
+</script>

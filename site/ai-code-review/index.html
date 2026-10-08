@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AI code review: how to review code your agent wrote</title>
+<meta name="description" content="Reviewing AI-generated code is not like reviewing a colleague&#x27;s. Here is what to look for, why diffs and summaries fall short, and how to see the decisions your agent made.">
+<link rel="canonical" href="https://trydeck.dev/ai-code-review/">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="deck">
+<meta property="og:title" content="AI code review: how to review code your agent wrote">
+<meta property="og:description" content="Reviewing AI-generated code is not like reviewing a colleague&#x27;s. Here is what to look for, why diffs and summaries fall short, and how to see the decisions your agent made.">
+<meta property="og:url" content="https://trydeck.dev/ai-code-review/">
+<meta property="og:image" content="https://trydeck.dev/assets/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="AI code review: how to review code your agent wrote">
+<meta name="twitter:description" content="Reviewing AI-generated code is not like reviewing a colleague&#x27;s. Here is what to look for, why diffs and summaries fall short, and how to see the decisions your agent made.">
+<meta name="twitter:image" content="https://trydeck.dev/assets/og.png">
+<meta name="theme-color" content="#0d0f0f">
+<link rel="icon" href="/assets/mark.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/css/site.css">
+<link rel="stylesheet" href="/css/docs.css">
+<link rel="stylesheet" href="/css/guide.css">
+<script type="application/ld+json">[{"@context": "https://schema.org", "@type": "Article", "headline": "How to review code your agent wrote", "description": "Reviewing AI-generated code is not like reviewing a colleague's. Here is what to look for, why diffs and summaries fall short, and how to see the decisions your agent made.", "author": {"@type": "Person", "name": "Henit Chobisa", "url": "https://github.com/henit-chobisa"}, "publisher": {"@type": "Organization", "name": "deck", "url": "https://trydeck.dev", "logo": {"@type": "ImageObject", "url": "https://trydeck.dev/assets/mark.svg"}}, "image": "https://trydeck.dev/assets/og.png", "mainEntityOfPage": "https://trydeck.dev/ai-code-review/", "dateModified": "2026-10-08"}, {"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "deck", "item": "https://trydeck.dev/"}, {"@type": "ListItem", "position": 2, "name": "Guides", "item": "https://trydeck.dev/guides/"}, {"@type": "ListItem", "position": 3, "name": "How to review code your agent wrote", "item": "https://trydeck.dev/ai-code-review/"}]}, {"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "Do I still need to read the diff?", "acceptedAnswer": {"@type": "Answer", "text": "Yes, for the parts that matter. The point is to find them quickly: the decisions, not the formatting. A deck puts those first and leaves the rest in the diff."}}, {"@type": "Question", "name": "Can an AI agent review its own code?", "acceptedAnswer": {"@type": "Answer", "text": "It can explain and defend it, which is useful. The judgement is still yours. deck is built so the agent makes its case on the lines and you decide."}}, {"@type": "Question", "name": "Does deck replace pull requests or code review tools?", "acceptedAnswer": {"@type": "Answer", "text": "No. It sits before the approval: your agent shows you what it did and why, you push back, and then the change goes through your normal review."}}]}]</script>
+</head>
+<body class="docs">
+<a class="skip" href="#doc">Skip to content</a>
+<header class="nav solid">
+  <a class="brand" href="/" aria-label="deck, home"><img src="/assets/mark.svg" alt="" width="28" height="28"><span>deck</span></a>
+  <nav aria-label="Main">
+    <a href="/#agent">How it works</a>
+    <a href="/#play">Try it</a>
+    <a href="/docs/">Docs</a>
+    <a href="/guides/">Guides</a>
+    <a href="https://github.com/henit-chobisa/deck">GitHub</a>
+    <a class="nav-install" href="/#install">Install</a>
+  </nav>
+</header>
+<main class="g-wrap" id="doc">
+  <nav class="crumbs" aria-label="Breadcrumb"><a href="/">deck</a> <span>/</span> <a href="/guides/">Guides</a></nav>
+  <article class="doc g-doc">
+    <p class="eyebrow accent">AI code review</p>
+    <h1>How to review code your agent wrote</h1>
+    <p class="lede">Reviewing AI-generated code is not like reviewing a colleague&#x27;s. Here is what to look for, why diffs and summaries fall short, and how to see the decisions your agent made.</p>
+    <p>Your agent finished. The diff is 900 lines across eleven files, and the summary says it "refactored the pricing flow and added caching". You have to approve it, and you did not write any of it.</p>
+<p>Reviewing code an agent wrote is a different job from reviewing a colleague's. A colleague made a few decisions and can tell you why. An agent made dozens, quickly, and the reasons live in a conversation you may have skimmed.</p>
+<h2 id="review-the-decisions-not-the-lines">Review the decisions, not the lines</h2>
+<p>You do not need to read every line. You need to find the handful of places where something was <strong>decided</strong>: a timeout chosen, a cache added, an error swallowed, a query moved, a field made optional. Those are the lines that will page someone at three in the morning.</p>
+<p>A useful order:</p>
+<ol><li><strong>What was the goal?</strong> Write it in one sentence before you open the diff.</li><li><strong>Where did behaviour change?</strong> Not where text changed. Formatting, renames and moved files are noise.</li><li><strong>What did it assume?</strong> About load, about data shape, about who calls this.</li><li><strong>What did it not do?</strong> Tests it did not write, cases it did not handle, old paths it did not remove.</li></ol>
+<h2 id="why-the-diff-and-the-summary-both-fall-short">Why the diff and the summary both fall short</h2>
+<p>A diff shows every changed line with the same weight. The decision on line 412 looks exactly like the import on line 3.</p>
+<p>A summary has the opposite problem. It is the agent's own account of what it did, in prose, with <code>file:line</code> references you have to open one at a time and hold in your head. By the fourth file you are assembling the argument yourself.</p>
+<h2 id="make-the-agent-show-you">Make the agent show you</h2>
+<p>The fix is to ask for the review in a different shape: one claim at a time, each with the code that proves it, in front of you.</p>
+<p>That is what <a href="/">deck</a> does. Your agent writes a short deck instead of a paragraph. Each group is one claim, and the lines it rests on are open beside it. Click a sentence and its lines light up. When the claim is about behaviour over time (a queue backing up, two requests racing), the agent can draw it as a small chart that moves with the sentence.</p>
+<p>When you disagree, you select the lines and say so. Your comment goes back to the same agent, pinned to those lines, and it picks up from there.</p>
+<h2 id="a-checklist-for-agent-written-changes">A checklist for agent-written changes</h2>
+<ul><li>Every new dependency, cache, retry or timeout: why this value?</li><li>Every catch block: what is swallowed, and who would notice?</li><li>Every query or loop that touches the network: what happens at ten times the load?</li><li>Every deleted line: was anything else relying on it?</li><li>Every test: does it test the behaviour, or the implementation the agent just wrote?</li></ul>
+<p>Ask your agent to answer those as a deck, and you review the reasoning instead of hunting for it.</p>
+    <aside class="cta" aria-label="Try deck">
+  <div>
+    <p class="cta-title">See your agent's decisions on the lines.</p>
+    <p>deck is free and open source. It works with Claude Code, Codex, Cursor, Amp and any agent with a shell.</p>
+  </div>
+  <div class="cta-actions">
+    <a class="star" href="/#install">Install deck</a>
+    <a class="cta-alt" href="/#play">Try a real deck in your browser</a>
+  </div>
+</aside>
+    <section class="g-faq" aria-labelledby="faq"><h2 id="faq">Questions</h2><details><summary>Do I still need to read the diff?</summary><p>Yes, for the parts that matter. The point is to find them quickly: the decisions, not the formatting. A deck puts those first and leaves the rest in the diff.</p></details><details><summary>Can an AI agent review its own code?</summary><p>It can explain and defend it, which is useful. The judgement is still yours. deck is built so the agent makes its case on the lines and you decide.</p></details><details><summary>Does deck replace pull requests or code review tools?</summary><p>No. It sits before the approval: your agent shows you what it did and why, you push back, and then the change goes through your normal review.</p></details></section>
+    <section class="g-related" aria-labelledby="more"><h2 id="more">Keep reading</h2><ul><li><a href="/understand-ai-generated-code/">Understanding code your agent wrote</a></li><li><a href="/review-large-pull-requests/">How to review a 20,000-line pull request</a></li><li><a href="/review-claude-code-changes/">Reviewing what Claude Code changed</a></li></ul></section>
+  </article>
+</main>
+<footer class="foot">
+  <div class="wrap foot-base">
+    <span>deck · free and open source · Apache-2.0</span>
+    <span>Made for people who still prefer quality.</span>
+  </div>
+</footer>
+</body>
+</html>
