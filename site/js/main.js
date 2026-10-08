@@ -121,15 +121,39 @@
   const QUESTIONS = [
     'Do you know what your agent just shipped?',
     'What did you just approve?',
+    'Remember when you knew every line you shipped?',
     'Who made that decision, you or your agent?',
-    'When did you last read what your agent wrote?',
+    'When did you stop reading the diff?',
+    'Which of those 40 files did you open?',
+    'You used to review code. Now you approve it?',
     'Could you explain your last merge?',
+    'Would you have written it that way?',
+    'Did you decide that, or did it just happen?',
+    'When did “looks good” become the review?',
+    'Could you debug it at 3am?',
+    'Who on your team understands that change?',
+    'Did you read the plan, or just the summary?',
+    'What breaks if you revert it?',
+    'When did you last read what your agent wrote?',
+    'Why does it work? Do you know?',
+    'What did you used to know about your own code?',
   ]
-  function Ask(el, copy) {
+  // And the answer, asked back the same way when the chatter collapses.
+  const ANSWERS = [
+    'Make it show you.',
+    'Make it point at the line.',
+    'Make it draw what moves.',
+    'Make it answer on the line.',
+    'Make it wait for your call.',
+    'Make it yours again.',
+  ]
+  // `lines` in turn, written into `el`; `shown` says whether anybody can see
+  // it, and nothing moves while they cannot.
+  function Ask(el, lines, shown) {
     if (reduce) return
     let at = 0, timers = []
     const later = (fn, ms) => timers.push(setTimeout(fn, ms))
-    const quiet = () => document.hidden || +(copy.style.opacity || 1) < 0.05
+    const quiet = () => document.hidden || !shown()
     function write(text) {
       timers.forEach(clearTimeout); timers = []
       el.classList.remove('out')
@@ -159,9 +183,11 @@
     function next() {
       if (quiet()) { later(next, 800); return }
       el.classList.add('out')
-      later(() => { at = (at + 1) % QUESTIONS.length; write(QUESTIONS[at]) }, 480)
+      later(() => { at = (at + 1) % lines.length; write(lines[at]) }, 480)
     }
-    write(QUESTIONS[0])
+    // Begin when it is first seen, so the opening line is not spent unseen.
+    const begin = () => { if (quiet()) later(begin, 400); else write(lines[0]) }
+    begin()
   }
 
   // ------------------------------------------------------------ step scenes
@@ -320,8 +346,10 @@
     const copy = section.querySelector('.hero-copy'), signal = section.querySelector('.signal')
     const hush = section.querySelector('.hush'), cue = section.querySelector('.cue')
     const mark = section.querySelector('.signal-mark')
-    const stream = section.querySelector('.stream')
-    if (stream) Ask(stream, copy)
+    const stream = section.querySelector('.hero-copy .stream')
+    if (stream) Ask(stream, QUESTIONS, () => +(copy.style.opacity || 1) > 0.05)
+    const reply = section.querySelector('.signal .stream')
+    if (reply) Ask(reply, ANSWERS, () => +(signal.style.opacity || 0) > 0.5)
     let last = performance.now()
     return {
       update(p, now) {
