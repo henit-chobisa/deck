@@ -60,8 +60,8 @@ project discards IP addresses.
 ## Seeing it for yourself
 
 ```sh
-deck telemetry show      # exactly what the next send would carry, and when — or that nothing would be sent, and why
-deck telemetry status    # whether counts are shared, and if not, why not
+deck telemetry show      # exactly what the next send carries, and when
+deck telemetry status    # whether counts are shared, and if not, why
 ```
 
 The counts waiting to be sent are in `~/.deck/usage.json`.
