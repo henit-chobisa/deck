@@ -46,28 +46,32 @@ pub struct Row {
 /// Pressed: which question, and whether to edit it first.
 pub type Pick = Rc<dyn Fn(usize, bool, &mut Window, &mut App)>;
 
-/// The pointer came onto a pill, or left the row of them.
-pub type Hover = Rc<dyn Fn(bool, &mut Window, &mut App)>;
-
-/// What the footer says while the pointer is on a pill: how to press one.
-/// Said there, in the deck's own quiet line, rather than in a tooltip over
-/// the very question being read.
+/// What a pill opens to show, beside its question, while the pointer is on
+/// it: how to press it. Said in the pill itself, so it is read where the
+/// pressing happens, and only by somebody about to press.
 #[must_use]
 pub fn how() -> &'static str {
     if cfg!(target_os = "macos") {
-        "click to ask \u{b7} \u{2318}-click to edit first"
+        "click to ask \u{b7} \u{2318}-click to edit"
     } else {
-        "click to ask \u{b7} ctrl-click to edit first"
+        "click to ask \u{b7} ctrl-click to edit"
     }
 }
 
-/// How long the light takes to cross the hint, once, as it appears.
-pub const SHIMMER: Duration = Duration::from_millis(900);
+/// The room between a question and its hint, in an open pill.
+const HINT_GAP: f32 = 12.;
+
+/// How long a pill takes to open, and to close again.
+const OPEN: Duration = Duration::from_millis(260);
+const CLOSE: Duration = Duration::from_millis(320);
+
+/// How long the light takes to cross a pill, once, as it opens.
+const SHIMMER: Duration = Duration::from_millis(900);
 
 /// How lit each character of the hint is, `t` of the way through the shimmer:
 /// a soft band of light, crossing left to right, gone by the end.
 #[must_use]
-pub fn shimmer(chars: usize, t: f32) -> Vec<f32> {
+fn shimmer(chars: usize, t: f32) -> Vec<f32> {
     const BAND: f32 = 0.22;
     let at = -BAND + (1. + 2. * BAND) * t.clamp(0., 1.);
     (0..chars)
@@ -104,28 +108,57 @@ struct Glide {
 pub struct Carousel {
     handle: ScrollHandle,
     glide: Rc<Cell<Option<Glide>>>,
+    /// The pill opening, or open, under the pointer; and the one closing
+    /// behind it, so moving across the row hands one to the next smoothly.
+    open: Rc<Cell<Option<Opening>>>,
+    closing: Rc<Cell<Option<Opening>>>,
+    /// How much wider a pill is, open: its hint, as last measured.
+    hint: Rc<Cell<f32>>,
+}
+
+/// One pill opening or closing: which, since when, and how open it was then.
+#[derive(Clone, Copy)]
+struct Opening {
+    ix: usize,
+    since: Instant,
+    from: f32,
+    /// Whether the light crosses it: only when it opens from shut.
+    lit: bool,
+}
+
+/// Fast out, gentle in: a thing arriving.
+fn ease(t: f32) -> f32 {
+    1. - (1. - t.clamp(0., 1.)).powi(3)
 }
 
 impl Carousel {
     /// Back to the first question, at once: a new group's row starts there.
     pub fn reset(&self) {
         self.glide.set(None);
+        self.open.set(None);
+        self.closing.set(None);
         self.handle.set_offset(point(px(0.), px(0.)));
     }
 
-    /// Slide one question back, or one on, and keep the window drawing until
-    /// it lands.
+    /// Slide one question back, or one on.
+    fn slide(&self, by: isize, window: &Window, cx: &mut App) {
+        self.step(by);
+        self.drive(Duration::ZERO, window, cx);
+    }
+
+    /// Keep the window drawing, frame by frame, for `until` and while a slide
+    /// is under way.
     ///
     /// Driven by a timer rather than by asking for the next frame from inside
     /// a render: that way each frame waits for the one before it to be drawn
-    /// and then for another, and the slide came out at half the screen's rate
+    /// and then for another, and a slide came out at half the screen's rate
     /// with frames dropped — five pictures in a quarter of a second.
-    fn slide(&self, by: isize, window: &Window, cx: &mut App) {
-        self.step(by);
+    fn drive(&self, until: Duration, window: &Window, cx: &mut App) {
         let handle = window.window_handle();
         let glide = self.glide.clone();
+        let from = Instant::now();
         cx.spawn(async move |cx| {
-            while glide.get().is_some() {
+            while glide.get().is_some() || from.elapsed() < until + Duration::from_millis(40) {
                 if handle.update(cx, |_, window, _| window.refresh()).is_err() {
                     return;
                 }
@@ -135,6 +168,87 @@ impl Carousel {
             }
         })
         .detach();
+    }
+
+    /// How open pill `ix` is, from shut at 0 to showing its hint at 1.
+    fn openness(&self, ix: usize) -> f32 {
+        if let Some(open) = self.open.get().filter(|open| open.ix == ix) {
+            let t = open.since.elapsed().as_secs_f32() / OPEN.as_secs_f32();
+            return open.from + (1. - open.from) * ease(t);
+        }
+        if let Some(closing) = self.closing.get().filter(|closing| closing.ix == ix) {
+            let t = closing.since.elapsed().as_secs_f32() / CLOSE.as_secs_f32();
+            return closing.from * (1. - ease(t));
+        }
+        0.
+    }
+
+    /// How far the light has crossed pill `ix`, while it is crossing.
+    fn light(&self, ix: usize) -> Option<f32> {
+        let open = self.open.get().filter(|open| open.ix == ix && open.lit)?;
+        let t = open.since.elapsed().as_secs_f32() / SHIMMER.as_secs_f32();
+        (t < 1.).then_some(t)
+    }
+
+    /// How much the row is given over to one pill: the others fade by this.
+    fn spotlight(&self) -> Option<(usize, f32)> {
+        let lit = self.open.get().or(self.closing.get())?;
+        Some((lit.ix, self.openness(lit.ix)))
+    }
+
+    /// The pointer came onto pill `ix`, or left it.
+    fn peek(&self, ix: usize, on: bool, window: &Window, cx: &mut App) {
+        let now = Instant::now();
+        if on {
+            if self.open.get().is_some_and(|open| open.ix == ix) {
+                return;
+            }
+            if let Some(open) = self.open.get() {
+                self.closing.set(Some(Opening {
+                    from: self.openness(open.ix),
+                    since: now,
+                    ..open
+                }));
+            }
+            let from = self.openness(ix);
+            if self.closing.get().is_some_and(|closing| closing.ix == ix) {
+                self.closing.set(None);
+            }
+            self.open.set(Some(Opening {
+                ix,
+                since: now,
+                from,
+                lit: from == 0.,
+            }));
+            self.keep_in_view(ix, from);
+        } else if let Some(open) = self.open.get().filter(|open| open.ix == ix) {
+            self.closing.set(Some(Opening {
+                from: self.openness(ix),
+                since: now,
+                lit: false,
+                ..open
+            }));
+            self.open.set(None);
+        }
+        self.drive(SHIMMER.max(OPEN).max(CLOSE), window, cx);
+    }
+
+    /// Slide the row along, if pill `ix` would open past its right edge.
+    fn keep_in_view(&self, ix: usize, from: f32) {
+        let Some(item) = self.handle.bounds_for_item(ix) else {
+            return;
+        };
+        let view = self.handle.bounds();
+        let right = f32::from(item.right() - view.origin.x) + self.hint.get() * (1. - from);
+        let now = f32::from(self.handle.offset().x);
+        let past = right - (-now + f32::from(view.size.width));
+        if past > 0. {
+            self.glide.set(Some(Glide {
+                from: now,
+                to: now - past,
+                since: Instant::now(),
+            }));
+        }
     }
 
     /// Start sliding one question back, or one on.
@@ -200,9 +314,33 @@ pub fn render(
     wide: f32,
     carousel: &Carousel,
     pick: &Pick,
-    hover: &Hover,
+    window: &Window,
 ) -> Div {
     carousel.advance();
+    let hint = how();
+    let hint_size = px(12.);
+    let hint_w = {
+        let font = window.text_style().font();
+        let run = TextRun {
+            len: hint.len(),
+            font,
+            color: paint(palette.muted),
+            background_color: None,
+            underline: None,
+            strikethrough: None,
+        };
+        f32::from(
+            window
+                .text_system()
+                .shape_line(hint.into(), hint_size, &[run], None)
+                .width,
+        ) + HINT_GAP
+            + 2.
+    };
+    carousel.hint.set(hint_w);
+    let spotlight = carousel.spotlight();
+    // The hint is quieter than the question it sits beside.
+    let tertiary = palette.muted.mix(palette.band, 0.15);
     let surface = |id: ElementId| {
         div()
             .id(id)
@@ -231,21 +369,73 @@ pub fn render(
     let pills = row.asks.iter().enumerate().map(|(ix, ask)| {
         let asked = row.asked.get(ix).copied().unwrap_or(false);
         let pick = pick.clone();
-        let hover = hover.clone();
+        let open = carousel.openness(ix);
+        let dim = match spotlight {
+            Some((lit, by)) if lit != ix => 1. - 0.55 * by,
+            _ => 1.,
+        };
+        // The light crosses the question and then the hint, as one line:
+        // the question towards the accent, the hint up to the text colour.
+        let words = ask.chars().count();
+        let lit = carousel
+            .light(ix)
+            .map(|t| shimmer(words + hint.chars().count(), t))
+            .unwrap_or_default();
+        let glow = |at: usize| lit.get(at).copied().unwrap_or(0.);
+        let runs =
+            |text: &str, skip: usize, rest: deck_core::theme::Rgb, to: deck_core::theme::Rgb| {
+                text.char_indices()
+                    .enumerate()
+                    .map(|(n, (at, ch))| {
+                        (
+                            at..at + ch.len_utf8(),
+                            HighlightStyle {
+                                color: Some(paint(rest.mix(to, 0.75 * glow(skip + n)))),
+                                ..Default::default()
+                            },
+                        )
+                    })
+                    .collect::<Vec<_>>()
+            };
+        let question = runs(ask, 0, palette.fg, palette.accent);
+        let said = runs(hint, words, tertiary, palette.fg);
+        let carousel = carousel.clone();
         surface(ElementId::from(("ask", ix)))
-            .max_w(px(WIDEST))
+            .max_w(px(WIDEST + hint_w))
             .px(px(13.))
             .text_size(px(13.))
+            .opacity(dim)
             .when(asked, |this| {
                 this.border_color(paint(palette.accent))
                     .bg(paint(palette.band.mix(palette.accent, 0.16)))
             })
-            .on_hover(move |hovered, window, cx| hover(*hovered, window, cx))
+            .on_hover(move |hovered, window, cx| carousel.peek(ix, *hovered, window, cx))
             .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
             .on_click(move |event, window, cx| {
                 pick(ix, event.modifiers().secondary(), window, cx);
             })
-            .child(div().min_w_0().truncate().child(ask.clone()))
+            .child(
+                div()
+                    .min_w_0()
+                    .truncate()
+                    .child(StyledText::new(ask.clone()).with_highlights(question)),
+            )
+            .child(
+                // The padding inside, not on the part that opens: a shut pill
+                // is exactly as wide as its question.
+                div()
+                    .flex_none()
+                    .w(px(hint_w * open))
+                    .overflow_hidden()
+                    .child(
+                        div()
+                            .flex_none()
+                            .whitespace_nowrap()
+                            .pl(px(HINT_GAP))
+                            .text_size(hint_size)
+                            .child(StyledText::new(hint).with_highlights(said)),
+                    ),
+            )
     });
     div()
         .w(px(wide))
@@ -299,7 +489,7 @@ pub struct Shelf {
 
 #[cfg(target_os = "macos")]
 impl Render for Shelf {
-    fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
         let Some(row) = self.row.clone() else {
             return div();
         };
@@ -313,16 +503,6 @@ impl Render for Shelf {
                 });
             })
         };
-        let hover: Hover = {
-            let deck = self.deck.clone();
-            let deck_window = self.deck_window;
-            Rc::new(move |on, _window, cx| {
-                let deck = deck.clone();
-                let _ = deck_window.update(cx, |_, _, cx| {
-                    let _ = deck.update(cx, |deck, cx| deck.hover_ask(on, cx));
-                });
-            })
-        };
         div().size_full().flex().items_center().child(render(
             &row,
             &self.palette,
@@ -330,7 +510,7 @@ impl Render for Shelf {
             self.wide,
             &self.carousel,
             &pick,
-            &hover,
+            window,
         ))
     }
 }
