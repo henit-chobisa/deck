@@ -18,7 +18,7 @@
 //!   `DECK_TELEMETRY=0`, running under CI, or `[updates] automatic = false` —
 //!   which already promises deck makes no request of its own.
 //! - **Nothing hidden.** `deck telemetry show` prints exactly what the next
-//!   send would carry, and `docs/telemetry.md` lists every field.
+//!   send would carry, and trydeck.dev/telemetry lists every field.
 //! - **Never in the way.** Sent at most once an hour, off the main thread,
 //!   with a short patience. A failure is kept for next time and never shown.
 

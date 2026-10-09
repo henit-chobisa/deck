@@ -77,7 +77,7 @@ when you want the next release.
 Setup also asks whether you'll share anonymous usage counts: which version,
 how many decks were opened, how many comments were left. Never code, paths or
 anything you wrote. Nothing is sent unless you say yes, and `deck telemetry off`
-stops it at any time. [Everything that is sent](docs/telemetry.md).
+stops it at any time. [Everything that is sent](https://trydeck.dev/telemetry/).
 
 <details>
 <summary>Build it from source instead</summary>
@@ -272,7 +272,7 @@ have drifted.
 | [Theming](docs/theming.md) | your editor's colours, twenty themes |
 | [The catch](docs/the-catch.md) | the hook that sends a prose reply back to become a deck |
 | [How it works](docs/how-it-works.md) | the architecture |
-| [Usage counts](docs/telemetry.md) | what deck shares if you say yes, and how to say no |
+| [Usage counts](https://trydeck.dev/telemetry/) | what deck shares if you say yes, and how to say no |
 
 ## Contributing
 

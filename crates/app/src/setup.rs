@@ -580,7 +580,7 @@ fn share() -> anyhow::Result<()> {
     );
     println!(
         "  {}",
-        dim("sent unless you say yes, and `deck telemetry show` prints all of it.")
+        dim("sent unless you say yes. trydeck.dev/telemetry lists every field.")
     );
     println!();
     // Only a person at a terminal can say yes. Setup run by the installer

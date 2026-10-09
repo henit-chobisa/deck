@@ -249,7 +249,7 @@ def main() -> None:
     with open(os.path.join(SITE, "guides", "index.html"), "w") as f:
         f.write(hub_page())
 
-    pages = ["", "docs/", "changelog/", "guides/"] + [g["slug"] + "/" for g in GUIDES]
+    pages = ["", "docs/", "changelog/", "guides/", "telemetry/"] + [g["slug"] + "/" for g in GUIDES]
     urls = "".join(
         f"  <url><loc>{ORIGIN}/{p}</loc><lastmod>{TODAY}</lastmod><priority>{'1.0' if p == '' else '0.8' if p in ('docs/', 'guides/') else '0.7'}</priority></url>\n"
         for p in pages

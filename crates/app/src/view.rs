@@ -4114,7 +4114,7 @@ impl DeckView {
     /// before anybody has to decide.
     fn render_share(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
         /// Every field, and every way to say no.
-        const WHAT: &str = "https://github.com/henit-chobisa/deck/blob/main/docs/telemetry.md";
+        const WHAT: &str = "https://trydeck.dev/telemetry/";
         if !self.asking_share {
             return None;
         }

@@ -356,8 +356,8 @@ enum What {
     /// questions — and nothing at all until you have said yes. `show` prints
     /// exactly what the next send would carry. Also off whenever
     /// `DO_NOT_TRACK` is set, `DECK_TELEMETRY=0`, under CI, or with
-    /// `[updates] automatic = false`. Every field is listed in
-    /// docs/telemetry.md.
+    /// `[updates] automatic = false`. Every field is listed at
+    /// https://trydeck.dev/telemetry/.
     Telemetry {
         /// `on`, `off`, `status` (the default), or `show`.
         #[arg(value_enum, default_value_t = Telemetry::Status)]
@@ -1405,6 +1405,7 @@ fn telemetry(choice: Telemetry) -> anyhow::Result<()> {
         ),
         Err(off) => println!("Not sharing anything: {}.", off.reason()),
     }
+    println!("Everything that is sent: https://trydeck.dev/telemetry/");
     Ok(())
 }
 
