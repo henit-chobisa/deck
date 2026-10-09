@@ -30,9 +30,9 @@ use serde::{Deserialize, Serialize};
 /// Where the counts go: PostHog's ingestion in the EU.
 const HOST: &str = "https://eu.i.posthog.com/batch/";
 
-/// The project's key. Public by design — it can only add events, never read
-/// them — and empty in a build without one, which then sends nothing.
-const KEY: &str = "";
+/// The project's key. Public by design: it can only add events, never read
+/// them. A build with it emptied sends nothing.
+const KEY: &str = "phc_Ck3ThjdcBuapV26zSbxsNiZBbqg52pthagE4v66hbadA";
 
 /// How often, at most, the counts are sent.
 const EVERY: Duration = Duration::from_secs(60 * 60);
