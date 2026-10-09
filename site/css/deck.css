@@ -35,7 +35,9 @@
 }
 .dk:focus { outline: none; }
 .dk:focus-visible { box-shadow: 0 0 0 3px rgba(254,128,25,0.35), 0 50px 140px rgba(0,0,0,0.6); }
-.dk button { cursor: pointer; font: inherit; }
+/* Low specificity on purpose: each button's own rule sets its face and size,
+   and this must not override them. */
+:where(.dk) button { cursor: pointer; font: inherit; }
 .dk-nojs { margin: auto; padding: 40px; color: var(--muted); grid-row: 1 / -1; }
 
 /* the band */
@@ -192,8 +194,13 @@
    covers nothing and squeezes nothing. */
 @media (min-width: 861px) {
   .dk.narrow.chatting .dk-band { grid-template-columns: minmax(0, 1fr) 340px; }
+  .dk.narrow.chatting { height: 900px; }
+  .dk.narrow.chatting .dk-say { min-height: 330px; }
   .dk.narrow.chatting .dk-keys { visibility: hidden; }
-  .dk.narrow .dk-rail.open { position: absolute; top: 0; right: 0; z-index: 7; width: 340px; height: calc(var(--band-h, 306px) - 6px); border-left: 1px solid var(--seam); }
-  .dk.narrow .dk-rail.open .dk-compose textarea { height: 64px; }
+  .dk.narrow .dk-rail.open { position: absolute; top: 0; right: 0; z-index: 7; width: 340px; height: calc(var(--band-h, 306px) - 6px); border-left: 1px solid var(--seam); background: #101313; }
+  .dk.narrow .dk-rail.open .dk-rail-head { border-bottom: 1px solid var(--seam); }
+  .dk.narrow .dk-rail.open .dk-chat { padding-top: 12px; }
+  .dk.narrow .dk-rail.open .dk-compose { border-top: 1px solid var(--seam); padding-top: 10px; }
+  .dk.narrow .dk-rail.open .dk-compose:not(.idle) textarea { height: 64px; }
   .dk.narrow.chatting .dk-live { right: 356px; }
 }

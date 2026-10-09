@@ -52,7 +52,7 @@ function place(t) {
     nowBars[i].setAttribute('width', Math.max(0, X1(now * grow) - left))
     nowBars[i].setAttribute('class', t >= 3 ? 'bar ghost' : t >= 2 && i === 2 ? 'bar bad' : 'bar now')
     nowNum[i].textContent = (now >= 1000 ? (now / 1000).toFixed(1) + ' s' : now + ' ms') + (i === 2 && t >= 2 && t < 3 ? ' of spinner' : '')
-    nowNum[i].setAttribute('x', X1(now) + 8); nowNum[i].setAttribute('y', y + 15); nowNum[i].style.opacity = grow >= 1 ? (t >= 3 ? .35 : 1) : 0
+    nowNum[i].setAttribute('x', Math.max(X1(now) + 8, t >= 3 ? X1(next) + 66 : 0)); nowNum[i].setAttribute('y', y + 15); nowNum[i].style.opacity = grow >= 1 ? (t >= 3 ? .35 : 1) : 0
     nowNum[i].setAttribute('class', i === 2 && t >= 2 && t < 3 ? 'num bad' : 'num')
     newBars[i].setAttribute('x', left); newBars[i].setAttribute('y', y + 4); newBars[i].setAttribute('height', 12); newBars[i].setAttribute('rx', 3)
     newBars[i].setAttribute('width', Math.max(0, X1(next) - left) * shrink)
