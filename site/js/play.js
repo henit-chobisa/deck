@@ -536,7 +536,7 @@
         if (touched) return
         coach.innerHTML = '<b>Your turn.</b> Click any sentence to see the code it rests on. ' + (matchMedia('(hover: hover)').matches ? 'Press <b>n</b> for the next part of the plan.' : 'Use <b>next</b> for the next part of the plan.')
         const [x, y] = place(coach, target, 0, 12)
-        coach.style.left = Math.max(12, Math.min(x, dk.clientWidth - 300)) + 'px'
+        coach.style.left = Math.max(12, Math.min(x, dk.clientWidth - coach.offsetWidth - 12)) + 'px'
         coach.style.top = y + 'px'
         coach.classList.add('on')
         setTimeout(() => coach.classList.remove('on'), 9000)
@@ -561,10 +561,14 @@
       setTimeout(() => { ghost.style.opacity = '0'; handIn() }, 2300)
       setTimeout(() => ghost.remove(), 2800)
     }
+    // Watch the sentence the cursor will click, not the whole deck: on a
+    // phone the deck is taller than the screen, and the moment that matters
+    // is when this sentence is comfortably in view.
+    const firstTarget = [...prose.querySelectorAll('.dk-w')].find((w) => /^Anywhere/.test(w.textContent)) || prose.querySelector('.dk-w')
     const seen = new IntersectionObserver((es) => {
-      if (es.some((e) => e.isIntersecting && e.intersectionRatio >= 0.45)) { seen.disconnect(); setTimeout(invite, 500) }
-    }, { threshold: [0.45] })
-    seen.observe(dk)
+      if (es.some((e) => e.isIntersecting)) { seen.disconnect(); setTimeout(invite, 500) }
+    }, { threshold: [1], rootMargin: '-15% 0px -30% 0px' })
+    if (firstTarget) seen.observe(firstTarget)
 
     fetch(DECK.page).then((r) => (r.ok ? r.text() : Promise.reject(r.status))).then((html) => {
       pageHtml = html

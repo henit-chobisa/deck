@@ -70,7 +70,7 @@ button { font: inherit; color: inherit; }
 .nav nav a.nav-install:hover { background: #222525; }
 @media (max-width: 900px) {
   .nav nav { gap: 18px; font-size: 14px; }
-  .nav nav a:not(.nav-install):not([href$="docs/"]) { display: none; }
+  .nav nav a:not(.nav-install):not(.nav-try):not([href$="docs/"]) { display: none; }
 }
 
 /* scenes: tall sections with a sticky stage; js turns scroll into progress */
@@ -137,7 +137,7 @@ button { font: inherit; color: inherit; }
 .term-head span { margin-left: 10px; font-family: var(--mono); font-size: 12px; color: var(--faint); }
 .term-body { overflow-wrap: anywhere; position: relative; flex: 1; min-height: 0; overflow: hidden; padding: 20px 22px; font-family: var(--mono); font-size: clamp(12px, 1.02vw, 14px); line-height: 1.7; color: var(--muted); }
 .term.small .term-body { display: flex; flex-direction: column; gap: 10px; }
-.term-roll { display: flex; flex-direction: column; gap: 14px; transition: transform .6s cubic-bezier(.2,.7,.2,1); }
+.term-roll { position: relative; display: flex; flex-direction: column; gap: 14px; transition: transform .6s cubic-bezier(.2,.7,.2,1); }
 .term .ask { border: 1px solid var(--edge-2); border-radius: 8px; padding: 10px 14px; color: var(--fg); }
 .term .ask b, .term .cmd b { color: var(--faint); font-weight: 400; margin-right: 6px; }
 .term .bullet { color: var(--accent); font-weight: 400; margin-right: 6px; }
@@ -399,9 +399,12 @@ html:not(.js) .signal { display: none; }
 .live-dot { display: inline-block; width: 8px; height: 8px; margin-right: 8px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 0 rgba(254,128,25,0.6); animation: livepulse 1.8s ease-out infinite; vertical-align: 1px; }
 @keyframes livepulse { 0% { box-shadow: 0 0 0 0 rgba(254,128,25,0.55); } 70% { box-shadow: 0 0 0 9px rgba(254,128,25,0); } 100% { box-shadow: 0 0 0 0 rgba(254,128,25,0); } }
 .nav nav a.nav-try { color: var(--fg); }
-.try-live { display: inline-flex; align-items: center; margin-top: 28px; min-height: 46px; padding: 0 20px; border-radius: 999px; border: 1px solid rgba(254,128,25,0.55); background: rgba(254,128,25,0.1); color: var(--fg); font-size: 15.5px; font-weight: 500; pointer-events: auto; }
+.try-live { display: inline-flex; align-items: center; margin-top: 28px; min-height: 46px; padding: 0 20px; border-radius: 999px; border: 1px solid rgba(254,128,25,0.55); background: rgba(254,128,25,0.1); color: var(--fg); font-size: 15.5px; font-weight: 500; }
 .try-live:hover { background: rgba(254,128,25,0.18); color: var(--fg); }
 .try-live.small { margin-top: 18px; min-height: 40px; padding: 0 16px; font-size: 14px; }
 @media (max-width: 900px) { .try-live.small { display: none; } }
 
 .term-roll.fresh > .past { opacity: 0; transition: opacity .3s; }
+@media (max-width: 420px) { .nav nav a[href$="docs/"] { display: none; } }
+/* A short phone keeps the terminal on screen; the verdict is the first thing to go. */
+@media (max-width: 900px) and (max-height: 600px) { .verdict { display: none; } }

@@ -401,11 +401,13 @@
       frameUrl(index) { return url(CUTS[index], 'h') },
       update(p) {
         want = Math.round(p * (FRAMES - 1))
-        // How far through the recordings, in step with the scroll.
-        barFill.style.transform = 'scaleX(' + p.toFixed(4) + ')'
         pump()
         let c = 0
         for (let k = 0; k < CUTS.length; k++) if (want >= CUTS[k]) c = k
+        // How far through the recordings: in step with the scroll, or, when
+        // stepping chapter by chapter, with the chapter.
+        const done = reading.matches ? c / (CUTS.length - 1) : p
+        barFill.style.transform = 'scaleX(' + done.toFixed(4) + ')'
         caption(c)
         draw()
       },
@@ -418,6 +420,7 @@
     const copy = section.querySelector('.hero-copy'), signal = section.querySelector('.signal')
     const hush = section.querySelector('.hush'), cue = section.querySelector('.cue')
     const mark = section.querySelector('.signal-mark')
+    const tryLive = section.querySelector('.signal .try-live')
     const stream = section.querySelector('.hero-copy .stream')
     if (stream) Ask(stream, QUESTIONS, () => +(copy.style.opacity || 1) > 0.05)
     const reply = section.querySelector('.signal .stream')
@@ -439,6 +442,8 @@
         copy.style.visibility = out < 0.01 ? 'hidden' : ''
         signal.style.opacity = inn
         signal.style.pointerEvents = inn > 0.5 ? 'auto' : 'none'
+        // The button inside is only there to be pressed once it can be seen.
+        if (tryLive) tryLive.tabIndex = inn > 0.5 ? 0 : -1
         mark.style.transform = 'scale(' + (0.6 + 0.4 * inn).toFixed(3) + ')'
         hush.style.opacity = Math.max(out, inn * 0.9)
         cue.style.opacity = 1 - smooth(p / 0.08)
