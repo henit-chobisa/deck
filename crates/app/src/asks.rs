@@ -74,6 +74,9 @@ const REST: Duration = Duration::from_millis(90);
 /// slow enough to be followed, not flashed.
 const SHIMMER: Duration = Duration::from_millis(1800);
 
+/// The breath between one crossing of the light and the next.
+const PAUSE: Duration = Duration::from_millis(700);
+
 /// How lit each character of a question is, `t` of the way through the shimmer:
 /// a soft band of light, crossing left to right, gone by the end.
 #[must_use]
@@ -114,6 +117,8 @@ struct Glide {
 pub struct Carousel {
     handle: ScrollHandle,
     glide: Rc<Cell<Option<Glide>>>,
+    /// Until when the window is kept drawing, and whether something is.
+    drawing: Rc<Cell<Option<Instant>>>,
     /// The pill opening, or open, under the pointer; and the one closing
     /// behind it, so moving across the row hands one to the next smoothly.
     open: Rc<Cell<Option<Opening>>>,
@@ -128,8 +133,6 @@ struct Opening {
     ix: usize,
     since: Instant,
     from: f32,
-    /// Whether the light crosses it: only when it opens from shut.
-    lit: bool,
 }
 
 /// The bar's curve: quick away, a long settle.
@@ -167,18 +170,29 @@ impl Carousel {
     /// and then for another, and a slide came out at half the screen's rate
     /// with frames dropped — five pictures in a quarter of a second.
     fn drive(&self, until: Duration, window: &Window, cx: &mut App) {
+        let end = Instant::now() + until + Duration::from_millis(40);
+        let running = self.drawing.get();
+        self.drawing
+            .set(Some(running.map_or(end, |was| was.max(end))));
+        if running.is_some() {
+            return;
+        }
         let handle = window.window_handle();
-        let glide = self.glide.clone();
-        let from = Instant::now();
+        let (glide, open, drawing) = (self.glide.clone(), self.open.clone(), self.drawing.clone());
         cx.spawn(async move |cx| {
-            while glide.get().is_some() || from.elapsed() < until + Duration::from_millis(40) {
+            loop {
+                let busy = glide.get().is_some() || open.get().is_some();
+                if !busy && drawing.get().is_none_or(|end| Instant::now() >= end) {
+                    break;
+                }
                 if handle.update(cx, |_, window, _| window.refresh()).is_err() {
-                    return;
+                    break;
                 }
                 cx.background_executor()
                     .timer(Duration::from_millis(4))
                     .await;
             }
+            drawing.set(None);
         })
         .detach();
     }
@@ -198,8 +212,10 @@ impl Carousel {
 
     /// How far the light has crossed pill `ix`, while it is crossing.
     fn light(&self, ix: usize) -> Option<f32> {
-        let open = self.open.get().filter(|open| open.ix == ix && open.lit)?;
-        let t = age(open.since) / SHIMMER.as_secs_f32();
+        let open = self.open.get().filter(|open| open.ix == ix)?;
+        // Again and again while the pointer stays, with a breath between.
+        let round = SHIMMER + PAUSE;
+        let t = (age(open.since) % round.as_secs_f32()) / SHIMMER.as_secs_f32();
         (t < 1.).then_some(t)
     }
 
@@ -217,8 +233,15 @@ impl Carousel {
 
     /// How much the row is given over to one pill: the others fade by this.
     fn spotlight(&self) -> Option<(usize, f32)> {
-        let lit = self.open.get().or(self.closing.get())?;
-        Some((lit.ix, self.openness(lit.ix)))
+        // Only while the pointer is on a pill: off the row, the others are
+        // back at once. Crossing from one pill to the next keeps it, so the
+        // row does not flicker on the way.
+        let open = self.open.get()?;
+        let handed = self
+            .closing
+            .get()
+            .map_or(0., |closing| self.openness(closing.ix));
+        Some((open.ix, self.openness(open.ix).max(handed)))
     }
 
     /// The pointer came onto pill `ix`, or left it.
@@ -243,18 +266,16 @@ impl Carousel {
                 ix,
                 since: if from == 0. { now + REST } else { now },
                 from,
-                lit: from == 0.,
             }));
         } else if let Some(open) = self.open.get().filter(|open| open.ix == ix) {
             self.closing.set(Some(Opening {
                 from: self.openness(ix),
                 since: now,
-                lit: false,
                 ..open
             }));
             self.open.set(None);
         }
-        self.drive(REST + SHIMMER.max(OPEN).max(CLOSE), window, cx);
+        self.drive(REST + OPEN.max(CLOSE), window, cx);
     }
 
     /// Start sliding one question back, or one on.
