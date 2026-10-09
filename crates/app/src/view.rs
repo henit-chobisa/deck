@@ -855,9 +855,6 @@ pub struct DeckView {
     explaining: bool,
     /// Where the row of questions drawn inside the window has slid to.
     asks_carousel: crate::asks::Carousel,
-    /// Which questions have been asked, as (group, question): a pill asked
-    /// stays marked, so the row shows where the reader has already been.
-    asks_asked: std::collections::HashSet<(usize, usize)>,
     /// The questions' own window under the deck, where the platform allows
     /// one: its handle, and both native windows so it can be hung.
     #[cfg(target_os = "macos")]
@@ -1088,7 +1085,6 @@ impl DeckView {
             quit_fade: Self::card_fade(),
             explaining: false,
             asks_carousel: crate::asks::Carousel::default(),
-            asks_asked: std::collections::HashSet::new(),
             #[cfg(target_os = "macos")]
             shelf: None,
             asks_outside: false,
@@ -3992,7 +3988,6 @@ impl DeckView {
             state.update(cx, |state, cx| state.set_value(question, window, cx));
         }
         if !edit {
-            self.asks_asked.insert((self.group_ix, ix));
             self.ask_now(window, cx);
         }
         cx.notify();
@@ -4006,9 +4001,6 @@ impl DeckView {
         }
         Some(crate::asks::Row {
             asks: group.asks.iter().cloned().map(SharedString::from).collect(),
-            asked: (0..group.asks.len())
-                .map(|ix| self.asks_asked.contains(&(self.group_ix, ix)))
-                .collect(),
         })
     }
 

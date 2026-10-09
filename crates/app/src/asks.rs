@@ -19,7 +19,6 @@ use deck_core::theme::Palette;
 #[cfg(target_os = "macos")]
 use gpui_kit::component::Root;
 use gpui_kit::component::*;
-use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 
 use crate::palette::paint;
@@ -39,8 +38,6 @@ const WIDEST: f32 = 680.;
 pub struct Row {
     /// The group's questions, in the order the agent wrote them.
     pub asks: Vec<SharedString>,
-    /// Which have been asked, by index.
-    pub asked: Vec<bool>,
 }
 
 /// Pressed: which question, and whether to edit it first.
@@ -514,7 +511,6 @@ pub fn render(
             .child(glyph)
     };
     let pills = row.asks.iter().enumerate().map(|(ix, ask)| {
-        let asked = row.asked.get(ix).copied().unwrap_or(false);
         let pick = pick.clone();
         let open = carousel.openness(ix);
         // The others step back by their words alone: a pill whose border and
@@ -583,10 +579,6 @@ pub fn render(
             .max_w(px(WIDEST + hint_w))
             .px(px(13.))
             .text_size(px(13.))
-            .when(asked, |this| {
-                this.border_color(paint(palette.accent))
-                    .bg(paint(palette.band.mix(palette.accent, 0.16)))
-            })
             .on_hover({
                 let carousel = carousel.clone();
                 move |hovered, window, cx| carousel.peek(ix, *hovered, window, cx)

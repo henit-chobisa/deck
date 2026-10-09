@@ -35,7 +35,7 @@ window, they sit inside it above the footer instead.
 Click one and it is asked, straight away, as if you had typed it and pressed
 **Ask now**. Hold `⌘` (`Ctrl` on Windows and Linux) as you click, and it goes
 into the comment box instead, for you to change first. The arrows at either
-end move through them. A question you have asked stays marked.
+end move through them.
 
 ## Put it away without losing it
 
