@@ -61,14 +61,20 @@ pub fn how() -> &'static str {
 /// The room between a question and its hint, in an open pill.
 const HINT_GAP: f32 = 12.;
 
-/// How long a pill takes to open, and to close again.
-const OPEN: Duration = Duration::from_millis(260);
-const CLOSE: Duration = Duration::from_millis(320);
+/// How long a pill takes to open, and to close again: the bar's own opening
+/// out (`pill::GROW`), on the bar's own curve, so the two read as one hand.
+const OPEN: Duration = Duration::from_millis(550);
+const CLOSE: Duration = OPEN;
 
-/// How long the light takes to cross a pill, once, as it opens.
-const SHIMMER: Duration = Duration::from_millis(900);
+/// How long the pointer rests on a pill before it opens. Passed over on the
+/// way somewhere else, a pill stays shut, and the row does not ripple.
+const REST: Duration = Duration::from_millis(90);
 
-/// How lit each character of the hint is, `t` of the way through the shimmer:
+/// How long the light takes to cross a question, once, as its pill opens:
+/// slow enough to be followed, not flashed.
+const SHIMMER: Duration = Duration::from_millis(1800);
+
+/// How lit each character of a question is, `t` of the way through the shimmer:
 /// a soft band of light, crossing left to right, gone by the end.
 #[must_use]
 fn shimmer(chars: usize, t: f32) -> Vec<f32> {
@@ -126,9 +132,16 @@ struct Opening {
     lit: bool,
 }
 
-/// Fast out, gentle in: a thing arriving.
+/// The bar's curve: quick away, a long settle.
 fn ease(t: f32) -> f32 {
-    1. - (1. - t.clamp(0., 1.)).powi(3)
+    1. - (1. - t.clamp(0., 1.)).powi(5)
+}
+
+/// How far `since` is behind, or nothing yet if it is still to come.
+fn age(since: Instant) -> f32 {
+    Instant::now()
+        .saturating_duration_since(since)
+        .as_secs_f32()
 }
 
 impl Carousel {
@@ -173,11 +186,11 @@ impl Carousel {
     /// How open pill `ix` is, from shut at 0 to showing its hint at 1.
     fn openness(&self, ix: usize) -> f32 {
         if let Some(open) = self.open.get().filter(|open| open.ix == ix) {
-            let t = open.since.elapsed().as_secs_f32() / OPEN.as_secs_f32();
+            let t = age(open.since) / OPEN.as_secs_f32();
             return open.from + (1. - open.from) * ease(t);
         }
         if let Some(closing) = self.closing.get().filter(|closing| closing.ix == ix) {
-            let t = closing.since.elapsed().as_secs_f32() / CLOSE.as_secs_f32();
+            let t = age(closing.since) / CLOSE.as_secs_f32();
             return closing.from * (1. - ease(t));
         }
         0.
@@ -186,8 +199,20 @@ impl Carousel {
     /// How far the light has crossed pill `ix`, while it is crossing.
     fn light(&self, ix: usize) -> Option<f32> {
         let open = self.open.get().filter(|open| open.ix == ix && open.lit)?;
-        let t = open.since.elapsed().as_secs_f32() / SHIMMER.as_secs_f32();
+        let t = age(open.since) / SHIMMER.as_secs_f32();
         (t < 1.).then_some(t)
+    }
+
+    /// How much of pill `ix`'s hint shows. It fades in behind the widening,
+    /// as the bar's words do, so it arrives in room already made for it; and
+    /// goes ahead of the narrowing, so it is never squeezed.
+    fn said(&self, ix: usize) -> f32 {
+        let open = self.openness(ix);
+        if self.open.get().is_some_and(|open| open.ix == ix) {
+            ((open - 0.3) / 0.7).clamp(0., 1.).powf(0.7)
+        } else {
+            ((open - 0.5) / 0.5).clamp(0., 1.)
+        }
     }
 
     /// How much the row is given over to one pill: the others fade by this.
@@ -216,11 +241,10 @@ impl Carousel {
             }
             self.open.set(Some(Opening {
                 ix,
-                since: now,
+                since: if from == 0. { now + REST } else { now },
                 from,
                 lit: from == 0.,
             }));
-            self.keep_in_view(ix, from);
         } else if let Some(open) = self.open.get().filter(|open| open.ix == ix) {
             self.closing.set(Some(Opening {
                 from: self.openness(ix),
@@ -230,25 +254,7 @@ impl Carousel {
             }));
             self.open.set(None);
         }
-        self.drive(SHIMMER.max(OPEN).max(CLOSE), window, cx);
-    }
-
-    /// Slide the row along, if pill `ix` would open past its right edge.
-    fn keep_in_view(&self, ix: usize, from: f32) {
-        let Some(item) = self.handle.bounds_for_item(ix) else {
-            return;
-        };
-        let view = self.handle.bounds();
-        let right = f32::from(item.right() - view.origin.x) + self.hint.get() * (1. - from);
-        let now = f32::from(self.handle.offset().x);
-        let past = right - (-now + f32::from(view.size.width));
-        if past > 0. {
-            self.glide.set(Some(Glide {
-                from: now,
-                to: now - past,
-                since: Instant::now(),
-            }));
-        }
+        self.drive(REST + SHIMMER.max(OPEN).max(CLOSE), window, cx);
     }
 
     /// Start sliding one question back, or one on.
@@ -370,16 +376,19 @@ pub fn render(
         let asked = row.asked.get(ix).copied().unwrap_or(false);
         let pick = pick.clone();
         let open = carousel.openness(ix);
+        // The others step back by their words alone: a pill whose border and
+        // ground went see-through read as broken, not as quieter.
         let dim = match spotlight {
-            Some((lit, by)) if lit != ix => 1. - 0.55 * by,
-            _ => 1.,
+            Some((lit, by)) if lit != ix => 0.6 * by,
+            _ => 0.,
         };
+        let words_in = palette.fg.mix(palette.band, dim);
         // The light crosses the question and then the hint, as one line:
         // the question towards the accent, the hint up to the text colour.
         let words = ask.chars().count();
         let lit = carousel
             .light(ix)
-            .map(|t| shimmer(words + hint.chars().count(), t))
+            .map(|t| shimmer(words, t))
             .unwrap_or_default();
         let glow = |at: usize| lit.get(at).copied().unwrap_or(0.);
         let runs =
@@ -397,14 +406,13 @@ pub fn render(
                     })
                     .collect::<Vec<_>>()
             };
-        let question = runs(ask, 0, palette.fg, palette.accent);
-        let said = runs(hint, words, tertiary, palette.fg);
+        let question = runs(ask, 0, words_in, palette.accent);
+        let shown = carousel.said(ix);
         let carousel = carousel.clone();
         surface(ElementId::from(("ask", ix)))
             .max_w(px(WIDEST + hint_w))
             .px(px(13.))
             .text_size(px(13.))
-            .opacity(dim)
             .when(asked, |this| {
                 this.border_color(paint(palette.accent))
                     .bg(paint(palette.band.mix(palette.accent, 0.16)))
@@ -433,7 +441,9 @@ pub fn render(
                             .whitespace_nowrap()
                             .pl(px(HINT_GAP))
                             .text_size(hint_size)
-                            .child(StyledText::new(hint).with_highlights(said)),
+                            .text_color(paint(tertiary))
+                            .opacity(shown)
+                            .child(hint),
                     ),
             )
     });
