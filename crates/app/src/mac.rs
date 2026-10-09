@@ -89,21 +89,22 @@ pub fn ns_window(window: &Window) -> Option<objc2::rc::Retained<objc2_app_kit::N
     view.window()
 }
 
-/// Where the pointer is, in `window`'s own points from its top left.
+/// Whether the pointer is over `window` at all, asked of the system.
 ///
-/// Asked of the system rather than taken from the window's last mouse event:
-/// a pointer that leaves a window as small as the questions' shelf does not
-/// always tell it so, and the window goes on believing it is still there.
-// Points on a screen: far inside what an f32 holds.
-#[allow(clippy::cast_possible_truncation)]
-pub fn pointer(window: &Window) -> Option<gpui_kit::Point<gpui_kit::Pixels>> {
+/// Not taken from the window's last mouse event: a pointer that leaves a
+/// window as small as the questions' shelf does not always tell it so, and
+/// the window goes on believing it is still there. Only in or out — within
+/// the window, its own events are to be trusted.
+pub fn pointer_over(window: &Window) -> Option<bool> {
     let native = ns_window(window)?;
     let at = objc2_app_kit::NSEvent::mouseLocation();
-    let content = native.contentRectForFrameRect(native.frame());
-    Some(gpui_kit::point(
-        gpui_kit::px((at.x - content.origin.x) as f32),
-        gpui_kit::px((content.origin.y + content.size.height - at.y) as f32),
-    ))
+    let frame = native.frame();
+    Some(
+        at.x >= frame.origin.x
+            && at.x <= frame.origin.x + frame.size.width
+            && at.y >= frame.origin.y
+            && at.y <= frame.origin.y + frame.size.height,
+    )
 }
 
 /// Hang `child` just below `parent`, across its whole width, and keep it there.

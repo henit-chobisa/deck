@@ -61,14 +61,22 @@ pub fn how() -> &'static str {
 /// The room between a question and its hint, in an open pill.
 const HINT_GAP: f32 = 12.;
 
-/// How long a pill takes to open, and to close again: the bar's own opening
-/// out (`pill::GROW`), on the bar's own curve, so the two read as one hand.
-const OPEN: Duration = Duration::from_millis(550);
+/// How long a pill takes to open, and to close again: on the bar's own
+/// curve, a little slower than the bar opens, so it reads as settling.
+const OPEN: Duration = Duration::from_millis(700);
 const CLOSE: Duration = OPEN;
 
 /// How long the pointer rests on a pill before it opens. Passed over on the
 /// way somewhere else, a pill stays shut, and the row does not ripple.
 const REST: Duration = Duration::from_millis(90);
+
+/// How long the spotlight waits, once the pointer is off every pill, before
+/// it lifts: crossing the gap from one pill to the next is not leaving, and
+/// the row should not brighten and dim again on the way.
+const GRACE: Duration = Duration::from_millis(250);
+
+/// And how long it takes to lift.
+const LIFT: Duration = Duration::from_millis(200);
 
 /// How long the light takes to cross a question, once, as its pill opens:
 /// slow enough to be followed, not flashed.
@@ -123,6 +131,7 @@ pub struct Carousel {
     /// behind it, so moving across the row hands one to the next smoothly.
     open: Rc<Cell<Option<Opening>>>,
     closing: Rc<Cell<Option<Opening>>>,
+    spot: Rc<Cell<Option<Spot>>>,
     /// How much wider a pill is, open: its hint, as last measured.
     hint: Rc<Cell<f32>>,
 }
@@ -139,13 +148,13 @@ struct Opening {
     follow: bool,
 }
 
-/// Where the pointer is in `window`.
-fn pointer(window: &Window) -> Point<Pixels> {
-    #[cfg(target_os = "macos")]
-    if let Some(at) = crate::mac::pointer(window) {
-        return at;
-    }
-    window.mouse_position()
+/// The spotlight on the row: on while a pill is open, and since when, from
+/// how bright it was then.
+#[derive(Clone, Copy)]
+struct Spot {
+    on: bool,
+    since: Instant,
+    from: f32,
 }
 
 /// The bar's curve: quick away, a long settle.
@@ -166,6 +175,7 @@ impl Carousel {
         self.glide.set(None);
         self.open.set(None);
         self.closing.set(None);
+        self.spot.set(None);
         self.handle.set_offset(point(px(0.), px(0.)));
     }
 
@@ -244,29 +254,51 @@ impl Carousel {
         }
     }
 
-    /// How much the row is given over to one pill: the others fade by this.
-    fn spotlight(&self) -> Option<(usize, f32)> {
-        // Only while the pointer is on a pill: off the row, the others are
-        // back at once. Crossing from one pill to the next keeps it, so the
-        // row does not flicker on the way.
-        let open = self.open.get()?;
-        let handed = self
-            .closing
-            .get()
-            .map_or(0., |closing| self.openness(closing.ix));
-        Some((open.ix, self.openness(open.ix).max(handed)))
+    /// How strongly the row is given over to one pill, from none at 0 to
+    /// all at 1.
+    fn spotlight(&self) -> f32 {
+        match self.spot.get() {
+            None => 0.,
+            Some(spot) if spot.on => {
+                spot.from + (1. - spot.from) * ease(age(spot.since) / OPEN.as_secs_f32())
+            }
+            Some(spot) => {
+                let after = age(spot.since) - GRACE.as_secs_f32();
+                if after <= 0. {
+                    spot.from
+                } else {
+                    spot.from * (1. - ease(after / LIFT.as_secs_f32()))
+                }
+            }
+        }
+    }
+
+    /// How far pill `ix` stands out of the spotlit row. Handing over to
+    /// another, as far as it is still open; with the pointer off the row
+    /// altogether, the last one keeps its place until the light lifts.
+    fn standing(&self, ix: usize) -> f32 {
+        if self.open.get().is_none() && self.closing.get().is_some_and(|closing| closing.ix == ix) {
+            return 1.;
+        }
+        self.openness(ix)
     }
 
     /// Pill `ix` closes, if it is the one open.
     fn shut(&self, ix: usize) {
         if let Some(open) = self.open.get().filter(|open| open.ix == ix) {
+            let now = Instant::now();
             self.closing.set(Some(Opening {
                 from: self.openness(ix),
-                since: Instant::now(),
+                since: now,
                 follow: false,
                 ..open
             }));
             self.open.set(None);
+            self.spot.set(Some(Spot {
+                on: false,
+                since: now,
+                from: self.spotlight(),
+            }));
         }
     }
 
@@ -288,9 +320,20 @@ impl Carousel {
             if self.closing.get().is_some_and(|closing| closing.ix == ix) {
                 self.closing.set(None);
             }
+            // Moving along the row, the next pill opens as the last one
+            // closes; only from cold does it wait for the pointer to rest.
+            let held = self.spotlight() > 0.;
+            let since = if from == 0. && !held { now + REST } else { now };
+            if !self.spot.get().is_some_and(|spot| spot.on) {
+                self.spot.set(Some(Spot {
+                    on: true,
+                    since,
+                    from: self.spotlight(),
+                }));
+            }
             self.open.set(Some(Opening {
                 ix,
-                since: if from == 0. { now + REST } else { now },
+                since,
                 from,
                 at: -f32::from(self.handle.offset().x),
                 follow: true,
@@ -298,7 +341,7 @@ impl Carousel {
         } else {
             self.shut(ix);
         }
-        self.drive(REST + OPEN.max(CLOSE), window, cx);
+        self.drive(REST + OPEN.max(CLOSE + GRACE + LIFT), window, cx);
     }
 
     /// Start sliding one question back, or one on.
@@ -377,25 +420,19 @@ impl Carousel {
         }
     }
 
-    /// Close the open pill if the pointer is no longer on it. A window only
+    /// Close the open pill if the pointer has left the window. A window only
     /// a pill high is easily left without a word to it, and a pill that stayed
     /// open, lit and spotlit, over a pointer long gone is the bug this ends.
+    #[cfg_attr(not(target_os = "macos"), allow(clippy::unused_self))]
     fn let_go(&self, window: &Window) {
-        let Some(open) = self.open.get() else {
-            return;
-        };
-        let Some(item) = self.handle.bounds_for_item(open.ix) else {
-            return;
-        };
-        let shift = self.handle.offset();
-        let shown = Bounds {
-            origin: item.origin + shift,
-            size: item.size,
-        }
-        .intersect(&self.handle.bounds());
-        if !shown.contains(&pointer(window)) {
+        #[cfg(target_os = "macos")]
+        if let Some(open) = self.open.get()
+            && crate::mac::pointer_over(window) == Some(false)
+        {
             self.shut(open.ix);
         }
+        #[cfg(not(target_os = "macos"))]
+        let _ = window;
     }
 }
 
@@ -483,10 +520,7 @@ pub fn render(
         let open = carousel.openness(ix);
         // The others step back by their words alone: a pill whose border and
         // ground went see-through read as broken, not as quieter.
-        let dim = match spotlight {
-            Some((lit, by)) if lit != ix => 0.6 * by,
-            _ => 0.,
-        };
+        let dim = 0.6 * spotlight * (1. - carousel.standing(ix));
         let words_in = palette.fg.mix(palette.band, dim);
         // The light crosses the question and then the hint, as one line:
         // the question towards the accent, the hint up to the text colour.
