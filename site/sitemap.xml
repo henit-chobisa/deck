@@ -4,6 +4,7 @@
   <url><loc>https://trydeck.dev/docs/</loc><lastmod>2026-10-09</lastmod><priority>0.8</priority></url>
   <url><loc>https://trydeck.dev/changelog/</loc><lastmod>2026-10-09</lastmod><priority>0.7</priority></url>
   <url><loc>https://trydeck.dev/guides/</loc><lastmod>2026-10-09</lastmod><priority>0.8</priority></url>
+  <url><loc>https://trydeck.dev/telemetry/</loc><lastmod>2026-10-09</lastmod><priority>0.7</priority></url>
   <url><loc>https://trydeck.dev/ai-code-review/</loc><lastmod>2026-10-09</lastmod><priority>0.7</priority></url>
   <url><loc>https://trydeck.dev/understand-ai-generated-code/</loc><lastmod>2026-10-09</lastmod><priority>0.7</priority></url>
   <url><loc>https://trydeck.dev/review-large-pull-requests/</loc><lastmod>2026-10-09</lastmod><priority>0.7</priority></url>

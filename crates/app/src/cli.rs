@@ -350,6 +350,20 @@ enum What {
         stable: bool,
     },
 
+    /// Whether deck shares anonymous usage counts, and exactly what.
+    ///
+    /// Counts and versions only — never code, paths, titles, comments or
+    /// questions — and nothing at all until you have said yes. `show` prints
+    /// exactly what the next send would carry. Also off whenever
+    /// `DO_NOT_TRACK` is set, `DECK_TELEMETRY=0`, under CI, or with
+    /// `[updates] automatic = false`. Every field is listed at
+    /// https://trydeck.dev/telemetry/.
+    Telemetry {
+        /// `on`, `off`, `status` (the default), or `show`.
+        #[arg(value_enum, default_value_t = Telemetry::Status)]
+        choice: Telemetry,
+    },
+
     /// Read a hook event from Claude Code and answer it.
     ///
     /// Run by the agent, never by a person: `deck setup` offers to register it.
@@ -505,6 +519,7 @@ impl Cli {
             } => {
                 let cwd = cwd.or_else(|| std::env::current_dir().ok());
                 report(deck_cli::new(&at, &title, cwd, total).map(|root| {
+                    crate::usage::deck_created();
                     println!("{}", root.display());
                 }))
             }
@@ -525,6 +540,11 @@ impl Cli {
                         eprintln!("deck: {note}");
                     }
                     deck_cli::group_asking(&deck, &say, refs, &ask).map(|path| {
+                        crate::usage::record(crate::usage::Count::GroupWritten);
+                        crate::usage::record_many(
+                            crate::usage::Count::QuestionsOffered,
+                            ask.len() as u64,
+                        );
                         println!("{}", path.display());
                     })
                 }),
@@ -538,6 +558,7 @@ impl Cli {
                 report(crate::upgrade::run(unstable))
             }
             What::Hook => report(crate::hook::run()),
+            What::Telemetry { choice } => report(telemetry(choice)),
             What::Show {
                 deck,
                 reference,
@@ -1351,6 +1372,41 @@ fn report(done: anyhow::Result<()>) -> Result<Option<Opening>, ExitCode> {
             Err(ExitCode::FAILURE)
         }
     }
+}
+
+/// What `deck telemetry` is asked to do.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
+pub enum Telemetry {
+    /// Share anonymous usage counts.
+    On,
+    /// Share nothing, and forget anything counted.
+    Off,
+    /// Say whether counts are shared, and if not, why not.
+    Status,
+    /// Print exactly what the next send would carry.
+    Show,
+}
+
+/// `deck telemetry`.
+fn telemetry(choice: Telemetry) -> anyhow::Result<()> {
+    match choice {
+        Telemetry::On => crate::usage::choose(true),
+        Telemetry::Off => crate::usage::choose(false),
+        Telemetry::Show => {
+            println!("{}", crate::usage::show());
+            return Ok(());
+        }
+        Telemetry::Status => {}
+    }
+    match crate::usage::status() {
+        Ok(()) => println!(
+            "Sharing anonymous usage counts. `deck telemetry show` prints them; \
+             `deck telemetry off` stops."
+        ),
+        Err(off) => println!("Not sharing anything: {}.", off.reason()),
+    }
+    println!("Everything that is sent: https://trydeck.dev/telemetry/");
+    Ok(())
 }
 
 #[cfg(test)]

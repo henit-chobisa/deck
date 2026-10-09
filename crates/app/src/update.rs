@@ -210,13 +210,13 @@ fn installable(release: &serde_json::Value) -> Option<String> {
 /// The file holds who took it, and is only removed by them. Otherwise a deck
 /// that ran past the limit and had its lock taken over would, on finishing,
 /// delete the lock of the deck that took it — and let a third one in.
-struct Held(std::path::PathBuf, String);
+pub(crate) struct Held(std::path::PathBuf, String);
 
 impl Held {
     /// As long as an abandoned upgrade, which this covers too.
     const STALE: Duration = crate::upgrade::ABANDONED;
 
-    fn take(path: &std::path::Path) -> Option<Self> {
+    pub(crate) fn take(path: &std::path::Path) -> Option<Self> {
         if let Some(dir) = path.parent() {
             let _ = std::fs::create_dir_all(dir);
         }

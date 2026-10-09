@@ -87,6 +87,9 @@ pub fn run() -> anyhow::Result<()> {
     open();
     look(&mut config)?;
     aloud();
+    // A question only ever offered: if the terminal cannot be read, the
+    // answers already given are still written, and the window asks.
+    let _ = share();
     let path = crate::config::path()
         .ok_or_else(|| anyhow::anyhow!("no home directory to write a config into"))?;
     write(&path, &config)?;
@@ -552,6 +555,59 @@ fn catch() -> anyhow::Result<()> {
         crate::hook::Put::Already => println!("    {} {}", accent("·"), dim("already on")),
         crate::hook::Put::Absent => {}
     }
+    Ok(())
+}
+
+/// Whether to share anonymous usage counts. Asked plainly, with what is in
+/// them said first, because the answer is only worth having if it is given
+/// knowing what it means.
+fn share() -> anyhow::Result<()> {
+    println!();
+    rule();
+    println!();
+    println!("  {}", bold("Help shape deck"));
+    println!(
+        "  {}",
+        dim("Anonymous counts, so we know what to make next: which version, which")
+    );
+    println!(
+        "  {}",
+        dim("OS, how many decks were opened, how many comments were left.")
+    );
+    println!(
+        "  {}",
+        dim("Never code, file paths, titles, comments or questions. Nothing is")
+    );
+    println!(
+        "  {}",
+        dim("sent unless you say yes. trydeck.dev/telemetry lists every field.")
+    );
+    println!();
+    // Only a person at a terminal can say yes. Setup run by the installer
+    // through a pipe, or by an agent, has nobody to answer — and an answer
+    // nobody gave is not consent. The window asks them instead.
+    if !std::io::stdin().is_terminal() {
+        println!(
+            "  {}",
+            dim("Not asked here: a deck window will ask instead.")
+        );
+        return Ok(());
+    }
+    print!("  Share anonymous usage counts? {} ", dim("[yes]"));
+    std::io::stdout().flush()?;
+    let mut said = String::new();
+    if std::io::stdin().read_line(&mut said)? == 0 {
+        // Input ended without an answer: none is recorded.
+        println!();
+        return Ok(());
+    }
+    let yes = !matches!(said.trim().to_lowercase().as_str(), "n" | "no");
+    crate::usage::choose(yes);
+    chose(if yes {
+        "sharing counts — `deck telemetry off` stops it"
+    } else {
+        "sharing nothing"
+    });
     Ok(())
 }
 

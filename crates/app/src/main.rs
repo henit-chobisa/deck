@@ -42,6 +42,7 @@ mod speech;
 mod state;
 mod update;
 mod upgrade;
+mod usage;
 mod view;
 mod waiting;
 #[cfg(target_os = "windows")]
@@ -143,6 +144,7 @@ fn show(decks: Vec<Deck>, opening: &cli::Opening) {
             // Before any window, so an update that is already known is in the
             // foot from the first frame. It returns at once either way.
             update::look(cx);
+            usage::send_now_and_then(cx);
             notes::look_back();
             icon::wear_the_mark();
 
@@ -408,6 +410,7 @@ pub fn open_deck(session: Session, cx: &mut App) {
     // bar is an ordinary thing to do, and a `closed` left behind from the last
     // time would kill the next waiter before anybody had read a word.
     deck_cli::reopened(&session.deck.root);
+    usage::record_soon(usage::Count::DeckOpened);
     let root = session.deck.root.clone();
 
     // Sized to a deck, not to the screen. A review is read, so the window wants

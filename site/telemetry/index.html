@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Usage counts: what deck shares if you say yes | deck</title>
+<meta name="description" content="deck shares anonymous usage counts only if you say yes: versions and counts, never code or words. Every field, how to see it, and how to turn it off.">
+<link rel="canonical" href="https://trydeck.dev/telemetry/">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="deck">
+<meta property="og:title" content="Usage counts: what deck shares if you say yes | deck">
+<meta property="og:description" content="deck shares anonymous usage counts only if you say yes: versions and counts, never code or words. Every field, how to see it, and how to turn it off.">
+<meta property="og:url" content="https://trydeck.dev/telemetry/">
+<meta property="og:image" content="https://trydeck.dev/assets/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Usage counts: what deck shares if you say yes | deck">
+<meta name="twitter:description" content="deck shares anonymous usage counts only if you say yes: versions and counts, never code or words. Every field, how to see it, and how to turn it off.">
+<meta name="twitter:image" content="https://trydeck.dev/assets/og.png">
+<meta name="theme-color" content="#0d0f0f">
+<link rel="icon" href="/assets/mark.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/css/site.css">
+<link rel="stylesheet" href="/css/docs.css">
+<link rel="stylesheet" href="/css/guide.css">
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "WebPage", "name": "Usage counts", "url": "https://trydeck.dev/telemetry/", "description": "deck shares anonymous usage counts only if you say yes: versions and counts, never code or words. Every field, how to see it, and how to turn it off."}</script>
+</head>
+<body class="docs">
+<a class="skip" href="#doc">Skip to content</a>
+<header class="nav solid">
+  <a class="brand" href="/" aria-label="deck, home"><img src="/assets/mark.svg" alt="" width="28" height="28"><span>deck</span></a>
+  <nav aria-label="Main">
+    <a href="/#agent">How it works</a>
+    <a href="/#play" class="nav-try"><span class="live-dot" aria-hidden="true"></span>Try it<span class="wide"> live</span></a>
+    <a href="/docs/">Docs</a>
+    <a href="/guides/">Guides</a>
+    <a href="https://github.com/henit-chobisa/deck">GitHub</a>
+    <a class="nav-install" href="/#install">Install</a>
+  </nav>
+</header>
+<main class="g-wrap" id="doc">
+  <nav class="crumbs" aria-label="Breadcrumb"><a href="/">deck</a> <span>/</span> <a href="/docs/">Docs</a></nav>
+  <article class="doc g-doc">
+<h1>Usage counts</h1>
+<p>deck can share anonymous usage counts, so we know what to make next: how many people use it, on which versions, and which parts they reach for.</p>
+<p><strong>Nothing is counted or sent until you say yes.</strong> You're asked once, either in <code>deck setup</code> or in a strip above a deck window's footer, and either answer is final until you change it. Setup only asks at a terminal: run without one, by the installer or by an agent, it records no answer, and the window asks.</p>
+<h2 id="what-is-sent">What is sent</h2>
+<p>One event, at most once an hour, while a deck window is open (a window looks every five minutes whether one is due):</p>
+<table><thead><tr><th>Field</th><th>Example</th><th>What it is</th></tr></thead><tbody><tr><td><code>distinct_id</code></td><td><code>3f9c…e21a</code></td><td>A random id made on your machine the first time counts are sent. It is not derived from your machine, name, email or anything else.</td></tr><tr><td><code>version</code></td><td><code>0.1.5</code></td><td>The deck you run.</td></tr><tr><td><code>os</code>, <code>arch</code></td><td><code>macos</code>, <code>aarch64</code></td><td>Your operating system and processor type.</td></tr><tr><td><code>decks_created</code></td><td><code>4</code></td><td><code>deck new</code>, since the last send.</td></tr><tr><td><code>decks_opened</code></td><td><code>3</code></td><td>Deck windows opened.</td></tr><tr><td><code>groups_written</code></td><td><code>17</code></td><td><code>deck group</code>.</td></tr><tr><td><code>groups_viewed</code></td><td><code>21</code></td><td>Groups brought on screen.</td></tr><tr><td><code>comments</code></td><td><code>5</code></td><td>Comments left on decks.</td></tr><tr><td><code>reviews</code></td><td><code>2</code></td><td>Reviews submitted.</td></tr><tr><td><code>ask_now</code></td><td><code>1</code></td><td>Questions sent with <em>Ask now</em>.</td></tr><tr><td><code>questions_offered</code></td><td><code>30</code></td><td>Suggested questions written into groups.</td></tr><tr><td><code>questions_asked</code>, <code>questions_edited</code></td><td><code>3</code>, <code>1</code></td><td>Suggested questions clicked, or ⌘-clicked (Ctrl-clicked on Windows and Linux) into the comment box.</td></tr><tr><td><code>walks</code></td><td><code>1</code></td><td>Walks started.</td></tr><tr><td><code>upgrades</code></td><td><code>1</code></td><td>Upgrades to a newer deck.</td></tr><tr><td><code>agents</code></td><td><code>{"claude-code": 4}</code></td><td>Which agent created the decks: <code>claude-code</code>, <code>codex</code>, <code>cursor</code>, <code>amp</code>, <code>gemini</code> or <code>other</code>. Worked out from the <em>names</em> of environment variables, never their values.</td></tr></tbody></table>
+<p>A count that is zero is left out, and so is <code>agents</code> when no deck was created. Some counts overlap on purpose: a suggested question that is clicked counts as <code>questions_asked</code>, and also as an <code>ask_now</code> and a <code>comment</code>, because that is what it becomes.</p>
+<p>Alongside these, every event carries the fields PostHog needs to file it, and nothing that identifies you:</p>
+<table><thead><tr><th>Field</th><th>Value</th><th>Why</th></tr></thead><tbody><tr><td><code>event</code></td><td><code>deck usage</code></td><td>The event's name.</td></tr><tr><td><code>api_key</code></td><td><code>phc_…</code></td><td>deck's PostHog project key. It can add events, never read them.</td></tr><tr><td><code>$process_person_profile</code></td><td><code>false</code></td><td>No person is created for the id.</td></tr><tr><td><code>$geoip_disable</code></td><td><code>true</code></td><td>No location is looked up.</td></tr><tr><td><code>$ip</code></td><td><code>null</code></td><td>No address is attached.</td></tr><tr><td><code>$lib</code></td><td><code>deck</code></td><td>Which program sent it.</td></tr></tbody></table>
+<p>The request also carries a <code>User-Agent: deck/&lt;version&gt;</code> header.</p>
+<p><strong>Never sent:</strong> code, file paths, repository or project names, deck titles, narration, comments, questions, or anything you type.</p>
+<p>The counts go to <a href="https://posthog.com">PostHog</a>, hosted in the EU. Each event is sent without a person profile and with location lookup turned off, and the project discards IP addresses.</p>
+<h2 id="seeing-it-for-yourself">Seeing it for yourself</h2>
+<pre><code>deck telemetry show      # exactly what the next send carries, and when
+deck telemetry status    # whether counts are shared, and if not, why</code></pre>
+<p>The counts waiting to be sent are in <code>~/.deck/usage.json</code>.</p>
+<h2 id="turning-it-off">Turning it off</h2>
+<p>Any one of these is enough, and all of them win over a yes:</p>
+<ul><li><code>deck telemetry off</code>. Anything counted and not yet sent is forgotten, and so is the id.</li><li><code>DO_NOT_TRACK=1</code> in your environment.</li><li><code>DECK_TELEMETRY=0</code> in your environment.</li><li>A <code>CI</code> environment.</li><li><code>[updates] automatic = false</code> in <code>~/.deck/config.toml</code>, which already means deck makes no request of its own. A <code>config.toml</code> that will not read counts as this too, since it may be the one saying so.</li></ul>
+<p><code>deck telemetry on</code> turns it back on.</p>
+  </article>
+</main>
+<footer class="foot">
+  <div class="wrap foot-base">
+    <span>deck · free and open source · Apache-2.0</span>
+    <span>Made for people who still prefer quality.</span>
+  </div>
+</footer>
+</body>
+</html>
