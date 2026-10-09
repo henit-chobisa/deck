@@ -30,9 +30,9 @@ pub const PILL: f32 = 30.;
 /// The gap between pills, and between a pill and the arrows.
 const GAP: f32 = 8.;
 
-/// The widest a pill may be. A question is meant to fit on one line well
-/// short of this; past it, it is cut short and the tooltip has the rest.
-const WIDEST: f32 = 460.;
+/// The widest a pill may be: room for the longest question `deck group`
+/// takes, so a pill is never cut short and never needs its words repeated.
+const WIDEST: f32 = 680.;
 
 /// What the row shows.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -46,17 +46,64 @@ pub struct Row {
 /// Pressed: which question, and whether to edit it first.
 pub type Pick = Rc<dyn Fn(usize, bool, &mut Window, &mut App)>;
 
-/// What the tooltip says, in this platform's words for the modifier.
-fn how() -> &'static str {
-    if cfg!(target_os = "macos") {
-        "Click to ask \u{b7} \u{2318}-click to edit first"
-    } else {
-        "Click to ask \u{b7} Ctrl-click to edit first"
+/// What a pill says when the pointer rests on it: how to press it.
+///
+/// Drawn as the deck draws its own keys, a cap per key, in the deck's colours
+/// — not the stock tooltip, a black slab that repeated the question it sat on.
+struct Hint {
+    palette: Palette,
+}
+
+impl Render for Hint {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let palette = self.palette;
+        let mono = cx.theme().mono_font_family.clone();
+        let cap = |key: &'static str| {
+            div()
+                .min_w(px(19.))
+                .flex_none()
+                .px(px(4.))
+                .py(px(3.))
+                .text_center()
+                .rounded(px(4.))
+                .border_1()
+                .border_b_2()
+                .border_color(paint(palette.edge))
+                .bg(paint(palette.wash))
+                .text_size(px(10.5))
+                .line_height(px(10.5))
+                .text_color(paint(palette.fg))
+                .child(key)
+        };
+        let modifier = if cfg!(target_os = "macos") {
+            "\u{2318}"
+        } else {
+            "ctrl"
+        };
+        div()
+            .h_flex()
+            .items_center()
+            .gap(px(6.))
+            .px(px(8.))
+            .py(px(5.))
+            .rounded(px(6.))
+            .border_1()
+            .border_color(paint(palette.edge))
+            .bg(paint(palette.band))
+            .font_family(mono)
+            .text_size(px(11.))
+            .text_color(paint(palette.fg.mix(palette.band, 0.28)))
+            .child(cap("click"))
+            .child("ask")
+            .child(div().px(px(3.)).child("\u{b7}"))
+            .child(cap(modifier))
+            .child(cap("click"))
+            .child("edit first")
     }
 }
 
 /// How long an arrow's slide takes.
-const GLIDE: Duration = Duration::from_millis(240);
+const GLIDE: Duration = Duration::from_millis(320);
 
 /// One slide under way: from where, to where, since when. Offsets are gpui's,
 /// zero at the start of the row and going negative as it moves on.
@@ -85,13 +132,38 @@ impl Carousel {
         self.handle.set_offset(point(px(0.), px(0.)));
     }
 
+    /// Slide one question back, or one on, and keep the window drawing until
+    /// it lands.
+    ///
+    /// Driven by a timer rather than by asking for the next frame from inside
+    /// a render: that way each frame waits for the one before it to be drawn
+    /// and then for another, and the slide came out at half the screen's rate
+    /// with frames dropped — five pictures in a quarter of a second.
+    fn slide(&self, by: isize, window: &Window, cx: &mut App) {
+        self.step(by);
+        let handle = window.window_handle();
+        let glide = self.glide.clone();
+        cx.spawn(async move |cx| {
+            while glide.get().is_some() {
+                if handle.update(cx, |_, window, _| window.refresh()).is_err() {
+                    return;
+                }
+                cx.background_executor()
+                    .timer(Duration::from_millis(4))
+                    .await;
+            }
+        })
+        .detach();
+    }
+
     /// Start sliding one question back, or one on.
     fn step(&self, by: isize) {
         let now = f32::from(self.handle.offset().x);
         let view = self.handle.bounds();
         let lefts: Vec<f32> = (0..)
             .map_while(|ix| self.handle.bounds_for_item(ix))
-            .map(|item| f32::from(item.origin.x - view.origin.x) - now)
+            // Laid out where they would be unscrolled: the row's own terms.
+            .map(|item| f32::from(item.origin.x - view.origin.x))
             .collect();
         let max = f32::from(self.handle.max_offset().x);
         let from = self.glide.get().map_or(now, |glide| glide.to);
@@ -105,9 +177,8 @@ impl Carousel {
         }
     }
 
-    /// Move the row along its slide, if one is under way, and ask for the
-    /// next frame until it lands.
-    fn advance(&self, window: &Window) {
+    /// Move the row to where its slide has got to, if one is under way.
+    fn advance(&self) {
         let Some(glide) = self.glide.get() else {
             return;
         };
@@ -116,9 +187,7 @@ impl Carousel {
         let eased = 1. - (1. - t).powi(3);
         let x = glide.from + (glide.to - glide.from) * eased;
         self.handle.set_offset(point(px(x), px(0.)));
-        if t < 1. {
-            window.request_animation_frame();
-        } else {
+        if t >= 1. {
             self.glide.set(None);
         }
     }
@@ -150,9 +219,8 @@ pub fn render(
     wide: f32,
     carousel: &Carousel,
     pick: &Pick,
-    window: &Window,
 ) -> Div {
-    carousel.advance(window);
+    carousel.advance();
     let surface = |id: ElementId| {
         div()
             .id(id)
@@ -175,16 +243,13 @@ pub fn render(
             .justify_center()
             .text_size(px(15.))
             .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-            .on_click(move |_, window, _| {
-                carousel.step(by);
-                window.refresh();
-            })
+            .on_click(move |_, window, cx| carousel.slide(by, window, cx))
             .child(glyph)
     };
     let pills = row.asks.iter().enumerate().map(|(ix, ask)| {
         let asked = row.asked.get(ix).copied().unwrap_or(false);
         let pick = pick.clone();
-        let tip = SharedString::from(format!("{ask}\n{}", how()));
+        let palette = *palette;
         surface(ElementId::from(("ask", ix)))
             .max_w(px(WIDEST))
             .px(px(13.))
@@ -193,10 +258,7 @@ pub fn render(
                 this.border_color(paint(palette.accent))
                     .bg(paint(palette.band.mix(palette.accent, 0.16)))
             })
-            .tooltip(move |_window, cx| {
-                cx.new(|_| gpui_kit::component::tooltip::Tooltip::new(tip.clone()))
-                    .into()
-            })
+            .tooltip(move |_window, cx| cx.new(|_| Hint { palette }).into())
             .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
             .on_click(move |event, window, cx| {
                 pick(ix, event.modifiers().secondary(), window, cx);
@@ -266,7 +328,7 @@ pub struct Shelf {
 
 #[cfg(target_os = "macos")]
 impl Render for Shelf {
-    fn render(&mut self, window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
         let Some(row) = self.row.clone() else {
             return div();
         };
@@ -293,7 +355,6 @@ impl Render for Shelf {
                     self.wide,
                     &self.carousel,
                     &pick,
-                    window,
                 )),
         )
     }

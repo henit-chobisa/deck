@@ -4117,7 +4117,6 @@ impl DeckView {
                     f32::from(window.viewport_size().width) - 24.,
                     &self.asks_carousel,
                     &pick,
-                    window,
                 ))
                 .into_any_element(),
         )
