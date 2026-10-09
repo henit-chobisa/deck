@@ -531,13 +531,8 @@
     document.querySelectorAll('[data-ask]').forEach((b) => b.addEventListener('click', () => ask(+b.dataset.ask)))
 
     // Two panes need about 420px each beside an open conversation; below
-    // that the conversation opens over the panes.
-    const band = $('.dk-band')
-    new ResizeObserver(() => {
-      dk.classList.toggle('narrow', dk.clientWidth < 1200)
-      dk.style.setProperty('--band-h', band.offsetHeight + 'px')
-    }).observe(dk)
-    new ResizeObserver(() => dk.style.setProperty('--band-h', band.offsetHeight + 'px')).observe(band)
+    // that the panes turn, one above the other (see deck.css).
+    new ResizeObserver(() => dk.classList.toggle('narrow', dk.clientWidth < 1200)).observe(dk)
 
     open(0)
 

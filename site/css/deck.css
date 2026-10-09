@@ -189,18 +189,11 @@
    phone does not give up the whole right side. */
 .dk-title::before { content: ""; float: right; width: 132px; height: 22px; }
 @media (max-width: 860px) { .dk-title::before { width: 124px; } }
-/* Where the window is too narrow for two panes and the conversation side by
-   side, the conversation takes the keys' place in the band instead, so it
-   covers nothing and squeezes nothing. */
+/* The conversation is a rail down the side, as in deck. Where the window is
+   too narrow for two panes beside it, the panes turn — one above the other,
+   which is what `t` does in the window — so each keeps its width. */
 @media (min-width: 861px) {
-  .dk.narrow.chatting .dk-band { grid-template-columns: minmax(0, 1fr) 340px; }
-  .dk.narrow.chatting { height: 900px; }
-  .dk.narrow.chatting .dk-say { min-height: 330px; }
-  .dk.narrow.chatting .dk-keys { visibility: hidden; }
-  .dk.narrow .dk-rail.open { position: absolute; top: 0; right: 0; z-index: 7; width: 340px; height: calc(var(--band-h, 306px) - 6px); border-left: 1px solid var(--seam); background: #101313; }
-  .dk.narrow .dk-rail.open .dk-rail-head { border-bottom: 1px solid var(--seam); }
-  .dk.narrow .dk-rail.open .dk-chat { padding-top: 12px; }
-  .dk.narrow .dk-rail.open .dk-compose { border-top: 1px solid var(--seam); padding-top: 10px; }
-  .dk.narrow .dk-rail.open .dk-compose:not(.idle) textarea { height: 64px; }
-  .dk.narrow.chatting .dk-live { right: 356px; }
+  .dk.narrow.chatting { height: 1080px; }
+  .dk.narrow.chatting .dk-panes { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) minmax(0, 1.1fr); }
+  .dk.narrow .dk-rail.open { width: 320px; }
 }
