@@ -533,13 +533,15 @@
   })
   tabs()
 
-  // The star count, when GitHub will say. Nothing shows if it will not.
+  // The star count, when GitHub will say and it is worth saying.
   const count = document.querySelector('.star-count')
   if (count) {
     fetch('https://api.github.com/repos/henit-chobisa/deck', { headers: { Accept: 'application/vnd.github+json' } })
       .then((r) => (r.ok ? r.json() : null))
       .then((repo) => {
-        if (!repo || typeof repo.stargazers_count !== 'number') return
+        // A small count beside the button says 'nobody is here yet'. It is
+        // shown once it is a reason to click rather than a reason not to.
+        if (!repo || typeof repo.stargazers_count !== 'number' || repo.stargazers_count < 100) return
         count.textContent = repo.stargazers_count.toLocaleString('en')
         count.hidden = false
       })
