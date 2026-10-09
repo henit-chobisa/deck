@@ -133,6 +133,19 @@ struct Opening {
     ix: usize,
     since: Instant,
     from: f32,
+    /// How far along the row was when it began to open, and whether the row
+    /// is still moving with it to bring the whole of it into view.
+    at: f32,
+    follow: bool,
+}
+
+/// Where the pointer is in `window`.
+fn pointer(window: &Window) -> Point<Pixels> {
+    #[cfg(target_os = "macos")]
+    if let Some(at) = crate::mac::pointer(window) {
+        return at;
+    }
+    window.mouse_position()
 }
 
 /// The bar's curve: quick away, a long settle.
@@ -244,6 +257,19 @@ impl Carousel {
         Some((open.ix, self.openness(open.ix).max(handed)))
     }
 
+    /// Pill `ix` closes, if it is the one open.
+    fn shut(&self, ix: usize) {
+        if let Some(open) = self.open.get().filter(|open| open.ix == ix) {
+            self.closing.set(Some(Opening {
+                from: self.openness(ix),
+                since: Instant::now(),
+                follow: false,
+                ..open
+            }));
+            self.open.set(None);
+        }
+    }
+
     /// The pointer came onto pill `ix`, or left it.
     fn peek(&self, ix: usize, on: bool, window: &Window, cx: &mut App) {
         let now = Instant::now();
@@ -266,14 +292,11 @@ impl Carousel {
                 ix,
                 since: if from == 0. { now + REST } else { now },
                 from,
+                at: -f32::from(self.handle.offset().x),
+                follow: true,
             }));
-        } else if let Some(open) = self.open.get().filter(|open| open.ix == ix) {
-            self.closing.set(Some(Opening {
-                from: self.openness(ix),
-                since: now,
-                ..open
-            }));
-            self.open.set(None);
+        } else {
+            self.shut(ix);
         }
         self.drive(REST + OPEN.max(CLOSE), window, cx);
     }
@@ -299,18 +322,79 @@ impl Carousel {
         }
     }
 
-    /// Move the row to where its slide has got to, if one is under way.
-    fn advance(&self) {
-        let Some(glide) = self.glide.get() else {
+    /// Bring the row up to date for this frame: where its slide has got
+    /// to, where the opening pill has taken it, and whether the pointer is
+    /// still on that pill at all.
+    fn advance(&self, window: &Window) {
+        if let Some(glide) = self.glide.get() {
+            let done = glide.since.elapsed().as_secs_f32() / GLIDE.as_secs_f32();
+            let t = done.min(1.);
+            let eased = 1. - (1. - t).powi(3);
+            let x = glide.from + (glide.to - glide.from) * eased;
+            self.handle.set_offset(point(px(x), px(0.)));
+            if t >= 1. {
+                self.glide.set(None);
+            }
+        } else {
+            self.follow();
+        }
+        self.let_go(window);
+    }
+
+    /// Move the row with a pill as it opens, so the whole of it — question
+    /// and hint — ends up in view, in step with its widening. A pill cut off
+    /// at either edge is brought in; one already in view does not move.
+    fn follow(&self) {
+        let Some(open) = self.open.get().filter(|open| open.follow) else {
             return;
         };
-        let done = glide.since.elapsed().as_secs_f32() / GLIDE.as_secs_f32();
-        let t = done.min(1.);
-        let eased = 1. - (1. - t).powi(3);
-        let x = glide.from + (glide.to - glide.from) * eased;
-        self.handle.set_offset(point(px(x), px(0.)));
-        if t >= 1. {
-            self.glide.set(None);
+        let Some(item) = self.handle.bounds_for_item(open.ix) else {
+            return;
+        };
+        let view = self.handle.bounds();
+        let left = f32::from(item.origin.x - view.origin.x);
+        let now = self.openness(open.ix);
+        let whole = f32::from(item.size.width) + self.hint.get() * (1. - now);
+        let want = if left < open.at {
+            left
+        } else {
+            open.at
+                .max(left + whole - f32::from(view.size.width))
+                .min(left)
+        };
+        let gone = if open.from >= 1. {
+            1.
+        } else {
+            ((now - open.from) / (1. - open.from)).clamp(0., 1.)
+        };
+        let at = open.at + (want - open.at) * gone;
+        self.handle.set_offset(point(px(-at), px(0.)));
+        if gone >= 1. {
+            self.open.set(Some(Opening {
+                follow: false,
+                ..open
+            }));
+        }
+    }
+
+    /// Close the open pill if the pointer is no longer on it. A window only
+    /// a pill high is easily left without a word to it, and a pill that stayed
+    /// open, lit and spotlit, over a pointer long gone is the bug this ends.
+    fn let_go(&self, window: &Window) {
+        let Some(open) = self.open.get() else {
+            return;
+        };
+        let Some(item) = self.handle.bounds_for_item(open.ix) else {
+            return;
+        };
+        let shift = self.handle.offset();
+        let shown = Bounds {
+            origin: item.origin + shift,
+            size: item.size,
+        }
+        .intersect(&self.handle.bounds());
+        if !shown.contains(&pointer(window)) {
+            self.shut(open.ix);
         }
     }
 }
@@ -343,7 +427,7 @@ pub fn render(
     pick: &Pick,
     window: &Window,
 ) -> Div {
-    carousel.advance();
+    carousel.advance(window);
     let hint = how();
     let hint_size = px(12.);
     let hint_w = {
@@ -438,7 +522,14 @@ pub fn render(
                 this.border_color(paint(palette.accent))
                     .bg(paint(palette.band.mix(palette.accent, 0.16)))
             })
-            .on_hover(move |hovered, window, cx| carousel.peek(ix, *hovered, window, cx))
+            .on_hover({
+                let carousel = carousel.clone();
+                move |hovered, window, cx| carousel.peek(ix, *hovered, window, cx)
+            })
+            // Movement too, not only hover: when the pointer left without the
+            // window being told, gpui still counts the pill hovered, and the
+            // pointer's return would not be news to it.
+            .on_mouse_move(move |_, window, cx| carousel.peek(ix, true, window, cx))
             .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
             .on_click(move |event, window, cx| {
                 pick(ix, event.modifiers().secondary(), window, cx);
