@@ -410,7 +410,7 @@ pub fn open_deck(session: Session, cx: &mut App) {
     // bar is an ordinary thing to do, and a `closed` left behind from the last
     // time would kill the next waiter before anybody had read a word.
     deck_cli::reopened(&session.deck.root);
-    usage::record(usage::Count::DeckOpened);
+    usage::record_soon(usage::Count::DeckOpened);
     let root = session.deck.root.clone();
 
     // Sized to a deck, not to the screen. A review is read, so the window wants

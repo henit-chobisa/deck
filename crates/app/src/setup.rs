@@ -87,7 +87,9 @@ pub fn run() -> anyhow::Result<()> {
     open();
     look(&mut config)?;
     aloud();
-    share()?;
+    // A question only ever offered: if the terminal cannot be read, the
+    // answers already given are still written, and the window asks.
+    let _ = share();
     let path = crate::config::path()
         .ok_or_else(|| anyhow::anyhow!("no home directory to write a config into"))?;
     write(&path, &config)?;

@@ -37,6 +37,9 @@ const KEY: &str = "phc_Ck3ThjdcBuapV26zSbxsNiZBbqg52pthagE4v66hbadA";
 /// How often, at most, the counts are sent.
 const EVERY: Duration = Duration::from_secs(60 * 60);
 
+/// How often a deck looks whether a send is due.
+const LOOK: Duration = Duration::from_secs(5 * 60);
+
 /// How long to wait on the network. Only a background thread is waiting.
 const PATIENCE: Duration = Duration::from_secs(3);
 
@@ -204,6 +207,17 @@ pub fn record(count: Count) {
     record_many(count, 1);
 }
 
+/// [`record`], from the window: on a thread of its own, so a lock another
+/// deck left behind can never make the window wait.
+pub fn record_soon(count: Count) {
+    std::thread::spawn(move || record(count));
+}
+
+/// [`choose`], from the window, for the same reason.
+pub fn choose_soon(share: bool) {
+    std::thread::spawn(move || choose(share));
+}
+
 /// Count `n` of `count`.
 pub fn record_many(count: Count, n: u64) {
     // Asked first without the lock: for everyone who has not said yes,
@@ -360,7 +374,7 @@ pub fn send_now_and_then(cx: &mut gpui_kit::App) {
         .spawn(async move {
             loop {
                 send_if_due();
-                executor.timer(EVERY).await;
+                executor.timer(LOOK).await;
             }
         })
         .detach();
@@ -386,7 +400,9 @@ fn send_if_due() {
     }
     if kept.id.is_none() {
         change(|kept| {
-            if kept.id.is_some() {
+            // Only for somebody still saying yes: an id written after a no
+            // would outlive it.
+            if kept.id.is_some() || off(kept).is_some() {
                 return false;
             }
             kept.id = Some(fresh_id());
@@ -408,23 +424,26 @@ fn send_if_due() {
         .is_ok();
     if sent {
         // What was sent comes off what is there now: counts made while the
-        // request was out are kept for next time.
-        change(|after| {
-            for (name, n) in &kept.counts {
-                if let Some(now) = after.counts.get_mut(name) {
-                    *now = now.saturating_sub(*n);
-                }
+        // request was out are kept for next time. Waited for as long as an
+        // answer is, so a sent batch is not sent again.
+        let Some(_held) = wait_for_lock(Duration::from_secs(2)) else {
+            return;
+        };
+        let mut after = read();
+        for (name, n) in &kept.counts {
+            if let Some(now) = after.counts.get_mut(name) {
+                *now = now.saturating_sub(*n);
             }
-            for (name, n) in &kept.agents {
-                if let Some(now) = after.agents.get_mut(name) {
-                    *now = now.saturating_sub(*n);
-                }
+        }
+        for (name, n) in &kept.agents {
+            if let Some(now) = after.agents.get_mut(name) {
+                *now = now.saturating_sub(*n);
             }
-            after.counts.retain(|_, n| *n > 0);
-            after.agents.retain(|_, n| *n > 0);
-            after.sent = now();
-            true
-        });
+        }
+        after.counts.retain(|_, n| *n > 0);
+        after.agents.retain(|_, n| *n > 0);
+        after.sent = now();
+        write(&after);
     }
 }
 

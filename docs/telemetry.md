@@ -10,7 +10,8 @@ the installer or by an agent, it records no answer, and the window asks.
 
 ## What is sent
 
-One event, at most once an hour, while a deck window is open:
+One event, at most once an hour, while a deck window is open (a window looks
+every five minutes whether one is due):
 
 | Field | Example | What it is |
 |---|---|---|
@@ -74,6 +75,7 @@ Any one of these is enough, and all of them win over a yes:
 - `DECK_TELEMETRY=0` in your environment.
 - A `CI` environment.
 - `[updates] automatic = false` in `~/.deck/config.toml`, which already means
-  deck makes no request of its own.
+  deck makes no request of its own. A `config.toml` that will not read counts
+  as this too, since it may be the one saying so.
 
 `deck telemetry on` turns it back on.

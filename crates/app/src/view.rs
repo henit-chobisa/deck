@@ -1711,7 +1711,7 @@ impl DeckView {
     fn toggle_walk(&mut self, cx: &mut Context<Self>) {
         self.aloud = !self.aloud;
         if self.aloud {
-            crate::usage::record(crate::usage::Count::Walk);
+            crate::usage::record_soon(crate::usage::Count::Walk);
             // From the top of the group in front of them. A selection made
             // while reading was off was the reader pointing; once a voice is
             // reading, the voice is what points.
@@ -3948,7 +3948,7 @@ impl DeckView {
         } else if self.heard() {
             self.asked_someone =
                 !self.deck.sealed() || deck_cli::is_heard(&self.deck.root) || self.owed();
-            crate::usage::record(crate::usage::Count::AskNow);
+            crate::usage::record_soon(crate::usage::Count::AskNow);
             self.save_remark(deck_core::When::Interrupt, window, cx);
         } else {
             self.explaining = true;
@@ -3999,7 +3999,7 @@ impl DeckView {
         if let Some((_, state, _)) = self.composing.as_ref() {
             state.update(cx, |state, cx| state.set_value(question, window, cx));
         }
-        crate::usage::record(if edit {
+        crate::usage::record_soon(if edit {
             crate::usage::Count::QuestionEdited
         } else {
             crate::usage::Count::QuestionAsked
@@ -4134,7 +4134,7 @@ impl DeckView {
         };
         let answer = |share: bool| {
             cx.listener(move |deck: &mut Self, _: &ClickEvent, _window, cx| {
-                crate::usage::choose(share);
+                crate::usage::choose_soon(share);
                 deck.asking_share = false;
                 cx.notify();
             })
@@ -4499,7 +4499,7 @@ impl DeckView {
             pane.unpick();
         }
         self.remarks.push(remark);
-        crate::usage::record(crate::usage::Count::Comment);
+        crate::usage::record_soon(crate::usage::Count::Comment);
         // Where its turn sits, before anything is written down.
         if let Some(mine) = self.remarks.last_mut() {
             mine.moment = self.conversation.transcript.len().checked_sub(1);
@@ -4717,7 +4717,7 @@ impl DeckView {
     }
 
     fn submit_review(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        crate::usage::record(crate::usage::Count::Review);
+        crate::usage::record_soon(crate::usage::Count::Review);
         let found = self.follow_the_files();
         let comments: Vec<deck_core::Comment> = self
             .remarks
@@ -4785,7 +4785,7 @@ impl DeckView {
     fn build_panes(&mut self, cx: &mut App) {
         // A deck still waiting on its first group has none to look at.
         if self.group().is_some() {
-            crate::usage::record(crate::usage::Count::GroupViewed);
+            crate::usage::record_soon(crate::usage::Count::GroupViewed);
         }
         // Each group's questions start from their first.
         self.asks_carousel.reset();
