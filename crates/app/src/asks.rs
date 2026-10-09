@@ -63,6 +63,10 @@ const HINT_GAP: f32 = 12.;
 const OPEN: Duration = Duration::from_millis(700);
 const CLOSE: Duration = OPEN;
 
+/// How quickly a pill closes when the pointer has moved on to another, which
+/// waits for it.
+const HAND: Duration = Duration::from_millis(320);
+
 /// How long the pointer rests on a pill before it opens. Passed over on the
 /// way somewhere else, a pill stays shut, and the row does not ripple.
 const REST: Duration = Duration::from_millis(90);
@@ -142,6 +146,8 @@ struct Opening {
     /// is still moving with it to bring the whole of it into view.
     at: f32,
     follow: bool,
+    /// How long its opening or closing takes.
+    span: Duration,
 }
 
 /// The spotlight on the row: on while a pill is open, and since when, from
@@ -219,11 +225,11 @@ impl Carousel {
     /// How open pill `ix` is, from shut at 0 to showing its hint at 1.
     fn openness(&self, ix: usize) -> f32 {
         if let Some(open) = self.open.get().filter(|open| open.ix == ix) {
-            let t = age(open.since) / OPEN.as_secs_f32();
+            let t = age(open.since) / open.span.as_secs_f32();
             return open.from + (1. - open.from) * ease(t);
         }
         if let Some(closing) = self.closing.get().filter(|closing| closing.ix == ix) {
-            let t = age(closing.since) / CLOSE.as_secs_f32();
+            let t = age(closing.since) / closing.span.as_secs_f32();
             return closing.from * (1. - ease(t));
         }
         0.
@@ -273,8 +279,12 @@ impl Carousel {
     /// another, as far as it is still open; with the pointer off the row
     /// altogether, the last one keeps its place until the light lifts.
     fn standing(&self, ix: usize) -> f32 {
-        if self.open.get().is_none() && self.closing.get().is_some_and(|closing| closing.ix == ix) {
-            return 1.;
+        if self.closing.get().is_some_and(|closing| closing.ix == ix) {
+            // The one handing over keeps the light until the next takes it.
+            return self
+                .open
+                .get()
+                .map_or(1., |open| 1. - self.openness(open.ix));
         }
         self.openness(ix)
     }
@@ -287,6 +297,7 @@ impl Carousel {
                 from: self.openness(ix),
                 since: now,
                 follow: false,
+                span: CLOSE,
                 ..open
             }));
             self.open.set(None);
@@ -305,21 +316,33 @@ impl Carousel {
             if self.open.get().is_some_and(|open| open.ix == ix) {
                 return;
             }
-            if let Some(open) = self.open.get() {
-                self.closing.set(Some(Opening {
-                    from: self.openness(open.ix),
-                    since: now,
-                    ..open
-                }));
-            }
             let from = self.openness(ix);
             if self.closing.get().is_some_and(|closing| closing.ix == ix) {
                 self.closing.set(None);
             }
-            // Moving along the row, the next pill opens as the last one
-            // closes; only from cold does it wait for the pointer to rest.
-            let held = self.spotlight() > 0.;
-            let since = if from == 0. && !held { now + REST } else { now };
+            // One at a time. The pill being left closes first, quickly, and
+            // this one opens once it has: two pills changing width at once
+            // pushed the row both ways and read as a wobble.
+            let leaving = self
+                .open
+                .get()
+                .or(self.closing.get())
+                .filter(|leaving| leaving.ix != ix && self.openness(leaving.ix) > 0.);
+            let since = if let Some(leaving) = leaving {
+                self.closing.set(Some(Opening {
+                    from: self.openness(leaving.ix),
+                    since: now,
+                    follow: false,
+                    span: HAND,
+                    ..leaving
+                }));
+                now + HAND
+            } else if from == 0. && self.spotlight() == 0. {
+                // From cold, it waits for the pointer to rest.
+                now + REST
+            } else {
+                now
+            };
             if !self.spot.get().is_some_and(|spot| spot.on) {
                 self.spot.set(Some(Spot {
                     on: true,
@@ -333,11 +356,12 @@ impl Carousel {
                 from,
                 at: -f32::from(self.handle.offset().x),
                 follow: true,
+                span: OPEN,
             }));
         } else {
             self.shut(ix);
         }
-        self.drive(REST + OPEN.max(CLOSE + GRACE + LIFT), window, cx);
+        self.drive(REST + HAND + OPEN.max(CLOSE + GRACE + LIFT), window, cx);
     }
 
     /// Start sliding one question back, or one on.
