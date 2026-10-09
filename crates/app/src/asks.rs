@@ -85,24 +85,23 @@ const SHIMMER: Duration = Duration::from_millis(1800);
 /// The breath between one crossing of the light and the next.
 const PAUSE: Duration = Duration::from_millis(700);
 
-/// How lit each character of a question is, `t` of the way through the shimmer:
-/// a soft band of light, crossing left to right, gone by the end.
+/// How lit a point of a question is — `place` from its start at 0 to its end
+/// at 1 — `t` of the way through the shimmer: a soft band of light, crossing
+/// left to right, gone by the end.
 #[must_use]
-fn shimmer(chars: usize, t: f32) -> Vec<f32> {
-    const BAND: f32 = 0.22;
+fn shimmer(place: f32, t: f32) -> f32 {
     let at = -BAND + (1. + 2. * BAND) * t.clamp(0., 1.);
-    (0..chars)
-        .map(|ix| {
-            let place = if chars > 1 {
-                ix as f32 / (chars - 1) as f32
-            } else {
-                0.
-            };
-            let near = (1. - (place - at).abs() / BAND).max(0.);
-            near * near * (3. - 2. * near)
-        })
-        .collect()
+    let near = (1. - (place - at).abs() / BAND).max(0.);
+    near * near * (3. - 2. * near)
 }
+
+/// How wide the light is, as a share of the question it crosses.
+const BAND: f32 = 0.22;
+
+/// How many slices the light is drawn in. Each is a window onto a lit copy
+/// of the question, at its own strength; enough of them and the edge of the
+/// light is soft.
+const SLICES: usize = 16;
 
 /// How long an arrow's slide takes.
 const GLIDE: Duration = Duration::from_millis(320);
@@ -522,30 +521,62 @@ pub fn render(
         // ground went see-through read as broken, not as quieter.
         let dim = 0.6 * spotlight * (1. - carousel.standing(ix));
         let words_in = palette.fg.mix(palette.band, dim);
-        // The light crosses the question and then the hint, as one line:
-        // the question towards the accent, the hint up to the text colour.
-        let words = ask.chars().count();
-        let lit = carousel
-            .light(ix)
-            .map(|t| shimmer(words, t))
-            .unwrap_or_default();
-        let glow = |at: usize| lit.get(at).copied().unwrap_or(0.);
-        let runs =
-            |text: &str, skip: usize, rest: deck_core::theme::Rgb, to: deck_core::theme::Rgb| {
-                text.char_indices()
-                    .enumerate()
-                    .map(|(n, (at, ch))| {
-                        (
-                            at..at + ch.len_utf8(),
-                            HighlightStyle {
-                                color: Some(paint(rest.mix(to, 0.75 * glow(skip + n)))),
-                                ..Default::default()
-                            },
-                        )
-                    })
-                    .collect::<Vec<_>>()
+        // The light is drawn over the question, not into it. Coloured a
+        // letter at a time, the question was shaped in pieces, cut wherever
+        // the colour changed, and lost its kerning at every cut: its width
+        // shifted under the light as it crossed. So the question is shaped
+        // once, in one colour, and the light is a lit copy laid exactly on it,
+        // seen through slices that are brighter at the middle of the band.
+        let light = carousel.light(ix).map(|t| {
+            let font = window.text_style().font();
+            let run = TextRun {
+                len: ask.len(),
+                font,
+                color: paint(palette.accent),
+                background_color: None,
+                underline: None,
+                strikethrough: None,
             };
-        let question = runs(ask, 0, words_in, palette.accent);
+            let wide = f32::from(
+                window
+                    .text_system()
+                    .shape_line(ask.clone(), px(13.), &[run], None)
+                    .width,
+            );
+            let at = -BAND + (1. + 2. * BAND) * t;
+            let slice = 2. * BAND * wide / SLICES as f32;
+            let start = (at - BAND) * wide;
+            div()
+                .absolute()
+                .inset_0()
+                .children((0..SLICES).filter_map(move |n| {
+                    let left = start + n as f32 * slice;
+                    if left + slice < 0. || left > wide {
+                        return None;
+                    }
+                    let lit = shimmer((left + slice / 2.) / wide.max(1.), t);
+                    Some(
+                        div()
+                            .absolute()
+                            .top_0()
+                            .bottom_0()
+                            .left(px(left))
+                            .w(px(slice))
+                            .overflow_hidden()
+                            .opacity(0.75 * lit)
+                            .child(
+                                div()
+                                    .absolute()
+                                    .top_0()
+                                    .left(px(-left))
+                                    .w(px(wide + 2.))
+                                    .whitespace_nowrap()
+                                    .text_color(paint(palette.accent))
+                                    .child(ask.clone()),
+                            ),
+                    )
+                }))
+        });
         let shown = carousel.said(ix);
         let carousel = carousel.clone();
         surface(ElementId::from(("ask", ix)))
@@ -570,9 +601,12 @@ pub fn render(
             })
             .child(
                 div()
+                    .relative()
                     .min_w_0()
                     .truncate()
-                    .child(StyledText::new(ask.clone()).with_highlights(question)),
+                    .text_color(paint(words_in))
+                    .child(ask.clone())
+                    .children(light),
             )
             .child(
                 // The padding inside, not on the part that opens: a shut pill
@@ -750,16 +784,12 @@ mod tests {
 
     #[test]
     fn the_light_crosses_once_and_leaves_nothing_lit() {
-        let before = shimmer(20, 0.);
-        let middle = shimmer(20, 0.5);
-        let after = shimmer(20, 1.);
-        assert!(
-            before.iter().chain(&after).all(|lit| *lit == 0.),
-            "dark either side"
-        );
-        assert!(middle[10] > 0.9, "lit where the light is");
-        assert_eq!(middle[0], 0., "and only there");
-        assert_eq!(middle[19], 0.);
+        let places = [0., 0.25, 0.5, 0.75, 1.];
+        let dark = |t: f32| places.iter().all(|place| shimmer(*place, t) == 0.);
+        assert!(dark(0.) && dark(1.), "dark either side");
+        assert!(shimmer(0.5, 0.5) > 0.9, "lit where the light is");
+        assert_eq!(shimmer(0., 0.5), 0., "and only there");
+        assert_eq!(shimmer(1., 0.5), 0.);
     }
 
     #[test]
