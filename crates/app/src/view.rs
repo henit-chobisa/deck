@@ -855,6 +855,13 @@ pub struct DeckView {
     explaining: bool,
     /// Where the row of questions drawn inside the window has slid to.
     asks_carousel: crate::asks::Carousel,
+    /// Whether the pointer is on a question, and since when the footer has
+    /// said how to press one: the light crosses that hint once, as it comes.
+    asks_hovered: bool,
+    asks_hint: Option<std::time::Instant>,
+    /// When the pointer last left the questions. Crossing the gap between two
+    /// pills is not leaving, and does not light the hint again.
+    asks_left: Option<std::time::Instant>,
     /// Which questions have been asked, as (group, question): a pill asked
     /// stays marked, so the row shows where the reader has already been.
     asks_asked: std::collections::HashSet<(usize, usize)>,
@@ -1088,6 +1095,9 @@ impl DeckView {
             quit_fade: Self::card_fade(),
             explaining: false,
             asks_carousel: crate::asks::Carousel::default(),
+            asks_hovered: false,
+            asks_hint: None,
+            asks_left: None,
             asks_asked: std::collections::HashSet::new(),
             #[cfg(target_os = "macos")]
             shelf: None,
@@ -3998,6 +4008,70 @@ impl DeckView {
         cx.notify();
     }
 
+    /// The pointer came onto a question, or went off the row.
+    pub fn hover_ask(&mut self, on: bool, cx: &mut Context<Self>) {
+        let now = std::time::Instant::now();
+        if !on {
+            self.asks_hovered = false;
+            self.asks_left = Some(now);
+            cx.notify();
+            return;
+        }
+        self.asks_hovered = true;
+        let away = self
+            .asks_left
+            .is_none_or(|left| now - left > std::time::Duration::from_millis(600));
+        if self.asks_hint.is_none() || away {
+            self.asks_hint = Some(now);
+            // Drawn frame by frame while the light crosses, then left alone.
+            cx.spawn(async move |view, cx| {
+                while now.elapsed() < crate::asks::SHIMMER + std::time::Duration::from_millis(40) {
+                    cx.background_executor()
+                        .timer(std::time::Duration::from_millis(8))
+                        .await;
+                    if view.update(cx, |_, cx| cx.notify()).is_err() {
+                        return;
+                    }
+                }
+            })
+            .detach();
+        }
+        cx.notify();
+    }
+
+    /// How to press a question, in the footer, while the pointer is on one:
+    /// in the footer's own grey, with a light crossing it once as it comes.
+    fn render_ask_hint(&self) -> Option<AnyElement> {
+        if !self.asks_hovered {
+            return None;
+        }
+        let since = self.asks_hint?;
+        let text = crate::asks::how();
+        let t = since.elapsed().as_secs_f32() / crate::asks::SHIMMER.as_secs_f32();
+        // A step quieter than the rest of the strip: a passing remark, not a
+        // state of the deck.
+        let rest = self.palette.muted.mix(self.palette.band, 0.35);
+        let lit = crate::asks::shimmer(text.chars().count(), t);
+        let runs = text
+            .char_indices()
+            .zip(lit)
+            .map(|((at, ch), lit)| {
+                (
+                    at..at + ch.len_utf8(),
+                    HighlightStyle {
+                        color: Some(paint(rest.mix(self.palette.fg, lit))),
+                        ..Default::default()
+                    },
+                )
+            })
+            .collect::<Vec<_>>();
+        Some(
+            div()
+                .child(StyledText::new(text).with_highlights(runs))
+                .into_any_element(),
+        )
+    }
+
     /// The row of questions for the group on screen, if it has any.
     pub fn asks_row(&self) -> Option<crate::asks::Row> {
         let group = self.group()?;
@@ -4048,8 +4122,7 @@ impl DeckView {
                 && crate::mac::hang_below(
                     deck_ns,
                     shelf_ns,
-                    f64::from(crate::asks::TALL),
-                    f64::from(crate::asks::TIP),
+                    f64::from(crate::asks::SHELF),
                     f64::from(crate::asks::HANG),
                 );
             if !outside {
@@ -4065,7 +4138,7 @@ impl DeckView {
                 let _ = shelf.update(cx, |shelf, window, cx| {
                     // Sized here, through gpui, to the deck's width:
                     // `hang_below` only moves it.
-                    let target = size(px(wide), px(crate::asks::TALL));
+                    let target = size(px(wide), px(crate::asks::SHELF));
                     if window.viewport_size() != target {
                         window.resize(target);
                     }
@@ -4099,8 +4172,14 @@ impl DeckView {
         }
         let row = self.asks_row()?;
         let me = cx.entity().downgrade();
-        let pick: crate::asks::Pick = std::rc::Rc::new(move |ix, edit, window, cx| {
-            let _ = me.update(cx, |deck, cx| deck.ask_suggested(ix, edit, window, cx));
+        let pick: crate::asks::Pick = {
+            let me = me.clone();
+            std::rc::Rc::new(move |ix, edit, window, cx| {
+                let _ = me.update(cx, |deck, cx| deck.ask_suggested(ix, edit, window, cx));
+            })
+        };
+        let hover: crate::asks::Hover = std::rc::Rc::new(move |on, _window, cx| {
+            let _ = me.update(cx, |deck, cx| deck.hover_ask(on, cx));
         });
         Some(
             div()
@@ -4117,6 +4196,7 @@ impl DeckView {
                     f32::from(window.viewport_size().width) - 24.,
                     &self.asks_carousel,
                     &pick,
+                    &hover,
                 ))
                 .into_any_element(),
         )
@@ -5818,6 +5898,7 @@ impl DeckView {
                         )
                     }),
             )
+            .children(self.render_ask_hint())
             .child(
                 div()
                     .h_flex()

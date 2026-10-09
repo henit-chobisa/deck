@@ -46,60 +46,41 @@ pub struct Row {
 /// Pressed: which question, and whether to edit it first.
 pub type Pick = Rc<dyn Fn(usize, bool, &mut Window, &mut App)>;
 
-/// What a pill says when the pointer rests on it: how to press it.
-///
-/// Drawn as the deck draws its own keys, a cap per key, in the deck's colours
-/// — not the stock tooltip, a black slab that repeated the question it sat on.
-struct Hint {
-    palette: Palette,
+/// The pointer came onto a pill, or left the row of them.
+pub type Hover = Rc<dyn Fn(bool, &mut Window, &mut App)>;
+
+/// What the footer says while the pointer is on a pill: how to press one.
+/// Said there, in the deck's own quiet line, rather than in a tooltip over
+/// the very question being read.
+#[must_use]
+pub fn how() -> &'static str {
+    if cfg!(target_os = "macos") {
+        "click to ask \u{b7} \u{2318}-click to edit first"
+    } else {
+        "click to ask \u{b7} ctrl-click to edit first"
+    }
 }
 
-impl Render for Hint {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let palette = self.palette;
-        let mono = cx.theme().mono_font_family.clone();
-        let cap = |key: &'static str| {
-            div()
-                .min_w(px(19.))
-                .flex_none()
-                .px(px(4.))
-                .py(px(3.))
-                .text_center()
-                .rounded(px(4.))
-                .border_1()
-                .border_b_2()
-                .border_color(paint(palette.edge))
-                .bg(paint(palette.wash))
-                .text_size(px(10.5))
-                .line_height(px(10.5))
-                .text_color(paint(palette.fg))
-                .child(key)
-        };
-        let modifier = if cfg!(target_os = "macos") {
-            "\u{2318}"
-        } else {
-            "ctrl"
-        };
-        div()
-            .h_flex()
-            .items_center()
-            .gap(px(6.))
-            .px(px(8.))
-            .py(px(5.))
-            .rounded(px(6.))
-            .border_1()
-            .border_color(paint(palette.edge))
-            .bg(paint(palette.band))
-            .font_family(mono)
-            .text_size(px(11.))
-            .text_color(paint(palette.fg.mix(palette.band, 0.28)))
-            .child(cap("click"))
-            .child("ask")
-            .child(div().px(px(3.)).child("\u{b7}"))
-            .child(cap(modifier))
-            .child(cap("click"))
-            .child("edit first")
-    }
+/// How long the light takes to cross the hint, once, as it appears.
+pub const SHIMMER: Duration = Duration::from_millis(900);
+
+/// How lit each character of the hint is, `t` of the way through the shimmer:
+/// a soft band of light, crossing left to right, gone by the end.
+#[must_use]
+pub fn shimmer(chars: usize, t: f32) -> Vec<f32> {
+    const BAND: f32 = 0.22;
+    let at = -BAND + (1. + 2. * BAND) * t.clamp(0., 1.);
+    (0..chars)
+        .map(|ix| {
+            let place = if chars > 1 {
+                ix as f32 / (chars - 1) as f32
+            } else {
+                0.
+            };
+            let near = (1. - (place - at).abs() / BAND).max(0.);
+            near * near * (3. - 2. * near)
+        })
+        .collect()
 }
 
 /// How long an arrow's slide takes.
@@ -219,6 +200,7 @@ pub fn render(
     wide: f32,
     carousel: &Carousel,
     pick: &Pick,
+    hover: &Hover,
 ) -> Div {
     carousel.advance();
     let surface = |id: ElementId| {
@@ -249,7 +231,7 @@ pub fn render(
     let pills = row.asks.iter().enumerate().map(|(ix, ask)| {
         let asked = row.asked.get(ix).copied().unwrap_or(false);
         let pick = pick.clone();
-        let palette = *palette;
+        let hover = hover.clone();
         surface(ElementId::from(("ask", ix)))
             .max_w(px(WIDEST))
             .px(px(13.))
@@ -258,7 +240,7 @@ pub fn render(
                 this.border_color(paint(palette.accent))
                     .bg(paint(palette.band.mix(palette.accent, 0.16)))
             })
-            .tooltip(move |_window, cx| cx.new(|_| Hint { palette }).into())
+            .on_hover(move |hovered, window, cx| hover(*hovered, window, cx))
             .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
             .on_click(move |event, window, cx| {
                 pick(ix, event.modifiers().secondary(), window, cx);
@@ -293,17 +275,6 @@ pub const HANG: f32 = 10.;
 /// colour and the border are not clipped.
 #[cfg(target_os = "macos")]
 pub const SHELF: f32 = PILL + 4.;
-
-/// Clear room under the pills, for a pill's tooltip. A tooltip is drawn
-/// inside its window, and in a window only a pill high it covered the pill it
-/// was explaining and lost its second line. Nothing is drawn here otherwise,
-/// and AppKit passes a click on a window's clear pixels to what is under it.
-#[cfg(target_os = "macos")]
-pub const TIP: f32 = 56.;
-
-/// The shelf window's whole height.
-#[cfg(target_os = "macos")]
-pub const TALL: f32 = SHELF + TIP;
 
 /// The questions in a window of their own, hung just below the deck.
 ///
@@ -342,21 +313,25 @@ impl Render for Shelf {
                 });
             })
         };
-        div().size_full().flex().flex_col().child(
-            div()
-                .h(px(SHELF))
-                .flex_none()
-                .flex()
-                .items_center()
-                .child(render(
-                    &row,
-                    &self.palette,
-                    self.corner,
-                    self.wide,
-                    &self.carousel,
-                    &pick,
-                )),
-        )
+        let hover: Hover = {
+            let deck = self.deck.clone();
+            let deck_window = self.deck_window;
+            Rc::new(move |on, _window, cx| {
+                let deck = deck.clone();
+                let _ = deck_window.update(cx, |_, _, cx| {
+                    let _ = deck.update(cx, |deck, cx| deck.hover_ask(on, cx));
+                });
+            })
+        };
+        div().size_full().flex().items_center().child(render(
+            &row,
+            &self.palette,
+            self.corner,
+            self.wide,
+            &self.carousel,
+            &pick,
+            &hover,
+        ))
     }
 }
 
@@ -381,7 +356,7 @@ pub fn open_shelf(deck_window: WindowHandle<Root>, cx: &mut App) {
         titlebar: None,
         window_bounds: Some(WindowBounds::Windowed(Bounds {
             origin: point(px(-4000.), px(-4000.)),
-            size: size(px(600.), px(TALL)),
+            size: size(px(600.), px(SHELF)),
         })),
         kind: WindowKind::PopUp,
         window_background: WindowBackgroundAppearance::Transparent,
@@ -436,6 +411,20 @@ mod tests {
     use core::prelude::v1::test;
 
     use super::*;
+
+    #[test]
+    fn the_light_crosses_once_and_leaves_nothing_lit() {
+        let before = shimmer(20, 0.);
+        let middle = shimmer(20, 0.5);
+        let after = shimmer(20, 1.);
+        assert!(
+            before.iter().chain(&after).all(|lit| *lit == 0.),
+            "dark either side"
+        );
+        assert!(middle[10] > 0.9, "lit where the light is");
+        assert_eq!(middle[0], 0., "and only there");
+        assert_eq!(middle[19], 0.);
+    }
 
     #[test]
     fn an_arrow_moves_one_question_and_stops_at_either_end() {

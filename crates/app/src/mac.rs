@@ -95,13 +95,11 @@ pub fn ns_window(window: &Window) -> Option<objc2::rc::Retained<objc2_app_kit::N
 /// dragged, and orders it with it. Says whether it could: not over a deck in
 /// full screen, where there is no below, and not when the space under the
 /// deck runs off the bottom of the screen — the questions would be cut, and
-/// they are shown inside the window instead. The last `spare` of `height` is
-/// allowed to run off the screen: room kept for a tooltip, not needed for it.
+/// they are shown inside the window instead.
 pub fn hang_below(
     parent: &objc2_app_kit::NSWindow,
     child: &objc2_app_kit::NSWindow,
     height: f64,
-    spare: f64,
     gap: f64,
 ) -> bool {
     use objc2_app_kit::{NSWindowOrderingMode, NSWindowStyleMask};
@@ -114,7 +112,7 @@ pub fn hang_below(
         let frame = parent.frame();
         let below = frame.origin.y - gap - height;
         let screen = parent.screen()?.visibleFrame();
-        (below + spare >= screen.origin.y).then(|| {
+        (below >= screen.origin.y).then(|| {
             NSRect::new(
                 NSPoint::new(frame.origin.x, below),
                 NSSize::new(frame.size.width, height),
