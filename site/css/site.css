@@ -70,7 +70,7 @@ button { font: inherit; color: inherit; }
 .nav nav a.nav-install:hover { background: #222525; }
 @media (max-width: 900px) {
   .nav nav { gap: 18px; font-size: 14px; }
-  .nav nav a:not(.nav-install):not([href$="docs/"]) { display: none; }
+  .nav nav a:not(.nav-install):not(.nav-try):not([href$="docs/"]) { display: none; }
 }
 
 /* scenes: tall sections with a sticky stage; js turns scroll into progress */
@@ -137,7 +137,7 @@ button { font: inherit; color: inherit; }
 .term-head span { margin-left: 10px; font-family: var(--mono); font-size: 12px; color: var(--faint); }
 .term-body { overflow-wrap: anywhere; position: relative; flex: 1; min-height: 0; overflow: hidden; padding: 20px 22px; font-family: var(--mono); font-size: clamp(12px, 1.02vw, 14px); line-height: 1.7; color: var(--muted); }
 .term.small .term-body { display: flex; flex-direction: column; gap: 10px; }
-.term-roll { display: flex; flex-direction: column; gap: 14px; transition: transform .6s cubic-bezier(.2,.7,.2,1); }
+.term-roll { position: relative; display: flex; flex-direction: column; gap: 14px; transition: transform .6s cubic-bezier(.2,.7,.2,1); }
 .term .ask { border: 1px solid var(--edge-2); border-radius: 8px; padding: 10px 14px; color: var(--fg); }
 .term .ask b, .term .cmd b { color: var(--faint); font-weight: 400; margin-right: 6px; }
 .term .bullet { color: var(--accent); font-weight: 400; margin-right: 6px; }
@@ -164,8 +164,8 @@ button { font: inherit; color: inherit; }
 .menu.on .pointer { left: 46%; top: 98px; opacity: 1; }
 .menu.on li.pick { animation: press .3s 1.25s ease both; }
 @keyframes press { 50% { background: rgba(254,128,25,0.32); } }
-.term-verdict { position: absolute; right: 22px; bottom: 18px; text-align: right; font-size: 16px; line-height: 1.5; color: var(--red); }
-.term-verdict span { color: var(--faint); }
+.verdict { margin-top: 24px; font-size: 18px; line-height: 1.5; color: var(--red); }
+.verdict span { color: var(--muted); }
 
 /* the agent opens deck */
 .beats { list-style: none; padding: 0; margin: 26px 0 0; display: flex; flex-direction: column; gap: 10px; }
@@ -200,9 +200,9 @@ button { font: inherit; color: inherit; }
 /* the reel */
 .reel-frame { margin: 0; position: relative; height: min(76vh, 760px); }
 .reel-canvas { width: 100%; height: 100%; display: block; }
-.reel-load { position: absolute; left: 0; right: 0; bottom: -14px; height: 2px; background: var(--edge); border-radius: 1px; overflow: hidden; }
-.reel-load i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .3s; }
-.reel-load.done { opacity: 0; transition: opacity .6s .4s; }
+/* How far through the recordings: follows the scroll, nothing else. */
+.reel-progress { position: absolute; left: 0; right: 0; bottom: -14px; height: 2px; background: var(--edge); border-radius: 1px; overflow: hidden; }
+.reel-progress i { display: block; height: 100%; width: 100%; background: var(--accent); transform: scaleX(0); transform-origin: 0 50%; }
 .chapters { list-style: none; padding: 0; margin: 30px 0 0; display: flex; flex-wrap: wrap; gap: 8px; font-family: var(--mono); font-size: 12px; }
 .chapters li { padding: 6px 11px; border-radius: 999px; border: 1px solid var(--edge-2); color: var(--faint); transition: color .3s, border-color .3s, background .3s; }
 .chapters li.on { color: var(--fg); border-color: var(--accent); background: rgba(254,128,25,0.1); }
@@ -227,7 +227,7 @@ button { font: inherit; color: inherit; }
   .stage.split > .term { flex: none; height: min(52svh, 520px); max-height: calc(100svh - 330px); min-height: 140px; }
   .stage.split > .reel-frame { flex: none; width: 100%; height: auto; aspect-ratio: 1.22; max-height: calc(100svh - 300px); min-height: 0; }
   .reel-frame { height: auto; }
-  .term-verdict { position: static; font-size: 13px; padding: 0 14px 12px; }
+  .verdict { margin-top: 14px; font-size: 15px; }
   .term-body { padding: 14px; }
   .launch .term-body { padding-bottom: 84px; }
   .pill-count, .pill-dot { display: none; }
@@ -341,10 +341,9 @@ button { font: inherit; color: inherit; }
   .term-roll > [data-show]:not(.on), .term-roll > .past, .advanced .term-roll > :not([data-show]) { display: none; }
   html:not(.js) .term-roll > [data-show] { display: flex; }
   .term-head span { font-size: 11px; }
-  .term-verdict { position: static; font-size: 12px; padding: 0 16px 12px; }
-  .term-verdict:not(.on) { display: none; }
+  .verdict:not(.on) { display: none; }
   .stage.split > .reel-frame { flex: none; width: 100%; max-width: 640px; align-self: center; height: auto; aspect-ratio: 1.2; }
-  .reel-load { bottom: -6px; }
+  .reel-progress { bottom: -6px; }
   .scene-controls { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
   .scene-controls button { min-width: 88px; min-height: 44px; border: 1px solid var(--edge-2); border-radius: 8px; background: var(--raise); cursor: pointer; font-size: 14px; }
   .scene-controls button:disabled { opacity: .4; cursor: default; }
@@ -395,3 +394,18 @@ html:not(.js) .signal { display: none; }
   .term { height: min(78vh, 600px); }
   .reel-frame { height: min(80vh, 600px); }
 }
+
+/* "This is live": a dot that breathes wherever the demo is offered. */
+.live-dot { display: inline-block; width: 8px; height: 8px; margin-right: 8px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 0 rgba(254,128,25,0.6); animation: livepulse 1.8s ease-out infinite; vertical-align: 1px; }
+@keyframes livepulse { 0% { box-shadow: 0 0 0 0 rgba(254,128,25,0.55); } 70% { box-shadow: 0 0 0 9px rgba(254,128,25,0); } 100% { box-shadow: 0 0 0 0 rgba(254,128,25,0); } }
+.nav nav a.nav-try { color: var(--fg); }
+.try-live { display: inline-flex; align-items: center; margin-top: 28px; min-height: 46px; padding: 0 20px; border-radius: 999px; border: 1px solid rgba(254,128,25,0.55); background: rgba(254,128,25,0.1); color: var(--fg); font-size: 15.5px; font-weight: 500; }
+.try-live:hover { background: rgba(254,128,25,0.18); color: var(--fg); }
+.try-live.small { margin-top: 18px; min-height: 40px; padding: 0 16px; font-size: 14px; }
+@media (max-width: 900px) { .try-live.small { display: none; } }
+
+.term-roll.fresh > .past { opacity: 0; transition: opacity .3s; }
+@media (max-width: 420px) { .nav nav a.nav-try .wide { display: none; } }
+/* A short phone keeps the terminal on screen; the verdict is the first thing to go. */
+@media (max-width: 900px) and (max-height: 600px) { .verdict { display: none; } }
+@media (max-width: 359px) { .nav nav a.nav-try { display: none; } }

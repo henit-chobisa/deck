@@ -161,7 +161,9 @@
   ]
   // `lines` in turn, written into `el`; `shown` says whether anybody can see
   // it, and nothing moves while they cannot.
-  function Ask(el, lines, shown) {
+  // `hold`: the first line is already on the page, so it is held rather than
+  // written out a second time.
+  function Ask(el, lines, shown, hold) {
     if (reading.matches) return
     let at = 0, timers = []
     const later = (fn, ms) => timers.push(setTimeout(fn, ms))
@@ -198,7 +200,11 @@
       later(() => { at = (at + 1) % lines.length; write(lines[at]) }, 480)
     }
     // Begin when it is first seen, so the opening line is not spent unseen.
-    const begin = () => { if (quiet()) later(begin, 400); else write(lines[0]) }
+    const begin = () => {
+      if (quiet()) later(begin, 400)
+      else if (hold) later(next, 3600)
+      else write(lines[0])
+    }
     begin()
   }
 
@@ -262,7 +268,12 @@
         if (!bottom && s === 1) y = 0
       }
       body.scrollTop = 0
-      roll.style.transform = 'translateY(' + (-clamp(y, 0, max)) + 'px)'
+      // A step that starts a new screen (the menu) always starts at the top,
+      // even when nothing follows it: it is never squeezed under the last one.
+      const top = !bottom && shown.length && shown[0].classList.contains('menu')
+      // and what came before it steps out, so no half line hangs over it.
+      roll.classList.toggle('fresh', !!top)
+      roll.style.transform = 'translateY(' + (-(top ? Math.max(0, y) : clamp(y, 0, max))) + 'px)'
     }
 
     addEventListener('resize', () => { const s = step; step = -1; set(s < 0 ? 0 : s) })
@@ -288,7 +299,7 @@
   function Reel(section) {
     const canvas = section.querySelector('.reel-canvas')
     const ctx = canvas.getContext('2d')
-    const bar = section.querySelector('.reel-load'), barFill = bar.querySelector('i')
+    const barFill = section.querySelector('.reel-progress i')
     // 360 native Retina frames would occupy several GB decoded. Keep only
     // the current neighbourhood, and always request the wanted frame first.
     const imgs = new Map(), pending = new Set(), failed = new Set()
@@ -370,8 +381,6 @@
       ctx.imageSmoothingQuality = 'high'
       ctx.drawImage(im, x, y, dw, dh)
       ctx.restore()
-      barFill.style.width = (i === want ? 100 : 40) + '%'
-      bar.classList.toggle('done', i === want)
     }
 
     function caption(c) {
@@ -395,6 +404,10 @@
         pump()
         let c = 0
         for (let k = 0; k < CUTS.length; k++) if (want >= CUTS[k]) c = k
+        // How far through the recordings: in step with the scroll, or, when
+        // stepping chapter by chapter, with the chapter.
+        const done = reading.matches ? c / (CUTS.length - 1) : p
+        barFill.style.transform = 'scaleX(' + done.toFixed(4) + ')'
         caption(c)
         draw()
       },
@@ -407,16 +420,18 @@
     const copy = section.querySelector('.hero-copy'), signal = section.querySelector('.signal')
     const hush = section.querySelector('.hush'), cue = section.querySelector('.cue')
     const mark = section.querySelector('.signal-mark')
+    const tryLive = section.querySelector('.signal .try-live')
     const stream = section.querySelector('.hero-copy .stream')
     if (stream) Ask(stream, QUESTIONS, () => +(copy.style.opacity || 1) > 0.05)
     const reply = section.querySelector('.signal .stream')
-    if (reply) Ask(reply, ANSWERS, () => +(signal.style.opacity || 0) > 0.5)
+    if (reply) Ask(reply, ANSWERS, () => +(signal.style.opacity || 0) > 0.5, true)
     let last = performance.now()
     return {
       update(p, now) {
         const dt = Math.min(0.05, (now - last) / 1000); last = now
         if (reading.matches) {
           for (const el of [copy, signal, mark]) el.removeAttribute('style')
+          if (tryLive) tryLive.tabIndex = 0
           return
         }
 
@@ -428,6 +443,8 @@
         copy.style.visibility = out < 0.01 ? 'hidden' : ''
         signal.style.opacity = inn
         signal.style.pointerEvents = inn > 0.5 ? 'auto' : 'none'
+        // The button inside is only there to be pressed once it can be seen.
+        if (tryLive) tryLive.tabIndex = inn > 0.5 ? 0 : -1
         mark.style.transform = 'scale(' + (0.6 + 0.4 * inn).toFixed(3) + ')'
         hush.style.opacity = Math.max(out, inn * 0.9)
         cue.style.opacity = 1 - smooth(p / 0.08)
@@ -516,13 +533,15 @@
   })
   tabs()
 
-  // The star count, when GitHub will say. Nothing shows if it will not.
+  // The star count, when GitHub will say and it is worth saying.
   const count = document.querySelector('.star-count')
   if (count) {
     fetch('https://api.github.com/repos/henit-chobisa/deck', { headers: { Accept: 'application/vnd.github+json' } })
       .then((r) => (r.ok ? r.json() : null))
       .then((repo) => {
-        if (!repo || typeof repo.stargazers_count !== 'number') return
+        // A small count beside the button says 'nobody is here yet'. It is
+        // shown once it is a reason to click rather than a reason not to.
+        if (!repo || typeof repo.stargazers_count !== 'number' || repo.stargazers_count < 100) return
         count.textContent = repo.stargazers_count.toLocaleString('en')
         count.hidden = false
       })
@@ -530,8 +549,47 @@
   }
 
   const nav = document.querySelector('.nav'), hero = document.querySelector('.hero')
+  // The live deck is the one place worth stopping. The first time a reader
+  // scrolls down into it, the page settles with the deck in view and holds
+  // for a moment, so a fast scroll does not carry them past it. Once only,
+  // only downwards, and never with reduced motion or after a jump to #play.
+  const play = document.getElementById('play')
+  let caught = !play || reading.matches, lastY = scrollY
+  addEventListener('hashchange', () => { if (location.hash === '#play') caught = true })
+  document.addEventListener('click', (e) => { if (e.target.closest('a[href$="#play"]')) caught = true })
+  function settle() {
+    caught = true
+    const navH = (document.querySelector('.nav') || { offsetHeight: 0 }).offsetHeight
+    const y = play.getBoundingClientRect().top + scrollY - navH + parseFloat(getComputedStyle(play).paddingTop) - 32
+    const hold = () => {
+      // Swallow the rest of the fling for a beat, then let go. Lenis scrolls
+      // from wheel events itself, so it is paused rather than overruled.
+      const stop = (e) => e.preventDefault()
+      if (lenis) lenis.stop()
+      addEventListener('wheel', stop, { passive: false })
+      addEventListener('touchmove', stop, { passive: false })
+      setTimeout(() => {
+        removeEventListener('wheel', stop)
+        removeEventListener('touchmove', stop)
+        if (lenis) lenis.start()
+      }, 1100)
+    }
+    if (lenis) {
+      lenis.scrollTo(y, { duration: 0.9, lock: true, force: true, onComplete: hold })
+    } else {
+      window.scrollTo({ top: y, behavior: 'smooth' })
+      hold()
+    }
+  }
   function frame(now) {
     if (lenis) lenis.raf(now)
+    if (!caught) {
+      const y = scrollY, down = y > lastY
+      lastY = y
+      const top = play.getBoundingClientRect().top
+      if (down && top < innerHeight * 0.55 && top > -innerHeight * 0.2) settle()
+      else if (top <= -innerHeight * 0.2) caught = true
+    }
     if (nav && hero) nav.classList.toggle('solid', reading.matches || hero.getBoundingClientRect().bottom < innerHeight * 0.6)
     for (const { s, thing, manual } of scenes) {
       if (thing === scenes[0].thing || visible(s)) thing.update(reading.matches ? manual() : progress(s), now)
