@@ -152,8 +152,9 @@ fn show(decks: Vec<Deck>, opening: &cli::Opening) {
             // command rather than leaving a headless process behind for the
             // agent to wonder about.
             cx.on_window_closed(|cx, _| {
-                // A shade is not a window worth staying open for. Every path
-                // that takes the deck away brings the lights up first, and this
+                // A shade is not a window worth staying open for: every path
+                // that takes the deck away brings the lights up first.
+                //
                 // Nor is the questions' shelf, which goes with its deck but is
                 // a window of its own: a deck that outlived its window would
                 // otherwise leave one keeping the process up, unseen.

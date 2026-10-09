@@ -233,25 +233,46 @@ impl Carousel {
                 {
                     asked = None;
                 }
+                // Let go of the pill only: if the window was merely slow, the
+                // row stays where the reader had slid it.
                 if asked.is_some_and(|asked| asked.elapsed() > Duration::from_millis(500)) {
-                    carousel.reset();
+                    carousel.release();
                     break;
                 }
-                if !carousel.resting() {
-                    if handle.update(cx, |_, window, _| window.refresh()).is_err() {
-                        break;
-                    }
+                let resting = carousel.resting();
+                let alive = if resting {
+                    // No frames while it rests, so the pointer is asked about
+                    // here: one gone without a word closes the pill now, not
+                    // when the light next wants a frame.
+                    handle.update(cx, |_, window, _| carousel.let_go(window))
+                } else {
+                    handle.update(cx, |_, window, _| window.refresh())
+                };
+                if alive.is_err() {
+                    break;
+                }
+                if !resting {
                     asked.get_or_insert_with(Instant::now);
                 }
-                // About a frame of a fast screen: often enough for any of
-                // them, without asking for frames no screen can show.
+                // About a frame of a fast screen while anything moves: often
+                // enough for any of them, without asking for frames no screen
+                // can show. Resting, a glance every few frames is plenty.
+                let tick = if resting { 32 } else { 8 };
                 cx.background_executor()
-                    .timer(Duration::from_millis(8))
+                    .timer(Duration::from_millis(tick))
                     .await;
             }
             carousel.drawing.set(None);
         })
         .detach();
+    }
+
+    /// Let go of any pill, open or closing, and the spotlight; the row
+    /// stays where it is.
+    fn release(&self) {
+        self.open.set(None);
+        self.closing.set(None);
+        self.spot.set(None);
     }
 
     /// Whether nothing on the row is moving this frame: a pill held fully

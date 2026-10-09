@@ -705,6 +705,15 @@ pub fn group_asking(
     Ok(path)
 }
 
+/// A character that breaks a line or turns text around without being seen:
+/// the line and paragraph separators, and the marks that set direction.
+fn unseen(ch: char) -> bool {
+    matches!(
+        ch,
+        '\u{2028}' | '\u{2029}' | '\u{200e}' | '\u{200f}' | '\u{202a}'..='\u{202e}' | '\u{2066}'..='\u{2069}'
+    )
+}
+
 /// The questions as they will be written: trimmed, checked, in order.
 fn questions(asks: &[String]) -> anyhow::Result<Vec<String>> {
     anyhow::ensure!(
@@ -718,7 +727,7 @@ fn questions(asks: &[String]) -> anyhow::Result<Vec<String>> {
         let ask = ask.trim();
         anyhow::ensure!(!ask.is_empty(), "an --ask is empty");
         anyhow::ensure!(
-            !ask.chars().any(char::is_control),
+            !ask.chars().any(|ch| ch.is_control() || unseen(ch)),
             "--ask {ask:?} runs over a line: a question is one line of plain text"
         );
         let length = ask.chars().count();
@@ -1360,6 +1369,10 @@ mod tests {
         assert!(
             questions(&["a carriage\rreturn?".to_string()]).is_err(),
             "a control character is not one line of plain text"
+        );
+        assert!(
+            questions(&["a line\u{2028}break?".to_string()]).is_err(),
+            "nor is a line separator"
         );
     }
 
