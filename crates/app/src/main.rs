@@ -14,6 +14,7 @@
 //! a deck on screen over one the reader had already opened. Whoever writes a
 //! deck does not get to decide when it is read.
 
+mod asks;
 mod chart;
 mod cli;
 mod config;
@@ -482,6 +483,10 @@ pub fn open_deck(session: Session, cx: &mut App) {
             return;
         }
     };
+
+    // The window the group's questions hang in, just below the deck.
+    #[cfg(target_os = "macos")]
+    asks::open_shelf(handle, cx);
 
     // Where the reader came from, so they can be put back there when the
     // deck is put away.

@@ -731,6 +731,97 @@ and without one they are still holding your third fact when you start the fifth.
 "now look at". Say the thing. A voice reading filler is a voice the reader turns
 off, and they cannot skim past it the way they would on a page.
 
+## Leave them a way in: questions worth asking
+
+A group says one thing. The reader either understands it and decides, or they
+don't, and nod anyway. The second reader is the one this section is for. They
+are somewhere on the ladder of understanding, and you cannot see where: they
+may know the system but not this part of it, or know the code but not why it
+exists. Most of them will not type a question. Almost all of them will press
+one.
+
+So give every group three to five questions, with `--ask`. They sit under the
+window as pills. Pressing one asks you, straight away, and you answer in the
+deck. They are not a quiz and not a summary. They are the doors into this group
+that a curious engineer would want opened.
+
+```sh
+deck group <path> --say "…" --ref "…" \
+  --ask "What happens between 'order placed' and the email landing?" \
+  --ask "Why does a 4.2-second spinner become a 9-minute email?" \
+  --ask "What if a worker dies halfway through a PDF?" \
+  --ask "Could this queue quietly lose a receipt on Black Friday?"
+```
+
+### Mix the four kinds
+
+Every group's questions are a mix. Never all one kind. Never labelled. The
+reader picks the door that matches where they are standing.
+
+1. **One step down: what the claim stands on.** A term, a mechanism, a piece
+   of the system the claim takes for granted. For the reader who is missing a
+   piece and will not say so.
+   *What happens between "order placed" and the email landing?*
+   *What does Jinja do with a variable it cannot find?*
+
+2. **A step back: why this, at all.** The person, the outcome, the reason the
+   code exists, where it sits in the larger thing. For the reader who
+   understands the lines but not the point.
+   *Who is actually waiting for this receipt?*
+   *Why does checkout render a PDF in the first place?*
+
+3. **About the code: what these lines do when something goes wrong.** A
+   specific line, a failure, an edge, a number. For the reader who wants to
+   see it run.
+   *What if a worker dies halfway through a PDF?*
+   *What does line 24 do when Redis is down?*
+
+4. **About the claim: is it true, and what does it cost.** The evidence, the
+   alternative, the risk, the thing you are least sure of. For the reader
+   about to decide.
+   *Why does a 4.2-second spinner become a 9-minute email?*
+   *Could this queue quietly lose a receipt on Black Friday?*
+
+At least one from the fourth kind, always. It is the question that turns a
+reader who agreed into a reader who decided.
+
+### Write them as hooks
+
+A question is pressed only if the reader wants the answer more than they want
+to move on. So:
+
+- **Concrete.** Use this group's own nouns and numbers: the file, the field,
+  the 9 minutes, the four workers. A question that would fit any deck fits
+  none.
+- **A tension.** Something surprising, at risk, or that does not add up yet.
+  *Why does a 4.2-second spinner become a 9-minute email?* pulls; *How does the
+  queue work?* does not.
+- **One line.** Under about 60 characters; `deck group` refuses past 90. If it
+  needs a clause to set it up, it is two questions or none.
+- **In their voice.** Written as the reader would ask it, not as you would
+  teach it: *What if a worker dies?*, not *Consider the failure modes of the
+  worker.*
+- **Answerable now, by showing.** Only ask what you can answer in this deck,
+  with code you can point at or a picture you can draw. A question that sends
+  you off to research for ten minutes is a promise you cannot keep.
+
+Never: *Can you explain X?*, *What is the purpose of Y?*, *Any questions?*, a
+question whose answer is the sentence right above it, or a question you would
+rather they did not ask. That last one belongs in the list most of all: the
+question that exposes your weakest claim is the one that earns their trust in
+the rest.
+
+### When one is pressed
+
+It arrives like any question asked mid-deck, and you answer it the same way:
+by showing. Bring the file, point at the line, draw the timeline. A pressed
+question answered with three paragraphs teaches the reader that pressing is
+not worth it.
+
+Answer the question they pressed, at the depth they pressed it. A step-down
+question gets the plain mechanism, not the edge cases. A question about the
+claim gets the evidence and your honest confidence in it.
+
 ## When they answer back
 
 `deck wait` returns before the review is finished whenever the reader says
@@ -1141,7 +1232,7 @@ the agent never moves anything is a document with a bar under it.
 ```
 deck new      the header, and the bar
 deck open     the bar, in the background — and what wakes you at the end
-deck group    one group, one call
+deck group    one group, one call — and --ask, up to five, for the questions under it
 deck seal     no more coming
 deck wait     only with -d, when you detached the window yourself
 deck next     what the reader just did, when you want it without blocking

@@ -147,6 +147,16 @@ enum What {
         /// Nothing is fetched, and at most forty words may show.
         #[arg(long, value_name = "FILE.html [NAME] [NOTE]")]
         page: Vec<String>,
+        /// A question the reader can press to ask you, shown as a pill under
+        /// the window. Give it up to five times.
+        ///
+        /// Write hooks, not a quiz: one line, concrete, with a number or a
+        /// name from this group in it, and something surprising, at risk or
+        /// unexplained — `Why does a 4.2-second spinner become a 9-minute
+        /// email?`. Mix questions that fill in what the claim rests on with
+        /// ones that go past it. Never "Can you explain X?".
+        #[arg(long, value_name = "QUESTION")]
+        ask: Vec<String>,
     },
 
     /// Move the live spotlight to code already shown in an authored group.
@@ -506,6 +516,7 @@ impl Cli {
                 before,
                 diagram,
                 page,
+                ask,
             } => report(
                 gather(&refs, &after, &before, &diagram, &page).and_then(|refs| {
                     // Said before the path, because an agent that reads one line of
@@ -513,7 +524,7 @@ impl Cli {
                     for note in deck_cli::what_will_not_light(&say, &refs) {
                         eprintln!("deck: {note}");
                     }
-                    deck_cli::group(&deck, &say, refs).map(|path| {
+                    deck_cli::group_asking(&deck, &say, refs, &ask).map(|path| {
                         println!("{}", path.display());
                     })
                 }),

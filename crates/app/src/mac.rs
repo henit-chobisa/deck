@@ -76,6 +76,81 @@ pub fn never_key(window: &Window) {
     }
 }
 
+/// The native window behind a gpui one.
+#[must_use]
+pub fn ns_window(window: &Window) -> Option<objc2::rc::Retained<objc2_app_kit::NSWindow>> {
+    let handle = HasWindowHandle::window_handle(window).ok()?;
+    let RawWindowHandle::AppKit(handle) = handle.as_raw() else {
+        return None;
+    };
+    // SAFETY: as in `never_key` — gpui's own live content view, on the main
+    // thread.
+    let view: &NSView = unsafe { handle.ns_view.cast().as_ref() };
+    view.window()
+}
+
+/// Hang `child` just below `parent`, across its whole width, and keep it there.
+///
+/// Made a child window, so AppKit moves it with the deck when the deck is
+/// dragged, and orders it with it. Says whether it could: not over a deck in
+/// full screen, where there is no below, and not when the space under the
+/// deck runs off the bottom of the screen — the questions would be cut, and
+/// they are shown inside the window instead. The last `spare` of `height` is
+/// allowed to run off the screen: room kept for a tooltip, not needed for it.
+pub fn hang_below(
+    parent: &objc2_app_kit::NSWindow,
+    child: &objc2_app_kit::NSWindow,
+    height: f64,
+    spare: f64,
+    gap: f64,
+) -> bool {
+    use objc2_app_kit::{NSWindowOrderingMode, NSWindowStyleMask};
+    use objc2_foundation::{NSPoint, NSRect, NSSize};
+
+    let room = || -> Option<NSRect> {
+        if !parent.isVisible() || parent.styleMask().contains(NSWindowStyleMask::FullScreen) {
+            return None;
+        }
+        let frame = parent.frame();
+        let below = frame.origin.y - gap - height;
+        let screen = parent.screen()?.visibleFrame();
+        (below + spare >= screen.origin.y).then(|| {
+            NSRect::new(
+                NSPoint::new(frame.origin.x, below),
+                NSSize::new(frame.size.width, height),
+            )
+        })
+    };
+    let Some(target) = room() else {
+        if child.isVisible() {
+            // Taken off the parent as well as the screen, so a later
+            // `addChildWindow` puts it back cleanly.
+            parent.removeChildWindow(child);
+            child.orderOut(None);
+        }
+        return false;
+    };
+    // Only moved from here. Its size is gpui's to set (`Window::resize`): a
+    // size set natively does not reliably reach what gpui draws into, and the
+    // shelf went on drawing at the width it was opened with.
+    if child.frame().origin != target.origin {
+        child.setFrameOrigin(target.origin);
+    }
+    if !child.isVisible() {
+        // SAFETY: both are live windows of this process, on the main thread.
+        unsafe { parent.addChildWindow_ordered(child, NSWindowOrderingMode::Above) };
+    }
+    true
+}
+
+/// Take `child` off the screen, and off `parent`.
+pub fn unhang(parent: &objc2_app_kit::NSWindow, child: &objc2_app_kit::NSWindow) {
+    if child.isVisible() {
+        parent.removeChildWindow(child);
+        child.orderOut(None);
+    }
+}
+
 thread_local! {
     /// The application the reader was in when they opened a deck.
     static BEFORE: std::cell::RefCell<Option<objc2::rc::Retained<NSRunningApplication>>> =
