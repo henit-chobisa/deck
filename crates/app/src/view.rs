@@ -853,8 +853,8 @@ pub struct DeckView {
     /// Shown when the reader presses the button, or its keys, with no agent
     /// on the other end. See [`Self::render_unheard`].
     explaining: bool,
-    /// The first of the group's questions in view, moved by the arrows.
-    asks_at: usize,
+    /// Where the row of questions drawn inside the window has slid to.
+    asks_carousel: crate::asks::Carousel,
     /// Which questions have been asked, as (group, question): a pill asked
     /// stays marked, so the row shows where the reader has already been.
     asks_asked: std::collections::HashSet<(usize, usize)>,
@@ -1087,7 +1087,7 @@ impl DeckView {
             notes_fade: Self::card_fade(),
             quit_fade: Self::card_fade(),
             explaining: false,
-            asks_at: 0,
+            asks_carousel: crate::asks::Carousel::default(),
             asks_asked: std::collections::HashSet::new(),
             #[cfg(target_os = "macos")]
             shelf: None,
@@ -4006,18 +4006,10 @@ impl DeckView {
         }
         Some(crate::asks::Row {
             asks: group.asks.iter().cloned().map(SharedString::from).collect(),
-            at: self.asks_at,
             asked: (0..group.asks.len())
                 .map(|ix| self.asks_asked.contains(&(self.group_ix, ix)))
                 .collect(),
         })
-    }
-
-    /// The arrows: one question back, or one on.
-    pub fn step_asks(&mut self, by: isize, cx: &mut Context<Self>) {
-        let count = self.group().map_or(0, |group| group.asks.len());
-        self.asks_at = crate::asks::stepped(self.asks_at, by, count);
-        cx.notify();
     }
 
     /// The palette the deck is painted in, for windows of its own.
@@ -4077,6 +4069,11 @@ impl DeckView {
                     if window.viewport_size() != target {
                         window.resize(target);
                     }
+                    let new_asks = shelf.row.as_ref().map(|row| &row.asks)
+                        != shown.as_ref().map(|row| &row.asks);
+                    if new_asks {
+                        shelf.carousel.reset();
+                    }
                     if shelf.row != shown || shelf.corner != corner || shelf.wide != wide {
                         shelf.row = shown;
                         shelf.corner = corner;
@@ -4102,14 +4099,8 @@ impl DeckView {
         }
         let row = self.asks_row()?;
         let me = cx.entity().downgrade();
-        let pick: crate::asks::Pick = {
-            let me = me.clone();
-            std::rc::Rc::new(move |ix, edit, window, cx| {
-                let _ = me.update(cx, |deck, cx| deck.ask_suggested(ix, edit, window, cx));
-            })
-        };
-        let step: crate::asks::Step = std::rc::Rc::new(move |by, _window, cx| {
-            let _ = me.update(cx, |deck, cx| deck.step_asks(by, cx));
+        let pick: crate::asks::Pick = std::rc::Rc::new(move |ix, edit, window, cx| {
+            let _ = me.update(cx, |deck, cx| deck.ask_suggested(ix, edit, window, cx));
         });
         Some(
             div()
@@ -4124,8 +4115,9 @@ impl DeckView {
                     &self.palette,
                     window_corner(window).max(8.),
                     f32::from(window.viewport_size().width) - 24.,
+                    &self.asks_carousel,
                     &pick,
-                    &step,
+                    window,
                 ))
                 .into_any_element(),
         )
@@ -4697,7 +4689,7 @@ impl DeckView {
     /// rebuild throws away where the reader had scrolled to.
     fn build_panes(&mut self, cx: &mut App) {
         // Each group's questions start from their first.
-        self.asks_at = 0;
+        self.asks_carousel.reset();
         // A new group starts at the top of its own narration. Carrying the
         // last one's scroll over means arriving halfway down a paragraph that
         // has not been read.

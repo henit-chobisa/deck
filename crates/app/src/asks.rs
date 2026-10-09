@@ -11,7 +11,9 @@
 //! else, or when there is no room below it. So it is a function of what to
 //! show and what to do when pressed, and knows nothing about where it is.
 
+use std::cell::Cell;
 use std::rc::Rc;
+use std::time::{Duration, Instant};
 
 use deck_core::theme::Palette;
 #[cfg(target_os = "macos")]
@@ -37,8 +39,6 @@ const WIDEST: f32 = 460.;
 pub struct Row {
     /// The group's questions, in the order the agent wrote them.
     pub asks: Vec<SharedString>,
-    /// The first one in view: the arrows move this.
-    pub at: usize,
     /// Which have been asked, by index.
     pub asked: Vec<bool>,
 }
@@ -46,63 +46,113 @@ pub struct Row {
 /// Pressed: which question, and whether to edit it first.
 pub type Pick = Rc<dyn Fn(usize, bool, &mut Window, &mut App)>;
 
-/// An arrow: one pill back, or one forward.
-pub type Step = Rc<dyn Fn(isize, &mut Window, &mut App)>;
-
 /// What the tooltip says, in this platform's words for the modifier.
 fn how() -> &'static str {
     if cfg!(target_os = "macos") {
-        "Click to ask · \u{2318}-click to edit first"
+        "Click to ask \u{b7} \u{2318}-click to edit first"
     } else {
-        "Click to ask · Ctrl-click to edit first"
+        "Click to ask \u{b7} Ctrl-click to edit first"
     }
 }
 
-/// About how wide a question's pill is: its words at the pill's size, its
-/// padding and its border. A little generous, so a pill judged to fit does.
-#[must_use]
-pub fn width_of(ask: &str) -> f32 {
-    let words = ask.chars().count() as f32 * 7.0;
-    (words + 28.).min(WIDEST)
+/// How long an arrow's slide takes.
+const GLIDE: Duration = Duration::from_millis(240);
+
+/// One slide under way: from where, to where, since when. Offsets are gpui's,
+/// zero at the start of the row and going negative as it moves on.
+#[derive(Clone, Copy)]
+struct Glide {
+    from: f32,
+    to: f32,
+    since: Instant,
 }
 
-/// The pills from `at` that fit, whole, in `room`.
+/// The row's place: every question is in it, and it slides.
 ///
-/// Never none: the first one in view is shown even when it is wider than the
-/// room, cut short, because an empty row between two arrows says nothing.
-#[must_use]
-pub fn fitting(asks: &[SharedString], at: usize, room: f32) -> usize {
-    let mut used = 0.;
-    let mut count = 0;
-    for ask in asks.iter().skip(at) {
-        let wide = width_of(ask) + if count == 0 { 0. } else { GAP };
-        if count > 0 && used + wide > room {
-            break;
-        }
-        used += wide;
-        count += 1;
-    }
-    count
+/// A trackpad scrolls it directly; the arrows slide it one question along,
+/// eased, so the eye can follow where the row went. Each place the row is
+/// drawn keeps one of these — it is where the row is, not what it holds.
+#[derive(Clone, Default)]
+pub struct Carousel {
+    handle: ScrollHandle,
+    glide: Rc<Cell<Option<Glide>>>,
 }
 
-/// The arrows' width, and the gap beside each.
-const ARROWS: f32 = 2. * (36. + GAP);
+impl Carousel {
+    /// Back to the first question, at once: a new group's row starts there.
+    pub fn reset(&self) {
+        self.glide.set(None);
+        self.handle.set_offset(point(px(0.), px(0.)));
+    }
+
+    /// Start sliding one question back, or one on.
+    fn step(&self, by: isize) {
+        let now = f32::from(self.handle.offset().x);
+        let view = self.handle.bounds();
+        let lefts: Vec<f32> = (0..)
+            .map_while(|ix| self.handle.bounds_for_item(ix))
+            .map(|item| f32::from(item.origin.x - view.origin.x) - now)
+            .collect();
+        let max = f32::from(self.handle.max_offset().x);
+        let from = self.glide.get().map_or(now, |glide| glide.to);
+        let to = -next_left(&lefts, -from, max, by);
+        if to != from {
+            self.glide.set(Some(Glide {
+                from: now,
+                to,
+                since: Instant::now(),
+            }));
+        }
+    }
+
+    /// Move the row along its slide, if one is under way, and ask for the
+    /// next frame until it lands.
+    fn advance(&self, window: &Window) {
+        let Some(glide) = self.glide.get() else {
+            return;
+        };
+        let done = glide.since.elapsed().as_secs_f32() / GLIDE.as_secs_f32();
+        let t = done.min(1.);
+        let eased = 1. - (1. - t).powi(3);
+        let x = glide.from + (glide.to - glide.from) * eased;
+        self.handle.set_offset(point(px(x), px(0.)));
+        if t < 1. {
+            window.request_animation_frame();
+        } else {
+            self.glide.set(None);
+        }
+    }
+}
+
+/// Where the row's left edge goes after one press of an arrow, in the row's
+/// own terms: `lefts` is each question's left edge, `at` how far along the row
+/// is now, and `max` how far along it can go. One on is the first question
+/// starting past where the row is; one back the last starting before it.
+#[must_use]
+pub fn next_left(lefts: &[f32], at: f32, max: f32, by: isize) -> f32 {
+    let target = if by > 0 {
+        lefts.iter().copied().find(|left| *left > at + 1.)
+    } else {
+        lefts.iter().copied().rev().find(|left| *left < at - 1.)
+    };
+    target
+        .unwrap_or(if by > 0 { max } else { 0. })
+        .clamp(0., max.max(0.))
+}
 
 /// The row, as an element, `wide` across. `corner` is the window's own
 /// radius, which every pill and both arrows share, so they read as made of
 /// the same thing.
-///
-/// Only the pills that fit whole are drawn. Left to overflow, the layout
-/// centred a row wider than its box, and the first questions — the ones the
-/// reader is meant to see first — were the ones pushed out of sight.
 pub fn render(
     row: &Row,
     palette: &Palette,
     corner: f32,
     wide: f32,
+    carousel: &Carousel,
     pick: &Pick,
-    step: &Step,
+    window: &Window,
 ) -> Div {
+    carousel.advance(window);
     let surface = |id: ElementId| {
         div()
             .id(id)
@@ -119,46 +169,40 @@ pub fn render(
             .hover(|style| style.bg(paint(palette.wash)))
     };
     let arrow = |id: &'static str, glyph: &'static str, by: isize| {
-        let step = step.clone();
+        let carousel = carousel.clone();
         surface(ElementId::from(id))
             .w(px(36.))
             .justify_center()
             .text_size(px(15.))
             .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-            .on_click(move |_, window, cx| step(by, window, cx))
+            .on_click(move |_, window, _| {
+                carousel.step(by);
+                window.refresh();
+            })
             .child(glyph)
     };
-    let at = row.at.min(row.asks.len().saturating_sub(1));
-    let room = (wide - ARROWS).max(80.);
-    let shown = fitting(&row.asks, at, room);
-    let pills = row
-        .asks
-        .iter()
-        .enumerate()
-        .skip(at)
-        .take(shown)
-        .map(|(ix, ask)| {
-            let asked = row.asked.get(ix).copied().unwrap_or(false);
-            let pick = pick.clone();
-            let tip = SharedString::from(format!("{ask}\n{}", how()));
-            surface(ElementId::from(("ask", ix)))
-                .max_w(px(room.min(WIDEST)))
-                .px(px(13.))
-                .text_size(px(13.))
-                .when(asked, |this| {
-                    this.border_color(paint(palette.accent))
-                        .bg(paint(palette.band.mix(palette.accent, 0.16)))
-                })
-                .tooltip(move |_window, cx| {
-                    cx.new(|_| gpui_kit::component::tooltip::Tooltip::new(tip.clone()))
-                        .into()
-                })
-                .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-                .on_click(move |event, window, cx| {
-                    pick(ix, event.modifiers().secondary(), window, cx);
-                })
-                .child(div().min_w_0().truncate().child(ask.clone()))
-        });
+    let pills = row.asks.iter().enumerate().map(|(ix, ask)| {
+        let asked = row.asked.get(ix).copied().unwrap_or(false);
+        let pick = pick.clone();
+        let tip = SharedString::from(format!("{ask}\n{}", how()));
+        surface(ElementId::from(("ask", ix)))
+            .max_w(px(WIDEST))
+            .px(px(13.))
+            .text_size(px(13.))
+            .when(asked, |this| {
+                this.border_color(paint(palette.accent))
+                    .bg(paint(palette.band.mix(palette.accent, 0.16)))
+            })
+            .tooltip(move |_window, cx| {
+                cx.new(|_| gpui_kit::component::tooltip::Tooltip::new(tip.clone()))
+                    .into()
+            })
+            .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+            .on_click(move |event, window, cx| {
+                pick(ix, event.modifiers().secondary(), window, cx);
+            })
+            .child(div().min_w_0().truncate().child(ask.clone()))
+    });
     div()
         .w(px(wide))
         .h_flex()
@@ -166,8 +210,12 @@ pub fn render(
         .child(arrow("ask-back", "\u{2039}", -1))
         .child(
             div()
+                .id("asks")
                 .flex_1()
                 .min_w_0()
+                .h(px(PILL))
+                .overflow_x_scroll()
+                .track_scroll(&carousel.handle)
                 .h_flex()
                 .gap(px(GAP))
                 .children(pills),
@@ -204,6 +252,7 @@ pub const TALL: f32 = SHELF + TIP;
 pub struct Shelf {
     /// What to draw, or nothing while the deck shows them inside itself.
     pub row: Option<Row>,
+    pub carousel: Carousel,
     pub palette: Palette,
     pub corner: f32,
     /// How wide to draw: the deck's own width, told by the deck. The shelf's
@@ -217,7 +266,7 @@ pub struct Shelf {
 
 #[cfg(target_os = "macos")]
 impl Render for Shelf {
-    fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
         let Some(row) = self.row.clone() else {
             return div();
         };
@@ -231,12 +280,6 @@ impl Render for Shelf {
                 });
             })
         };
-        let step: Step = {
-            let deck = self.deck.clone();
-            Rc::new(move |by, _window, cx| {
-                let _ = deck.update(cx, |deck, cx| deck.step_asks(by, cx));
-            })
-        };
         div().size_full().flex().flex_col().child(
             div()
                 .h(px(SHELF))
@@ -248,8 +291,9 @@ impl Render for Shelf {
                     &self.palette,
                     self.corner,
                     self.wide,
+                    &self.carousel,
                     &pick,
-                    &step,
+                    window,
                 )),
         )
     }
@@ -293,6 +337,7 @@ pub fn open_shelf(deck_window: WindowHandle<Root>, cx: &mut App) {
         crate::mac::never_key(window);
         cx.new(|_| Shelf {
             row: None,
+            carousel: Carousel::default(),
             palette,
             corner: 10.,
             wide: 600.,
@@ -324,14 +369,6 @@ pub fn open_shelf(deck_window: WindowHandle<Root>, cx: &mut App) {
     });
 }
 
-/// Where the first pill in view lands after one press of an arrow: never
-/// before the first, never past the last.
-#[must_use]
-pub fn stepped(at: usize, by: isize, count: usize) -> usize {
-    let last = count.saturating_sub(1);
-    at.saturating_add_signed(by).min(last)
-}
-
 #[cfg(test)]
 mod tests {
     // Spelled out: the gpui glob above exports a `test` attribute of its own.
@@ -340,24 +377,24 @@ mod tests {
     use super::*;
 
     #[test]
-    fn the_arrows_stop_at_either_end() {
-        assert_eq!(stepped(0, -1, 5), 0);
-        assert_eq!(stepped(0, 1, 5), 1);
-        assert_eq!(stepped(4, 1, 5), 4);
-        assert_eq!(stepped(2, -1, 5), 1);
-        assert_eq!(stepped(0, 1, 0), 0);
-    }
-
-    #[test]
-    fn only_whole_pills_are_shown_and_never_none() {
-        let asks: Vec<SharedString> = ["a short one?", "another short one?", "and a third?"]
-            .into_iter()
-            .map(SharedString::from)
-            .collect();
-        let all: f32 = asks.iter().map(|a| width_of(a)).sum::<f32>() + 2. * GAP;
-        assert_eq!(fitting(&asks, 0, all), 3);
-        assert_eq!(fitting(&asks, 0, all - 1.), 2);
-        assert_eq!(fitting(&asks, 2, 10.), 1, "the first in view, cut short");
-        assert_eq!(fitting(&asks, 1, all), 2);
+    fn an_arrow_moves_one_question_and_stops_at_either_end() {
+        let lefts = [0., 300., 560., 900.];
+        let max = 700.;
+        assert_eq!(next_left(&lefts, 0., max, 1), 300.);
+        assert_eq!(next_left(&lefts, 300., max, 1), 560.);
+        assert_eq!(
+            next_left(&lefts, 560., max, 1),
+            700.,
+            "no further than the end"
+        );
+        assert_eq!(next_left(&lefts, 700., max, 1), 700.);
+        assert_eq!(next_left(&lefts, 700., max, -1), 560.);
+        assert_eq!(next_left(&lefts, 150., max, -1), 0.);
+        assert_eq!(next_left(&lefts, 0., max, -1), 0.);
+        assert_eq!(
+            next_left(&lefts, 0., 0., 1),
+            0.,
+            "a row that fits does not move"
+        );
     }
 }
