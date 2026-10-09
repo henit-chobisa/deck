@@ -146,7 +146,7 @@ CTA = """<aside class="cta" aria-label="Try deck">
   </div>
   <div class="cta-actions">
     <a class="star" href="/#install">Install deck</a>
-    <a class="cta-alt" href="/#play">Try a real deck in your browser</a>
+    <a class="cta-alt" href="/#play">Try a live deck before you install</a>
   </div>
 </aside>"""
 
