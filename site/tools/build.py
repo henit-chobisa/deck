@@ -120,7 +120,7 @@ HEAD = """<!doctype html>
   <a class="brand" href="/" aria-label="deck, home"><img src="/assets/mark.svg" alt="" width="28" height="28"><span>deck</span></a>
   <nav aria-label="Main">
     <a href="/#agent">How it works</a>
-    <a href="/#play">Try it</a>
+    <a href="/#play" class="nav-try"><span class="live-dot" aria-hidden="true"></span>Try it<span class="wide"> live</span></a>
     <a href="/docs/">Docs</a>
     <a href="/guides/"{guides_current}>Guides</a>
     <a href="https://github.com/henit-chobisa/deck">GitHub</a>

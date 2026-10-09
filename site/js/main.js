@@ -431,6 +431,7 @@
         const dt = Math.min(0.05, (now - last) / 1000); last = now
         if (reading.matches) {
           for (const el of [copy, signal, mark]) el.removeAttribute('style')
+          if (tryLive) tryLive.tabIndex = 0
           return
         }
 
@@ -546,8 +547,47 @@
   }
 
   const nav = document.querySelector('.nav'), hero = document.querySelector('.hero')
+  // The live deck is the one place worth stopping. The first time a reader
+  // scrolls down into it, the page settles with the deck in view and holds
+  // for a moment, so a fast scroll does not carry them past it. Once only,
+  // only downwards, and never with reduced motion or after a jump to #play.
+  const play = document.getElementById('play')
+  let caught = !play || reading.matches, lastY = scrollY
+  addEventListener('hashchange', () => { if (location.hash === '#play') caught = true })
+  document.addEventListener('click', (e) => { if (e.target.closest('a[href$="#play"]')) caught = true })
+  function settle() {
+    caught = true
+    const navH = (document.querySelector('.nav') || { offsetHeight: 0 }).offsetHeight
+    const y = play.getBoundingClientRect().top + scrollY - navH + parseFloat(getComputedStyle(play).paddingTop) - 32
+    const hold = () => {
+      // Swallow the rest of the fling for a beat, then let go. Lenis scrolls
+      // from wheel events itself, so it is paused rather than overruled.
+      const stop = (e) => e.preventDefault()
+      if (lenis) lenis.stop()
+      addEventListener('wheel', stop, { passive: false })
+      addEventListener('touchmove', stop, { passive: false })
+      setTimeout(() => {
+        removeEventListener('wheel', stop)
+        removeEventListener('touchmove', stop)
+        if (lenis) lenis.start()
+      }, 1100)
+    }
+    if (lenis) {
+      lenis.scrollTo(y, { duration: 0.9, lock: true, force: true, onComplete: hold })
+    } else {
+      window.scrollTo({ top: y, behavior: 'smooth' })
+      hold()
+    }
+  }
   function frame(now) {
     if (lenis) lenis.raf(now)
+    if (!caught) {
+      const y = scrollY, down = y > lastY
+      lastY = y
+      const top = play.getBoundingClientRect().top
+      if (down && top < innerHeight * 0.55 && top > -innerHeight * 0.2) settle()
+      else if (top <= -innerHeight * 0.2) caught = true
+    }
     if (nav && hero) nav.classList.toggle('solid', reading.matches || hero.getBoundingClientRect().bottom < innerHeight * 0.6)
     for (const { s, thing, manual } of scenes) {
       if (thing === scenes[0].thing || visible(s)) thing.update(reading.matches ? manual() : progress(s), now)

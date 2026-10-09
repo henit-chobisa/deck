@@ -127,7 +127,10 @@
   // and the ground is the pane's own colour, since Safari paints a frame white
   // behind a transparent page.
   const PALETTE = { bg: '#1a1a1a', fg: '#ebdbb2', accent: '#fe8019', on_accent: '#282828', muted: '#a89984', edge: '#3a3735', wash: '#1a1a1a', add: '#b8bb26', del: '#fb4934', comment: '#928374' }
-  const DRESS = '<style>:root{--deck-bg:' + PALETTE.bg + ';--deck-fg:' + PALETTE.fg + ';--deck-accent:' + PALETTE.accent +
+  // Dark, like the page around it. A frame whose document is in another
+  // colour scheme is painted opaque by Safari, which shows as white wherever
+  // the frame has grown since it last painted.
+  const DRESS = '<meta name="color-scheme" content="dark"><style>:root{color-scheme:dark;--deck-bg:' + PALETTE.bg + ';--deck-fg:' + PALETTE.fg + ';--deck-accent:' + PALETTE.accent +
     ';--deck-on-accent:' + PALETTE.on_accent + ';--deck-muted:' + PALETTE.muted + ';--deck-edge:' + PALETTE.edge +
     ';--deck-wash:' + PALETTE.wash + ';--deck-add:' + PALETTE.add + ';--deck-del:' + PALETTE.del + ';--deck-comment:' + PALETTE.comment + ';}' +
     'html,body{background:' + PALETTE.wash + ';color:var(--deck-fg);font:12px ui-monospace,SFMono-Regular,Menlo,monospace;}' +
@@ -268,6 +271,24 @@
       P.holder.textContent = ''
       P.holder.appendChild(frame)
       P.frame = frame
+      // Safari can leave a grown frame half painted. When the pane changes
+      // size, make the frame paint again.
+      if (!P.watch) {
+        let last = '', timer = 0
+        P.watch = new ResizeObserver(() => {
+          const size = P.holder.clientWidth + 'x' + P.holder.clientHeight
+          if (size === last) return
+          last = size
+          clearTimeout(timer)
+          timer = setTimeout(() => {
+            const f = P.frame
+            if (!f) return
+            f.style.visibility = 'hidden'
+            requestAnimationFrame(() => { f.style.visibility = '' })
+          }, 120)
+        })
+        P.watch.observe(P.holder)
+      }
       if (again) say('From the top.')
     }
     function send(P, at) { if (P.frame && P.frame.contentWindow) P.frame.contentWindow.postMessage({ deck: 'point', at }, '*') }
@@ -374,6 +395,7 @@
     // ---- the rail
     function openRail(on) {
       rail.classList.toggle('open', on)
+      dk.classList.toggle('chatting', on)
       $('.dk-rail-head').setAttribute('aria-expanded', String(on))
       if (on) rail.classList.remove('unread')
     }
@@ -508,6 +530,15 @@
     $('.dk-keys').addEventListener('click', (e) => { const b = e.target.closest('button'); if (b) key(b.dataset.key) })
     document.querySelectorAll('[data-ask]').forEach((b) => b.addEventListener('click', () => ask(+b.dataset.ask)))
 
+    // Two panes need about 420px each beside an open conversation; below
+    // that the conversation opens over the panes.
+    const band = $('.dk-band')
+    new ResizeObserver(() => {
+      dk.classList.toggle('narrow', dk.clientWidth < 1200)
+      dk.style.setProperty('--band-h', band.offsetHeight + 'px')
+    }).observe(dk)
+    new ResizeObserver(() => dk.style.setProperty('--band-h', band.offsetHeight + 'px')).observe(band)
+
     open(0)
 
     // ---- the first move, shown once
@@ -522,6 +553,7 @@
     dk.appendChild(coach)
     function dismiss() { touched = true; coach.classList.remove('on'); badge.style.opacity = '0.75' }
     dk.addEventListener('pointerdown', dismiss, { once: true })
+    document.querySelectorAll('[data-ask]').forEach((b) => b.addEventListener('click', dismiss, { once: true }))
     dk.addEventListener('keydown', dismiss, { once: true })
     function place(el, target, dx, dy) {
       const a = dk.getBoundingClientRect(), r = target.getBoundingClientRect()
@@ -561,14 +593,28 @@
       setTimeout(() => { ghost.style.opacity = '0'; handIn() }, 2300)
       setTimeout(() => ghost.remove(), 2800)
     }
-    // Watch the sentence the cursor will click, not the whole deck: on a
-    // phone the deck is taller than the screen, and the moment that matters
-    // is when this sentence is comfortably in view.
+    // Run when the sentence the cursor will click is comfortably on screen,
+    // checked as the page moves rather than by crossing a band, so a jump
+    // (Page Down, End, the scrollbar) cannot carry it past unseen.
     const firstTarget = [...prose.querySelectorAll('.dk-w')].find((w) => /^Anywhere/.test(w.textContent)) || prose.querySelector('.dk-w')
-    const seen = new IntersectionObserver((es) => {
-      if (es.some((e) => e.isIntersecting)) { seen.disconnect(); setTimeout(invite, 500) }
-    }, { threshold: [1], rootMargin: '-15% 0px -30% 0px' })
-    if (firstTarget) seen.observe(firstTarget)
+    let armed_ = !!firstTarget
+    function watch() {
+      if (!armed_ || touched) return
+      const r = firstTarget.getBoundingClientRect()
+      if (r.top >= innerHeight * 0.12 && r.bottom <= innerHeight * 0.8) {
+        armed_ = false
+        removeEventListener('scroll', watch)
+        setTimeout(() => {
+          const s = firstTarget.getBoundingClientRect()
+          if (s.top >= 0 && s.bottom <= innerHeight) invite(); else { armed_ = true; addEventListener('scroll', watch, { passive: true }) }
+        }, 500)
+      }
+    }
+    addEventListener('scroll', watch, { passive: true })
+    // And now and then while waiting, for a page that comes to rest without a
+    // scroll event (a smooth scroll ending, a held fling being let go).
+    const poll = setInterval(() => { if (!armed_ && !document.querySelector('.dk-ghost')) { if (touched || dk.querySelector('.dk-coach.on') || prose.querySelector('.dk-w.lit')) clearInterval(poll) } ; watch() }, 700)
+    watch()
 
     fetch(DECK.page).then((r) => (r.ok ? r.text() : Promise.reject(r.status))).then((html) => {
       pageHtml = html
