@@ -166,3 +166,20 @@
 @media (prefers-reduced-motion: reduce) {
   .dk *, .dk *::before { transition: none !important; }
 }
+
+/* The demo says it is live, and shows the first move once. */
+.dk-live { position: absolute; top: 12px; right: 196px; z-index: 6; display: inline-flex; align-items: center; padding: 3px 10px; border-radius: 999px; background: rgba(254,128,25,0.14); border: 1px solid rgba(254,128,25,0.5); color: var(--accent); font-family: var(--mono); font-size: 11px; letter-spacing: 0.06em; pointer-events: none; }
+.dk-live .live-dot { width: 6px; height: 6px; margin-right: 7px; }
+.dk-ghost { position: absolute; z-index: 8; width: 26px; height: 32px; pointer-events: none; opacity: 0; transition: transform 1.1s cubic-bezier(.3,.8,.2,1), opacity .3s; }
+.dk-ghost.press { transition: transform .12s; transform-origin: 4px 4px; }
+.dk-ghost::after { content: ""; position: absolute; left: -10px; top: -10px; width: 24px; height: 24px; border-radius: 50%; border: 2px solid var(--accent); opacity: 0; }
+.dk-ghost.clicked::after { animation: dkring .6s ease-out; }
+@keyframes dkring { from { opacity: 1; transform: scale(.4); } to { opacity: 0; transform: scale(1.6); } }
+.dk-coach { position: absolute; z-index: 9; max-width: 280px; padding: 12px 14px; border-radius: 10px; background: var(--fg); color: #1d2021; font-size: 13.5px; line-height: 1.45; box-shadow: 0 12px 40px rgba(0,0,0,0.5); opacity: 0; transform: translateY(6px); transition: opacity .3s, transform .3s; pointer-events: none; }
+.dk-coach.on { opacity: 1; transform: none; }
+.dk-coach b { font-weight: 600; }
+.dk-coach::before { content: ""; position: absolute; left: 22px; top: -6px; width: 12px; height: 12px; background: var(--fg); transform: rotate(45deg); }
+.dk.invite { animation: dkinvite 1.6s ease-out 2; }
+@keyframes dkinvite { 0% { box-shadow: 0 0 0 0 rgba(254,128,25,0.5), 0 50px 140px rgba(0,0,0,0.6); } 100% { box-shadow: 0 0 0 18px rgba(254,128,25,0), 0 50px 140px rgba(0,0,0,0.6); } }
+@media (max-width: 860px) { .dk-live { right: 12px; } }
+@media (prefers-reduced-motion: reduce) { .dk-ghost { display: none; } .dk.invite { animation: none; } }

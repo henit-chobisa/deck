@@ -38,7 +38,7 @@
   </a>
   <nav aria-label="Main">
     <a href="#agent">How it works</a>
-    <a href="#play">Try it</a>
+    <a href="#play" class="nav-try"><span class="live-dot" aria-hidden="true"></span>Try it live</a>
     <a href="docs/">Docs</a>
     <a href="guides/">Guides</a>
     <a href="changelog/">Changelog</a>
@@ -63,6 +63,7 @@
         <img class="signal-mark" src="assets/mark.svg" alt="" width="112" height="112">
         <h2 class="ask-line"><span class="sr">Make it show you.</span><span class="stream" aria-hidden="true">Make it show you.</span></h2>
         <p class="lede">Not less agent, and not more trust. A better way to work with the one you have: it shows you each decision on the lines where it lives, you push back where you disagree, and what ships is something you both chose.</p>
+        <a class="try-live" href="#play"><span class="live-dot" aria-hidden="true"></span>Try a live deck in your browser</a>
       </div>
       <div class="cue" aria-hidden="true"><span>scroll</span><i></i></div>
     </div>
@@ -90,6 +91,7 @@
           <div><dt>file:line</dt><dd data-count="refs">0</dd></div>
           <div><dt>lines shown</dt><dd>0</dd></div>
         </dl>
+        <p class="verdict" data-show="3">Do you understand all the options and trade-offs?<br><span>Did you decide anything at all?</span></p>
         <ol class="dots" aria-hidden="true"><li></li><li></li><li></li><li></li></ol>
       </div>
       <div class="term" role="img" aria-label="A terminal where an agent answers a question with long paragraphs and a multiple-choice menu">
@@ -123,7 +125,6 @@
             <svg class="pointer" width="26" height="32" viewBox="0 0 28 34" aria-hidden="true"><path d="M2 2 L2 28 L9 21 L14 32 L19 30 L14 19 L24 19 Z" fill="#ebdbb2" stroke="#0d0f0f" stroke-width="1.6" stroke-linejoin="round"/></svg>
           </div>
         </div></div>
-        <p class="term-verdict" data-show="3">Do you understand all the options and trade-offs?<br><span>Did you decide anything at all?</span></p>
       </div>
     </div>
   </section>
@@ -202,10 +203,11 @@
           <li data-at="0">evidence</li><li data-at="1">behaviour</li><li data-at="2">the fix</li><li data-at="3">chapters</li><li data-at="4">your call</li><li data-at="5">answers</li>
         </ol>
         <p class="real">Real recordings of deck 0.1.4. Nothing on the right is a mock-up.</p>
+        <a class="try-live small" href="#play"><span class="live-dot" aria-hidden="true"></span>Now review one yourself</a>
       </div>
       <figure class="reel-frame">
         <canvas class="reel-canvas" role="img" aria-label="Recordings of deck: a narrated walk lighting code line by line, a request timeline piling up, a diff arriving, a comment typed on a line, and the agent's answer as a chart"></canvas>
-        <div class="reel-load" aria-hidden="true"><i></i></div>
+        <div class="reel-progress" aria-hidden="true"><i></i></div>
       </figure>
     </div>
   </section>
@@ -213,7 +215,7 @@
   <!-- 3: play -->
   <section class="play" id="play" aria-labelledby="play-title">
     <div class="wrap">
-      <p class="eyebrow accent">Try it</p>
+      <p class="eyebrow accent"><span class="live-dot" aria-hidden="true"></span>Live in your browser · no install</p>
       <h2 id="play-title">A real deck. Review it yourself.</h2>
       <p class="lede">Your agent was asked to take the receipt off checkout. This is the plan it wrote, before a line of code changed. Tap a sentence to see what it rests on. Use Next and Previous to move through the plan. Select a line, choose Comment, and say what you would change. On a keyboard, use <kbd>n</kbd>, <kbd>p</kbd> and <kbd>c</kbd>.</p>
     </div>

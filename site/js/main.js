@@ -161,7 +161,9 @@
   ]
   // `lines` in turn, written into `el`; `shown` says whether anybody can see
   // it, and nothing moves while they cannot.
-  function Ask(el, lines, shown) {
+  // `hold`: the first line is already on the page, so it is held rather than
+  // written out a second time.
+  function Ask(el, lines, shown, hold) {
     if (reading.matches) return
     let at = 0, timers = []
     const later = (fn, ms) => timers.push(setTimeout(fn, ms))
@@ -198,7 +200,11 @@
       later(() => { at = (at + 1) % lines.length; write(lines[at]) }, 480)
     }
     // Begin when it is first seen, so the opening line is not spent unseen.
-    const begin = () => { if (quiet()) later(begin, 400); else write(lines[0]) }
+    const begin = () => {
+      if (quiet()) later(begin, 400)
+      else if (hold) later(next, 3600)
+      else write(lines[0])
+    }
     begin()
   }
 
@@ -262,7 +268,12 @@
         if (!bottom && s === 1) y = 0
       }
       body.scrollTop = 0
-      roll.style.transform = 'translateY(' + (-clamp(y, 0, max)) + 'px)'
+      // A step that starts a new screen (the menu) always starts at the top,
+      // even when nothing follows it: it is never squeezed under the last one.
+      const top = !bottom && shown.length && shown[0].classList.contains('menu')
+      // and what came before it steps out, so no half line hangs over it.
+      roll.classList.toggle('fresh', !!top)
+      roll.style.transform = 'translateY(' + (-(top ? Math.max(0, y) : clamp(y, 0, max))) + 'px)'
     }
 
     addEventListener('resize', () => { const s = step; step = -1; set(s < 0 ? 0 : s) })
@@ -288,7 +299,7 @@
   function Reel(section) {
     const canvas = section.querySelector('.reel-canvas')
     const ctx = canvas.getContext('2d')
-    const bar = section.querySelector('.reel-load'), barFill = bar.querySelector('i')
+    const barFill = section.querySelector('.reel-progress i')
     // 360 native Retina frames would occupy several GB decoded. Keep only
     // the current neighbourhood, and always request the wanted frame first.
     const imgs = new Map(), pending = new Set(), failed = new Set()
@@ -370,8 +381,6 @@
       ctx.imageSmoothingQuality = 'high'
       ctx.drawImage(im, x, y, dw, dh)
       ctx.restore()
-      barFill.style.width = (i === want ? 100 : 40) + '%'
-      bar.classList.toggle('done', i === want)
     }
 
     function caption(c) {
@@ -392,6 +401,8 @@
       frameUrl(index) { return url(CUTS[index], 'h') },
       update(p) {
         want = Math.round(p * (FRAMES - 1))
+        // How far through the recordings, in step with the scroll.
+        barFill.style.transform = 'scaleX(' + p.toFixed(4) + ')'
         pump()
         let c = 0
         for (let k = 0; k < CUTS.length; k++) if (want >= CUTS[k]) c = k
@@ -410,7 +421,7 @@
     const stream = section.querySelector('.hero-copy .stream')
     if (stream) Ask(stream, QUESTIONS, () => +(copy.style.opacity || 1) > 0.05)
     const reply = section.querySelector('.signal .stream')
-    if (reply) Ask(reply, ANSWERS, () => +(signal.style.opacity || 0) > 0.5)
+    if (reply) Ask(reply, ANSWERS, () => +(signal.style.opacity || 0) > 0.5, true)
     let last = performance.now()
     return {
       update(p, now) {

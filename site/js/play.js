@@ -509,6 +509,63 @@
     document.querySelectorAll('[data-ask]').forEach((b) => b.addEventListener('click', () => ask(+b.dataset.ask)))
 
     open(0)
+
+    // ---- the first move, shown once
+    // Most people scroll past a demo that looks like a picture. So when the
+    // deck first comes into view, a cursor shows the first move — a click on
+    // a sentence, which lights its lines — and hands over: your turn.
+    const badge = document.createElement('span'); badge.className = 'dk-live'
+    badge.innerHTML = '<span class="live-dot"></span>LIVE · TRY IT'
+    dk.appendChild(badge)
+    let touched = false
+    const coach = document.createElement('div'); coach.className = 'dk-coach'; coach.setAttribute('role', 'status')
+    dk.appendChild(coach)
+    function dismiss() { touched = true; coach.classList.remove('on'); badge.style.opacity = '0.75' }
+    dk.addEventListener('pointerdown', dismiss, { once: true })
+    dk.addEventListener('keydown', dismiss, { once: true })
+    function place(el, target, dx, dy) {
+      const a = dk.getBoundingClientRect(), r = target.getBoundingClientRect()
+      return [r.left - a.left + dx, r.bottom - a.top + dy]
+    }
+    function invite() {
+      if (touched) return
+      dk.classList.add('invite')
+      const target = [...prose.querySelectorAll('.dk-w')].find((w) => /^Anywhere/.test(w.textContent)) || prose.querySelector('.dk-w')
+      if (!target) return
+      const handIn = () => {
+        if (touched) return
+        coach.innerHTML = '<b>Your turn.</b> Click any sentence to see the code it rests on. ' + (matchMedia('(hover: hover)').matches ? 'Press <b>n</b> for the next part of the plan.' : 'Use <b>next</b> for the next part of the plan.')
+        const [x, y] = place(coach, target, 0, 12)
+        coach.style.left = Math.max(12, Math.min(x, dk.clientWidth - 300)) + 'px'
+        coach.style.top = y + 'px'
+        coach.classList.add('on')
+        setTimeout(() => coach.classList.remove('on'), 9000)
+      }
+      if (reduce) { pickSentence(+target.dataset.sentence, +target.dataset.piece); handIn(); return }
+      const ghost = document.createElement('div'); ghost.className = 'dk-ghost'
+      ghost.innerHTML = '<svg width="26" height="32" viewBox="0 0 28 34"><path d="M2 2 L2 28 L9 21 L14 32 L19 30 L14 19 L24 19 Z" fill="#ebdbb2" stroke="#0d0f0f" stroke-width="1.6" stroke-linejoin="round"/></svg>'
+      dk.appendChild(ghost)
+      const r = target.getBoundingClientRect(), a = dk.getBoundingClientRect()
+      const tx = r.left - a.left + Math.min(60, r.width / 2), ty = r.top - a.top + r.height / 2
+      ghost.style.transform = 'translate(' + (dk.clientWidth * 0.6) + 'px,' + (dk.clientHeight * 0.55) + 'px)'
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        if (touched) { ghost.remove(); return }
+        ghost.style.opacity = '1'
+        ghost.style.transform = 'translate(' + tx + 'px,' + ty + 'px)'
+      }))
+      setTimeout(() => {
+        if (touched) { ghost.remove(); return }
+        ghost.classList.add('clicked')
+        pickSentence(+target.dataset.sentence, +target.dataset.piece)
+      }, 1350)
+      setTimeout(() => { ghost.style.opacity = '0'; handIn() }, 2300)
+      setTimeout(() => ghost.remove(), 2800)
+    }
+    const seen = new IntersectionObserver((es) => {
+      if (es.some((e) => e.isIntersecting && e.intersectionRatio >= 0.45)) { seen.disconnect(); setTimeout(invite, 500) }
+    }, { threshold: [0.45] })
+    seen.observe(dk)
+
     fetch(DECK.page).then((r) => (r.ok ? r.text() : Promise.reject(r.status))).then((html) => {
       pageHtml = html
       G.panes.forEach((P) => { if (P.holder) loadPage(P, false) })
