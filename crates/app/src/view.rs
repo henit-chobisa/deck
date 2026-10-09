@@ -853,6 +853,19 @@ pub struct DeckView {
     /// Shown when the reader presses the button, or its keys, with no agent
     /// on the other end. See [`Self::render_unheard`].
     explaining: bool,
+    /// Where the row of questions drawn inside the window has slid to.
+    asks_carousel: crate::asks::Carousel,
+    /// The questions' own window under the deck, where the platform allows
+    /// one: its handle, and both native windows so it can be hung.
+    #[cfg(target_os = "macos")]
+    shelf: Option<(
+        WindowHandle<crate::asks::Shelf>,
+        objc2::rc::Retained<objc2_app_kit::NSWindow>,
+        objc2::rc::Retained<objc2_app_kit::NSWindow>,
+    )>,
+    /// Whether the questions are hanging outside right now, so not drawn
+    /// inside as well.
+    asks_outside: bool,
     /// That card's hold on the keyboard, and how far it has come in.
     explain_focus: FocusHandle,
     explain_fade: crate::pane::Fade,
@@ -1071,6 +1084,10 @@ impl DeckView {
             notes_fade: Self::card_fade(),
             quit_fade: Self::card_fade(),
             explaining: false,
+            asks_carousel: crate::asks::Carousel::default(),
+            #[cfg(target_os = "macos")]
+            shelf: None,
+            asks_outside: false,
             explain_focus: cx.focus_handle(),
             explain_fade: Self::card_fade(),
             fetching_notes: Task::ready(()),
@@ -3935,6 +3952,185 @@ impl DeckView {
         }
     }
 
+    /// One of the group's questions, pressed.
+    ///
+    /// It goes the way a remark typed into the box goes: into the comment box,
+    /// pinned to the claim, and — unless the reader held the secondary key to
+    /// edit it first — straight on to the agent, exactly as *Ask now* sends it.
+    /// So an agent that is not listening gets the same card, and the words
+    /// wait in the box.
+    ///
+    /// A box with the reader's own words in it is theirs. A question pressed
+    /// over it does not replace them; it brings the box back.
+    pub fn ask_suggested(
+        &mut self,
+        question: &str,
+        edit: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        // Only a question this group offers: a click on a row a frame behind
+        // a change of group is about a question no longer here.
+        let Some(question) = self
+            .group()
+            .and_then(|group| group.asks.iter().find(|ask| *ask == question))
+            .cloned()
+        else {
+            return;
+        };
+        let drafting = self
+            .composing
+            .as_ref()
+            .is_some_and(|(_, state, _)| !state.read(cx).value().trim().is_empty());
+        if drafting {
+            self.back_to_the_box(window, cx);
+            return;
+        }
+        let Some(about) = self.claim_about() else {
+            return;
+        };
+        self.open_composer(about, window, cx);
+        if let Some((_, state, _)) = self.composing.as_ref() {
+            state.update(cx, |state, cx| state.set_value(question, window, cx));
+        }
+        if !edit {
+            self.ask_now(window, cx);
+        }
+        cx.notify();
+    }
+
+    /// The row of questions for the group on screen, if it has any.
+    pub fn asks_row(&self) -> Option<crate::asks::Row> {
+        let group = self.group()?;
+        if group.asks.is_empty() {
+            return None;
+        }
+        Some(crate::asks::Row {
+            asks: group.asks.iter().cloned().map(SharedString::from).collect(),
+        })
+    }
+
+    /// The palette the deck is painted in, for windows of its own.
+    #[cfg(target_os = "macos")]
+    pub fn palette(&self) -> Palette {
+        self.palette
+    }
+
+    /// Take the shelf the questions hang in.
+    #[cfg(target_os = "macos")]
+    pub fn adopt_shelf(
+        &mut self,
+        shelf: WindowHandle<crate::asks::Shelf>,
+        deck_ns: objc2::rc::Retained<objc2_app_kit::NSWindow>,
+        shelf_ns: objc2::rc::Retained<objc2_app_kit::NSWindow>,
+        cx: &mut Context<Self>,
+    ) {
+        self.shelf = Some((shelf, deck_ns, shelf_ns));
+        cx.notify();
+    }
+
+    /// Hang the questions below the deck, or take them down, and say which.
+    ///
+    /// Run on every frame the deck draws. Cheap when nothing moved: the
+    /// native frame is only set when it differs, and the shelf is only told
+    /// to draw again when what it shows has changed.
+    fn hang_asks(&mut self, window: &Window, cx: &mut Context<Self>) {
+        #[cfg(target_os = "macos")]
+        {
+            let row = self.asks_row();
+            let Some((shelf, deck_ns, shelf_ns)) = self.shelf.as_ref() else {
+                self.asks_outside = false;
+                return;
+            };
+            let outside = row.is_some()
+                && crate::mac::hang_below(
+                    deck_ns,
+                    shelf_ns,
+                    f64::from(crate::asks::SHELF),
+                    f64::from(crate::asks::HANG),
+                );
+            if !outside {
+                crate::mac::unhang(deck_ns, shelf_ns);
+            }
+            if outside != self.asks_outside {
+                // Moving between the deck and the shelf, the row is a new one:
+                // a pill held open in the old place hears no more of the pointer.
+                self.asks_carousel.reset();
+            }
+            self.asks_outside = outside;
+            let shown = if outside { row } else { None };
+            let corner = window_corner(window).max(8.);
+            let wide = f32::from(window.viewport_size().width);
+            let palette = self.palette;
+            let shelf = *shelf;
+            cx.defer(move |cx| {
+                let _ = shelf.update(cx, |shelf, window, cx| {
+                    // Sized here, through gpui, to the deck's width:
+                    // `hang_below` only moves it.
+                    let target = size(px(wide), px(crate::asks::SHELF));
+                    if window.viewport_size() != target {
+                        window.resize(target);
+                    }
+                    let new_asks = shelf.row.as_ref().map(|row| &row.asks)
+                        != shown.as_ref().map(|row| &row.asks);
+                    if new_asks {
+                        shelf.carousel.reset();
+                    }
+                    if shelf.row != shown
+                        || shelf.corner != corner
+                        || shelf.wide != wide
+                        || shelf.palette != palette
+                    {
+                        shelf.row = shown;
+                        shelf.corner = corner;
+                        shelf.wide = wide;
+                        shelf.palette = palette;
+                        cx.notify();
+                    }
+                });
+            });
+        }
+        #[cfg(not(target_os = "macos"))]
+        {
+            let _ = (window, cx);
+            self.asks_outside = false;
+        }
+    }
+
+    /// The row drawn inside the window, above the footer: where the
+    /// questions go when they cannot hang outside it.
+    fn render_asks(&self, window: &Window, cx: &mut Context<Self>) -> Option<AnyElement> {
+        if self.asks_outside {
+            return None;
+        }
+        let row = self.asks_row()?;
+        let me = cx.entity().downgrade();
+        let pick: crate::asks::Pick = std::rc::Rc::new(move |question, edit, window, cx| {
+            let _ = me.update(cx, |deck, cx| {
+                deck.ask_suggested(&question, edit, window, cx)
+            });
+        });
+        Some(
+            div()
+                .flex_none()
+                .px(px(12.))
+                .py(px(8.))
+                .bg(paint(self.palette.band))
+                .border_t_1()
+                .border_color(paint(self.palette.edge))
+                .child(crate::asks::render(
+                    &row,
+                    &self.palette,
+                    window_corner(window).max(8.),
+                    f32::from(window.viewport_size().width) - 24.,
+                    &self.asks_carousel,
+                    &pick,
+                    window,
+                ))
+                .into_any_element(),
+        )
+    }
+
     /// Put the card away, and the keyboard back in the comment box.
     fn understood(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.explaining = false;
@@ -4500,6 +4696,8 @@ impl DeckView {
     /// comment being written — repaints without coming through here, because a
     /// rebuild throws away where the reader had scrolled to.
     fn build_panes(&mut self, cx: &mut App) {
+        // Each group's questions start from their first.
+        self.asks_carousel.reset();
         // A new group starts at the top of its own narration. Carrying the
         // last one's scroll over means arriving halfway down a paragraph that
         // has not been read.
@@ -6938,6 +7136,7 @@ impl Render for DeckView {
         }
         let typing = self.typing(window, cx);
         let corner = window_corner(window);
+        self.hang_asks(window, cx);
         // A page's own view is not deck's to paint, so it is moved here, before
         // anything is drawn: to where the last frame measured its hole, or off
         // the screen if the room is in the middle of moving.
@@ -7406,6 +7605,7 @@ impl Render for DeckView {
                     .child(self.render_rail(speaking, cx))
                     .into_any_element()
             })
+            .children(self.render_asks(window, cx))
             .child(self.render_strip(cx))
             // The window wears an accent frame while it is walking you through
             // the deck — the thing a screen share does, and for the same

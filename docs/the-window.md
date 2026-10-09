@@ -24,6 +24,19 @@ takes the comment. Every
 comment is pinned to the lines it was about, with the text it was written
 against — so it survives the file moving underneath it.
 
+## Questions worth asking
+
+Each group can offer up to five questions, written by the agent: the basics
+the claim stands on, why it matters at all, what the code does when something
+goes wrong, and whether the claim holds. They sit in a row of pills just below
+the deck window. On Linux, in full screen, or when there is no room below the
+window, they sit inside it above the footer instead.
+
+Click one and it is asked, straight away, as if you had typed it and pressed
+**Ask now**. Hold `⌘` (`Ctrl` on Windows and Linux) as you click, and it goes
+into the comment box instead, for you to change first. The arrows at either
+end move through them.
+
 ## Put it away without losing it
 
 A deck arrives as a bar at the bottom of the screen, not a window across the

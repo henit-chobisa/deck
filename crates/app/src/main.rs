@@ -14,6 +14,7 @@
 //! a deck on screen over one the reader had already opened. Whoever writes a
 //! deck does not get to decide when it is read.
 
+mod asks;
 mod chart;
 mod cli;
 mod config;
@@ -151,9 +152,20 @@ fn show(decks: Vec<Deck>, opening: &cli::Opening) {
             // command rather than leaving a headless process behind for the
             // agent to wonder about.
             cx.on_window_closed(|cx, _| {
-                // A shade is not a window worth staying open for. Every path
-                // that takes the deck away brings the lights up first, and this
-                if cx.windows().is_empty() {
+                // A shade is not a window worth staying open for: every path
+                // that takes the deck away brings the lights up first.
+                //
+                // Nor is the questions' shelf, which goes with its deck but is
+                // a window of its own: a deck that outlived its window would
+                // otherwise leave one keeping the process up, unseen.
+                #[cfg(target_os = "macos")]
+                let left = cx
+                    .windows()
+                    .iter()
+                    .all(|window| window.downcast::<asks::Shelf>().is_some());
+                #[cfg(not(target_os = "macos"))]
+                let left = cx.windows().is_empty();
+                if left {
                     cx.quit();
                 }
             })
@@ -482,6 +494,10 @@ pub fn open_deck(session: Session, cx: &mut App) {
             return;
         }
     };
+
+    // The window the group's questions hang in, just below the deck.
+    #[cfg(target_os = "macos")]
+    asks::open_shelf(handle, cx);
 
     // Where the reader came from, so they can be put back there when the
     // deck is put away.

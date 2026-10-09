@@ -115,9 +115,21 @@ One thing the agent wants to say, and the evidence for it.
 | `ord`  | integer  | no       | Position in the story, counting from 1. |
 | `say`  | string   | yes      | The narration. Markdown; see below. |
 | `refs` | array    | no       | The evidence. One pane each. Defaults to empty. |
+| `asks` | array    | no       | Up to five questions the reader can press to ask the agent. Defaults to empty. |
 
 The filename must start with `g` and end with `.json`. Nothing else about it is
 read — order comes from `ord`, not from the name and not from the filesystem.
+
+### Questions to ask
+
+`asks` is a list of up to five strings, each one question on one line, in the
+order the agent wants them offered. A client shows them beside the group and,
+when one is pressed, puts it to the agent as the reader's own question about
+the group's claim, the way a remark sent at once is put. A client that does not
+show them ignores the field; a group without it offers none.
+
+`deck group` refuses more than five, an empty one, one over ninety characters,
+one running over a line, and the same question twice.
 
 ### Order, and the gap rule
 

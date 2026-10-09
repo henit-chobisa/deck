@@ -72,6 +72,14 @@ pub struct Group {
     /// The evidence for this one claim. One pane each.
     #[serde(default)]
     pub refs: Vec<Ref>,
+    /// Questions worth asking about this group, at most five.
+    ///
+    /// Hooks rather than a quiz: the agent writes what a curious reader would
+    /// want to know next, from the basics underneath the claim to what it puts
+    /// at risk. The window offers them as pills; pressing one asks it.
+    /// Optional, and absent from a group written before it existed.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub asks: Vec<String>,
 }
 
 /// One pane's worth of evidence.
@@ -493,6 +501,18 @@ impl From<String> for Kind {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_group_from_before_questions_still_reads_and_is_written_the_same() {
+        let old = r#"{"id":"g1","say":"the plan","refs":[]}"#;
+        let group: super::Group = serde_json::from_str(old).expect("an older group reads");
+        assert!(group.asks.is_empty());
+        let written = serde_json::to_string(&group).expect("writes");
+        assert!(
+            !written.contains("asks"),
+            "no questions, no field: {written}"
+        );
+    }
+
     #[test]
     fn a_moment_keeps_the_floor_the_reader_asked_for() {
         // The one that got away: `when` was skipped on the wire whenever it was

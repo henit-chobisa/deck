@@ -214,6 +214,7 @@ mod tests {
 
     fn group(ord: Option<u32>) -> Group {
         Group {
+            asks: Vec::new(),
             id: format!("g{}", ord.unwrap_or(0)),
             ord,
             say: String::new(),

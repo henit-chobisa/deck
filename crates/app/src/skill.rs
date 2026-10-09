@@ -699,6 +699,9 @@ mod tests {
         // than for a generic metaphor, are what separate a deck that explains
         // from one that displays.
         assert!(SKILL.contains("Predict before reveal"));
+        // The questions under a group: a mix, and at least one about the claim.
+        assert!(SKILL.contains("### Mix the four kinds"));
+        assert!(SKILL.contains("--ask"));
         assert!(SKILL.contains("Anchor to THEIR system and domain"));
         assert!(
             SKILL.contains("at a\n   whiteboard, not reading them a changelog"),

@@ -614,6 +614,35 @@ fn a_page_is_not_a_document(pointing: &[Pointing]) -> anyhow::Result<()> {
 ///
 /// When the deck cannot be read, or the group cannot be written.
 pub fn group(root: &Path, say: &str, pointing: Vec<Pointing>) -> anyhow::Result<PathBuf> {
+    group_asking(root, say, pointing, &[])
+}
+
+/// The most questions a group may offer.
+///
+/// Five, because they sit in one row under the window and more than that is a
+/// menu rather than a nudge.
+pub const MOST_ASKS: usize = 5;
+
+/// The longest a question may be, in characters.
+///
+/// A question is shown on one line of a pill. Past this it is a paragraph,
+/// and the reader is reading a second narration instead of being drawn into
+/// the first.
+pub const LONGEST_ASK: usize = 90;
+
+/// [`group`], with the questions the reader is offered to go further.
+///
+/// # Errors
+///
+/// As [`group`], and when there are more than [`MOST_ASKS`] questions, or one
+/// is empty, runs over a line, or repeats another.
+pub fn group_asking(
+    root: &Path,
+    say: &str,
+    pointing: Vec<Pointing>,
+    asks: &[String],
+) -> anyhow::Result<PathBuf> {
+    let asks = questions(asks)?;
     anyhow::ensure!(
         root.join("deck.json").is_file(),
         "{} is not a deck: no deck.json in it",
@@ -668,11 +697,51 @@ pub fn group(root: &Path, say: &str, pointing: Vec<Pointing>) -> anyhow::Result<
         ord: Some(ord),
         say: say.to_string(),
         refs,
+        asks,
     };
 
     let path = root.join(format!("g{ord}.json"));
     write_atomically(&path, &serde_json::to_vec_pretty(&group)?)?;
     Ok(path)
+}
+
+/// A character that breaks a line or turns text around without being seen:
+/// the line and paragraph separators, and the marks that set direction.
+fn unseen(ch: char) -> bool {
+    matches!(
+        ch,
+        '\u{2028}' | '\u{2029}' | '\u{200e}' | '\u{200f}' | '\u{202a}'..='\u{202e}' | '\u{2066}'..='\u{2069}'
+    )
+}
+
+/// The questions as they will be written: trimmed, checked, in order.
+fn questions(asks: &[String]) -> anyhow::Result<Vec<String>> {
+    anyhow::ensure!(
+        asks.len() <= MOST_ASKS,
+        "{} questions: a group offers at most {MOST_ASKS}. Keep the ones a curious \
+         reader would ask first",
+        asks.len()
+    );
+    let mut kept: Vec<String> = Vec::with_capacity(asks.len());
+    for ask in asks {
+        let ask = ask.trim();
+        anyhow::ensure!(!ask.is_empty(), "an --ask is empty");
+        anyhow::ensure!(
+            !ask.chars().any(|ch| ch.is_control() || unseen(ch)),
+            "--ask {ask:?} runs over a line: a question is one line of plain text"
+        );
+        let length = ask.chars().count();
+        anyhow::ensure!(
+            length <= LONGEST_ASK,
+            "--ask {ask:?} is {length} characters; keep a question under {LONGEST_ASK}"
+        );
+        anyhow::ensure!(
+            !kept.iter().any(|seen| seen.eq_ignore_ascii_case(ask)),
+            "--ask {ask:?} is given twice"
+        );
+        kept.push(ask.to_string());
+    }
+    Ok(kept)
 }
 
 /// Say the deck is finished.
@@ -1248,6 +1317,62 @@ mod tests {
         assert!(
             said.contains("220-240"),
             "and it says what to write instead"
+        );
+    }
+
+    #[test]
+    fn questions_are_kept_in_order_and_held_to_one_line_each() {
+        let at = scratch("asks");
+        let root = new(&at, "One", None, None).unwrap();
+        let asks = |list: &[&str]| {
+            list.iter()
+                .map(|ask| (*ask).to_string())
+                .collect::<Vec<_>>()
+        };
+
+        let path = group_asking(
+            &root,
+            "say",
+            Vec::new(),
+            &asks(&["  Why four?  ", "What if it dies?"]),
+        )
+        .expect("two questions are fine");
+        let written: Group = serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap();
+        assert_eq!(
+            written.asks,
+            ["Why four?", "What if it dies?"],
+            "trimmed, in order"
+        );
+
+        let path = group(&root, "no questions", Vec::new()).unwrap();
+        let text = std::fs::read_to_string(path).unwrap();
+        assert!(
+            !text.contains("asks"),
+            "a group without questions writes no field"
+        );
+
+        for (bad, why) in [
+            (
+                asks(&["a?", "b?", "c?", "d?", "e?", "f?"]),
+                "more than five",
+            ),
+            (asks(&["   "]), "empty"),
+            (asks(&["first line\nsecond line"]), "two lines"),
+            (asks(&[&"x".repeat(LONGEST_ASK + 1)]), "too long"),
+            (asks(&["Why four?", "why four?"]), "the same twice"),
+        ] {
+            assert!(
+                group_asking(&root, "say", Vec::new(), &bad).is_err(),
+                "{why} is refused"
+            );
+        }
+        assert!(
+            questions(&["a carriage\rreturn?".to_string()]).is_err(),
+            "a control character is not one line of plain text"
+        );
+        assert!(
+            questions(&["a line\u{2028}break?".to_string()]).is_err(),
+            "nor is a line separator"
         );
     }
 
