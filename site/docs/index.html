@@ -99,7 +99,7 @@ deck setup</code></pre>
         <li><b>Asks how deck should look.</b> It can borrow your editor's colours, so a deck looks like the code you already read all day.</li>
         <li><b>Teaches your agents.</b> It installs a short skill into each coding agent it finds on your machine, so they know when to reach for deck and how to write a good one.</li>
         <li><b>Offers <a href="#catch">the catch</a>.</b> A hook that sends a reply full of <code>file:line</code> locations back to your agent to become a deck instead.</li>
-        <li><b>Asks whether you'll share anonymous usage counts.</b> Versions and how often things happen, never code or words, and nothing at all unless you say yes. <a href="/telemetry/">Everything that is sent</a>.</li>
+        <li><b>Asks whether you'll share anonymous usage counts.</b> Versions and how often things happen, never code or words, and nothing at all unless you say yes. <a href="../telemetry/">Everything that is sent</a>.</li>
       </ol>
       <p>It writes your answers to <code>~/.deck/config.toml</code>. Run it again any time to change them.</p>
     </section>
@@ -299,7 +299,7 @@ d-1788265010-8842.review    your answer, written beside it</code></pre>
       <details><summary>Does it cost anything?</summary><p>No. deck is free and open source under Apache-2.0: no paid tier, no account, and no plan to add either. It was made to give back to the community.</p></details>
       <details><summary>Does deck run its own agent or model?</summary><p>No. Your agent writes the deck and opens it. deck draws it, waits for you, and hands your answer back to that same agent.</p></details>
       <details><summary>Which agents work with it?</summary><p>Any agent that can run a shell command. <code>deck setup</code> installs the skill into each one it finds on your machine.</p></details>
-      <details><summary>Does my code leave my machine?</summary><p>Your code stays on your machine. deck checks GitHub for new releases, and the optional voice sends the narration (the prose your agent wrote, not your code) to Google to be spoken, only once you have set up a key. If you say yes, deck also shares <a href="/telemetry/">anonymous usage counts</a>: versions and how often things happen, never code or words.</p></details>
+      <details><summary>Does my code leave my machine?</summary><p>Your code stays on your machine. deck checks GitHub for new releases, and the optional voice sends the narration (the prose your agent wrote, not your code) to Google to be spoken, only once you have set up a key. If you say yes, deck also shares <a href="../telemetry/">anonymous usage counts</a>: versions and how often things happen, never code or words.</p></details>
       <details><summary>Can the agent open the window on me?</summary><p>No. A deck arrives as a bar. Only you open it.</p></details>
       <details><summary>What if the file changes after I comment?</summary><p>Comments carry the text they were written against, and come back marked <code>diff</code>, <code>fingerprint</code> or <code>stale</code>, so your agent knows how far to trust the location.</p></details>
       <details><summary>Where do I report a problem?</summary><p><a href="https://github.com/henit-chobisa/deck/issues">GitHub issues</a>. Nearly every fix so far has come from somebody hitting something while reading a deck of their own.</p></details>
