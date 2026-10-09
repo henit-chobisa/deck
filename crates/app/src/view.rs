@@ -866,6 +866,9 @@ pub struct DeckView {
     /// Whether the questions are hanging outside right now, so not drawn
     /// inside as well.
     asks_outside: bool,
+    /// Whether to ask, in a strip above the footer, if the reader will share
+    /// anonymous usage counts. Once per reader: gone for good on either answer.
+    asking_share: bool,
     /// That card's hold on the keyboard, and how far it has come in.
     explain_focus: FocusHandle,
     explain_fade: crate::pane::Fade,
@@ -1088,6 +1091,7 @@ impl DeckView {
             #[cfg(target_os = "macos")]
             shelf: None,
             asks_outside: false,
+            asking_share: crate::usage::worth_asking(),
             explain_focus: cx.focus_handle(),
             explain_fade: Self::card_fade(),
             fetching_notes: Task::ready(()),
@@ -1707,6 +1711,7 @@ impl DeckView {
     fn toggle_walk(&mut self, cx: &mut Context<Self>) {
         self.aloud = !self.aloud;
         if self.aloud {
+            crate::usage::record(crate::usage::Count::Walk);
             // From the top of the group in front of them. A selection made
             // while reading was off was the reader pointing; once a voice is
             // reading, the voice is what points.
@@ -3943,6 +3948,7 @@ impl DeckView {
         } else if self.heard() {
             self.asked_someone =
                 !self.deck.sealed() || deck_cli::is_heard(&self.deck.root) || self.owed();
+            crate::usage::record(crate::usage::Count::AskNow);
             self.save_remark(deck_core::When::Interrupt, window, cx);
         } else {
             self.explaining = true;
@@ -3993,6 +3999,11 @@ impl DeckView {
         if let Some((_, state, _)) = self.composing.as_ref() {
             state.update(cx, |state, cx| state.set_value(question, window, cx));
         }
+        crate::usage::record(if edit {
+            crate::usage::Count::QuestionEdited
+        } else {
+            crate::usage::Count::QuestionAsked
+        });
         if !edit {
             self.ask_now(window, cx);
         }
@@ -4095,6 +4106,80 @@ impl DeckView {
             let _ = (window, cx);
             self.asks_outside = false;
         }
+    }
+
+    /// The one question deck asks for itself: will the reader share anonymous
+    /// usage counts. Plain, small, above the footer, and answered once.
+    /// Nothing is counted until it is, and *What's sent* shows every field
+    /// before anybody has to decide.
+    fn render_share(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
+        /// Every field, and every way to say no.
+        const WHAT: &str = "https://github.com/henit-chobisa/deck/blob/main/docs/telemetry.md";
+        if !self.asking_share {
+            return None;
+        }
+        let palette = self.palette;
+        let button = |id: &'static str, label: &'static str, lit: bool| {
+            div()
+                .id(id)
+                .px(px(9.))
+                .py(px(3.))
+                .rounded(px(5.))
+                .border_1()
+                .border_color(paint(if lit { palette.accent } else { palette.edge }))
+                .text_color(paint(if lit { palette.accent } else { palette.fg }))
+                .cursor_pointer()
+                .hover(|style| style.bg(paint(palette.wash)))
+                .child(label)
+        };
+        let answer = |share: bool| {
+            cx.listener(move |deck: &mut Self, _: &ClickEvent, _window, cx| {
+                crate::usage::choose(share);
+                deck.asking_share = false;
+                cx.notify();
+            })
+        };
+        Some(
+            div()
+                .flex_none()
+                .h_flex()
+                .items_center()
+                .justify_between()
+                .gap(px(14.))
+                .px(px(14.))
+                .py(px(7.))
+                .bg(paint(palette.band))
+                .border_t_1()
+                .border_color(paint(palette.edge))
+                .font_family(cx.theme().mono_font_family.clone())
+                .text_size(px(10.5))
+                .text_color(paint(palette.muted))
+                .child(
+                    div()
+                        .min_w_0()
+                        .truncate()
+                        .child("Help shape deck: share anonymous usage counts? Counts and versions only, never code or words."),
+                )
+                .child(
+                    div()
+                        .flex_none()
+                        .h_flex()
+                        .items_center()
+                        .gap(px(8.))
+                        .child(
+                            div()
+                                .id("share-what")
+                                .cursor_pointer()
+                                .underline()
+                                .hover(|style| style.text_color(paint(palette.fg)))
+                                .on_click(|_, _window, cx| cx.open_url(WHAT))
+                                .child("what's sent"),
+                        )
+                        .child(button("share-no", "No thanks", false).on_click(answer(false)))
+                        .child(button("share-yes", "Share", true).on_click(answer(true))),
+                )
+                .into_any_element(),
+        )
     }
 
     /// The row drawn inside the window, above the footer: where the
@@ -4414,6 +4499,7 @@ impl DeckView {
             pane.unpick();
         }
         self.remarks.push(remark);
+        crate::usage::record(crate::usage::Count::Comment);
         // Where its turn sits, before anything is written down.
         if let Some(mine) = self.remarks.last_mut() {
             mine.moment = self.conversation.transcript.len().checked_sub(1);
@@ -4631,6 +4717,7 @@ impl DeckView {
     }
 
     fn submit_review(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        crate::usage::record(crate::usage::Count::Review);
         let found = self.follow_the_files();
         let comments: Vec<deck_core::Comment> = self
             .remarks
@@ -4696,6 +4783,7 @@ impl DeckView {
     /// comment being written — repaints without coming through here, because a
     /// rebuild throws away where the reader had scrolled to.
     fn build_panes(&mut self, cx: &mut App) {
+        crate::usage::record(crate::usage::Count::GroupViewed);
         // Each group's questions start from their first.
         self.asks_carousel.reset();
         // A new group starts at the top of its own narration. Carrying the
@@ -7606,6 +7694,7 @@ impl Render for DeckView {
                     .into_any_element()
             })
             .children(self.render_asks(window, cx))
+            .children(self.render_share(cx))
             .child(self.render_strip(cx))
             // The window wears an accent frame while it is walking you through
             // the deck — the thing a screen share does, and for the same

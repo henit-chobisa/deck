@@ -87,6 +87,7 @@ pub fn run() -> anyhow::Result<()> {
     open();
     look(&mut config)?;
     aloud();
+    share()?;
     let path = crate::config::path()
         .ok_or_else(|| anyhow::anyhow!("no home directory to write a config into"))?;
     write(&path, &config)?;
@@ -552,6 +553,41 @@ fn catch() -> anyhow::Result<()> {
         crate::hook::Put::Already => println!("    {} {}", accent("·"), dim("already on")),
         crate::hook::Put::Absent => {}
     }
+    Ok(())
+}
+
+/// Whether to share anonymous usage counts. Asked plainly, with what is in
+/// them said first, because the answer is only worth having if it is given
+/// knowing what it means.
+fn share() -> anyhow::Result<()> {
+    println!();
+    rule();
+    println!();
+    println!("  {}", bold("Help shape deck"));
+    println!(
+        "  {}",
+        dim("Anonymous counts, so we know what to make next: which version, which")
+    );
+    println!(
+        "  {}",
+        dim("OS, how many decks were opened, how many comments were left.")
+    );
+    println!(
+        "  {}",
+        dim("Never code, file paths, titles, comments or questions. Nothing is")
+    );
+    println!(
+        "  {}",
+        dim("sent unless you say yes, and `deck telemetry show` prints all of it.")
+    );
+    println!();
+    let yes = ask_yes("Share anonymous usage counts?")?;
+    crate::usage::choose(yes);
+    chose(if yes {
+        "sharing counts — `deck telemetry off` stops it"
+    } else {
+        "sharing nothing"
+    });
     Ok(())
 }
 

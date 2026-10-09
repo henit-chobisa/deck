@@ -330,6 +330,7 @@ pub fn announcing() -> bool {
     let due = ANNOUNCE.swap(false, std::sync::atomic::Ordering::Relaxed);
     if due {
         see();
+        crate::usage::record(crate::usage::Count::Upgrade);
     }
     due
 }
