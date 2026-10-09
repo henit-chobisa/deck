@@ -405,6 +405,7 @@ html:not(.js) .signal { display: none; }
 @media (max-width: 900px) { .try-live.small { display: none; } }
 
 .term-roll.fresh > .past { opacity: 0; transition: opacity .3s; }
-@media (max-width: 420px) { .nav nav a[href$="docs/"] { display: none; } }
+@media (max-width: 420px) { .nav nav a.nav-try .wide { display: none; } }
 /* A short phone keeps the terminal on screen; the verdict is the first thing to go. */
 @media (max-width: 900px) and (max-height: 600px) { .verdict { display: none; } }
+@media (max-width: 359px) { .nav nav a.nav-try { display: none; } }
