@@ -137,7 +137,9 @@ impl Off {
             Self::DoNotTrack => "DO_NOT_TRACK is set",
             Self::Variable => "DECK_TELEMETRY is set to off",
             Self::Ci => "this is a CI environment",
-            Self::NoRequests => "[updates] automatic = false makes no requests at all",
+            Self::NoRequests => {
+                "~/.deck/config.toml says no requests ([updates] automatic = false), or does not read"
+            }
             Self::NoKey => "this build of deck sends nothing",
         }
     }
@@ -155,7 +157,8 @@ fn off(kept: &Kept) -> Option<Off> {
 
 /// Whether deck may make requests of its own at all.
 fn requests_allowed() -> bool {
-    crate::config::read().map_or(true, |config| config.updates.automatic)
+    // A config that will not read is not a yes: it may be the one that says no.
+    crate::config::read().is_ok_and(|config| config.updates.automatic)
 }
 
 /// [`off`], from what it depends on.
@@ -203,7 +206,9 @@ pub fn record(count: Count) {
 
 /// Count `n` of `count`.
 pub fn record_many(count: Count, n: u64) {
-    if n == 0 {
+    // Asked first without the lock: for everyone who has not said yes,
+    // which is the cheap and common case, nothing more is done.
+    if n == 0 || off(&read()).is_some() {
         return;
     }
     change(|kept| {
@@ -217,6 +222,9 @@ pub fn record_many(count: Count, n: u64) {
 
 /// Count a deck created, and which agent created it.
 pub fn deck_created() {
+    if off(&read()).is_some() {
+        return;
+    }
     let agent = agent_from(std::env::vars().map(|(name, _)| name));
     change(|kept| {
         if off(kept).is_some() {
@@ -255,7 +263,7 @@ fn agent_from(names: impl Iterator<Item = String>) -> &'static str {
 /// The answer, given: in `deck setup`, the window's question, or
 /// `deck telemetry on|off`. Saying no forgets anything counted, and the id.
 pub fn choose(share: bool) {
-    change(|kept| {
+    answer(|kept| {
         kept.share = Some(share);
         if !share {
             // Forgotten entirely: turned on again later, it is a new id.
@@ -286,10 +294,30 @@ pub fn status() -> Result<(), Off> {
 #[must_use]
 pub fn show() -> String {
     let mut kept = read();
-    if kept.id.is_none() {
-        kept.id = Some("(made when first sent)".to_string());
+    if let Some(off) = off(&kept) {
+        return format!("Nothing is sent: {}.", off.reason());
     }
-    serde_json::to_string_pretty(&payload(&kept)).unwrap_or_default()
+    if kept.counts.is_empty() {
+        return "Nothing to send: nothing has been counted since the last send.".to_string();
+    }
+    if kept.id.is_none() {
+        kept.id = Some("(a random id, made on the first send)".to_string());
+    }
+    let wait = EVERY
+        .as_secs()
+        .saturating_sub(now().saturating_sub(kept.sent));
+    let when = if wait == 0 {
+        "the next time a deck window is open".to_string()
+    } else {
+        format!(
+            "in about {} minutes, while a deck window is open",
+            wait.div_ceil(60)
+        )
+    };
+    format!(
+        "Sent {when}, to {HOST}:\n{}",
+        serde_json::to_string_pretty(&payload(&kept)).unwrap_or_default()
+    )
 }
 
 /// The request body for `kept`.
@@ -301,10 +329,12 @@ fn payload(kept: &Kept) -> serde_json::Value {
     for (name, n) in &kept.counts {
         properties.insert(name.clone(), (*n).into());
     }
-    properties.insert(
-        "agents".into(),
-        serde_json::to_value(&kept.agents).unwrap_or_default(),
-    );
+    if !kept.agents.is_empty() {
+        properties.insert(
+            "agents".into(),
+            serde_json::to_value(&kept.agents).unwrap_or_default(),
+        );
+    }
     // No person behind the id, and no place behind the request.
     properties.insert("$process_person_profile".into(), false.into());
     properties.insert("$geoip_disable".into(), true.into());
@@ -338,10 +368,16 @@ pub fn send_now_and_then(cx: &mut gpui_kit::App) {
 
 /// Send, if there is something to send and an hour has passed.
 fn send_if_due() {
-    let Some(_held) = lock() else {
+    // One deck sends at a time, under a lock of its own. The counts' lock is
+    // only held to read and to write, never across the network: an answer —
+    // `deck telemetry off` above all — must never wait on a slow request, or
+    // be lost behind one a quitting deck never finished.
+    let Some(_sending) =
+        store().and_then(|path| crate::update::Held::take(&path.with_extension("send.lock")))
+    else {
         return;
     };
-    let mut kept = read();
+    let kept = read();
     if off(&kept).is_some() || kept.counts.is_empty() {
         return;
     }
@@ -349,8 +385,18 @@ fn send_if_due() {
         return;
     }
     if kept.id.is_none() {
-        kept.id = Some(fresh_id());
-        write(&kept);
+        change(|kept| {
+            if kept.id.is_some() {
+                return false;
+            }
+            kept.id = Some(fresh_id());
+            true
+        });
+    }
+    // Read once more, last thing: a no given a moment ago still wins.
+    let kept = read();
+    if off(&kept).is_some() || kept.id.is_none() {
+        return;
     }
     let body = payload(&kept);
     let sent = ureq::post(HOST)
@@ -361,22 +407,24 @@ fn send_if_due() {
         .send_json(&body)
         .is_ok();
     if sent {
-        // Read again: counts added while the request was out are kept.
-        let mut after = read();
-        for (name, n) in &kept.counts {
-            if let Some(now) = after.counts.get_mut(name) {
-                *now = now.saturating_sub(*n);
+        // What was sent comes off what is there now: counts made while the
+        // request was out are kept for next time.
+        change(|after| {
+            for (name, n) in &kept.counts {
+                if let Some(now) = after.counts.get_mut(name) {
+                    *now = now.saturating_sub(*n);
+                }
             }
-        }
-        for (name, n) in &kept.agents {
-            if let Some(now) = after.agents.get_mut(name) {
-                *now = now.saturating_sub(*n);
+            for (name, n) in &kept.agents {
+                if let Some(now) = after.agents.get_mut(name) {
+                    *now = now.saturating_sub(*n);
+                }
             }
-        }
-        after.counts.retain(|_, n| *n > 0);
-        after.agents.retain(|_, n| *n > 0);
-        after.sent = now();
-        write(&after);
+            after.counts.retain(|_, n| *n > 0);
+            after.agents.retain(|_, n| *n > 0);
+            after.sent = now();
+            true
+        });
     }
 }
 
@@ -393,23 +441,39 @@ fn fresh_id() -> String {
 }
 
 /// Read, change and write the kept file under its lock. `change` says whether
-/// it changed anything. A lock another deck holds for longer than a moment
-/// costs one count, rather than a wait.
+/// it changed anything. The lock is only ever held for a read and a write, so
+/// a short wait is enough; past it, the count is dropped rather than waited
+/// for.
 fn change(change: impl FnOnce(&mut Kept) -> bool) {
-    let mut held = None;
-    for _ in 0..20 {
-        held = lock();
-        if held.is_some() {
-            break;
+    if let Some(_held) = wait_for_lock(Duration::from_millis(100)) {
+        let mut kept = read();
+        if change(&mut kept) {
+            write(&kept);
         }
-        std::thread::sleep(Duration::from_millis(5));
     }
-    if held.is_none() {
-        return;
-    }
+}
+
+/// [`change`], for an answer: it waits longer, and is written even if the
+/// lock never comes. A count can be lost; a no cannot.
+fn answer(change: impl FnOnce(&mut Kept) -> bool) {
+    let _held = wait_for_lock(Duration::from_secs(2));
     let mut kept = read();
     if change(&mut kept) {
         write(&kept);
+    }
+}
+
+/// The counts' lock, waited for up to `patience`.
+fn wait_for_lock(patience: Duration) -> Option<crate::update::Held> {
+    let until = std::time::Instant::now() + patience;
+    loop {
+        if let Some(held) = lock() {
+            return Some(held);
+        }
+        if std::time::Instant::now() >= until {
+            return None;
+        }
+        std::thread::sleep(Duration::from_millis(5));
     }
 }
 

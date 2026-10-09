@@ -581,7 +581,25 @@ fn share() -> anyhow::Result<()> {
         dim("sent unless you say yes, and `deck telemetry show` prints all of it.")
     );
     println!();
-    let yes = ask_yes("Share anonymous usage counts?")?;
+    // Only a person at a terminal can say yes. Setup run by the installer
+    // through a pipe, or by an agent, has nobody to answer — and an answer
+    // nobody gave is not consent. The window asks them instead.
+    if !std::io::stdin().is_terminal() {
+        println!(
+            "  {}",
+            dim("Not asked here: a deck window will ask instead.")
+        );
+        return Ok(());
+    }
+    print!("  Share anonymous usage counts? {} ", dim("[yes]"));
+    std::io::stdout().flush()?;
+    let mut said = String::new();
+    if std::io::stdin().read_line(&mut said)? == 0 {
+        // Input ended without an answer: none is recorded.
+        println!();
+        return Ok(());
+    }
+    let yes = !matches!(said.trim().to_lowercase().as_str(), "n" | "no");
     crate::usage::choose(yes);
     chose(if yes {
         "sharing counts — `deck telemetry off` stops it"

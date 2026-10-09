@@ -4783,7 +4783,10 @@ impl DeckView {
     /// comment being written — repaints without coming through here, because a
     /// rebuild throws away where the reader had scrolled to.
     fn build_panes(&mut self, cx: &mut App) {
-        crate::usage::record(crate::usage::Count::GroupViewed);
+        // A deck still waiting on its first group has none to look at.
+        if self.group().is_some() {
+            crate::usage::record(crate::usage::Count::GroupViewed);
+        }
         // Each group's questions start from their first.
         self.asks_carousel.reset();
         // A new group starts at the top of its own narration. Carrying the
