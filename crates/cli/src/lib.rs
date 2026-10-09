@@ -718,8 +718,8 @@ fn questions(asks: &[String]) -> anyhow::Result<Vec<String>> {
         let ask = ask.trim();
         anyhow::ensure!(!ask.is_empty(), "an --ask is empty");
         anyhow::ensure!(
-            !ask.contains('\n'),
-            "--ask {ask:?} runs over a line: a question is one line"
+            !ask.chars().any(char::is_control),
+            "--ask {ask:?} runs over a line: a question is one line of plain text"
         );
         let length = ask.chars().count();
         anyhow::ensure!(
@@ -1357,6 +1357,10 @@ mod tests {
                 "{why} is refused"
             );
         }
+        assert!(
+            questions(&["a carriage\rreturn?".to_string()]).is_err(),
+            "a control character is not one line of plain text"
+        );
     }
 
     #[test]

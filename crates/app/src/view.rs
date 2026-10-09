@@ -3964,12 +3964,18 @@ impl DeckView {
     /// over it does not replace them; it brings the box back.
     pub fn ask_suggested(
         &mut self,
-        ix: usize,
+        question: &str,
         edit: bool,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let Some(question) = self.group().and_then(|group| group.asks.get(ix)).cloned() else {
+        // Only a question this group offers: a click on a row a frame behind
+        // a change of group is about a question no longer here.
+        let Some(question) = self
+            .group()
+            .and_then(|group| group.asks.iter().find(|ask| *ask == question))
+            .cloned()
+        else {
             return;
         };
         let drafting = self
@@ -4046,6 +4052,11 @@ impl DeckView {
             if !outside {
                 crate::mac::unhang(deck_ns, shelf_ns);
             }
+            if outside != self.asks_outside {
+                // Moving between the deck and the shelf, the row is a new one:
+                // a pill held open in the old place hears no more of the pointer.
+                self.asks_carousel.reset();
+            }
             self.asks_outside = outside;
             let shown = if outside { row } else { None };
             let corner = window_corner(window).max(8.);
@@ -4065,7 +4076,11 @@ impl DeckView {
                     if new_asks {
                         shelf.carousel.reset();
                     }
-                    if shelf.row != shown || shelf.corner != corner || shelf.wide != wide {
+                    if shelf.row != shown
+                        || shelf.corner != corner
+                        || shelf.wide != wide
+                        || shelf.palette != palette
+                    {
                         shelf.row = shown;
                         shelf.corner = corner;
                         shelf.wide = wide;
@@ -4090,8 +4105,10 @@ impl DeckView {
         }
         let row = self.asks_row()?;
         let me = cx.entity().downgrade();
-        let pick: crate::asks::Pick = std::rc::Rc::new(move |ix, edit, window, cx| {
-            let _ = me.update(cx, |deck, cx| deck.ask_suggested(ix, edit, window, cx));
+        let pick: crate::asks::Pick = std::rc::Rc::new(move |question, edit, window, cx| {
+            let _ = me.update(cx, |deck, cx| {
+                deck.ask_suggested(&question, edit, window, cx)
+            });
         });
         Some(
             div()

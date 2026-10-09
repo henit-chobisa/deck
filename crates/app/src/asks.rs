@@ -30,7 +30,7 @@ pub const PILL: f32 = 30.;
 const GAP: f32 = 8.;
 
 /// The widest a pill may be: room for the longest question `deck group`
-/// takes, so a pill is never cut short and never needs its words repeated.
+/// takes, in ordinary words. One of very wide characters is cut short.
 const WIDEST: f32 = 680.;
 
 /// What the row shows.
@@ -41,7 +41,10 @@ pub struct Row {
 }
 
 /// Pressed: which question, and whether to edit it first.
-pub type Pick = Rc<dyn Fn(usize, bool, &mut Window, &mut App)>;
+///
+/// The question goes by its words, not its place: the shelf can be a frame
+/// behind the deck, and a place in the old row is another question in the new.
+pub type Pick = Rc<dyn Fn(SharedString, bool, &mut Window, &mut App)>;
 
 /// What a pill opens to show, beside its question, while the pointer is on
 /// it: how to press it. Said in the pill itself, so it is read where the
@@ -125,6 +128,10 @@ struct Glide {
 pub struct Carousel {
     handle: ScrollHandle,
     glide: Rc<Cell<Option<Glide>>>,
+    /// When the row was last drawn. A row that stops being drawn — moved
+    /// from inside the deck out to the shelf with a pill open — hears no more
+    /// of the pointer, and must not keep the window drawing for it.
+    drawn: Rc<Cell<Option<Instant>>>,
     /// Until when the window is kept drawing, and whether something is.
     drawing: Rc<Cell<Option<Instant>>>,
     /// The pill opening, or open, under the pointer; and the one closing
@@ -178,6 +185,7 @@ impl Carousel {
         self.open.set(None);
         self.closing.set(None);
         self.spot.set(None);
+        self.drawn.set(None);
         self.handle.set_offset(point(px(0.), px(0.)));
     }
 
@@ -203,23 +211,69 @@ impl Carousel {
             return;
         }
         let handle = window.window_handle();
-        let (glide, open, drawing) = (self.glide.clone(), self.open.clone(), self.drawing.clone());
+        let carousel = self.clone();
         cx.spawn(async move |cx| {
+            let mut asked: Option<Instant> = None;
             loop {
-                let busy = glide.get().is_some() || open.get().is_some();
-                if !busy && drawing.get().is_none_or(|end| Instant::now() >= end) {
+                let busy = carousel.glide.get().is_some() || carousel.open.get().is_some();
+                let ending = carousel
+                    .drawing
+                    .get()
+                    .is_none_or(|end| Instant::now() >= end);
+                if !busy && ending {
                     break;
                 }
-                if handle.update(cx, |_, window, _| window.refresh()).is_err() {
+                // Frames asked for and not drawn for half a second: the row
+                // is no longer on screen, and nobody is looking at it.
+                if carousel
+                    .drawn
+                    .get()
+                    .zip(asked)
+                    .is_some_and(|(drawn, asked)| drawn >= asked)
+                {
+                    asked = None;
+                }
+                if asked.is_some_and(|asked| asked.elapsed() > Duration::from_millis(500)) {
+                    carousel.reset();
                     break;
                 }
+                if !carousel.resting() {
+                    if handle.update(cx, |_, window, _| window.refresh()).is_err() {
+                        break;
+                    }
+                    asked.get_or_insert_with(Instant::now);
+                }
+                // About a frame of a fast screen: often enough for any of
+                // them, without asking for frames no screen can show.
                 cx.background_executor()
-                    .timer(Duration::from_millis(4))
+                    .timer(Duration::from_millis(8))
                     .await;
             }
-            drawing.set(None);
+            carousel.drawing.set(None);
         })
         .detach();
+    }
+
+    /// Whether nothing on the row is moving this frame: a pill held fully
+    /// open, the light between crossings, nothing sliding, closing or
+    /// changing brightness. The loop keeps watching, but asks for no frames.
+    fn resting(&self) -> bool {
+        let Some(open) = self.open.get() else {
+            return false;
+        };
+        let settled = |since: Instant, span: Duration| age(since) > span.as_secs_f32();
+        self.glide.get().is_none()
+            && self
+                .closing
+                .get()
+                .is_none_or(|closing| settled(closing.since, closing.span))
+            && settled(open.since, open.span)
+            && !open.follow
+            && self
+                .spot
+                .get()
+                .is_none_or(|spot| spot.on && settled(spot.since, OPEN))
+            && self.light(open.ix).is_none()
     }
 
     /// How open pill `ix` is, from shut at 0 to showing its hint at 1.
@@ -389,6 +443,7 @@ impl Carousel {
     /// to, where the opening pill has taken it, and whether the pointer is
     /// still on that pill at all.
     fn advance(&self, window: &Window) {
+        self.drawn.set(Some(Instant::now()));
         if let Some(glide) = self.glide.get() {
             let done = glide.since.elapsed().as_secs_f32() / GLIDE.as_secs_f32();
             let t = done.min(1.);
@@ -536,6 +591,7 @@ pub fn render(
     };
     let pills = row.asks.iter().enumerate().map(|(ix, ask)| {
         let pick = pick.clone();
+        let question = ask.clone();
         let open = carousel.openness(ix);
         // The others step back by their words alone: a pill whose border and
         // ground went see-through read as broken, not as quieter.
@@ -613,7 +669,7 @@ pub fn render(
             .on_mouse_move(move |_, window, cx| carousel.peek(ix, true, window, cx))
             .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
             .on_click(move |event, window, cx| {
-                pick(ix, event.modifiers().secondary(), window, cx);
+                pick(question.clone(), event.modifiers().secondary(), window, cx);
             })
             .child(
                 div()
@@ -702,10 +758,12 @@ impl Render for Shelf {
         let pick: Pick = {
             let deck = self.deck.clone();
             let deck_window = self.deck_window;
-            Rc::new(move |ix, edit, _window, cx| {
+            Rc::new(move |question, edit, _window, cx| {
                 let deck = deck.clone();
                 let _ = deck_window.update(cx, |_, window, cx| {
-                    let _ = deck.update(cx, |deck, cx| deck.ask_suggested(ix, edit, window, cx));
+                    let _ = deck.update(cx, |deck, cx| {
+                        deck.ask_suggested(&question, edit, window, cx)
+                    });
                 });
             })
         };

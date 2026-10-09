@@ -502,6 +502,18 @@ impl From<String> for Kind {
 #[cfg(test)]
 mod tests {
     #[test]
+    fn a_group_from_before_questions_still_reads_and_is_written_the_same() {
+        let old = r#"{"id":"g1","say":"the plan","refs":[]}"#;
+        let group: super::Group = serde_json::from_str(old).expect("an older group reads");
+        assert!(group.asks.is_empty());
+        let written = serde_json::to_string(&group).expect("writes");
+        assert!(
+            !written.contains("asks"),
+            "no questions, no field: {written}"
+        );
+    }
+
+    #[test]
     fn a_moment_keeps_the_floor_the_reader_asked_for() {
         // The one that got away: `when` was skipped on the wire whenever it was
         // `Queue`, and filled back in as `Defer`, so a reader who chose *wait

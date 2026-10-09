@@ -154,7 +154,17 @@ fn show(decks: Vec<Deck>, opening: &cli::Opening) {
             cx.on_window_closed(|cx, _| {
                 // A shade is not a window worth staying open for. Every path
                 // that takes the deck away brings the lights up first, and this
-                if cx.windows().is_empty() {
+                // Nor is the questions' shelf, which goes with its deck but is
+                // a window of its own: a deck that outlived its window would
+                // otherwise leave one keeping the process up, unseen.
+                #[cfg(target_os = "macos")]
+                let left = cx
+                    .windows()
+                    .iter()
+                    .all(|window| window.downcast::<asks::Shelf>().is_some());
+                #[cfg(not(target_os = "macos"))]
+                let left = cx.windows().is_empty();
+                if left {
                     cx.quit();
                 }
             })
