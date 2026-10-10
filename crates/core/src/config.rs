@@ -43,9 +43,9 @@ pub struct Config {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct Updates {
-    /// Look for a newer stable deck at most once an hour, and install it when there is
-    /// one — unless Homebrew installed deck, in which case it is only shown in
-    /// the foot of the window. Turned off, deck makes no request at all.
+    /// Look for a newer stable deck at most once an hour, and install it when
+    /// there is one — unless Homebrew installed deck, in which case it is only
+    /// shown in the foot of the window. Turned off, deck makes no request at all.
     ///
     /// On by default. Only ever a stable release — a prerelease is something
     /// somebody asks for with `deck upgrade --prerelease`, never something that

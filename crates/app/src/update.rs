@@ -22,11 +22,18 @@
 //!
 //! It was a day, and a fix released in the morning reached somebody who had
 //! opened a deck the night before only the next night. An hour is soon enough
-//! that a deck opened after a release finds it, and still far under GitHub's
-//! sixty unauthenticated requests an hour from one address — which an office
-//! sharing an address, or an agent opening twenty decks in an afternoon,
-//! would reach if every launch asked. It also leaves the hour in which a
-//! broken release can be noticed, by us first, and taken down.
+//! that a deck opened after a release finds it. Not every launch: a due check
+//! is one request, or two when there is something newer to install, and
+//! GitHub allows sixty unauthenticated requests an hour from one address —
+//! which an agent opening twenty decks in an afternoon, or an office sharing
+//! an address, would reach if every launch asked.
+//!
+//! # A failed install waits a day
+//!
+//! Asked hourly, an install that fails after its download — a checksum that
+//! does not match, a binary that will not start, a link too slow to finish —
+//! would fetch twenty-five megabytes every hour to fail the same way. So the
+//! version that failed is remembered, and not tried again for a day.
 //!
 //! Stable releases only. A prerelease is something somebody asks for with
 //! `deck upgrade --prerelease`; it is never offered to them unasked.
@@ -46,6 +53,9 @@ use serde::{Deserialize, Serialize};
 
 /// How long an answer is good for.
 const ONCE_AN_HOUR: Duration = Duration::from_secs(60 * 60);
+
+/// How long a version whose install failed is left alone.
+const AFTER_A_FAILURE: Duration = Duration::from_secs(24 * 60 * 60);
 
 /// How long to wait before deciding there is no network. Short, because the
 /// only thing waiting is a background thread nobody is watching.
@@ -69,6 +79,16 @@ struct Known {
     latest: Option<String>,
     /// When that was asked, in seconds since the epoch.
     checked: u64,
+    /// A version whose install failed, and when: not tried again for a day.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    failed: Option<String>,
+    #[serde(default, skip_serializing_if = "is_zero")]
+    failed_at: u64,
+}
+
+#[allow(clippy::trivially_copy_pass_by_ref)]
+fn is_zero(n: &u64) -> bool {
+    *n == 0
 }
 
 /// A newer stable deck that has been installed, and is what opens next.
@@ -121,13 +141,22 @@ pub fn look(cx: &mut gpui_kit::App) {
         if !due(before.checked, now()) {
             return (before, None);
         }
-        let known = settle(latest(), before, now());
+        let mut known = settle(latest(), before, now());
         write(&known);
         // Still under the lock, so two decks never install at once. Any
         // failure leaves the deck that was there, and the foot still says a
         // newer one is available for somebody to run `deck upgrade` by hand.
-        let installed = worth_showing(known.latest.as_deref(), RUNNING)
-            .and_then(|_| crate::upgrade::quietly().ok().flatten());
+        let newer = worth_showing(known.latest.as_deref(), RUNNING)
+            .filter(|version| !held_back(&known, version, now()));
+        let installed = newer.and_then(|version| match crate::upgrade::quietly() {
+            Ok(installed) => installed,
+            Err(_) => {
+                known.failed = Some(version);
+                known.failed_at = now();
+                write(&known);
+                None
+            }
+        });
         (known, installed)
     });
     cx.spawn(async move |cx| {
@@ -152,7 +181,15 @@ fn settle(answer: Option<String>, on_disk: Known, now: u64) -> Known {
     Known {
         latest: answer.or(on_disk.latest),
         checked: now,
+        failed: on_disk.failed,
+        failed_at: on_disk.failed_at,
     }
+}
+
+/// Whether `version` failed to install less than a day ago.
+fn held_back(known: &Known, version: &str, now: u64) -> bool {
+    known.failed.as_deref() == Some(version)
+        && now.saturating_sub(known.failed_at) < AFTER_A_FAILURE.as_secs()
 }
 
 /// Whether an answer from `checked` is old enough to ask again.
@@ -310,6 +347,34 @@ mod tests {
     use super::*;
 
     #[test]
+    fn a_version_that_failed_to_install_waits_a_day() {
+        let known = Known {
+            latest: Some("0.1.6".into()),
+            checked: 0,
+            failed: Some("0.1.6".into()),
+            failed_at: 1_000,
+        };
+        let day = AFTER_A_FAILURE.as_secs();
+        assert!(
+            held_back(&known, "0.1.6", 1_000 + day - 1),
+            "within the day"
+        );
+        assert!(
+            !held_back(&known, "0.1.6", 1_000 + day),
+            "a day on, tried again"
+        );
+        assert!(
+            !held_back(&known, "0.1.7", 1_001),
+            "a newer one is tried at once"
+        );
+
+        // A fresh answer keeps what failed: the clock moving is not a retry.
+        let kept = settle(Some("0.1.6".into()), known, 2_000);
+        assert_eq!(kept.failed.as_deref(), Some("0.1.6"));
+        assert_eq!(kept.failed_at, 1_000);
+    }
+
+    #[test]
     fn asked_at_most_once_an_hour() {
         let hour = ONCE_AN_HOUR.as_secs();
         assert_eq!(hour, 3_600);
@@ -411,12 +476,14 @@ mod tests {
         let found_meanwhile = Known {
             latest: Some("0.1.4".into()),
             checked: 100,
+            ..Known::default()
         };
         assert_eq!(
             settle(None, found_meanwhile, 200),
             Known {
                 latest: Some("0.1.4".into()),
-                checked: 200
+                checked: 200,
+                ..Known::default()
             },
             "no answer moves the clock and nothing else"
         );
@@ -441,6 +508,7 @@ mod tests {
         let known = Known {
             latest: Some("0.1.4".into()),
             checked: 1_790_000_000,
+            ..Known::default()
         };
         let text = serde_json::to_string(&known).expect("it writes");
         assert_eq!(
