@@ -3,7 +3,7 @@
 //! # Nothing here may be noticed when it fails
 //!
 //! deck runs on laptops on planes, behind proxies, and on machines that should
-//! make no requests at all. So the question is asked at most once a day, off
+//! make no requests at all. So the question is asked at most once an hour, off
 //! the main thread, with a short patience, and every way it can fail — no
 //! network, a proxy that eats the request, GitHub answering with something
 //! odd — ends the same way: nothing is shown and nothing is said. A deck that
@@ -16,14 +16,24 @@
 //! The last answer is kept in `~/.deck/update.json`, and read at startup before
 //! any request is made. So a newer release that was already known shows the
 //! moment a deck opens, offline or not, and the network is only asked again
-//! once that answer is a day old.
+//! once that answer is an hour old.
+//!
+//! # Why an hour
+//!
+//! It was a day, and a fix released in the morning reached somebody who had
+//! opened a deck the night before only the next night. An hour is soon enough
+//! that a deck opened after a release finds it, and still far under GitHub's
+//! sixty unauthenticated requests an hour from one address — which an office
+//! sharing an address, or an agent opening twenty decks in an afternoon,
+//! would reach if every launch asked. It also leaves the hour in which a
+//! broken release can be noticed, by us first, and taken down.
 //!
 //! Stable releases only. A prerelease is something somebody asks for with
 //! `deck upgrade --prerelease`; it is never offered to them unasked.
 //!
 //! # And then installed
 //!
-//! When the daily ask finds a newer release, it is installed in the same
+//! When the ask finds a newer release, it is installed in the same
 //! background task, the way `deck upgrade` would — checked, signed, tried, and
 //! renamed over the running binary, which carries on untouched. The next deck
 //! opened is the new one, and it opens on its notes. A copy Homebrew owns, or
@@ -35,7 +45,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use serde::{Deserialize, Serialize};
 
 /// How long an answer is good for.
-const ONCE_A_DAY: Duration = Duration::from_secs(24 * 60 * 60);
+const ONCE_AN_HOUR: Duration = Duration::from_secs(60 * 60);
 
 /// How long to wait before deciding there is no network. Short, because the
 /// only thing waiting is a background thread nobody is watching.
@@ -82,7 +92,7 @@ pub fn installed() -> Option<String> {
         .and_then(|installed| installed.clone())
 }
 
-/// Show what is already known, and ask again if it is a day old.
+/// Show what is already known, and ask again if it is an hour old.
 ///
 /// Returns at once. The asking happens on the background executor, and the
 /// answer is brought back to the main thread so the windows draw it straight
@@ -106,7 +116,7 @@ pub fn look(cx: &mut gpui_kit::App) {
             return (read(), None);
         };
         // Read again now the lock is held: a deck that held it a moment ago
-        // may have asked already, and the answer it wrote is good for a day.
+        // may have asked already, and the answer it wrote is good for an hour.
         let before = read();
         if !due(before.checked, now()) {
             return (before, None);
@@ -147,7 +157,7 @@ fn settle(answer: Option<String>, on_disk: Known, now: u64) -> Known {
 
 /// Whether an answer from `checked` is old enough to ask again.
 fn due(checked: u64, now: u64) -> bool {
-    now.saturating_sub(checked) >= ONCE_A_DAY.as_secs()
+    now.saturating_sub(checked) >= ONCE_AN_HOUR.as_secs()
 }
 
 /// What the window should show, given what is known and what is running.
@@ -300,14 +310,15 @@ mod tests {
     use super::*;
 
     #[test]
-    fn asked_at_most_once_a_day() {
-        let day = ONCE_A_DAY.as_secs();
-        assert!(due(0, day), "never asked is due");
+    fn asked_at_most_once_an_hour() {
+        let hour = ONCE_AN_HOUR.as_secs();
+        assert_eq!(hour, 3_600);
+        assert!(due(0, hour), "never asked is due");
         assert!(
-            !due(1_000, 1_000 + day - 1),
-            "a second short of a day is not"
+            !due(1_000, 1_000 + hour - 1),
+            "a second short of an hour is not"
         );
-        assert!(due(1_000, 1_000 + day), "a day is");
+        assert!(due(1_000, 1_000 + hour), "an hour is");
 
         // A clock set backwards must not make it ask on every launch forever,
         // or never again. Saturating keeps it from wrapping round to huge.

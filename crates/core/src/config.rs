@@ -36,13 +36,14 @@ pub struct Config {
 /// The `[updates]` section.
 ///
 /// One switch for everything deck does on the network by itself: looking for a
-/// newer release once a day, and installing it when there is one. Somebody on a
+/// newer release at most once an hour, installing it when there is one, and —
+/// for somebody who said yes to them — sending usage counts. Somebody on a
 /// machine that should make no requests of its own sets this once and gets
 /// exactly that — `deck upgrade` still works when they ask for it.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct Updates {
-    /// Look for a newer stable deck once a day, and install it when there is
+    /// Look for a newer stable deck at most once an hour, and install it when there is
     /// one — unless Homebrew installed deck, in which case it is only shown in
     /// the foot of the window. Turned off, deck makes no request at all.
     ///
