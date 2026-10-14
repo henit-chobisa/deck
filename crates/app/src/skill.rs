@@ -177,6 +177,39 @@ pub fn install_all(home: &Path) -> anyhow::Result<Vec<Told>> {
     Ok(told)
 }
 
+/// Bring every copy of the skill deck has already put down up to date with
+/// this deck, and say which were rewritten.
+///
+/// Every deck that starts runs this, so the skill follows the binary however
+/// the binary arrived: `deck upgrade` and the install script both start the
+/// new deck before it goes in, and an automatic update is followed by the next
+/// deck anybody opens. Before this only `deck setup` wrote the skill, and an
+/// upgraded deck went on being described to agents as the one it replaced.
+///
+/// Only copies already there. An agent somebody said no to in setup has no
+/// copy, and is not given one behind their back. A copy that already matches
+/// is read and left alone, which is the case on every run but the first after
+/// an upgrade.
+///
+/// Quiet about failures: a skill that cannot be rewritten is no reason for
+/// `deck group` to fail, and `deck setup` is there to say why.
+pub fn keep_up(home: &Path) -> Vec<PathBuf> {
+    let shared = std::iter::once(home.join(SHARED).join("deck"));
+    let own = AGENTS.iter().map(|agent| agent.skill_path(home));
+    let mut rewritten = Vec::new();
+    for at in shared.chain(own).map(|dir| dir.join("SKILL.md")) {
+        // Through a link this reads the shared copy, already rewritten above
+        // it, so it matches and is not written twice.
+        let Ok(was) = std::fs::read(&at) else {
+            continue;
+        };
+        if was != SKILL.as_bytes() && std::fs::write(&at, SKILL).is_ok() {
+            rewritten.push(at);
+        }
+    }
+    rewritten
+}
+
 /// What happened to one agent.
 #[derive(Debug, Clone)]
 pub enum Told {
@@ -1191,6 +1224,53 @@ mod tests {
         assert_eq!(
             std::fs::read_to_string(home.join(".claude/skills/deck/SKILL.md")).unwrap(),
             SKILL
+        );
+    }
+
+    #[test]
+    fn an_upgraded_deck_brings_the_skill_it_installed_with_it() {
+        // The upgrade that left an agent reading a skill with no `ask` in it.
+        // Shared store, two linked agents, and the shared copy left behind at
+        // an older version.
+        let home = scratch("keep-up");
+        std::fs::create_dir_all(home.join(".agents/skills")).unwrap();
+        std::fs::create_dir_all(home.join(".claude/skills")).unwrap();
+        std::fs::create_dir_all(home.join(".codex")).unwrap();
+        install_all(&home).unwrap();
+        let shared = home.join(".agents/skills/deck/SKILL.md");
+        std::fs::write(&shared, "older").unwrap();
+
+        assert_eq!(
+            keep_up(&home),
+            vec![shared.clone()],
+            "written once, through no link"
+        );
+        for at in [&shared, &home.join(".claude/skills/deck/SKILL.md")] {
+            assert_eq!(std::fs::read_to_string(at).unwrap(), SKILL);
+        }
+        assert!(keep_up(&home).is_empty(), "and left alone once it matches");
+    }
+
+    #[test]
+    fn keeping_up_rewrites_real_copies_and_installs_nothing_new() {
+        // Copies, as on a machine with no shared store. Codex has one; Cursor
+        // is on the machine and was never given one, which is somebody's no.
+        let home = scratch("keep-up-copies");
+        std::fs::create_dir_all(home.join(".codex")).unwrap();
+        install_all(&home).unwrap();
+        std::fs::create_dir_all(home.join(".cursor")).unwrap();
+        let codex = home.join(".codex/skills/deck/SKILL.md");
+        std::fs::write(&codex, "older").unwrap();
+
+        assert_eq!(keep_up(&home), vec![codex.clone()]);
+        assert_eq!(std::fs::read_to_string(&codex).unwrap(), SKILL);
+        assert!(
+            !home.join(".cursor/skills/deck").exists(),
+            "no skill behind a no"
+        );
+        assert!(
+            !home.join(".agents/skills/deck").exists(),
+            "nor a shared store"
         );
     }
 }
