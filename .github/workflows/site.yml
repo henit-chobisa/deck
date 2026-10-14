@@ -12,9 +12,9 @@ on:
     paths: [site/**, .github/workflows/site.yml]
   pull_request:
     paths: [site/**, .github/workflows/site.yml]
-  # A new or edited release changes the changelog.
-  release:
-    types: [published, edited, deleted]
+  # A new or edited release changes the changelog too, but a run started by
+  # a release runs from its tag, and Pages takes deploys from main only. So
+  # changelog.yml asks for this from main instead.
   workflow_dispatch:
 
 permissions:

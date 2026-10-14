@@ -1,0 +1,25 @@
+# The changelog on the site is built from the releases, so publishing,
+# editing or deleting one has to rebuild the site.
+#
+# Not by running the site's workflow on the release itself: that run belongs to
+# the release's tag, and the github-pages environment only takes deploys from
+# main, so it was refused (v0.1.6). This asks for the site to be built from
+# main instead. A run started with the workflow token still starts when it is
+# a workflow_dispatch.
+name: Changelog
+
+on:
+  release:
+    types: [published, edited, deleted]
+
+permissions:
+  actions: write
+
+jobs:
+  site:
+    name: Rebuild the site from main
+    runs-on: ubuntu-latest
+    steps:
+      - env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run site.yml --repo "${{ github.repository }}" --ref main
