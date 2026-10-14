@@ -731,85 +731,98 @@ and without one they are still holding your third fact when you start the fifth.
 "now look at". Say the thing. A voice reading filler is a voice the reader turns
 off, and they cannot skim past it the way they would on a page.
 
-## Leave them a way in: questions worth asking
+## Leave them a way in: the moves they will make next
 
 A group says one thing. The reader either understands it and decides, or they
-don't, and nod anyway. The second reader is the one this section is for. They
-are somewhere on the ladder of understanding, and you cannot see where: they
-may know the system but not this part of it, or know the code but not why it
-exists. Most of them will not type a question. Almost all of them will press
-one.
+don't, and nod anyway. Most of them will not type what is on their mind.
+Almost all of them will press it, if it is there.
 
-So give every group three to five questions, with `--ask`. They sit under the
-window as pills. Pressing one asks you, straight away, and you answer in the
-deck. They are not a quiz and not a summary. They are the doors into this group
-that a curious engineer would want opened.
+So give every group three to five pills, with `--ask`. They sit under the
+window. Pressing one asks you, straight away, and you answer in the deck. The
+bar is that **two of them are what the reader was about to type.**
 
 ```sh
 deck group <path> --say "…" --ref "…" \
-  --ask "What happens between 'order placed' and the email landing?" \
-  --ask "Why does a 4.2-second spinner become a 9-minute email?" \
-  --ask "What if a worker dies halfway through a PDF?" \
-  --ask "Could this queue quietly lose a receipt on Black Friday?"
+  --ask "What's an outbox, basics first?" \
+  --ask "Draw it: enqueue → worker → email" \
+  --ask "Does the refund worker also retry forever?" \
+  --ask "Are you sure the PDF is the slow part? Show me"
 ```
 
-### Mix the four kinds
+People rarely type a fresh, clever question about one detail. They make a
+handful of moves, again and again: *say that simpler*, *draw it*, *does the
+other one do this too*, *are you sure*, *do we need this at all*. The group in
+front of them tells you which move is coming. Do not invent questions. Fill
+slots with moves.
 
-Every group's questions are a mix. Never all one kind. Never labelled. The
-reader picks the door that matches where they are standing.
+### Read the reader first
 
-1. **One step down: what the claim stands on.** A term, a mechanism, a piece
-   of the system the claim takes for granted. For the reader who is missing a
-   piece and will not say so.
-   *What happens between "order placed" and the email landing?*
-   *What does Jinja do with a variable it cannot find?*
+You have been in the conversation, so use it. Look at everything they said and
+everything they typed into earlier decks: their habits, their words, what they
+doubt, what they already know. That is the best evidence there is of what they
+will type next. Where a slot below can be filled the way they have typed
+before, fill it that way. Never ask about something they said, built or
+decided.
 
-2. **A step back: why this, at all.** The person, the outcome, the reason the
-   code exists, where it sits in the larger thing. For the reader who
-   understands the lines but not the point.
-   *Who is actually waiting for this receipt?*
-   *Why does checkout render a PDF in the first place?*
+### Fill the slots
 
-3. **About the code: what these lines do when something goes wrong.** A
-   specific line, a failure, an edge, a number. For the reader who wants to
-   see it run.
-   *What if a worker dies halfway through a PDF?*
-   *What does line 24 do when Redis is down?*
+**1. Say it simpler, about the exact thing. Always.** Name the one term, field
+or mechanism in this group they have not used themselves: *What's `txn_ref`,
+basics first?* Only when nothing stands out, use *Say that again, simpler*.
+Not following is the most common reason anyone types.
 
-4. **About the claim: is it true, and what does it cost.** The evidence, the
-   alternative, the risk, the thing you are least sure of. For the reader
-   about to decide.
-   *Why does a 4.2-second spinner become a 9-minute email?*
-   *Could this queue quietly lose a receipt on Black Friday?*
+**2. Make it concrete. Pick what the group's shape calls for.**
+- An idea or an analogy with no pointed lines → *Walk me through the code itself*.
+- A fix or a plan described in words with no diff → *Show me the diff for <fix>*.
+- Three or more parts, or a before and after → *Draw it: <A> → <B> → <C>*.
+- A subsystem named but not shown → *Show me <function> where it <does X>*.
 
-At least one from the fourth kind, always. It is the question that turns a
-reader who agreed into a reader who decided.
+**3. The strongest probe this group invites.** Take the first that applies:
+- **Reuse.** Something new is added (a helper, endpoint, model, step) → *Is
+  there an existing <kind> we can reuse?* With a base class on screen → *Could
+  this live in <base>?*
+- **Sibling.** One importer, level, mode or route is shown doing something.
+  Name the counterpart the group never mentions → *Does <sibling> also
+  <behaviour>?*
+- **Edge.** An optional key → *What if <key> is null?* A failure → *Would a
+  retry fix it?* A new hop or default → *What does <it> cost or break?* One
+  hole patched → *Will more like this turn up?*
+- **Why this.** A literal number, a fixed list, a storage choice → *Why <0.3 /
+  these four / rows, not JSON>?*
 
-### Write them as hooks
+**4. Push back. Take the strongest:**
+- **Doubt the claim.** The group's main assertion, especially a cause, a
+  *never* or an *always*, or anything you did not point at → *Are you sure
+  <claim>? Show me where.*
+- **Why not the obvious alternative.** The design a senior engineer would
+  reach for first → *Why not <a join table / a soft delete / one queue>?*
+- **A simpler way.** Code you built → *Is there a simpler way to <do X>?*
+- **Do we need it.** The narration says *rare*, *unlikely* or *not shipped* →
+  *Do we need this at all?*
+- **Blast radius.** The change sits in shared code → *Does this hit every
+  <route>, not just <this one>?*
 
-A question is pressed only if the reader wants the answer more than they want
-to move on. So:
+**5. Only when the group lists options:** *What are the tradeoffs between <A>
+and <B>?* Otherwise, a second probe from slot 3.
 
-- **Concrete.** Use this group's own nouns and numbers: the file, the field,
-  the 9 minutes, the four workers. A question that would fit any deck fits
-  none.
-- **A tension.** Something surprising, at risk, or that does not add up yet.
-  *Why does a 4.2-second spinner become a 9-minute email?* pulls; *How does the
-  queue work?* does not.
-- **One line.** Under about 60 characters; `deck group` refuses past 90. If it
-  needs a clause to set it up, it is two questions or none.
-- **In their voice.** Written as the reader would ask it, not as you would
-  teach it: *What if a worker dies?*, not *Consider the failure modes of the
-  worker.*
-- **Answerable now, by showing.** Only ask what you can answer in this deck,
-  with code you can point at or a picture you can draw. A question that sends
-  you off to research for ten minutes is a promise you cannot keep.
+When the group ends on a bottom line (*no UI change*, *only X moves*), a
+confirm pill can take a weaker slot: *So nothing changes on <X>?*
 
-Never: *Can you explain X?*, *What is the purpose of Y?*, *Any questions?*, a
-question whose answer is the sentence right above it, or a question you would
-rather they did not ask. That last one belongs in the list most of all: the
-question that exposes your weakest claim is the one that earns their trust in
-the rest.
+### Writing them
+
+- **Their names, their voice.** Fill every <placeholder> with this group's own
+  file, field, function, number or sibling. Write it in first person, as they
+  would type it. Keep the plain frames, like *Say that again, simpler*, the same
+  every time; that sameness is what makes them findable.
+- **Short.** Under about 60 characters; `deck group` refuses past 90.
+- **Not already answered.** A pill the narration or a later group already
+  answers is dropped and replaced by the next one down.
+- **Never the decision.** No *Go with A*, *Lock it*, *Approve*, and no *Which
+  would you pick?* Deciding is the reader's, and it is the reason this deck
+  exists. When a group asks for a decision, the pills help them decide well
+  (the doubt, the alternative, the tradeoffs), and they type the decision.
+- **Never a quiz.** No question aimed back at them, and nothing about a toy
+  example instead of their system.
 
 ### When one is pressed
 
@@ -818,9 +831,9 @@ by showing. Bring the file, point at the line, draw the timeline. A pressed
 question answered with three paragraphs teaches the reader that pressing is
 not worth it.
 
-Answer the question they pressed, at the depth they pressed it. A step-down
-question gets the plain mechanism, not the edge cases. A question about the
-claim gets the evidence and your honest confidence in it.
+Answer the pill they pressed, at the depth they pressed it. *Say it simpler*
+gets the plain mechanism, not the edge cases. *Are you sure* gets the evidence
+and your honest confidence in it.
 
 ## When they answer back
 
@@ -1232,7 +1245,7 @@ the agent never moves anything is a document with a bar under it.
 ```
 deck new      the header, and the bar
 deck open     the bar, in the background — and what wakes you at the end
-deck group    one group, one call — and --ask, up to five, for the questions under it
+deck group    one group, one call — and --ask, three to five, for the pills under it
 deck seal     no more coming
 deck wait     only with -d, when you detached the window yourself
 deck next     what the reader just did, when you want it without blocking

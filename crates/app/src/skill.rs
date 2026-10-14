@@ -699,8 +699,8 @@ mod tests {
         // than for a generic metaphor, are what separate a deck that explains
         // from one that displays.
         assert!(SKILL.contains("Predict before reveal"));
-        // The questions under a group: a mix, and at least one about the claim.
-        assert!(SKILL.contains("### Mix the four kinds"));
+        // The pills under a group: moves the reader makes, read from them.
+        assert!(SKILL.contains("### Fill the slots"));
         assert!(SKILL.contains("--ask"));
         assert!(SKILL.contains("Anchor to THEIR system and domain"));
         assert!(
@@ -1192,5 +1192,28 @@ mod tests {
             std::fs::read_to_string(home.join(".claude/skills/deck/SKILL.md")).unwrap(),
             SKILL
         );
+    }
+
+    #[test]
+    fn the_pills_are_the_readers_moves_and_never_their_decision() {
+        // Measured against what one reader actually typed into 81 groups:
+        // the pills that landed were moves (say it simpler, are you sure,
+        // does the sibling do this too), named after the exact thing on
+        // screen. And a pill that decides for them takes away the one thing
+        // deck exists to leave with the reader.
+        assert!(SKILL.contains("two of them are what the reader was about to type"));
+        assert!(SKILL.contains("### Read the reader first"));
+        assert!(SKILL.contains("**Never the decision.**"));
+        assert!(SKILL.contains("Doubt the claim."));
+        for example in SKILL
+            .lines()
+            .filter_map(|line| line.trim().strip_prefix("--ask \""))
+        {
+            let ask = example.split('"').next().unwrap_or_default();
+            assert!(
+                ask.chars().count() <= 60,
+                "{ask} is longer than it tells the agent to be"
+            );
+        }
     }
 }
