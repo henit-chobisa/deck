@@ -885,6 +885,29 @@ mod tests {
     }
 
     #[test]
+    fn a_pill_is_lit_once_while_it_opens_and_not_after() {
+        let row = Carousel::default();
+        let open = |since| {
+            row.open.set(Some(Opening {
+                ix: 2,
+                since,
+                from: 0.,
+                at: 0.,
+                follow: false,
+                span: OPEN,
+            }))
+        };
+        let now = Instant::now();
+        open(now + Duration::from_millis(90));
+        assert_eq!(row.light(2), Some(0.), "waiting out the rest, not yet lit");
+        open(now);
+        assert!(row.light(2).is_some(), "crossing as it opens");
+        assert_eq!(row.light(1), None, "and only on the pill that opened");
+        open(now - SHIMMER);
+        assert_eq!(row.light(2), None, "crossed once, and dark while the pointer rests");
+    }
+
+    #[test]
     fn an_arrow_moves_one_question_and_stops_at_either_end() {
         let lefts = [0., 300., 560., 900.];
         let max = 700.;
