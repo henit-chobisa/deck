@@ -24,11 +24,12 @@ takes the comment. Every
 comment is pinned to the lines it was about, with the text it was written
 against — so it survives the file moving underneath it.
 
-## Questions worth asking
+## Questions you were about to ask
 
-Each group can offer up to five questions, written by the agent: the basics
-the claim stands on, why it matters at all, what the code does when something
-goes wrong, and whether the claim holds. They sit in a row of pills just below
+Each group can offer up to five questions, written by the agent as the things
+you were likely to type next: *say that simpler* about the term you have not
+met, *draw it*, *does the other one do this too*, *are you sure*. They never
+decide for you; that part is yours. They sit in a row of pills just below
 the deck window. On Linux, in full screen, or when there is no room below the
 window, they sit inside it above the footer instead.
 

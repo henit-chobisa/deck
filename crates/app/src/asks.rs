@@ -1,7 +1,7 @@
 //! The questions a group offers: a row of pills under the window.
 //!
-//! The agent writes up to five per group (`deck group --ask`), as hooks: one
-//! line each, from what the claim stands on to what it puts at risk. Pressing
+//! The agent writes up to five per group (`deck group --ask`): one line each,
+//! the things the reader was most likely to type next. Pressing
 //! one asks it, straight away, the way *Ask now* does. With the secondary
 //! modifier held — ⌘ on a Mac, Ctrl elsewhere — it goes into the comment box
 //! instead, to be edited first.
