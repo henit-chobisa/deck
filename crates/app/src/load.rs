@@ -46,7 +46,7 @@ pub struct Deck {
     sealed: bool,
     /// When each group's questions were last renewed, as the file says: a
     /// renewal is noticed by its time changing, not by reading it every poll.
-    renewed: HashMap<String, std::time::SystemTime>,
+    renewed: HashMap<String, (std::time::SystemTime, u64)>,
 }
 
 impl Deck {
@@ -173,7 +173,11 @@ impl Deck {
         let mut changed = false;
         for group in &mut self.arrived {
             let at = deck_cli::renewed_path(&self.root, &group.id);
-            let Ok(when) = std::fs::metadata(&at).and_then(|meta| meta.modified()) else {
+            // The size too: two renewals inside one tick of a coarse clock
+            // share a time, and seldom a length.
+            let Ok(when) = std::fs::metadata(&at)
+                .and_then(|meta| meta.modified().map(|time| (time, meta.len())))
+            else {
                 continue;
             };
             if self.renewed.get(&group.id) == Some(&when) {

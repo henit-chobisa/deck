@@ -774,6 +774,9 @@ pub fn renew_asks(root: &Path, id: &str, asks: &[String]) -> anyhow::Result<Path
     );
     let path = renewed_path(root, id);
     write_atomically(&path, &serde_json::to_vec_pretty(&Renewed { asks: after })?)?;
+    // Still here: the window watches a finished deck only while somebody is,
+    // and a row renewed a while after the answer must still be seen.
+    let _ = std::fs::write(root.join(ANSWERING), b"said");
     Ok(path)
 }
 
@@ -1677,6 +1680,8 @@ mod tests {
             asks(&["a?", "b?", "c?"]),
             "the group as written is untouched"
         );
+        // Renewing says the agent is still there, so the window keeps looking.
+        assert_eq!(presence(&root), Presence::Answering);
     }
 
     #[test]

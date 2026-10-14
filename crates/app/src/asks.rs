@@ -242,6 +242,10 @@ pub struct Carousel {
     spot: Rc<Cell<Option<Spot>>>,
     /// How much wider a pill is, open: its hint, as last measured.
     hint: Rc<Cell<f32>>,
+    /// Where each question is drawn among the row's children. The same as
+    /// its place in the row, except while the row renews: then questions on
+    /// their way out are still drawn among them.
+    places: Rc<std::cell::RefCell<Vec<usize>>>,
 }
 
 /// One pill opening or closing: which, since when, and how open it was then.
@@ -504,7 +508,7 @@ impl Carousel {
             if let Some(closing) = self
                 .closing
                 .get()
-                .filter(|closing| closing.ix == ix && now < closing.since)
+                .filter(|closing| closing.ix == ix && now < closing.since && closing.from >= 1.)
             {
                 self.closing.set(None);
                 self.open.set(Some(Opening {
@@ -578,8 +582,10 @@ impl Carousel {
     fn step(&self, by: isize) {
         let now = f32::from(self.handle.offset().x);
         let view = self.handle.bounds();
-        let lefts: Vec<f32> = (0..)
-            .map_while(|ix| self.handle.bounds_for_item(ix))
+        let places = self.places.borrow().clone();
+        let lefts: Vec<f32> = places
+            .iter()
+            .map_while(|drawn| self.handle.bounds_for_item(*drawn))
             // Laid out where they would be unscrolled: the row's own terms.
             .map(|item| f32::from(item.origin.x - view.origin.x))
             .collect();
@@ -622,7 +628,13 @@ impl Carousel {
         let Some(open) = self.open.get().filter(|open| open.follow) else {
             return;
         };
-        let Some(item) = self.handle.bounds_for_item(open.ix) else {
+        let drawn = self
+            .places
+            .borrow()
+            .get(open.ix)
+            .copied()
+            .unwrap_or(open.ix);
+        let Some(item) = self.handle.bounds_for_item(drawn) else {
             return;
         };
         let view = self.handle.bounds();
@@ -861,11 +873,27 @@ pub fn render(
         })
         .map(Some)
         .collect();
-    let pills = match row
+    let renewing = row
         .renewed
         .as_ref()
-        .filter(|renewal| !renewal.over(&row.asks))
-    {
+        .filter(|renewal| !renewal.over(&row.asks));
+    *carousel.places.borrow_mut() = match renewing {
+        None => (0..row.asks.len()).collect(),
+        Some(renewal) => {
+            let drawn = parts(&renewal.from, &row.asks);
+            (0..row.asks.len())
+                .map(|n| {
+                    drawn
+                        .iter()
+                        .position(|(_, part)| {
+                            matches!(part, Part::Stays(at) | Part::Arrives(at, _) if *at == n)
+                        })
+                        .unwrap_or(n)
+                })
+                .collect()
+        }
+    };
+    let pills = match renewing {
         None => made
             .into_iter()
             .flatten()
@@ -889,7 +917,7 @@ pub fn render(
                         .width,
                 );
                 // A hair over, so the words are never a pixel short and cut.
-                (words + 2. * 13. + 2. + 1.).min(WIDEST)
+                (words + 2. * 13. + 2. + 1.).min(WIDEST + hint_w)
             };
             parts(&renewal.from, &row.asks)
                 .into_iter()

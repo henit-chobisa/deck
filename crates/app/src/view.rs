@@ -4060,9 +4060,23 @@ impl DeckView {
             self.asks_renewed = None;
             return;
         };
+        // A renewal plays to its end before the next one starts: one that
+        // began over the top of another snapped the row back first.
         if let Some(renewal) = self.asks_renewed.as_ref() {
-            let now: Vec<SharedString> = asks.iter().cloned().map(SharedString::from).collect();
-            if renewal.over(&now) {
+            let shown: Vec<SharedString> = self
+                .asks_shown
+                .as_ref()
+                .map(|(_, shown)| shown.iter().cloned().map(SharedString::from).collect())
+                .unwrap_or_default();
+            if !renewal.over(&shown) {
+                if self
+                    .asks_shown
+                    .as_ref()
+                    .is_some_and(|(shown_id, _)| *shown_id == id)
+                {
+                    return;
+                }
+            } else {
                 self.asks_renewed = None;
             }
         }
@@ -4079,7 +4093,11 @@ impl DeckView {
                 // Only a row that was showing renews; one that had no
                 // questions simply gains them.
                 if !renewal.from.is_empty() {
-                    self.asks_carousel.renew(renewal.length(&to), window, cx);
+                    // The shelf drives its own window; this one only when the
+                    // row is drawn here.
+                    if !self.asks_outside {
+                        self.asks_carousel.renew(renewal.length(&to), window, cx);
+                    }
                     self.asks_renewed = Some(renewal);
                 }
                 self.asks_shown = Some((id, asks));
