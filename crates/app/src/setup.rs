@@ -426,6 +426,20 @@ fn tell() -> anyhow::Result<()> {
     // a colour should not be asked a question that reads as though nothing
     // happened last time.
     let again = agents.iter().all(|agent| agent.told(&home));
+    // Every deck keeps the skill it wrote up to date as it starts, so asking
+    // to update one that already matches would be a question with no answer.
+    // What is left to ask about is a copy somebody edited, or one a newer
+    // deck wrote, and those are theirs to overwrite.
+    if again && crate::skill::current(&home) {
+        println!(
+            "  {} {}",
+            accent("·"),
+            dim(&format!(
+                "{names} already have it, and it follows every upgrade"
+            ))
+        );
+        return Ok(());
+    }
     let question = if again {
         format!("Update the skill for {names}?")
     } else {
