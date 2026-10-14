@@ -177,19 +177,22 @@ pub fn install_all(home: &Path) -> anyhow::Result<Vec<Told>> {
     Ok(told)
 }
 
-/// Bring every copy of the skill deck has already put down up to date with
-/// this deck, and say which were rewritten.
+/// Bring every copy of the skill deck has put down up to date with this deck,
+/// and say which were rewritten.
 ///
 /// Every deck that starts runs this, so the skill follows the binary however
-/// the binary arrived: `deck upgrade` and the install script both start the
-/// new deck before it goes in, and an automatic update is followed by the next
-/// deck anybody opens. Before this only `deck setup` wrote the skill, and an
+/// the binary arrived. `deck upgrade`, the automatic update and the install
+/// script all start the new deck with `--version` before they are done, so the
+/// skill is current by the time any of them finishes, and the next agent
+/// session reads it. Before this only `deck setup` wrote the skill, and an
 /// upgraded deck went on being described to agents as the one it replaced.
 ///
-/// Only copies already there. An agent somebody said no to in setup has no
-/// copy, and is not given one behind their back. A copy that already matches
-/// is read and left alone, which is the case on every run but the first after
-/// an upgrade.
+/// Only copies deck put there, and only while they are still what it put
+/// there. An agent somebody said no to in setup has no copy and is not given
+/// one. A copy somebody has edited since no longer matches its stamp, and is
+/// theirs. A copy a newer deck wrote is left to it, so an old deck still on the
+/// machine does not drag the skill back each time it runs. A copy from before
+/// stamps existed was written by `deck setup`, and is taken as deck's.
 ///
 /// Quiet about failures: a skill that cannot be rewritten is no reason for
 /// `deck group` to fail, and `deck setup` is there to say why.
@@ -198,16 +201,63 @@ pub fn keep_up(home: &Path) -> Vec<PathBuf> {
     let own = AGENTS.iter().map(|agent| agent.skill_path(home));
     let mut rewritten = Vec::new();
     for at in shared.chain(own).map(|dir| dir.join("SKILL.md")) {
-        // Through a link this reads the shared copy, already rewritten above
-        // it, so it matches and is not written twice.
+        // Where it really is: a link, of the directory or of the file itself,
+        // is followed so the link stays a link. Through a directory link this
+        // is the shared copy, already rewritten above, so it is not written
+        // twice.
+        let Ok(at) = std::fs::canonicalize(&at) else {
+            continue;
+        };
         let Ok(was) = std::fs::read(&at) else {
             continue;
         };
-        if was != SKILL.as_bytes() && std::fs::write(&at, SKILL).is_ok() {
+        if was == SKILL.as_bytes() {
+            continue;
+        }
+        if let Some((by, wrote)) = stamp(&at)
+            && (wrote != fnv(&was) || crate::upgrade::newer(&by, RUNNING))
+        {
+            continue;
+        }
+        if write(&at).is_ok() {
             rewritten.push(at);
         }
     }
     rewritten
+}
+
+/// Whether every agent deck has told reads the skill this deck carries.
+#[must_use]
+pub fn current(home: &Path) -> bool {
+    found(home).iter().all(|agent| {
+        std::fs::read(agent.skill_path(home).join("SKILL.md"))
+            .is_ok_and(|was| was == SKILL.as_bytes())
+    })
+}
+
+/// The version this deck is, written beside every skill it writes.
+const RUNNING: &str = env!("CARGO_PKG_VERSION");
+
+/// Beside a `SKILL.md`, which deck wrote it and what it wrote.
+///
+/// A dot file, so no agent reads it as part of the skill.
+fn stamp_path(at: &Path) -> PathBuf {
+    at.with_file_name(".deck-stamp")
+}
+
+/// The version and fingerprint in `at`'s stamp, if it has one.
+fn stamp(at: &Path) -> Option<(String, u64)> {
+    let said = std::fs::read_to_string(stamp_path(at)).ok()?;
+    let (by, wrote) = said.trim().split_once(' ')?;
+    Some((by.to_string(), u64::from_str_radix(wrote, 16).ok()?))
+}
+
+/// FNV-1a: a fingerprint that is the same on every machine and every Rust,
+/// which the standard library's hasher does not promise.
+fn fnv(bytes: &[u8]) -> u64 {
+    bytes.iter().fold(0xcbf2_9ce4_8422_2325, |hash, byte| {
+        (hash ^ u64::from(*byte)).wrapping_mul(0x0100_0000_01b3)
+    })
 }
 
 /// What happened to one agent.
@@ -284,13 +334,29 @@ fn link(hop: &Path, at: &Path) -> std::io::Result<()> {
     }
 }
 
-/// Write the skill to `at`, making whatever directory it needs.
+/// Write the skill to `at`, making whatever directory it needs, and stamp it.
 fn write(at: &Path) -> anyhow::Result<()> {
     if let Some(dir) = at.parent() {
         std::fs::create_dir_all(dir)?;
     }
-    std::fs::write(at, SKILL)?;
+    replace(at, SKILL.as_bytes())?;
+    let wrote = format!("{RUNNING} {:x}\n", fnv(SKILL.as_bytes()));
+    replace(&stamp_path(at), wrote.as_bytes())?;
     Ok(())
+}
+
+/// Put `bytes` at `at` all at once.
+///
+/// Written beside it and renamed over it, because agents start sessions and
+/// run deck in parallel. One reading the skill while it was being written in
+/// place would get half of it.
+fn replace(at: &Path, bytes: &[u8]) -> std::io::Result<()> {
+    let name = at.file_name().unwrap_or_default().to_string_lossy();
+    let aside = at.with_file_name(format!(".{name}.{}", std::process::id()));
+    std::fs::write(&aside, bytes)?;
+    std::fs::rename(&aside, at).inspect_err(|_| {
+        let _ = std::fs::remove_file(&aside);
+    })
 }
 
 #[cfg(test)]
@@ -1227,6 +1293,12 @@ mod tests {
         );
     }
 
+    /// What 0.0.1 would have left at `at`: its own words, and its stamp.
+    fn an_older_deck_wrote(at: &Path) {
+        std::fs::write(at, "older").unwrap();
+        std::fs::write(stamp_path(at), format!("0.0.1 {:x}\n", fnv(b"older"))).unwrap();
+    }
+
     #[test]
     fn an_upgraded_deck_brings_the_skill_it_installed_with_it() {
         // The upgrade that left an agent reading a skill with no `ask` in it.
@@ -1238,11 +1310,11 @@ mod tests {
         std::fs::create_dir_all(home.join(".codex")).unwrap();
         install_all(&home).unwrap();
         let shared = home.join(".agents/skills/deck/SKILL.md");
-        std::fs::write(&shared, "older").unwrap();
+        an_older_deck_wrote(&shared);
 
         assert_eq!(
             keep_up(&home),
-            vec![shared.clone()],
+            vec![std::fs::canonicalize(&shared).unwrap()],
             "written once, through no link"
         );
         for at in [&shared, &home.join(".claude/skills/deck/SKILL.md")] {
@@ -1260,9 +1332,9 @@ mod tests {
         install_all(&home).unwrap();
         std::fs::create_dir_all(home.join(".cursor")).unwrap();
         let codex = home.join(".codex/skills/deck/SKILL.md");
-        std::fs::write(&codex, "older").unwrap();
+        an_older_deck_wrote(&codex);
 
-        assert_eq!(keep_up(&home), vec![codex.clone()]);
+        assert_eq!(keep_up(&home), vec![std::fs::canonicalize(&codex).unwrap()]);
         assert_eq!(std::fs::read_to_string(&codex).unwrap(), SKILL);
         assert!(
             !home.join(".cursor/skills/deck").exists(),
@@ -1272,5 +1344,82 @@ mod tests {
             !home.join(".agents/skills/deck").exists(),
             "nor a shared store"
         );
+    }
+
+    #[test]
+    fn a_skill_somebody_edited_is_theirs() {
+        let home = scratch("keep-up-edited");
+        std::fs::create_dir_all(home.join(".claude")).unwrap();
+        install_all(&home).unwrap();
+        let at = home.join(".claude/skills/deck/SKILL.md");
+        std::fs::write(&at, "mine now").unwrap();
+
+        assert!(keep_up(&home).is_empty());
+        assert_eq!(std::fs::read_to_string(&at).unwrap(), "mine now");
+        assert!(
+            !current(&home),
+            "and setup still has something to ask about"
+        );
+    }
+
+    #[test]
+    fn an_older_deck_does_not_drag_the_skill_back() {
+        // What a newer deck wrote, as this deck finds it: different words,
+        // stamped by a version past this one.
+        let home = scratch("keep-up-newer");
+        std::fs::create_dir_all(home.join(".claude")).unwrap();
+        install_all(&home).unwrap();
+        let at = home.join(".claude/skills/deck/SKILL.md");
+        let newer = "the skill of a deck still to come";
+        std::fs::write(&at, newer).unwrap();
+        std::fs::write(
+            stamp_path(&at),
+            format!("99.0.0 {:x}\n", fnv(newer.as_bytes())),
+        )
+        .unwrap();
+
+        assert!(keep_up(&home).is_empty());
+        assert_eq!(std::fs::read_to_string(&at).unwrap(), newer);
+    }
+
+    #[test]
+    fn a_skill_from_before_stamps_is_taken_as_decks_and_stamped() {
+        // Every machine set up by 0.1.5 or earlier.
+        let home = scratch("keep-up-unstamped");
+        std::fs::create_dir_all(home.join(".claude")).unwrap();
+        install_all(&home).unwrap();
+        let at = home.join(".claude/skills/deck/SKILL.md");
+        std::fs::write(&at, "older").unwrap();
+        std::fs::remove_file(stamp_path(&at)).unwrap();
+
+        assert_eq!(keep_up(&home).len(), 1);
+        assert_eq!(std::fs::read_to_string(&at).unwrap(), SKILL);
+        assert_eq!(
+            stamp(&at),
+            Some((RUNNING.to_string(), fnv(SKILL.as_bytes())))
+        );
+        assert!(current(&home));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_skill_file_that_is_a_link_stays_a_link() {
+        // Dotfiles kept elsewhere and linked in, file by file.
+        let home = scratch("keep-up-file-link");
+        let kept = home.join("dotfiles/SKILL.md");
+        std::fs::create_dir_all(kept.parent().unwrap()).unwrap();
+        std::fs::write(&kept, "older").unwrap();
+        let dir = home.join(".claude/skills/deck");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::os::unix::fs::symlink(&kept, dir.join("SKILL.md")).unwrap();
+
+        keep_up(&home);
+        assert!(
+            dir.join("SKILL.md")
+                .symlink_metadata()
+                .unwrap()
+                .is_symlink()
+        );
+        assert_eq!(std::fs::read_to_string(&kept).unwrap(), SKILL);
     }
 }
