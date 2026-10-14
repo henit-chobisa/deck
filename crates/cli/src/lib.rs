@@ -718,8 +718,8 @@ fn unseen(ch: char) -> bool {
 fn questions(asks: &[String]) -> anyhow::Result<Vec<String>> {
     anyhow::ensure!(
         asks.len() <= MOST_ASKS,
-        "{} questions: a group offers at most {MOST_ASKS}. Keep the ones a curious \
-         reader would ask first",
+        "{} questions: a group offers at most {MOST_ASKS}. Keep the ones the reader \
+         is likeliest to ask",
         asks.len()
     );
     let mut kept: Vec<String> = Vec::with_capacity(asks.len());

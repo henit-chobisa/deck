@@ -29,7 +29,7 @@ every five minutes whether one is due):
 | `questions_asked`, `questions_edited` | `3`, `1` | Suggested questions clicked, or ⌘-clicked (Ctrl-clicked on Windows and Linux) into the comment box. |
 | `walks` | `1` | Walks started. |
 | `upgrades` | `1` | Upgrades to a newer deck. |
-| `skills_updated` | `1` | An agent's copy of the deck skill brought up to date after an upgrade. |
+| `skills_updated` | `1` | Agents' copies of the deck skill rewritten to match a newer deck: one per agent. |
 | `agents` | `{"claude-code": 4}` | Which agent created the decks: `claude-code`, `codex`, `cursor`, `amp`, `gemini` or `other`. Worked out from the *names* of environment variables, never their values. |
 
 A count that is zero is left out, and so is `agents` when no deck was created.

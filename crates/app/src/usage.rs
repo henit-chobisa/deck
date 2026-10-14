@@ -78,6 +78,24 @@ pub enum Count {
 }
 
 impl Count {
+    /// Every count there is, so the published list can be held to it.
+    #[cfg(test)]
+    const ALL: &[Self] = &[
+        Self::DeckCreated,
+        Self::DeckOpened,
+        Self::GroupWritten,
+        Self::GroupViewed,
+        Self::Comment,
+        Self::Review,
+        Self::AskNow,
+        Self::QuestionsOffered,
+        Self::QuestionAsked,
+        Self::QuestionEdited,
+        Self::Walk,
+        Self::Upgrade,
+        Self::SkillUpdated,
+    ];
+
     /// Its name in what is sent.
     fn name(self) -> &'static str {
         match self {
@@ -608,6 +626,25 @@ mod tests {
             off_given(&yes(), &env(&[("DO_NOT_TRACK", "0")]), true, k),
             None
         );
+    }
+
+    #[test]
+    fn every_count_is_on_the_page_that_says_what_is_sent() {
+        // The promise is that the page lists everything. A count added here
+        // and not there would be sent without anybody having been told.
+        let page = include_str!("../../../site/telemetry/index.html");
+        let doc = include_str!("../../../docs/telemetry.md");
+        for count in Count::ALL {
+            let name = count.name();
+            assert!(
+                page.contains(&format!("<code>{name}</code>")),
+                "{name} is not on the site"
+            );
+            assert!(
+                doc.contains(&format!("`{name}`")),
+                "{name} is not in docs/telemetry.md"
+            );
+        }
     }
 
     #[test]
