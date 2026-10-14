@@ -752,8 +752,8 @@ deck group <path> --say "…" --ref "…" \
 People rarely type a fresh, clever question about one detail. They make a
 handful of moves, again and again: *say that simpler*, *draw it*, *does the
 other one do this too*, *are you sure*, *do we need this at all*. The group in
-front of them tells you which move is coming. Do not invent questions. Fill
-slots with moves.
+front of them tells you which one is coming. So do not hunt for a fresh,
+clever question. Fill the slots below with the moves they make.
 
 ### Read the reader first
 
@@ -767,7 +767,7 @@ decided.
 ### Fill the slots
 
 **1. Say it simpler, about the exact thing. Always.** Name the one term, field
-or mechanism in this group they have not used themselves: *What's `txn_ref`,
+or mechanism in this group they have not used themselves: *What's txn_ref,
 basics first?* Only when nothing stands out, use *Say that again, simpler*.
 Not following is the most common reason anyone types.
 
@@ -777,13 +777,13 @@ Not following is the most common reason anyone types.
 - Three or more parts, or a before and after → *Draw it: <A> → <B> → <C>*.
 - A subsystem named but not shown → *Show me <function> where it <does X>*.
 
-**3. The strongest probe this group invites.** Take the first that applies:
+**3. The question this group raises most.** Take the first that applies:
 - **Reuse.** Something new is added (a helper, endpoint, model, step) → *Is
   there an existing <kind> we can reuse?* With a base class on screen → *Could
   this live in <base>?*
-- **Sibling.** One importer, level, mode or route is shown doing something.
-  Name the counterpart the group never mentions → *Does <sibling> also
-  <behaviour>?*
+- **The other one.** One importer, level, mode or route is shown doing
+  something. Name its counterpart the group never mentions → *Does <the other
+  one> also <behaviour>?*
 - **Edge.** An optional key → *What if <key> is null?* A failure → *Would a
   retry fix it?* A new hop or default → *What does <it> cost or break?* One
   hole patched → *Will more like this turn up?*
@@ -799,14 +799,17 @@ Not following is the most common reason anyone types.
 - **A simpler way.** Code you built → *Is there a simpler way to <do X>?*
 - **Do we need it.** The narration says *rare*, *unlikely* or *not shipped* →
   *Do we need this at all?*
-- **Blast radius.** The change sits in shared code → *Does this hit every
-  <route>, not just <this one>?*
+- **How far it reaches.** The change sits in shared code → *Does this hit
+  every <route>, not just <this one>?*
 
 **5. Only when the group lists options:** *What are the tradeoffs between <A>
-and <B>?* Otherwise, a second probe from slot 3.
+and <B>?* Otherwise, a second question from slot 3.
 
 When the group ends on a bottom line (*no UI change*, *only X moves*), a
-confirm pill can take a weaker slot: *So nothing changes on <X>?*
+confirm pill takes slot 5: *So nothing changes on <X>?*
+
+**Three is enough when the group is small.** Keep slot 1, slot 4, and the
+better of 2 and 3.
 
 ### Writing them
 
@@ -815,8 +818,10 @@ confirm pill can take a weaker slot: *So nothing changes on <X>?*
   would type it. Keep the plain frames, like *Say that again, simpler*, the same
   every time; that sameness is what makes them findable.
 - **Short.** Under about 60 characters; `deck group` refuses past 90.
-- **Not already answered.** A pill the narration or a later group already
-  answers is dropped and replaced by the next one down.
+- **Not already answered.** A pill the narration above it already answers is
+  dropped and replaced by the next one down. In a group that asks them to
+  predict, leave out the pill that gives the answer away: no *Show me the
+  diff* before the reveal.
 - **Never the decision.** No *Go with A*, *Lock it*, *Approve*, and no *Which
   would you pick?* Deciding is the reader's, and it is the reason this deck
   exists. When a group asks for a decision, the pills help them decide well

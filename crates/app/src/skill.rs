@@ -1205,6 +1205,7 @@ mod tests {
         assert!(SKILL.contains("### Read the reader first"));
         assert!(SKILL.contains("**Never the decision.**"));
         assert!(SKILL.contains("Doubt the claim."));
+        let mut examples = 0;
         for example in SKILL
             .lines()
             .filter_map(|line| line.trim().strip_prefix("--ask \""))
@@ -1214,6 +1215,12 @@ mod tests {
                 ask.chars().count() <= 60,
                 "{ask} is longer than it tells the agent to be"
             );
+            assert!(
+                !ask.contains('`'),
+                "{ask}: a backtick inside double quotes runs in the shell"
+            );
+            examples += 1;
         }
+        assert!(examples >= 3, "the method shows a whole row of pills");
     }
 }

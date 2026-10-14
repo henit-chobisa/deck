@@ -74,9 +74,9 @@ pub struct Group {
     pub refs: Vec<Ref>,
     /// Questions worth asking about this group, at most five.
     ///
-    /// Hooks rather than a quiz: the agent writes what a curious reader would
-    /// want to know next, from the basics underneath the claim to what it puts
-    /// at risk. The window offers them as pills; pressing one asks it.
+    /// What the reader was most likely to type next, written by the agent
+    /// from the conversation and the group. The window offers them as pills;
+    /// pressing one asks it.
     /// Optional, and absent from a group written before it existed.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub asks: Vec<String>,
