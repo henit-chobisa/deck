@@ -904,7 +904,11 @@ mod tests {
         assert!(row.light(2).is_some(), "crossing as it opens");
         assert_eq!(row.light(1), None, "and only on the pill that opened");
         open(now - SHIMMER);
-        assert_eq!(row.light(2), None, "crossed once, and dark while the pointer rests");
+        assert_eq!(
+            row.light(2),
+            None,
+            "crossed once, and dark while the pointer rests"
+        );
     }
 
     #[test]
