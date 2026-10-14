@@ -56,8 +56,7 @@ pub struct Renewal {
 /// How long a question takes to sink away, one after another.
 const SINK: Duration = Duration::from_millis(1000);
 const SINK_STAGGER: Duration = Duration::from_millis(120);
-/// How far it sinks, and how small it gets, as it goes under.
-const SINK_BY: f32 = 10.;
+/// How small it gets as it goes under.
 const SHRINK: f32 = 0.86;
 /// How far under it is before the row closes over where it was.
 const CLOSE_FROM: f32 = 0.35;
@@ -173,7 +172,11 @@ const HAND: Duration = Duration::from_millis(320);
 
 /// How long the pointer rests on a pill before it opens. Passed over on the
 /// way somewhere else, a pill stays shut, and the row does not ripple.
-const REST: Duration = Duration::from_millis(90);
+const REST: Duration = Duration::from_millis(150);
+
+/// How long a pill stays open once the pointer has left it. Brushed off and
+/// back, it never closed; left for good, it closes after a breath.
+const LEAVE: Duration = Duration::from_millis(150);
 
 /// How long the spotlight waits, once the pointer is off every pill, before
 /// it lifts: crossing the gap from one pill to the next is not leaving, and
@@ -472,7 +475,7 @@ impl Carousel {
     /// Pill `ix` closes, if it is the one open.
     fn shut(&self, ix: usize) {
         if let Some(open) = self.open.get().filter(|open| open.ix == ix) {
-            let now = Instant::now();
+            let now = Instant::now() + LEAVE;
             self.closing.set(Some(Opening {
                 from: self.openness(ix),
                 since: now,
@@ -494,6 +497,29 @@ impl Carousel {
         let now = Instant::now();
         if on {
             if self.open.get().is_some_and(|open| open.ix == ix) {
+                return;
+            }
+            // Back before it began to close: it never did. Open as it was,
+            // its light already crossed.
+            if let Some(closing) = self
+                .closing
+                .get()
+                .filter(|closing| closing.ix == ix && now < closing.since)
+            {
+                self.closing.set(None);
+                self.open.set(Some(Opening {
+                    since: now.checked_sub(SHIMMER.max(OPEN)).unwrap_or(now),
+                    from: 1.,
+                    follow: false,
+                    span: OPEN,
+                    ..closing
+                }));
+                self.spot.set(Some(Spot {
+                    on: true,
+                    since: now,
+                    from: self.spotlight(),
+                }));
+                self.drive(OPEN, window, cx);
                 return;
             }
             let from = self.openness(ix);
@@ -541,7 +567,11 @@ impl Carousel {
         } else {
             self.shut(ix);
         }
-        self.drive(REST + HAND + OPEN.max(CLOSE + GRACE + LIFT), window, cx);
+        self.drive(
+            REST + HAND + OPEN.max(LEAVE + CLOSE + GRACE + LIFT),
+            window,
+            cx,
+        );
     }
 
     /// Start sliding one question back, or one on.
@@ -871,24 +901,38 @@ pub fn render(
                             .as_secs_f32();
                         let room = calm(age / ROOM.as_secs_f32());
                         let slid = calm((age - SLIDE_AFTER.as_secs_f32()) / SLIDE.as_secs_f32());
-                        let whole = natural(&ask);
-                        // The row opens round the whole pill, so its words
-                        // are uncovered rather than cut short as it comes.
-                        made[n].take().map(|pill| {
+                        // Pressable only once it has arrived; until then it is
+                        // drawn as the pill it is becoming, rounded at both
+                        // ends, its words uncovered as the row opens round it.
+                        made[n].take();
+                        Some(
                             div()
                                 .flex_none()
-                                .w(px(whole * room))
+                                .min_w_0()
+                                .w(px(natural(&ask) * room))
+                                .ml(px(-GAP * (1. - room)))
                                 .h(px(PILL))
-                                .rounded(px(corner))
-                                .overflow_hidden()
+                                .relative()
+                                .left(px(SLIDE_BY * (1. - slid)))
                                 .opacity(slid)
+                                .rounded(px(corner))
+                                .border_1()
+                                .border_color(paint(palette.edge))
+                                .bg(paint(palette.band))
+                                .overflow_hidden()
+                                .flex()
+                                .items_center()
                                 .child(
-                                    pill.w(px(whole))
-                                        .relative()
-                                        .left(px(SLIDE_BY * (1. - slid))),
+                                    div()
+                                        .flex_none()
+                                        .pl(px(13.))
+                                        .whitespace_nowrap()
+                                        .text_size(px(13.))
+                                        .text_color(paint(palette.fg))
+                                        .child(ask),
                                 )
-                                .into_any_element()
-                        })
+                                .into_any_element(),
+                        )
                     }
                     Part::Sinks(k) => {
                         let age = since.saturating_sub(nth(SINK_STAGGER, k)).as_secs_f32();
@@ -896,29 +940,43 @@ pub fn render(
                         let gone = calm(under);
                         let closed = calm((under - CLOSE_FROM) / (1. - CLOSE_FROM));
                         let size = 1. - (1. - SHRINK) * gone;
-                        // One piece: the pill itself grows smaller and
-                        // narrower, ends and all, its words cut inside it.
+                        let wide = natural(&ask) * size * (1. - closed);
+                        // Gone under: nothing is left on the row, not even a
+                        // sliver of border holding a gap open.
+                        if under >= 1. || wide < 3. {
+                            return None;
+                        }
+                        // One piece, the pill itself: it grows smaller and
+                        // narrower, ends and all, with its words cut inside
+                        // it. It shrinks down onto the row's floor rather than
+                        // dropping through it — the shelf is a pill tall, and
+                        // anything lower is cut off by the window's edge.
                         Some(
                             div()
                                 .flex_none()
-                                .w(px(natural(&ask) * size * (1. - closed)))
+                                .min_w_0()
+                                .w(px(wide))
                                 .mr(px(-GAP * closed))
                                 .h(px(PILL * size))
                                 .relative()
-                                .top(px(SINK_BY * gone))
+                                .top(px(PILL * (1. - size) / 2.))
                                 .opacity(1. - gone)
-                                .flex()
-                                .items_center()
-                                .overflow_hidden()
                                 .rounded(px(corner * size))
                                 .border_1()
                                 .border_color(paint(palette.edge))
                                 .bg(paint(palette.band))
-                                .px(px(13. * size))
-                                .text_size(px(13. * size))
-                                .text_color(paint(palette.fg))
-                                .whitespace_nowrap()
-                                .child(ask)
+                                .overflow_hidden()
+                                .flex()
+                                .items_center()
+                                .child(
+                                    div()
+                                        .flex_none()
+                                        .pl(px(13. * size))
+                                        .whitespace_nowrap()
+                                        .text_size(px(13. * size))
+                                        .text_color(paint(palette.fg))
+                                        .child(ask),
+                                )
                                 .into_any_element(),
                         )
                     }
