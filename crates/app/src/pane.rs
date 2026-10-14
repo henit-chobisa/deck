@@ -331,8 +331,13 @@ pub fn sideways(
     let length = (text.chars().count() as f32).mul_add(size * 0.68, 10.);
     let across = size * 1.5;
     let turn = if up { -90 } else { 90 };
+    // The picture finds its own fonts, apart from the window's: a face the
+    // window draws with can be one it cannot find, and then it fell back to a
+    // serif. So the family goes with faces every platform has, and the
+    // generic last, and a missing one falls back to a monospace.
+    let family = family.replace(['"', '<', '>', '&'], "");
     let svg = format!(
-        r##"<svg xmlns="http://www.w3.org/2000/svg" width="{across}" height="{length}" viewBox="0 0 {across} {length}"><text x="{cx}" y="{cy}" transform="rotate({turn} {cx} {cy})" font-family="{family}" font-size="{size}" font-weight="{weight}" text-anchor="middle" dominant-baseline="central" fill="#000">{text}</text></svg>"##,
+        r##"<svg xmlns="http://www.w3.org/2000/svg" width="{across}" height="{length}" viewBox="0 0 {across} {length}"><text x="{cx}" y="{cy}" transform="rotate({turn} {cx} {cy})" font-family="{family}, SF Mono, Menlo, Consolas, DejaVu Sans Mono, monospace" font-size="{size}" font-weight="{weight}" text-anchor="middle" dominant-baseline="central" fill="#000">{text}</text></svg>"##,
         across = across,
         length = length,
         cx = across / 2.,

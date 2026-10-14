@@ -755,6 +755,13 @@ pub fn renew_asks(root: &Path, id: &str, asks: &[String]) -> anyhow::Result<Path
         "answer first: `deck asks` renews a group's questions after you have answered \
          one with `deck say`, and before you go back to `deck wait`"
     );
+    // Long enough after the answer and the window has stopped watching: a
+    // renewal now would be said to work and never be seen.
+    anyhow::ensure!(
+        is_heard(root),
+        "too late: the reader's window stopped waiting for you a while ago. Renew the \
+         questions straight after your next answer"
+    );
     let group = std::fs::read_dir(root)
         .with_context(|| format!("{} is not a deck", root.display()))?
         .flatten()
@@ -774,8 +781,8 @@ pub fn renew_asks(root: &Path, id: &str, asks: &[String]) -> anyhow::Result<Path
     );
     let path = renewed_path(root, id);
     write_atomically(&path, &serde_json::to_vec_pretty(&Renewed { asks: after })?)?;
-    // Still here: the window watches a finished deck only while somebody is,
-    // and a row renewed a while after the answer must still be seen.
+    // Still here, and back soon: the window watches a finished deck only
+    // while somebody is.
     let _ = std::fs::write(root.join(ANSWERING), b"said");
     Ok(path)
 }
@@ -1682,6 +1689,20 @@ mod tests {
         );
         // Renewing says the agent is still there, so the window keeps looking.
         assert_eq!(presence(&root), Presence::Answering);
+        // And one already listening again is there too.
+        listening(&root);
+        renew_asks(&root, "g1", &asks(&["b?"])).unwrap();
+        stopped_listening(&root);
+
+        // Long after the answer the window has stopped waiting: a renewal
+        // then would report success and never be seen, so it is refused.
+        std::fs::File::options()
+            .write(true)
+            .open(root.join(ANSWERING))
+            .unwrap()
+            .set_modified(std::time::SystemTime::now() - std::time::Duration::from_secs(30 * 60))
+            .unwrap();
+        assert!(renew_asks(&root, "g1", &asks(&["z?"])).is_err());
     }
 
     #[test]

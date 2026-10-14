@@ -860,6 +860,9 @@ pub struct DeckView {
     asks_shown: Option<(String, Vec<String>)>,
     /// The renewal playing on the row, if one is.
     asks_renewed: Option<crate::asks::Renewal>,
+    /// A wake-up for when the renewal playing ends, so one queued behind it
+    /// starts then even if nothing else draws the deck.
+    asks_wake: Option<Task<()>>,
     /// The questions' own window under the deck, where the platform allows
     /// one: its handle, and both native windows so it can be hung.
     #[cfg(target_os = "macos")]
@@ -1095,6 +1098,7 @@ impl DeckView {
             asks_carousel: crate::asks::Carousel::default(),
             asks_shown: None,
             asks_renewed: None,
+            asks_wake: None,
             #[cfg(target_os = "macos")]
             shelf: None,
             asks_outside: false,
@@ -4074,6 +4078,23 @@ impl DeckView {
                     .as_ref()
                     .is_some_and(|(shown_id, _)| *shown_id == id)
                 {
+                    if self
+                        .asks_shown
+                        .as_ref()
+                        .is_some_and(|(_, shown)| *shown != asks)
+                        && self.asks_wake.is_none()
+                    {
+                        let left = renewal
+                            .length(&shown)
+                            .saturating_sub(renewal.since.elapsed());
+                        self.asks_wake = Some(cx.spawn(async move |view, cx| {
+                            cx.background_executor().timer(left).await;
+                            let _ = view.update(cx, |deck, cx| {
+                                deck.asks_wake = None;
+                                cx.notify();
+                            });
+                        }));
+                    }
                     return;
                 }
             } else {
@@ -4156,6 +4177,18 @@ impl DeckView {
                 // Moving between the deck and the shelf, the row is a new one:
                 // a pill held open in the old place hears no more of the pointer.
                 self.asks_carousel.reset();
+                // Brought back in mid-renewal, the rest of it plays here.
+                if !outside
+                    && let Some(renewal) = self.asks_renewed.as_ref()
+                    && let Some((_, shown)) = self.asks_shown.as_ref()
+                {
+                    let to: Vec<SharedString> =
+                        shown.iter().cloned().map(SharedString::from).collect();
+                    let left = renewal.length(&to).saturating_sub(renewal.since.elapsed());
+                    if !left.is_zero() {
+                        self.asks_carousel.renew(left, window, cx);
+                    }
+                }
             }
             self.asks_outside = outside;
             let shown = if outside { row } else { None };

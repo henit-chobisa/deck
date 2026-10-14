@@ -105,6 +105,13 @@ impl Renewal {
     }
 }
 
+/// How far under the `k`th sinking question is, `since` the renewal began:
+/// from 0, standing, to 1, gone and no longer drawn.
+fn under(since: Duration, k: usize) -> f32 {
+    let age = since.saturating_sub(nth(SINK_STAGGER, k)).as_secs_f32();
+    (age / SINK.as_secs_f32()).clamp(0., 1.)
+}
+
 /// One question on a renewing row, and what it is doing.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Part {
@@ -246,6 +253,12 @@ pub struct Carousel {
     /// its place in the row, except while the row renews: then questions on
     /// their way out are still drawn among them.
     places: Rc<std::cell::RefCell<Vec<usize>>>,
+    /// Until when a renewal is playing: the row is moving even when the pill
+    /// under the pointer has settled.
+    renewing: Rc<Cell<Option<Instant>>>,
+    /// Each renewing question's whole width, measured once as the renewal
+    /// starts rather than shaped again on every frame of it.
+    widths: Rc<std::cell::RefCell<std::collections::HashMap<SharedString, f32>>>,
 }
 
 /// One pill opening or closing: which, since when, and how open it was then.
@@ -298,6 +311,8 @@ impl Carousel {
     /// long as the renewal takes.
     pub fn renew(&self, length: Duration, window: &Window, cx: &mut App) {
         self.release();
+        self.renewing.set(Some(Instant::now() + length));
+        self.widths.borrow_mut().clear();
         self.drive(length, window, cx);
     }
 
@@ -391,6 +406,13 @@ impl Carousel {
     /// open, its light already crossed, nothing sliding, closing or
     /// changing brightness. The loop keeps watching, but asks for no frames.
     fn resting(&self) -> bool {
+        if self
+            .renewing
+            .get()
+            .is_some_and(|until| Instant::now() < until)
+        {
+            return false;
+        }
         let Some(open) = self.open.get() else {
             return false;
         };
@@ -880,17 +902,25 @@ pub fn render(
     *carousel.places.borrow_mut() = match renewing {
         None => (0..row.asks.len()).collect(),
         Some(renewal) => {
-            let drawn = parts(&renewal.from, &row.asks);
-            (0..row.asks.len())
-                .map(|n| {
-                    drawn
-                        .iter()
-                        .position(|(_, part)| {
-                            matches!(part, Part::Stays(at) | Part::Arrives(at, _) if *at == n)
-                        })
-                        .unwrap_or(n)
-                })
-                .collect()
+            // Counted as they are drawn: a question gone under is no longer
+            // among the children, and must not hold a place.
+            let since = renewal.since.elapsed();
+            let mut places: Vec<usize> = (0..row.asks.len()).collect();
+            let mut drawn = 0;
+            for (_, part) in parts(&renewal.from, &row.asks) {
+                match part {
+                    Part::Stays(n) | Part::Arrives(n, _) => {
+                        places[n] = drawn;
+                        drawn += 1;
+                    }
+                    Part::Sinks(k) => {
+                        if under(since, k) < 1. {
+                            drawn += 1;
+                        }
+                    }
+                }
+            }
+            places
         }
     };
     let pills = match renewing {
@@ -902,6 +932,9 @@ pub fn render(
         Some(renewal) => {
             let since = renewal.since.elapsed();
             let natural = |ask: &SharedString| {
+                if let Some(wide) = carousel.widths.borrow().get(ask) {
+                    return *wide;
+                }
                 let run = TextRun {
                     len: ask.len(),
                     font: window.text_style().font(),
@@ -917,7 +950,9 @@ pub fn render(
                         .width,
                 );
                 // A hair over, so the words are never a pixel short and cut.
-                (words + 2. * 13. + 2. + 1.).min(WIDEST + hint_w)
+                let wide = (words + 2. * 13. + 2. + 1.).min(WIDEST + hint_w);
+                carousel.widths.borrow_mut().insert(ask.clone(), wide);
+                wide
             };
             parts(&renewal.from, &row.asks)
                 .into_iter()
@@ -963,15 +998,14 @@ pub fn render(
                         )
                     }
                     Part::Sinks(k) => {
-                        let age = since.saturating_sub(nth(SINK_STAGGER, k)).as_secs_f32();
-                        let under = (age / SINK.as_secs_f32()).clamp(0., 1.);
+                        let under = under(since, k);
                         let gone = calm(under);
                         let closed = calm((under - CLOSE_FROM) / (1. - CLOSE_FROM));
                         let size = 1. - (1. - SHRINK) * gone;
                         let wide = natural(&ask) * size * (1. - closed);
                         // Gone under: nothing is left on the row, not even a
                         // sliver of border holding a gap open.
-                        if under >= 1. || wide < 3. {
+                        if under >= 1. {
                             return None;
                         }
                         // One piece, the pill itself: it grows smaller and
