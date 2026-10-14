@@ -86,9 +86,6 @@ const LIFT: Duration = Duration::from_millis(200);
 /// slow enough to be followed, not flashed.
 const SHIMMER: Duration = Duration::from_millis(1800);
 
-/// The breath between one crossing of the light and the next.
-const PAUSE: Duration = Duration::from_millis(700);
-
 /// How lit a point of a question is — `place` from its start at 0 to its end
 /// at 1 — `t` of the way through the shimmer: a soft band of light, crossing
 /// left to right, gone by the end.
@@ -276,7 +273,7 @@ impl Carousel {
     }
 
     /// Whether nothing on the row is moving this frame: a pill held fully
-    /// open, the light between crossings, nothing sliding, closing or
+    /// open, its light already crossed, nothing sliding, closing or
     /// changing brightness. The loop keeps watching, but asks for no frames.
     fn resting(&self) -> bool {
         let Some(open) = self.open.get() else {
@@ -313,9 +310,9 @@ impl Carousel {
     /// How far the light has crossed pill `ix`, while it is crossing.
     fn light(&self, ix: usize) -> Option<f32> {
         let open = self.open.get().filter(|open| open.ix == ix)?;
-        // Again and again while the pointer stays, with a breath between.
-        let round = SHIMMER + PAUSE;
-        let t = (age(open.since) % round.as_secs_f32()) / SHIMMER.as_secs_f32();
+        // Once, as the pill opens. Crossing again and again while the pointer
+        // rested read as a pill asking to be pressed, not one being read.
+        let t = age(open.since) / SHIMMER.as_secs_f32();
         (t < 1.).then_some(t)
     }
 
@@ -885,6 +882,33 @@ mod tests {
         assert!(shimmer(0.5, 0.5) > 0.9, "lit where the light is");
         assert_eq!(shimmer(0., 0.5), 0., "and only there");
         assert_eq!(shimmer(1., 0.5), 0.);
+    }
+
+    #[test]
+    fn a_pill_is_lit_once_while_it_opens_and_not_after() {
+        let row = Carousel::default();
+        let open = |since| {
+            row.open.set(Some(Opening {
+                ix: 2,
+                since,
+                from: 0.,
+                at: 0.,
+                follow: false,
+                span: OPEN,
+            }))
+        };
+        let now = Instant::now();
+        open(now + Duration::from_millis(90));
+        assert_eq!(row.light(2), Some(0.), "waiting out the rest, not yet lit");
+        open(now);
+        assert!(row.light(2).is_some(), "crossing as it opens");
+        assert_eq!(row.light(1), None, "and only on the pill that opened");
+        open(now - SHIMMER);
+        assert_eq!(
+            row.light(2),
+            None,
+            "crossed once, and dark while the pointer rests"
+        );
     }
 
     #[test]
