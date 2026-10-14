@@ -6,7 +6,7 @@
 # main, so it was refused (v0.1.6). This asks for the site to be built from
 # main instead. A run started with the workflow token still starts when it is
 # a workflow_dispatch.
-name: Changelog
+name: Rebuild site on release
 
 on:
   release:
