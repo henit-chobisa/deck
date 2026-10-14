@@ -1198,7 +1198,7 @@ mod tests {
     fn the_pills_are_the_readers_moves_and_never_their_decision() {
         // Measured against what one reader actually typed into 81 groups:
         // the pills that landed were moves (say it simpler, are you sure,
-        // does the sibling do this too), named after the exact thing on
+        // does the other one do this too), named after the exact thing on
         // screen. And a pill that decides for them takes away the one thing
         // deck exists to leave with the reader.
         assert!(SKILL.contains("two of them are what the reader was about to type"));
@@ -1219,6 +1219,9 @@ mod tests {
                 !ask.contains('`'),
                 "{ask}: a backtick inside double quotes runs in the shell"
             );
+            for decision in ["Go with", "Lock it", "Approve", "would you pick"] {
+                assert!(!ask.contains(decision), "{ask}: a pill never decides");
+            }
             examples += 1;
         }
         assert!(examples >= 3, "the method shows a whole row of pills");

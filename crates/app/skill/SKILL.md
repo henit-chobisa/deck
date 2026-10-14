@@ -746,7 +746,7 @@ deck group <path> --say "…" --ref "…" \
   --ask "What's an outbox, basics first?" \
   --ask "Draw it: enqueue → worker → email" \
   --ask "Does the refund worker also retry forever?" \
-  --ask "Are you sure the PDF is the slow part? Show me"
+  --ask "Are you sure the PDF is slow? Show me where."
 ```
 
 People rarely type a fresh, clever question about one detail. They make a
@@ -806,20 +806,22 @@ Not following is the most common reason anyone types.
 and <B>?* Otherwise, a second question from slot 3.
 
 When the group ends on a bottom line (*no UI change*, *only X moves*), a
-confirm pill takes slot 5: *So nothing changes on <X>?*
+confirm pill takes slot 5, unless the group lists options; then the
+tradeoffs pill keeps it. *So nothing changes on <X>?*
 
-**Three is enough when the group is small.** Keep slot 1, slot 4, and the
+**Three is enough when the group is small**: one ref and a short say. Keep slot 1, slot 4, and the
 better of 2 and 3.
 
 ### Writing them
 
 - **Their names, their voice.** Fill every <placeholder> with this group's own
-  file, field, function, number or sibling. Write it in first person, as they
+  file, field, function, number or other one. Write it in first person, as they
   would type it. Keep the plain frames, like *Say that again, simpler*, the same
   every time; that sameness is what makes them findable.
 - **Short.** Under about 60 characters; `deck group` refuses past 90.
 - **Not already answered.** A pill the narration above it already answers is
-  dropped and replaced by the next one down. In a group that asks them to
+  dropped and replaced by the next one down. For slot 1, that means *Say
+  that again, simpler*. In a group that asks them to
   predict, leave out the pill that gives the answer away: no *Show me the
   diff* before the reveal.
 - **Never the decision.** No *Go with A*, *Lock it*, *Approve*, and no *Which

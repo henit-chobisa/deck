@@ -72,7 +72,7 @@ pub struct Group {
     /// The evidence for this one claim. One pane each.
     #[serde(default)]
     pub refs: Vec<Ref>,
-    /// Questions worth asking about this group, at most five.
+    /// What the reader is likeliest to ask about this group, at most five.
     ///
     /// What the reader was most likely to type next, written by the agent
     /// from the conversation and the group. The window offers them as pills;
