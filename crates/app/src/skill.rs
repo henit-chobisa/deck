@@ -211,13 +211,30 @@ pub fn keep_up(home: &Path) -> Vec<PathBuf> {
         let Ok(was) = std::fs::read(&at) else {
             continue;
         };
+        let ours = format!("{RUNNING} {:x}\n", fnv(SKILL.as_bytes()));
+        let said = std::fs::read_to_string(stamp_path(&at)).ok();
         if was == SKILL.as_bytes() {
+            // Already this deck's words. Stamped if it is not yet, so an edit
+            // made to it later is seen as one; and if a write was cut off
+            // between the skill and its stamp, the stamp catches up.
+            if said.as_deref() != Some(ours.as_str()) {
+                let _ = replace(&stamp_path(&at), ours.as_bytes());
+            }
             continue;
         }
-        if let Some((by, wrote)) = stamp(&at)
-            && (wrote != fnv(&was) || crate::upgrade::newer(&by, RUNNING))
-        {
-            continue;
+        // No stamp: written by `deck setup` before stamps existed, and deck's.
+        // A stamp: deck's only while the words are still the ones it wrote,
+        // and only for a deck strictly newer than the one that wrote them. The
+        // same version with other words is a second build of it, and two
+        // builds that each took the skill back would trade it on every run.
+        // A stamp that will not read is nobody's to guess at.
+        if let Some(said) = said {
+            let Some((by, wrote)) = stamped(&said) else {
+                continue;
+            };
+            if wrote != fnv(&was) || !crate::upgrade::newer(RUNNING, &by) {
+                continue;
+            }
         }
         if write(&at).is_ok() {
             rewritten.push(at);
@@ -246,8 +263,13 @@ fn stamp_path(at: &Path) -> PathBuf {
 }
 
 /// The version and fingerprint in `at`'s stamp, if it has one.
+#[cfg(test)]
 fn stamp(at: &Path) -> Option<(String, u64)> {
-    let said = std::fs::read_to_string(stamp_path(at)).ok()?;
+    stamped(&std::fs::read_to_string(stamp_path(at)).ok()?)
+}
+
+/// The version and fingerprint a stamp says.
+fn stamped(said: &str) -> Option<(String, u64)> {
     let (by, wrote) = said.trim().split_once(' ')?;
     Some((by.to_string(), u64::from_str_radix(wrote, 16).ok()?))
 }
@@ -1421,5 +1443,51 @@ mod tests {
                 .is_symlink()
         );
         assert_eq!(std::fs::read_to_string(&kept).unwrap(), SKILL);
+    }
+
+    #[test]
+    fn a_skill_already_current_is_stamped_so_a_later_edit_is_seen() {
+        let home = scratch("keep-up-restamp");
+        std::fs::create_dir_all(home.join(".claude")).unwrap();
+        install_all(&home).unwrap();
+        let at = home.join(".claude/skills/deck/SKILL.md");
+        std::fs::remove_file(stamp_path(&at)).unwrap();
+
+        assert!(keep_up(&home).is_empty(), "nothing to rewrite");
+        assert!(stamp(&at).is_some(), "but now stamped");
+        std::fs::write(&at, "mine now").unwrap();
+        keep_up(&home);
+        assert_eq!(std::fs::read_to_string(&at).unwrap(), "mine now");
+    }
+
+    #[test]
+    fn two_builds_of_one_version_do_not_trade_the_skill() {
+        let home = scratch("keep-up-same-version");
+        std::fs::create_dir_all(home.join(".claude")).unwrap();
+        install_all(&home).unwrap();
+        let at = home.join(".claude/skills/deck/SKILL.md");
+        let other = "the same version, built from other words";
+        std::fs::write(&at, other).unwrap();
+        std::fs::write(
+            stamp_path(&at),
+            format!("{RUNNING} {:x}\n", fnv(other.as_bytes())),
+        )
+        .unwrap();
+
+        assert!(keep_up(&home).is_empty());
+        assert_eq!(std::fs::read_to_string(&at).unwrap(), other);
+    }
+
+    #[test]
+    fn a_stamp_that_will_not_read_leaves_the_skill_alone() {
+        let home = scratch("keep-up-garbage");
+        std::fs::create_dir_all(home.join(".claude")).unwrap();
+        install_all(&home).unwrap();
+        let at = home.join(".claude/skills/deck/SKILL.md");
+        std::fs::write(&at, "mine").unwrap();
+        std::fs::write(stamp_path(&at), "not a stamp").unwrap();
+
+        assert!(keep_up(&home).is_empty());
+        assert_eq!(std::fs::read_to_string(&at).unwrap(), "mine");
     }
 }
