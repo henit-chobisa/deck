@@ -29,6 +29,7 @@ every five minutes whether one is due):
 | `questions_asked`, `questions_edited` | `3`, `1` | Suggested questions clicked, or ⌘-clicked (Ctrl-clicked on Windows and Linux) into the comment box. |
 | `walks` | `1` | Walks started. |
 | `upgrades` | `1` | Upgrades to a newer deck. |
+| `questions_renewed` | `2` | Times a group's suggested questions were renewed after an answer. |
 | `agents` | `{"claude-code": 4}` | Which agent created the decks: `claude-code`, `codex`, `cursor`, `amp`, `gemini` or `other`. Worked out from the *names* of environment variables, never their values. |
 
 A count that is zero is left out, and so is `agents` when no deck was created.

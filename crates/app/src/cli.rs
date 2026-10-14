@@ -644,6 +644,7 @@ impl Cli {
             )),
             What::Asks { deck, group, ask } => {
                 report(deck_cli::renew_asks(&deck, &group, &ask).map(|path| {
+                    crate::usage::record(crate::usage::Count::QuestionsRenewed);
                     crate::usage::record_many(
                         crate::usage::Count::QuestionsOffered,
                         ask.len() as u64,

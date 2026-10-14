@@ -73,6 +73,8 @@ pub enum Count {
     Walk,
     /// deck upgraded itself, or was upgraded.
     Upgrade,
+    /// A group's suggested questions renewed after an answer.
+    QuestionsRenewed,
 }
 
 impl Count {
@@ -91,6 +93,7 @@ impl Count {
             Self::QuestionEdited => "questions_edited",
             Self::Walk => "walks",
             Self::Upgrade => "upgrades",
+            Self::QuestionsRenewed => "questions_renewed",
         }
     }
 }
