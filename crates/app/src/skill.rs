@@ -693,6 +693,19 @@ mod tests {
     }
 
     #[test]
+    fn after_an_answer_the_row_is_looked_at_again() {
+        // The question just asked is the best evidence of the next one, and a
+        // row still offering it word for word was never read again.
+        assert!(SKILL.contains("### After every answer, look at the row again"));
+        assert!(SKILL.contains("deck asks <path> --group g3"));
+        assert!(SKILL.contains("before you go back to `deck wait`"));
+        assert!(
+            SKILL.contains("leave it alone"),
+            "and not churned for nothing"
+        );
+    }
+
+    #[test]
     fn the_skill_says_how_to_explain_and_not_only_what_to_show() {
         // The commands were carried and the teaching was not. Predicting
         // before revealing, and reaching for the reader's own codebase rather

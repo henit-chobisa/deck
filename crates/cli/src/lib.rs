@@ -705,6 +705,78 @@ pub fn group_asking(
     Ok(path)
 }
 
+/// Where a group's renewed questions are kept, beside the group itself.
+///
+/// Not named like a group: the window takes any `g*.json` for one.
+#[must_use]
+pub fn renewed_path(root: &Path, group: &str) -> PathBuf {
+    root.join(format!("asks-{group}.json"))
+}
+
+/// The questions a group offers now: renewed, if they have been, or as the
+/// group was written.
+#[must_use]
+pub fn current_asks(root: &Path, group: &Group) -> Vec<String> {
+    std::fs::read_to_string(renewed_path(root, &group.id))
+        .ok()
+        .and_then(|text| serde_json::from_str::<Renewed>(&text).ok())
+        .map_or_else(|| group.asks.clone(), |renewed| renewed.asks)
+}
+
+/// A group's questions, renewed after an answer.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct Renewed {
+    /// The questions, in the order the row shows them.
+    pub asks: Vec<String>,
+}
+
+/// Give group `id` new questions, now that the agent has answered one.
+///
+/// Only after an answer: what was asked is what tells the agent which
+/// questions are left worth asking, and a row that changed under a reader
+/// still reading the answer would take the ground from under them. A sealed
+/// deck takes them too; it is finished growing, not finished talking.
+///
+/// The questions that stay keep their places and the new ones go after them,
+/// so the row on screen only ever moves one way as it renews.
+///
+/// # Errors
+///
+/// When nothing has been answered yet, when the deck has no such group, or
+/// as [`group_asking`] does about the questions themselves.
+pub fn renew_asks(root: &Path, id: &str, asks: &[String]) -> anyhow::Result<PathBuf> {
+    let asks = questions(asks)?;
+    anyhow::ensure!(
+        !asks.is_empty(),
+        "no --ask given: a renewed row needs at least one"
+    );
+    anyhow::ensure!(
+        std::fs::read(root.join(ANSWERING)).is_ok_and(|mark| mark == b"said"),
+        "answer first: `deck asks` renews a group's questions after you have answered \
+         one with `deck say`, and before you go back to `deck wait`"
+    );
+    let group = std::fs::read_dir(root)
+        .with_context(|| format!("{} is not a deck", root.display()))?
+        .flatten()
+        .filter_map(|entry| std::fs::read_to_string(entry.path()).ok())
+        .filter_map(|text| serde_json::from_str::<Group>(&text).ok())
+        .find(|group| group.id == id)
+        .with_context(|| format!("{} has no group {id}", root.display()))?;
+    let before = current_asks(root, &group);
+    let mut after: Vec<String> = before
+        .iter()
+        .filter(|was| asks.iter().any(|ask| ask.eq_ignore_ascii_case(was)))
+        .cloned()
+        .collect();
+    after.extend(
+        asks.into_iter()
+            .filter(|ask| !before.iter().any(|was| was.eq_ignore_ascii_case(ask))),
+    );
+    let path = renewed_path(root, id);
+    write_atomically(&path, &serde_json::to_vec_pretty(&Renewed { asks: after })?)?;
+    Ok(path)
+}
+
 /// A character that breaks a line or turns text around without being seen:
 /// the line and paragraph separators, and the marks that set direction.
 fn unseen(ch: char) -> bool {
@@ -1565,6 +1637,46 @@ mod tests {
         seal(&root).unwrap();
 
         assert!(group(&root, "late", Vec::new()).is_err());
+    }
+
+    #[test]
+    fn questions_renew_only_after_an_answer_and_keep_their_places() {
+        let at = scratch("renew");
+        let root = new(&at, "One", None, None).unwrap();
+        let asks = |list: &[&str]| {
+            list.iter()
+                .map(|ask| (*ask).to_string())
+                .collect::<Vec<_>>()
+        };
+        group_asking(&root, "first", Vec::new(), &asks(&["a?", "b?", "c?"])).unwrap();
+        seal(&root).unwrap();
+
+        // Nothing has been answered yet.
+        assert!(renew_asks(&root, "g1", &asks(&["b?", "x?"])).is_err());
+
+        answering(&root);
+        assert!(
+            renew_asks(&root, "g1", &asks(&["b?"])).is_err(),
+            "still working on it"
+        );
+        answered(&root);
+        assert!(
+            renew_asks(&root, "g9", &asks(&["b?"])).is_err(),
+            "no such group"
+        );
+        assert!(renew_asks(&root, "g1", &[]).is_err(), "an empty row");
+
+        // A sealed deck still renews. What stays keeps its place, in front of
+        // what is new, whatever order the agent gave them in.
+        renew_asks(&root, "g1", &asks(&["x?", "B?", "y?"])).unwrap();
+        let group: Group =
+            serde_json::from_str(&std::fs::read_to_string(root.join("g1.json")).unwrap()).unwrap();
+        assert_eq!(current_asks(&root, &group), asks(&["b?", "x?", "y?"]));
+        assert_eq!(
+            group.asks,
+            asks(&["a?", "b?", "c?"]),
+            "the group as written is untouched"
+        );
     }
 
     #[test]

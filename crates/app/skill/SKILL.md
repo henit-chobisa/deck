@@ -822,6 +822,41 @@ Answer the question they pressed, at the depth they pressed it. A step-down
 question gets the plain mechanism, not the edge cases. A question about the
 claim gets the evidence and your honest confidence in it.
 
+### After every answer, look at the row again
+
+Their question is the best evidence you will get of what they will ask next.
+So once you have answered, and before you go back to `deck wait`, look at the
+pills under that group with their question in mind. Renew the row when the
+question changed what is worth asking:
+
+- **the pill you just answered** goes;
+- **any pill the answer made stale** goes: answered along the way, or no
+  longer the right doubt;
+- **what the answer opened** comes in: the term you just used that they have
+  not met, *does the other one do this too*, the doubt your answer raised,
+  following the same method as the first row.
+
+```sh
+deck say <path> --text "…your answer…"
+deck asks <path> --group g3 \
+  --ask "Draw it: enqueue → worker → email" \
+  --ask "Why not render the PDF in the worker?" \
+  --ask "Does the invoice email render one too?"
+deck wait <path>
+```
+
+Give `deck asks` the whole row you want: the pills that stay and the new ones.
+Those that stay keep their places and the new ones join after them, so give
+them in any order. The window waits for your answer to finish before the row
+renews, and the reader watches the old questions sink away and the new ones
+come in, which tells them the row is following them. It works on a sealed
+deck, and only after you have answered.
+
+When the row still fits, after a small question or one it already covered,
+leave it alone. A row that changes after every answer stops meaning anything.
+But a row still offering the question they just asked, word for word, is the
+one sure sign it was not read again.
+
 ## When they answer back
 
 `deck wait` returns before the review is finished whenever the reader says
@@ -1233,6 +1268,7 @@ the agent never moves anything is a document with a bar under it.
 deck new      the header, and the bar
 deck open     the bar, in the background — and what wakes you at the end
 deck group    one group, one call — and --ask, up to five, for the questions under it
+deck asks     after an answer: renew one group's questions (--group g3 --ask …)
 deck seal     no more coming
 deck wait     only with -d, when you detached the window yourself
 deck next     what the reader just did, when you want it without blocking

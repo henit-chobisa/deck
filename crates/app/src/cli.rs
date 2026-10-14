@@ -308,6 +308,25 @@ enum What {
         timeout: u64,
     },
 
+    /// Give a group new questions, after you have answered one of its own.
+    ///
+    /// What the reader just asked tells you what is left worth asking. Keep
+    /// the questions that still are, drop the one you answered and any it
+    /// made stale, and add what the answer opened. The ones that stay keep
+    /// their places; new ones join after them. The window waits for your
+    /// answer to finish before the row renews. Works on a sealed deck.
+    Asks {
+        /// The `.deck` directory.
+        deck: PathBuf,
+        /// The group whose questions these are: `g3`.
+        #[arg(long)]
+        group: String,
+        /// A question for the renewed row. Give it up to five times; the same
+        /// rules as `deck group --ask`.
+        #[arg(long, value_name = "QUESTION")]
+        ask: Vec<String>,
+    },
+
     /// Say the deck is finished. Nothing more can be added after this.
     Seal {
         /// The `.deck` directory.
@@ -623,6 +642,15 @@ impl Cli {
                 fold,
                 timeout,
             )),
+            What::Asks { deck, group, ask } => {
+                report(deck_cli::renew_asks(&deck, &group, &ask).map(|path| {
+                    crate::usage::record_many(
+                        crate::usage::Count::QuestionsOffered,
+                        ask.len() as u64,
+                    );
+                    println!("{}", path.display());
+                }))
+            }
             What::Seal { deck } => report(deck_cli::seal(&deck)),
             What::Next {
                 deck,

@@ -855,6 +855,11 @@ pub struct DeckView {
     explaining: bool,
     /// Where the row of questions drawn inside the window has slid to.
     asks_carousel: crate::asks::Carousel,
+    /// The questions on screen, and whose: held while an answer is still
+    /// being said, so a renewed row never changes under it.
+    asks_shown: Option<(String, Vec<String>)>,
+    /// The renewal playing on the row, if one is.
+    asks_renewed: Option<crate::asks::Renewal>,
     /// The questions' own window under the deck, where the platform allows
     /// one: its handle, and both native windows so it can be hung.
     #[cfg(target_os = "macos")]
@@ -1088,6 +1093,8 @@ impl DeckView {
             quit_fade: Self::card_fade(),
             explaining: false,
             asks_carousel: crate::asks::Carousel::default(),
+            asks_shown: None,
+            asks_renewed: None,
             #[cfg(target_os = "macos")]
             shelf: None,
             asks_outside: false,
@@ -1201,18 +1208,26 @@ impl DeckView {
     /// group appears to arrive late, and a listing of a dozen names costs
     /// nothing.
     ///
-    /// It stops the moment the deck is sealed, so a finished deck — which is
-    /// most of them, most of the time — polls nothing at all.
+    /// Once the deck is sealed no group can arrive, and it watches only for
+    /// questions renewed after an answer — and only while an agent is there to
+    /// answer. With nobody there it glances every couple of seconds to see
+    /// whether somebody has come back, which is one file's date.
     fn tail(&mut self, cx: &mut Context<Self>) {
         const EVERY: std::time::Duration = std::time::Duration::from_millis(250);
-
-        if self.deck.sealed() {
-            return;
-        }
+        const NOBODY: std::time::Duration = std::time::Duration::from_secs(2);
 
         self.tailing = cx.spawn(async move |view, cx| {
             loop {
-                cx.background_executor().timer(EVERY).await;
+                let wait = view
+                    .update(cx, |deck, _| {
+                        if !deck.deck.sealed() || deck_cli::is_heard(&deck.deck.root) {
+                            EVERY
+                        } else {
+                            NOBODY
+                        }
+                    })
+                    .unwrap_or(NOBODY);
+                cx.background_executor().timer(wait).await;
 
                 let more = view.update(cx, |deck, cx| {
                     // Panes belong to the group being read, and a group
@@ -1221,16 +1236,20 @@ impl DeckView {
                     // until it arrives there is nothing to have built, and the
                     // reader is standing on a group that does not exist yet.
                     let nothing_to_read = deck.deck.groups().is_empty();
-                    if deck.deck.refresh() {
+                    let changed = if deck.deck.sealed() {
+                        deck_cli::is_heard(&deck.deck.root) && deck.deck.refresh_asks()
+                    } else {
+                        deck.deck.refresh()
+                    };
+                    if changed {
                         if nothing_to_read {
                             deck.build_panes(cx);
                         }
                         cx.notify();
                     }
-                    !deck.deck.sealed()
                 });
 
-                if !matches!(more, Ok(true)) {
+                if more.is_err() {
                     return;
                 }
             }
@@ -3978,9 +3997,9 @@ impl DeckView {
         // Only a question this group offers: a click on a row a frame behind
         // a change of group is about a question no longer here.
         let Some(question) = self
-            .group()
-            .and_then(|group| group.asks.iter().find(|ask| *ask == question))
-            .cloned()
+            .asks_row()
+            .and_then(|row| row.asks.into_iter().find(|ask| ask.as_ref() == question))
+            .map(String::from)
         else {
             return;
         };
@@ -4013,12 +4032,63 @@ impl DeckView {
     /// The row of questions for the group on screen, if it has any.
     pub fn asks_row(&self) -> Option<crate::asks::Row> {
         let group = self.group()?;
-        if group.asks.is_empty() {
+        let asks = match self.asks_shown.as_ref() {
+            Some((id, shown)) if *id == group.id => shown,
+            _ => &group.asks,
+        };
+        if asks.is_empty() {
             return None;
         }
         Some(crate::asks::Row {
-            asks: group.asks.iter().cloned().map(SharedString::from).collect(),
+            asks: asks.iter().cloned().map(SharedString::from).collect(),
+            renewed: self.asks_renewed.clone(),
         })
+    }
+
+    /// Notice a group's questions renewed after an answer, and play it.
+    ///
+    /// Not while the answer is still being said: the reader is listening to
+    /// it, and the row waits until the voice is done. Then the questions that
+    /// go sink away and the new ones come in, and the reader sees why — they
+    /// follow from what was just answered.
+    fn keep_asks(&mut self, window: &Window, cx: &mut Context<Self>) {
+        let Some((id, asks)) = self
+            .group()
+            .map(|group| (group.id.clone(), group.asks.clone()))
+        else {
+            self.asks_shown = None;
+            self.asks_renewed = None;
+            return;
+        };
+        if let Some(renewal) = self.asks_renewed.as_ref() {
+            let now: Vec<SharedString> = asks.iter().cloned().map(SharedString::from).collect();
+            if renewal.over(&now) {
+                self.asks_renewed = None;
+            }
+        }
+        match self.asks_shown.as_ref() {
+            Some((shown_id, shown)) if *shown_id == id => {
+                if *shown == asks || self.voice.talking() {
+                    return;
+                }
+                let renewal = crate::asks::Renewal {
+                    from: shown.iter().cloned().map(SharedString::from).collect(),
+                    since: std::time::Instant::now(),
+                };
+                let to: Vec<SharedString> = asks.iter().cloned().map(SharedString::from).collect();
+                // Only a row that was showing renews; one that had no
+                // questions simply gains them.
+                if !renewal.from.is_empty() {
+                    self.asks_carousel.renew(renewal.length(&to), window, cx);
+                    self.asks_renewed = Some(renewal);
+                }
+                self.asks_shown = Some((id, asks));
+            }
+            _ => {
+                self.asks_shown = Some((id, asks));
+                self.asks_renewed = None;
+            }
+        }
     }
 
     /// The palette the deck is painted in, for windows of its own.
@@ -4046,6 +4116,7 @@ impl DeckView {
     /// native frame is only set when it differs, and the shelf is only told
     /// to draw again when what it shows has changed.
     fn hang_asks(&mut self, window: &Window, cx: &mut Context<Self>) {
+        self.keep_asks(window, cx);
         #[cfg(target_os = "macos")]
         {
             let row = self.asks_row();
@@ -4085,7 +4156,16 @@ impl DeckView {
                     let new_asks = shelf.row.as_ref().map(|row| &row.asks)
                         != shown.as_ref().map(|row| &row.asks);
                     if new_asks {
-                        shelf.carousel.reset();
+                        // A row renewing after an answer plays out here too;
+                        // any other new row starts from its first question.
+                        match shown.as_ref().and_then(|row| {
+                            row.renewed
+                                .as_ref()
+                                .map(|renewal| renewal.length(&row.asks))
+                        }) {
+                            Some(length) => shelf.carousel.renew(length, window, cx),
+                            None => shelf.carousel.reset(),
+                        }
                     }
                     if shelf.row != shown
                         || shelf.corner != corner
