@@ -38,6 +38,11 @@ Click one and it is asked, straight away, as if you had typed it and pressed
 into the comment box instead, for you to change first. The arrows at either
 end move through them.
 
+After the agent answers one, it can renew the row, because what you just asked
+says a lot about what you will ask next. The row waits for the answer to
+finish. Then the questions that no longer fit sink away, the ones that stay
+slide along, and the new ones come in from the right.
+
 ## Put it away without losing it
 
 A deck arrives as a bar at the bottom of the screen, not a window across the

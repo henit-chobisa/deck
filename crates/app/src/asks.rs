@@ -38,6 +38,113 @@ const WIDEST: f32 = 680.;
 pub struct Row {
     /// The group's questions, in the order the agent wrote them.
     pub asks: Vec<SharedString>,
+    /// The row these questions are renewing, while it renews.
+    pub renewed: Option<Renewal>,
+}
+
+/// A row being renewed after an answer: what it was, and since when.
+///
+/// The questions that stay keep their places, the ones that go sink where
+/// they stand, and the new ones come in after them from the right. So
+/// everything on the row only ever moves one way, and nothing jumps.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Renewal {
+    pub from: Vec<SharedString>,
+    pub since: Instant,
+}
+
+/// How long a question takes to sink away, one after another.
+const SINK: Duration = Duration::from_millis(1000);
+const SINK_STAGGER: Duration = Duration::from_millis(120);
+/// How small it gets as it goes under.
+const SHRINK: f32 = 0.86;
+/// How far under it is before the row closes over where it was.
+const CLOSE_FROM: f32 = 0.35;
+
+/// When the first new question arrives, and the ones after it.
+const ARRIVE_AFTER: Duration = Duration::from_millis(520);
+const ARRIVE_STAGGER: Duration = Duration::from_millis(160);
+/// The row makes room for it, then it glides in from the right.
+const ROOM: Duration = Duration::from_millis(840);
+const SLIDE: Duration = Duration::from_millis(1080);
+const SLIDE_AFTER: Duration = Duration::from_millis(160);
+const SLIDE_BY: f32 = 38.;
+
+/// `step`, `n` times over: the wait before the `n`th of a staggered few.
+fn nth(step: Duration, n: usize) -> Duration {
+    step.saturating_mul(u32::try_from(n).unwrap_or(u32::MAX))
+}
+
+/// The renewal's curve: it eases in and out, calm at both ends.
+fn calm(t: f32) -> f32 {
+    let t = t.clamp(0., 1.);
+    (1. - (std::f32::consts::PI * t).cos()) / 2.
+}
+
+impl Renewal {
+    /// How long renewing `self.from` into `to` takes, end to end.
+    #[must_use]
+    pub fn length(&self, to: &[SharedString]) -> Duration {
+        let leaving = self.from.iter().filter(|was| !to.contains(was)).count();
+        let arriving = to.iter().filter(|now| !self.from.contains(now)).count();
+        let sinking = nth(SINK_STAGGER, leaving.saturating_sub(1)) + SINK;
+        let coming = ARRIVE_AFTER
+            + nth(ARRIVE_STAGGER, arriving.saturating_sub(1))
+            + ROOM.max(SLIDE_AFTER + SLIDE);
+        if arriving == 0 {
+            sinking
+        } else {
+            sinking.max(coming)
+        }
+    }
+
+    /// Whether it has finished, and the row is simply its questions again.
+    #[must_use]
+    pub fn over(&self, to: &[SharedString]) -> bool {
+        self.since.elapsed() >= self.length(to)
+    }
+}
+
+/// How far under the `k`th sinking question is, `since` the renewal began:
+/// from 0, standing, to 1, gone and no longer drawn.
+fn under(since: Duration, k: usize) -> f32 {
+    let age = since.saturating_sub(nth(SINK_STAGGER, k)).as_secs_f32();
+    (age / SINK.as_secs_f32()).clamp(0., 1.)
+}
+
+/// One question on a renewing row, and what it is doing.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Part {
+    /// It stays: the `n`th of the new row.
+    Stays(usize),
+    /// It goes: the `k`th to sink.
+    Sinks(usize),
+    /// It is new: the `n`th of the new row, and the `k`th to arrive.
+    Arrives(usize, usize),
+}
+
+/// The order a renewing row is drawn in: the old row as it stood, with what
+/// goes still in its place, then what is new after it.
+fn parts(from: &[SharedString], to: &[SharedString]) -> Vec<(SharedString, Part)> {
+    let mut sinking = 0;
+    let mut out: Vec<(SharedString, Part)> = from
+        .iter()
+        .map(|was| match to.iter().position(|now| now == was) {
+            Some(n) => (was.clone(), Part::Stays(n)),
+            None => {
+                sinking += 1;
+                (was.clone(), Part::Sinks(sinking - 1))
+            }
+        })
+        .collect();
+    let mut arriving = 0;
+    for (n, now) in to.iter().enumerate() {
+        if !from.contains(now) {
+            out.push((now.clone(), Part::Arrives(n, arriving)));
+            arriving += 1;
+        }
+    }
+    out
 }
 
 /// Pressed: which question, and whether to edit it first.
@@ -72,7 +179,11 @@ const HAND: Duration = Duration::from_millis(320);
 
 /// How long the pointer rests on a pill before it opens. Passed over on the
 /// way somewhere else, a pill stays shut, and the row does not ripple.
-const REST: Duration = Duration::from_millis(90);
+const REST: Duration = Duration::from_millis(150);
+
+/// How long a pill stays open once the pointer has left it. Brushed off and
+/// back, it never closed; left for good, it closes after a breath.
+const LEAVE: Duration = Duration::from_millis(150);
 
 /// How long the spotlight waits, once the pointer is off every pill, before
 /// it lifts: crossing the gap from one pill to the next is not leaving, and
@@ -138,6 +249,16 @@ pub struct Carousel {
     spot: Rc<Cell<Option<Spot>>>,
     /// How much wider a pill is, open: its hint, as last measured.
     hint: Rc<Cell<f32>>,
+    /// Where each question is drawn among the row's children. The same as
+    /// its place in the row, except while the row renews: then questions on
+    /// their way out are still drawn among them.
+    places: Rc<std::cell::RefCell<Vec<usize>>>,
+    /// Until when a renewal is playing: the row is moving even when the pill
+    /// under the pointer has settled.
+    renewing: Rc<Cell<Option<Instant>>>,
+    /// Each renewing question's whole width, measured once as the renewal
+    /// starts rather than shaped again on every frame of it.
+    widths: Rc<std::cell::RefCell<std::collections::HashMap<SharedString, f32>>>,
 }
 
 /// One pill opening or closing: which, since when, and how open it was then.
@@ -184,6 +305,15 @@ impl Carousel {
         self.spot.set(None);
         self.drawn.set(None);
         self.handle.set_offset(point(px(0.), px(0.)));
+    }
+
+    /// Renew the row: let go of any pill, and keep the window drawing for as
+    /// long as the renewal takes.
+    pub fn renew(&self, length: Duration, window: &Window, cx: &mut App) {
+        self.release();
+        self.renewing.set(Some(Instant::now() + length));
+        self.widths.borrow_mut().clear();
+        self.drive(length, window, cx);
     }
 
     /// Slide one question back, or one on.
@@ -276,6 +406,13 @@ impl Carousel {
     /// open, its light already crossed, nothing sliding, closing or
     /// changing brightness. The loop keeps watching, but asks for no frames.
     fn resting(&self) -> bool {
+        if self
+            .renewing
+            .get()
+            .is_some_and(|until| Instant::now() < until)
+        {
+            return false;
+        }
         let Some(open) = self.open.get() else {
             return false;
         };
@@ -364,7 +501,7 @@ impl Carousel {
     /// Pill `ix` closes, if it is the one open.
     fn shut(&self, ix: usize) {
         if let Some(open) = self.open.get().filter(|open| open.ix == ix) {
-            let now = Instant::now();
+            let now = Instant::now() + LEAVE;
             self.closing.set(Some(Opening {
                 from: self.openness(ix),
                 since: now,
@@ -386,6 +523,29 @@ impl Carousel {
         let now = Instant::now();
         if on {
             if self.open.get().is_some_and(|open| open.ix == ix) {
+                return;
+            }
+            // Back before it began to close: it never did. Open as it was,
+            // its light already crossed.
+            if let Some(closing) = self
+                .closing
+                .get()
+                .filter(|closing| closing.ix == ix && now < closing.since && closing.from >= 1.)
+            {
+                self.closing.set(None);
+                self.open.set(Some(Opening {
+                    since: now.checked_sub(SHIMMER.max(OPEN)).unwrap_or(now),
+                    from: 1.,
+                    follow: false,
+                    span: OPEN,
+                    ..closing
+                }));
+                self.spot.set(Some(Spot {
+                    on: true,
+                    since: now,
+                    from: self.spotlight(),
+                }));
+                self.drive(OPEN, window, cx);
                 return;
             }
             let from = self.openness(ix);
@@ -433,15 +593,21 @@ impl Carousel {
         } else {
             self.shut(ix);
         }
-        self.drive(REST + HAND + OPEN.max(CLOSE + GRACE + LIFT), window, cx);
+        self.drive(
+            REST + HAND + OPEN.max(LEAVE + CLOSE + GRACE + LIFT),
+            window,
+            cx,
+        );
     }
 
     /// Start sliding one question back, or one on.
     fn step(&self, by: isize) {
         let now = f32::from(self.handle.offset().x);
         let view = self.handle.bounds();
-        let lefts: Vec<f32> = (0..)
-            .map_while(|ix| self.handle.bounds_for_item(ix))
+        let places = self.places.borrow().clone();
+        let lefts: Vec<f32> = places
+            .iter()
+            .map_while(|drawn| self.handle.bounds_for_item(*drawn))
             // Laid out where they would be unscrolled: the row's own terms.
             .map(|item| f32::from(item.origin.x - view.origin.x))
             .collect();
@@ -484,7 +650,13 @@ impl Carousel {
         let Some(open) = self.open.get().filter(|open| open.follow) else {
             return;
         };
-        let Some(item) = self.handle.bounds_for_item(open.ix) else {
+        let drawn = self
+            .places
+            .borrow()
+            .get(open.ix)
+            .copied()
+            .unwrap_or(open.ix);
+        let Some(item) = self.handle.bounds_for_item(drawn) else {
             return;
         };
         let view = self.handle.bounds();
@@ -607,116 +779,273 @@ pub fn render(
             .on_click(move |_, window, cx| carousel.slide(by, window, cx))
             .child(glyph)
     };
-    let pills = row.asks.iter().enumerate().map(|(ix, ask)| {
-        let pick = pick.clone();
-        let question = ask.clone();
-        let open = carousel.openness(ix);
-        // The others step back by their words alone: a pill whose border and
-        // ground went see-through read as broken, not as quieter.
-        let dim = 0.6 * spotlight * (1. - carousel.standing(ix));
-        let words_in = palette.fg.mix(palette.band, dim);
-        // The light is drawn over the question, not into it. Coloured a
-        // letter at a time, the question was shaped in pieces, cut wherever
-        // the colour changed, and lost its kerning at every cut: its width
-        // shifted under the light as it crossed. So the question is shaped
-        // once, in one colour, and the light is a lit copy laid exactly on it,
-        // seen through slices that are brighter at the middle of the band.
-        let light = carousel.light(ix).map(|t| {
-            let font = window.text_style().font();
-            let run = TextRun {
-                len: ask.len(),
-                font,
-                color: paint(palette.accent),
-                background_color: None,
-                underline: None,
-                strikethrough: None,
-            };
-            let wide = f32::from(
-                window
-                    .text_system()
-                    .shape_line(ask.clone(), px(13.), &[run], None)
-                    .width,
-            );
-            let at = -BAND + (1. + 2. * BAND) * t;
-            let slice = 2. * BAND * wide / SLICES as f32;
-            let start = (at - BAND) * wide;
-            div()
-                .absolute()
-                .inset_0()
-                .children((0..SLICES).filter_map(move |n| {
-                    let left = start + n as f32 * slice;
-                    if left + slice < 0. || left > wide {
-                        return None;
+    let mut made: Vec<Option<Stateful<Div>>> = row
+        .asks
+        .iter()
+        .enumerate()
+        .map(|(ix, ask)| {
+            let pick = pick.clone();
+            let question = ask.clone();
+            let open = carousel.openness(ix);
+            // The others step back by their words alone: a pill whose border and
+            // ground went see-through read as broken, not as quieter.
+            let dim = 0.6 * spotlight * (1. - carousel.standing(ix));
+            let words_in = palette.fg.mix(palette.band, dim);
+            // The light is drawn over the question, not into it. Coloured a
+            // letter at a time, the question was shaped in pieces, cut wherever
+            // the colour changed, and lost its kerning at every cut: its width
+            // shifted under the light as it crossed. So the question is shaped
+            // once, in one colour, and the light is a lit copy laid exactly on it,
+            // seen through slices that are brighter at the middle of the band.
+            let light = carousel.light(ix).map(|t| {
+                let font = window.text_style().font();
+                let run = TextRun {
+                    len: ask.len(),
+                    font,
+                    color: paint(palette.accent),
+                    background_color: None,
+                    underline: None,
+                    strikethrough: None,
+                };
+                let wide = f32::from(
+                    window
+                        .text_system()
+                        .shape_line(ask.clone(), px(13.), &[run], None)
+                        .width,
+                );
+                let at = -BAND + (1. + 2. * BAND) * t;
+                let slice = 2. * BAND * wide / SLICES as f32;
+                let start = (at - BAND) * wide;
+                div()
+                    .absolute()
+                    .inset_0()
+                    .children((0..SLICES).filter_map(move |n| {
+                        let left = start + n as f32 * slice;
+                        if left + slice < 0. || left > wide {
+                            return None;
+                        }
+                        let lit = shimmer((left + slice / 2.) / wide.max(1.), t);
+                        Some(
+                            div()
+                                .absolute()
+                                .top_0()
+                                .bottom_0()
+                                .left(px(left))
+                                .w(px(slice))
+                                .overflow_hidden()
+                                .opacity(0.75 * lit)
+                                .child(
+                                    div()
+                                        .absolute()
+                                        .top_0()
+                                        .left(px(-left))
+                                        .w(px(wide + 2.))
+                                        .whitespace_nowrap()
+                                        .text_color(paint(palette.accent))
+                                        .child(ask.clone()),
+                                ),
+                        )
+                    }))
+            });
+            let shown = carousel.said(ix);
+            let carousel = carousel.clone();
+            surface(ElementId::from(("ask", ix)))
+                .max_w(px(WIDEST + hint_w))
+                .px(px(13.))
+                .text_size(px(13.))
+                .on_hover({
+                    let carousel = carousel.clone();
+                    move |hovered, window, cx| carousel.peek(ix, *hovered, window, cx)
+                })
+                // Movement too, not only hover: when the pointer left without the
+                // window being told, gpui still counts the pill hovered, and the
+                // pointer's return would not be news to it.
+                .on_mouse_move(move |_, window, cx| carousel.peek(ix, true, window, cx))
+                .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                .on_click(move |event, window, cx| {
+                    pick(question.clone(), event.modifiers().secondary(), window, cx);
+                })
+                .child(
+                    div()
+                        .relative()
+                        .min_w_0()
+                        .truncate()
+                        .text_color(paint(words_in))
+                        .child(ask.clone())
+                        .children(light),
+                )
+                .child(
+                    // The padding inside, not on the part that opens: a shut pill
+                    // is exactly as wide as its question.
+                    div()
+                        .flex_none()
+                        .w(px(hint_w * open))
+                        .overflow_hidden()
+                        .child(
+                            div()
+                                .flex_none()
+                                .whitespace_nowrap()
+                                .pl(px(HINT_GAP))
+                                .text_size(hint_size)
+                                .text_color(paint(tertiary))
+                                .opacity(shown)
+                                .child(hint),
+                        ),
+                )
+        })
+        .map(Some)
+        .collect();
+    let renewing = row
+        .renewed
+        .as_ref()
+        .filter(|renewal| !renewal.over(&row.asks));
+    *carousel.places.borrow_mut() = match renewing {
+        None => (0..row.asks.len()).collect(),
+        Some(renewal) => {
+            // Counted as they are drawn: a question gone under is no longer
+            // among the children, and must not hold a place.
+            let since = renewal.since.elapsed();
+            let mut places: Vec<usize> = (0..row.asks.len()).collect();
+            let mut drawn = 0;
+            for (_, part) in parts(&renewal.from, &row.asks) {
+                match part {
+                    Part::Stays(n) | Part::Arrives(n, _) => {
+                        places[n] = drawn;
+                        drawn += 1;
                     }
-                    let lit = shimmer((left + slice / 2.) / wide.max(1.), t);
-                    Some(
-                        div()
-                            .absolute()
-                            .top_0()
-                            .bottom_0()
-                            .left(px(left))
-                            .w(px(slice))
-                            .overflow_hidden()
-                            .opacity(0.75 * lit)
-                            .child(
-                                div()
-                                    .absolute()
-                                    .top_0()
-                                    .left(px(-left))
-                                    .w(px(wide + 2.))
-                                    .whitespace_nowrap()
-                                    .text_color(paint(palette.accent))
-                                    .child(ask.clone()),
-                            ),
-                    )
-                }))
-        });
-        let shown = carousel.said(ix);
-        let carousel = carousel.clone();
-        surface(ElementId::from(("ask", ix)))
-            .max_w(px(WIDEST + hint_w))
-            .px(px(13.))
-            .text_size(px(13.))
-            .on_hover({
-                let carousel = carousel.clone();
-                move |hovered, window, cx| carousel.peek(ix, *hovered, window, cx)
-            })
-            // Movement too, not only hover: when the pointer left without the
-            // window being told, gpui still counts the pill hovered, and the
-            // pointer's return would not be news to it.
-            .on_mouse_move(move |_, window, cx| carousel.peek(ix, true, window, cx))
-            .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-            .on_click(move |event, window, cx| {
-                pick(question.clone(), event.modifiers().secondary(), window, cx);
-            })
-            .child(
-                div()
-                    .relative()
-                    .min_w_0()
-                    .truncate()
-                    .text_color(paint(words_in))
-                    .child(ask.clone())
-                    .children(light),
-            )
-            .child(
-                // The padding inside, not on the part that opens: a shut pill
-                // is exactly as wide as its question.
-                div()
-                    .flex_none()
-                    .w(px(hint_w * open))
-                    .overflow_hidden()
-                    .child(
-                        div()
-                            .flex_none()
-                            .whitespace_nowrap()
-                            .pl(px(HINT_GAP))
-                            .text_size(hint_size)
-                            .text_color(paint(tertiary))
-                            .opacity(shown)
-                            .child(hint),
-                    ),
-            )
-    });
+                    Part::Sinks(k) => {
+                        if under(since, k) < 1. {
+                            drawn += 1;
+                        }
+                    }
+                }
+            }
+            places
+        }
+    };
+    let pills = match renewing {
+        None => made
+            .into_iter()
+            .flatten()
+            .map(IntoElement::into_any_element)
+            .collect::<Vec<_>>(),
+        Some(renewal) => {
+            let since = renewal.since.elapsed();
+            let natural = |ask: &SharedString| {
+                if let Some(wide) = carousel.widths.borrow().get(ask) {
+                    return *wide;
+                }
+                let run = TextRun {
+                    len: ask.len(),
+                    font: window.text_style().font(),
+                    color: paint(palette.fg),
+                    background_color: None,
+                    underline: None,
+                    strikethrough: None,
+                };
+                let words = f32::from(
+                    window
+                        .text_system()
+                        .shape_line(ask.clone(), px(13.), &[run], None)
+                        .width,
+                );
+                // A hair over, so the words are never a pixel short and cut.
+                let wide = (words + 2. * 13. + 2. + 1.).min(WIDEST + hint_w);
+                carousel.widths.borrow_mut().insert(ask.clone(), wide);
+                wide
+            };
+            parts(&renewal.from, &row.asks)
+                .into_iter()
+                .filter_map(|(ask, part)| match part {
+                    Part::Stays(n) => made[n].take().map(IntoElement::into_any_element),
+                    Part::Arrives(n, k) => {
+                        let age = since
+                            .saturating_sub(ARRIVE_AFTER + nth(ARRIVE_STAGGER, k))
+                            .as_secs_f32();
+                        let room = calm(age / ROOM.as_secs_f32());
+                        let slid = calm((age - SLIDE_AFTER.as_secs_f32()) / SLIDE.as_secs_f32());
+                        // Pressable only once it has arrived; until then it is
+                        // drawn as the pill it is becoming, rounded at both
+                        // ends, its words uncovered as the row opens round it.
+                        made[n].take();
+                        Some(
+                            div()
+                                .flex_none()
+                                .min_w_0()
+                                .w(px(natural(&ask) * room))
+                                .ml(px(-GAP * (1. - room)))
+                                .h(px(PILL))
+                                .relative()
+                                .left(px(SLIDE_BY * (1. - slid)))
+                                .opacity(slid)
+                                .rounded(px(corner))
+                                .border_1()
+                                .border_color(paint(palette.edge))
+                                .bg(paint(palette.band))
+                                .overflow_hidden()
+                                .flex()
+                                .items_center()
+                                .child(
+                                    div()
+                                        .flex_none()
+                                        .pl(px(13.))
+                                        .whitespace_nowrap()
+                                        .text_size(px(13.))
+                                        .text_color(paint(palette.fg))
+                                        .child(ask),
+                                )
+                                .into_any_element(),
+                        )
+                    }
+                    Part::Sinks(k) => {
+                        let under = under(since, k);
+                        let gone = calm(under);
+                        let closed = calm((under - CLOSE_FROM) / (1. - CLOSE_FROM));
+                        let size = 1. - (1. - SHRINK) * gone;
+                        let wide = natural(&ask) * size * (1. - closed);
+                        // Gone under: nothing is left on the row, not even a
+                        // sliver of border holding a gap open.
+                        if under >= 1. {
+                            return None;
+                        }
+                        // One piece, the pill itself: it grows smaller and
+                        // narrower, ends and all, with its words cut inside
+                        // it. It shrinks down onto the row's floor rather than
+                        // dropping through it — the shelf is a pill tall, and
+                        // anything lower is cut off by the window's edge.
+                        Some(
+                            div()
+                                .flex_none()
+                                .min_w_0()
+                                .w(px(wide))
+                                .mr(px(-GAP * closed))
+                                .h(px(PILL * size))
+                                .relative()
+                                .top(px(PILL * (1. - size) / 2.))
+                                .opacity(1. - gone)
+                                .rounded(px(corner * size))
+                                .border_1()
+                                .border_color(paint(palette.edge))
+                                .bg(paint(palette.band))
+                                .overflow_hidden()
+                                .flex()
+                                .items_center()
+                                .child(
+                                    div()
+                                        .flex_none()
+                                        .pl(px(13. * size))
+                                        .whitespace_nowrap()
+                                        .text_size(px(13. * size))
+                                        .text_color(paint(palette.fg))
+                                        .child(ask),
+                                )
+                                .into_any_element(),
+                        )
+                    }
+                })
+                .collect()
+        }
+    };
     div()
         .w(px(wide))
         .h_flex()
@@ -909,6 +1238,55 @@ mod tests {
             None,
             "crossed once, and dark while the pointer rests"
         );
+    }
+
+    #[test]
+    fn a_renewing_row_only_ever_moves_one_way() {
+        let row = |asks: &[&str]| {
+            asks.iter()
+                .map(|ask| SharedString::from(*ask))
+                .collect::<Vec<_>>()
+        };
+        // Keep only the second: the first and the rest sink where they stand,
+        // the second stays, and the new ones come in after it.
+        let from = row(&["a", "b", "c", "d"]);
+        let to = row(&["b", "x", "y"]);
+        let drawn: Vec<_> = parts(&from, &to)
+            .into_iter()
+            .map(|(_, part)| part)
+            .collect();
+        assert_eq!(
+            drawn,
+            [
+                Part::Sinks(0),
+                Part::Stays(0),
+                Part::Sinks(1),
+                Part::Sinks(2),
+                Part::Arrives(1, 0),
+                Part::Arrives(2, 1),
+            ]
+        );
+        // Nothing new: only the sinking takes time.
+        let renewal = Renewal {
+            from: from.clone(),
+            since: Instant::now(),
+        };
+        assert_eq!(renewal.length(&row(&["a", "b"])), SINK_STAGGER * 1 + SINK);
+        // New ones: the last one's slide is what ends it.
+        assert_eq!(
+            renewal.length(&to),
+            ARRIVE_AFTER + ARRIVE_STAGGER + SLIDE_AFTER + SLIDE
+        );
+        assert!(!renewal.over(&to), "it has only just begun");
+    }
+
+    #[test]
+    fn the_renewal_is_calm_at_both_ends() {
+        assert_eq!(calm(0.), 0.);
+        assert!((calm(1.) - 1.).abs() < 1e-6);
+        assert!((calm(0.5) - 0.5).abs() < 1e-6);
+        assert!(calm(0.05) < 0.01, "it starts gently");
+        assert!(calm(0.95) > 0.99, "and settles gently");
     }
 
     #[test]

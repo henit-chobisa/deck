@@ -17,7 +17,7 @@
 //! shown — until the gap fills. [`Deck::groups`] is the unbroken run from the
 //! beginning, which is the most of the story that can honestly be read.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
 use deck_core::protocol::{Group, Header, VERSION};
@@ -44,6 +44,9 @@ pub struct Deck {
     seen: HashSet<std::ffi::OsString>,
     /// Whether the agent has said there is nothing more to come.
     sealed: bool,
+    /// When each group's questions were last renewed, as the file says: a
+    /// renewal is noticed by its time changing, not by reading it every poll.
+    renewed: HashMap<String, (std::time::SystemTime, u64)>,
 }
 
 impl Deck {
@@ -82,6 +85,7 @@ impl Deck {
             ready: 0,
             seen: HashSet::new(),
             sealed: false,
+            renewed: HashMap::new(),
         };
         deck.refresh();
         Ok(deck)
@@ -149,6 +153,8 @@ impl Deck {
             changed = true;
         }
 
+        changed |= self.refresh_asks();
+
         if changed {
             // The story's order is what `ord` says, not what the filesystem
             // happened to hand back.
@@ -156,6 +162,41 @@ impl Deck {
                 .sort_by_key(|group| group.ord.unwrap_or(u32::MAX));
             self.ready = readable(&self.arrived);
         }
+        changed
+    }
+
+    /// Look for questions renewed after an answer, and say whether any were.
+    ///
+    /// Separate from [`Self::refresh`] because it goes on after the seal: a
+    /// finished deck still answers questions, and its rows renew.
+    pub fn refresh_asks(&mut self) -> bool {
+        let mut changed = false;
+        for group in &mut self.arrived {
+            let at = deck_cli::renewed_path(&self.root, &group.id);
+            // The size too: two renewals inside one tick of a coarse clock
+            // share a time, and seldom a length.
+            let Ok(when) = std::fs::metadata(&at)
+                .and_then(|meta| meta.modified().map(|time| (time, meta.len())))
+            else {
+                continue;
+            };
+            if self.renewed.get(&group.id) == Some(&when) {
+                continue;
+            }
+            let Some(renewed) = std::fs::read_to_string(&at)
+                .ok()
+                .and_then(|text| serde_json::from_str::<deck_cli::Renewed>(&text).ok())
+            else {
+                // Half written: the next poll will find it whole.
+                continue;
+            };
+            self.renewed.insert(group.id.clone(), when);
+            if renewed.asks != group.asks {
+                group.asks = renewed.asks;
+                changed = true;
+            }
+        }
+
         changed
     }
 

@@ -75,6 +75,8 @@ pub enum Count {
     Upgrade,
     /// An agent's copy of the skill brought up to date with deck.
     SkillUpdated,
+    /// A group's suggested questions renewed after an answer.
+    QuestionsRenewed,
 }
 
 impl Count {
@@ -94,6 +96,7 @@ impl Count {
         Self::Walk,
         Self::Upgrade,
         Self::SkillUpdated,
+        Self::QuestionsRenewed,
     ];
 
     /// Its name in what is sent.
@@ -112,6 +115,7 @@ impl Count {
             Self::Walk => "walks",
             Self::Upgrade => "upgrades",
             Self::SkillUpdated => "skills_updated",
+            Self::QuestionsRenewed => "questions_renewed",
         }
     }
 }

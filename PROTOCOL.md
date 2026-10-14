@@ -131,6 +131,23 @@ show them ignores the field; a group without it offers none.
 `deck group` refuses more than five, an empty one, one over ninety characters,
 one running over a line, and the same question twice.
 
+### Questions renewed after an answer
+
+A group's questions can be replaced after the agent has answered one, with
+`deck asks <deck> --group <id> --ask …`. The new row is written beside the
+group as `asks-<id>.json`, `{"asks": [...]}`, and the group file itself is never
+rewritten. When that file exists, its `asks` are the group's questions. It is
+not named `g*.json`, because a client takes any such file for a group.
+
+The row is written in the order it will be shown: the questions that stay, in
+their old order, then the new ones. `deck asks` refuses until the agent has
+answered with `deck say`, and takes the same rules as `deck group --ask`, plus
+at least one question. It works on a sealed deck.
+
+A client that shows questions watches for the file while an agent is present,
+sealed or not. It waits for an answer being spoken to finish before it shows
+the renewed row.
+
 ### Order, and the gap rule
 
 Group files land in whatever order the agent finishes them. The story does not:
