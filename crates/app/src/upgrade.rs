@@ -37,7 +37,7 @@ const PATIENCE: std::time::Duration = std::time::Duration::from_secs(10);
 /// The ten seconds above cover the whole body, which is right for a release
 /// list and wrong for twenty-five megabytes: anything slower than about twenty
 /// megabits failed every time, and the automatic install would then try again
-/// tomorrow and fail the same way, for ever.
+/// at its next check and fail the same way, for ever.
 const DOWNLOAD: std::time::Duration = std::time::Duration::from_secs(10 * 60);
 
 /// How old a staging directory has to be before it is taken to be left over.
@@ -335,8 +335,8 @@ fn pick(releases: &[Release], unstable: bool) -> Option<&Release> {
     releases
         .iter()
         // Both, as `swap` needs both. A release whose checksum failed to
-        // upload would otherwise be picked, refused, and picked again every
-        // day, while a complete older one was never tried.
+        // upload would otherwise be picked, refused, and picked again at
+        // every check, while a complete older one was never tried.
         .filter(|it| it.tarball.is_some() && it.sums.is_some())
         .find(|it| unstable || !it.prerelease)
 }

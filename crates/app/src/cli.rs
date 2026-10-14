@@ -150,11 +150,11 @@ enum What {
         /// A question the reader can press to ask you, shown as a pill under
         /// the window. Give it up to five times.
         ///
-        /// Write hooks, not a quiz: one line, concrete, with a number or a
-        /// name from this group in it, and something surprising, at risk or
-        /// unexplained — `Why does a 4.2-second spinner become a 9-minute
-        /// email?`. Mix questions that fill in what the claim rests on with
-        /// ones that go past it. Never "Can you explain X?".
+        /// Write what the reader was about to type, in their words, with a
+        /// name from this group in it: `What's an outbox, basics first?`,
+        /// `Draw it: enqueue → worker → email`, `Are you sure the PDF is the
+        /// slow part?`. Never a decision for them: no "Go with A", no
+        /// "Which would you pick?". The skill has the full method.
         #[arg(long, value_name = "QUESTION")]
         ask: Vec<String>,
     },
