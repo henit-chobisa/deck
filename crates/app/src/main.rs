@@ -140,7 +140,10 @@ fn keep_up() {
     let Some(home) = deck_core::home::home() else {
         return;
     };
-    skill::keep_up(&home);
+    // Counted, for those who share counts: whether an upgrade reached the
+    // agents is the one thing the version alone cannot say.
+    let rewritten = skill::keep_up(&home).len();
+    usage::record_many(usage::Count::SkillUpdated, rewritten as u64);
     if hook::half(&home) {
         let _ = hook::install(&home);
     }

@@ -73,6 +73,8 @@ pub enum Count {
     Walk,
     /// deck upgraded itself, or was upgraded.
     Upgrade,
+    /// An agent's copy of the skill brought up to date with deck.
+    SkillUpdated,
 }
 
 impl Count {
@@ -91,6 +93,7 @@ impl Count {
             Self::QuestionEdited => "questions_edited",
             Self::Walk => "walks",
             Self::Upgrade => "upgrades",
+            Self::SkillUpdated => "skills_updated",
         }
     }
 }
