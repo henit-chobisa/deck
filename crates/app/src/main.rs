@@ -60,6 +60,8 @@ use crate::pill::Pill;
 use crate::view::{DeckView, Session};
 
 fn main() -> ExitCode {
+    keep_up();
+
     // Everything but `open` finishes without a window, and says so in its exit
     // code. `open` needs the main thread, so it comes back here to be run.
     let opening = match Cli::parse().run() {
@@ -122,6 +124,28 @@ fn main() -> ExitCode {
             eprintln!("deck: the review will not parse: {err}");
             ExitCode::FAILURE
         }
+    }
+}
+
+/// Bring what `deck setup` put down for the agents up to date with this deck.
+///
+/// Before the arguments are read, so it runs even for `--version`, which
+/// clap answers and exits on. That is the first thing the install script and
+/// `deck upgrade` ask of a new deck, so by the time either says it is done the
+/// skill already matches it, and the next agent session reads that one.
+///
+/// The catch hook too, when only its first half is on: setup adds the second
+/// half without asking, because the question was answered with the first.
+fn keep_up() {
+    let Some(home) = deck_core::home::home() else {
+        return;
+    };
+    // Counted, for those who share counts: whether an upgrade reached the
+    // agents is the one thing the version alone cannot say.
+    let rewritten = skill::keep_up(&home).len();
+    usage::record_many(usage::Count::SkillUpdated, rewritten as u64);
+    if hook::half(&home) {
+        let _ = hook::install(&home);
     }
 }
 
