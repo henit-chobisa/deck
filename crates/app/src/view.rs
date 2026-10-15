@@ -2422,8 +2422,22 @@ impl DeckView {
             .entry(spec.file.clone())
             .or_insert_with(|| std::sync::Arc::from(read_source(&base, &spec.file)))
             .clone();
+        // Values written onto this pane — the evidence for the bug — have to
+        // survive the fix arriving beside them, and so does which of them the
+        // reader had open. The authored ref alone would drop both.
+        let held = self
+            .panes
+            .get(pane_ix)
+            .and_then(Sheet::code)
+            .map(Pane::values_held);
+        if let Some((values, _)) = &held {
+            spec.values.clone_from(values);
+        }
         if let Some(slot) = self.panes.get_mut(pane_ix) {
             let mut pane = Pane::new(&spec, &source, cx);
+            if let Some((_, open)) = held {
+                pane.reopen(open);
+            }
             // Authored changes are part of the page from the first frame. This
             // one arrived while the reader was looking, so it arrives.
             if after_is_new {

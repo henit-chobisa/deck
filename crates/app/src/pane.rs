@@ -926,14 +926,41 @@ impl Pane {
     ///
     /// Selection is drawn by row, and every row under a value moves when it
     /// opens, closes or arrives, so the old indices would light other code.
+    ///
+    /// The band's light is carried, not restarted: the reader did nothing, so
+    /// nothing should blink. With nothing selected, a band still going out is
+    /// left to finish.
     fn reselect(&mut self) {
-        match self.selected {
-            Some(lines) => self.select_lines(lines),
-            None => {
-                self.picked = None;
-                self.held = None;
-            }
+        let Some(lines) = self.selected else {
+            return;
+        };
+        let rows: Vec<usize> = self
+            .rows
+            .iter()
+            .enumerate()
+            .filter(|(_, row)| lines.contains(row.pin))
+            .map(|(ix, _)| ix)
+            .collect();
+        let (Some(&first), Some(&last)) = (rows.first(), rows.last()) else {
+            return;
+        };
+        self.picked = Some((first, last));
+        match &mut self.held {
+            Some((held, _)) => *held = (first, last),
+            None => self.select_rows(first, last),
         }
+    }
+
+    /// The values this pane draws and which of them are open, so a pane built
+    /// again — for a proposal — can carry them over.
+    pub fn values_held(&self) -> (Vec<Value>, std::collections::HashSet<Who>) {
+        (self.values.clone(), self.open.clone())
+    }
+
+    /// Open the values that were open before the pane was built again.
+    pub fn reopen(&mut self, open: std::collections::HashSet<Who>) {
+        self.open = open;
+        self.lay_out();
     }
 
     /// Write values onto lines already on screen, as an answer does.
@@ -967,6 +994,16 @@ impl Pane {
 
     /// Let go of values that have finished closing. Called once a frame.
     pub fn settle(&mut self) {
+        // Nothing closing and nothing arriving: nothing to let go of, and no
+        // reason to look through the rows on every frame.
+        if self.arriving_values.is_empty()
+            && self
+                .unfolding
+                .iter()
+                .all(|(who, _)| self.open.contains(who))
+        {
+            return;
+        }
         let open = &self.open;
         let unfolding = &self.unfolding;
         let finished = self.rows.iter().any(|row| match row.extra {
@@ -1451,7 +1488,9 @@ impl Pane {
         // Each stretch of rows in motion: its first and last row, how far the
         // room for it has opened, and how far its words are in.
         let mut blocks: Vec<(usize, usize, f32, f32)> = Vec::new();
-        for (who, light) in &self.unfolding {
+        // Only values in motion: one standing open has nothing to draw here,
+        // and scanning the rows for it every frame was waste.
+        for (who, light) in self.unfolding.iter().filter(|(_, light)| light.moving()) {
             let keys: Vec<usize> = self
                 .rows
                 .iter()
