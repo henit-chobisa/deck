@@ -27,6 +27,7 @@
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="css/site.css">
 <link rel="stylesheet" href="css/deck.css">
+<link rel="stylesheet" href="css/questions.css">
 </head>
 <body>
 <a class="skip" href="#main">Skip to content</a>
@@ -178,6 +179,95 @@
     </div>
   </section>
 
+  <!-- 2b-2: suggested questions, out of the code and back into deck -->
+<section class="qs-lead">
+  <div class="qs-in">
+    <div class="qs-kicker">deck · suggested questions</div>
+    <h2>Every decision goes deeper than its diff.</h2>
+    <p>Behind each change is a decision, and behind each decision are the things you would want to know before you agree. deck keeps them one press away, so you can go as deep as the decision needs.</p>
+  </div>
+</section>
+
+<section id="qs-oc" aria-label="Suggested questions">
+  <div class="qs-stage" id="qs-stage">
+    <div class="qs-wrap" id="qs-wrap">
+
+      <div class="qs-text">
+        <div class="qs-head" id="qs-head">
+          <div class="qs-kicker">Suggested questions</div>
+          <h2 class="qs-h">It takes the words <span class="qs-w2">right out of your mouth.</span></h2>
+          <div class="qs-swap">
+            <p class="qs-sub" id="qs-sub">As deck walks you through a decision, it lights the lines the claim rests on. The question forming in your head is already waiting below, written by your agent from everything you've said.</p>
+            <div class="qs-answer" id="qs-answerD"></div>
+          </div>
+        </div>
+        <div class="qs-answer" id="qs-answerM"></div>
+      </div>
+
+      <div class="qs-pane" aria-label="checkout/service.ts">
+        <div class="qs-pane-h"><span class="qs-dot"></span>checkout/service.ts<span class="qs-r">ts</span></div>
+        <div class="qs-code" id="qs-code">
+          <div class="qs-band" id="qs-band"></div>
+<div class="qs-ln" data-w="1"><span class="qs-n">34</span><span class="qs-c"><span class="qs-k">export</span> <span class="qs-k">async</span> <span class="qs-k">function</span> <span class="qs-f">checkout</span>(req: <span class="qs-t">Request</span>) {</span></div>
+<div class="qs-ln" data-w="1"><span class="qs-n">35</span><span class="qs-c">  <span class="qs-k">const</span> order = <span class="qs-k">await</span> orders.<span class="qs-f">create</span>(req.body)</span></div>
+<div class="qs-ln" data-w="1.7" data-whisper="what does it cost?"><span class="qs-n">36</span><span class="qs-c">  <span class="qs-k">await</span> payments.<span class="qs-f">capture</span>(order.id, order.total)</span></div>
+<div class="qs-ln" data-w="4.6"><span class="qs-n">37</span><span class="qs-c">  <span class="qs-k">await</span> <span class="qs-tok" id="qs-t-outbox">outbox</span>.<span class="qs-f">write</span>(order.id, <span class="qs-s">"receipt.ready"</span>)</span></div>
+<div class="qs-ln" data-w=".4"><span class="qs-n">38</span><span class="qs-c"> </span></div>
+<div class="qs-ln" data-w="1"><span class="qs-n">39</span><span class="qs-c">  <span class="qs-cm">// the response waits on everything below</span></span></div>
+<div class="qs-ln" data-w="1.7" data-whisper="what if it's null?"><span class="qs-n">40</span><span class="qs-c">  <span class="qs-k">const</span> user = <span class="qs-k">await</span> users.<span class="qs-f">find</span>(order.userId)</span></div>
+<div class="qs-ln" data-w=".4"><span class="qs-n">41</span><span class="qs-c"> </span></div>
+<div class="qs-ln" data-w="5.2"><span class="qs-n">42</span><span class="qs-c">  <span class="qs-k">const</span> pdf = <span class="qs-k">await</span> <span class="qs-tok qs-f" id="qs-t-render">renderReceipt</span>(order)   <span class="qs-cm">// 3.9 s of the 4.2</span></span></div>
+<div class="qs-ln" data-w="4.6"><span class="qs-n">43</span><span class="qs-c">  <span class="qs-k">await</span> queue.<span class="qs-tok qs-f" id="qs-t-enqueue">enqueue</span>(<span class="qs-s">"email.receipt"</span>, { order, pdf })</span></div>
+<div class="qs-ln" data-w=".4"><span class="qs-n">44</span><span class="qs-c"> </span></div>
+<div class="qs-ln" data-w="1.7" data-whisper="do we need this at all?"><span class="qs-n">45</span><span class="qs-c">  <span class="qs-k">return</span> { ok: <span class="qs-v">true</span>, orderId: order.id }</span></div>
+<div class="qs-ln" data-w="1"><span class="qs-n">46</span><span class="qs-c">}</span></div>
+<div class="qs-ln" data-w=".4"><span class="qs-n">47</span><span class="qs-c"> </span></div>
+<div class="qs-ln" data-w="4.6"><span class="qs-n">48</span><span class="qs-c">queue.<span class="qs-f">worker</span>(<span class="qs-s">"email.receipt"</span>, { <span class="qs-tok" id="qs-t-retry"><span class="qs-p">retry</span>: { <span class="qs-p">attempts</span>: <span class="qs-v">Infinity</span> }</span> })</span></div>
+        </div>
+      </div>
+
+      <div class="qs-row-area">
+        <div class="qs-row-label qs-kicker"><span class="qs-l1">From the lines you read</span><span class="qs-l2">Renewed after your answer</span></div>
+        <div class="qs-row" id="qs-row" role="list"></div>
+      </div>
+    </div>
+    <div class="qs-win" id="qs-win" aria-hidden="true">
+      <div class="qs-win-band" id="qs-winBand">
+        <div class="qs-say">
+          <div class="qs-ttl">Checkout waits 4.2 seconds for a receipt</div>
+          <div class="qs-nar">Say you've just paid. The spinner turns for 4.2 seconds, and the receipt lands nine minutes later. <span class="qs-lit">Both come from</span> <span class="qs-chip">line 42</span>.</div>
+        </div>
+        <div class="qs-keys"><div><b>n</b>next</div><div><b>p</b>previous</div><div><b>c</b>comment</div><div><b>s</b>submit</div></div>
+      </div>
+      <div class="qs-win-side" id="qs-winSide">timeline · one checkout
+        <div class="qs-tl">
+          <div><span>request</span><span class="qs-bar"><i style="width:100%;background:var(--edge2)"></i></span></div>
+          <div><span>render pdf</span><span class="qs-bar"><i style="width:93%"></i></span></div>
+          <div><span>enqueue</span><span class="qs-bar"><i style="width:4%;margin-left:93%;background:var(--blue)"></i></span></div>
+        </div>
+        <div class="qs-scale"><span>0s</span><span>2s</span><span>4.2s</span></div>
+      </div>
+      <div class="qs-win-foot"><span>group 1/3 · <span class="qs-on">walking you through it</span></span><span>1 question asked · deck 0.1.6</span></div>
+    </div>
+    <div class="qs-finale" id="qs-finale">
+      <div class="qs-kicker">Inside deck</div>
+      <h3>Under every group. One press deeper.</h3>
+    </div>
+    <div class="qs-fly" id="qs-fly" aria-hidden="true">
+      <svg class="qs-cursor" id="qs-cursor" viewBox="0 0 18 22"><path d="M2 1.5v16.2l4.3-4 2.9 6.6 2.7-1.2-2.9-6.5h5.9z" fill="#ebdbb2" stroke="#0d0f0f" stroke-width="1.2" stroke-linejoin="round"/></svg>
+    </div>
+  </div>
+</section>
+
+<section class="qs-lead qs-out">
+  <div class="qs-in">
+    <div class="qs-kicker">After every answer</div>
+    <h2>Go one level deeper, then the next.</h2>
+    <p>Press a question and your agent answers it right there, on the lines it rests on. Then the row follows you: what you've answered sinks away, and what the answer opened arrives.</p>
+    <p>They are only ever questions. The deciding stays with you.</p>
+  </div>
+</section>
+
   <!-- 2c: in the window, real frames scrubbed by scroll -->
   <section class="scene reel" data-scene="reel" id="window" aria-labelledby="reel-title">
     <div class="stage split wide">
@@ -324,5 +414,6 @@
 <script src="js/deck-data.js" defer></script>
 <script src="js/play.js" defer></script>
 <script src="js/main.js" defer></script>
+<script src="js/questions.js" defer></script>
 </body>
 </html>
