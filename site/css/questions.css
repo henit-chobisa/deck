@@ -130,7 +130,7 @@
   .qs-whisper{display:none}
   .qs-row-label{margin-bottom:10px}
 }
-@media (prefers-reduced-motion:reduce){
+@media (prefers-reduced-motion:reduce),(max-height:500px){
   #qs-oc{height:auto}
   .qs-stage{position:relative;height:auto;padding:72px 0;flex-direction:column;gap:40px}
   .qs-finale{position:static;order:-1;opacity:1!important;transform:none!important}

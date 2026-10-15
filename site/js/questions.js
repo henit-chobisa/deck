@@ -7,7 +7,10 @@
   const STORY = 0.61, ZOOM0 = 0.63, ZOOM1 = 0.755, LIT = 0.78;
   const stage = $('#qs-stage'), section = $('#qs-oc'), fly = $('#qs-fly'), rowEl = $('#qs-row'),
         code = $('#qs-code'), band = $('#qs-band'), cursor = $('#qs-cursor');
-  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  // reduced motion, and screens too short to pin the scene (a phone on its
+  // side), get the still end state laid out in the page
+  const stillMQ = matchMedia('(prefers-reduced-motion: reduce), (max-height: 500px)');
+  let reduce = stillMQ.matches;
   const mobileMQ = matchMedia('(max-width:700px)');
 
   const EZ = t => (1 - Math.cos(Math.PI * t)) / 2;          // deck's calm ease
@@ -100,7 +103,7 @@
   const whispers = [];
   lines.forEach((l, i) => {
     if (!l.dataset.whisper) return;
-    const w = document.createElement('div'); w.className = 'qs-whisper'; w.textContent = l.dataset.whisper;
+    const w = document.createElement('div'); w.className = 'qs-whisper'; w.setAttribute('aria-hidden', 'true'); w.textContent = l.dataset.whisper;
     code.appendChild(w); whispers.push({ el: w, line: i, last: '' });
   });
 
@@ -153,14 +156,14 @@
       q.fly.forEach((f, i) => {
         f.px = phraseX + pl.wordOff[i].x - pl.wordOff[0].x;
         f.py = phraseY;
-        const ww = f.el.getBoundingClientRect().width;
+        const ww = f.el.offsetWidth;
         f.sx = q.tr.x + q.tr.w * (i + 0.5) / n - ww / 2;
         f.sy = q.tr.y + q.tr.h / 2 - 14;
         f.ex = row.x + A.pos[key].x + pills[key].wordOff[i].x;
         f.ey = row.y + A.pos[key].y + pills[key].wordOff[i].y;
       });
     });
-    M = { stageW: sr.width, A: A.pos, B: B.pos, row, rowW, lt, sectionTop: section.getBoundingClientRect().top + scrollY, span: section.offsetHeight - innerHeight };
+    M = { stageW: sr.width, A: A.pos, B: B.pos, row, rowW, lt, span: section.offsetHeight - stage.offsetHeight };
 
     // act 5: where the pane lands inside a deck window, and the window around it
     {
@@ -210,6 +213,8 @@
       { duration: 1800, easing: 'cubic-bezier(.45,0,.55,1)' });
   };
   const lineState = lines.map(() => ({}));
+  const txt = { ansD: $('#qs-answerD'), ansM: $('#qs-answerM'), head: $('#qs-head'), sub: $('#qs-sub'),
+                l1: $('.qs-row-label .qs-l1'), l2: $('.qs-row-label .qs-l2'), mobile: null, last: {} };
   const tokState = {};
   let prevP = -1;
 
@@ -420,18 +425,19 @@
 
     // ---- answer + labels ----
     const ans = EZ(seg(p, T.ans, T.ans + 0.045));
-    const ansEl = mobile ? $('#qs-answerM') : $('#qs-answerD');
-    const hideEl = mobile ? $('#qs-head') : $('#qs-sub');
-    const other = mobile ? $('#qs-answerD') : $('#qs-answerM');
-    other.style.opacity = 0;
-    other.setAttribute('aria-hidden', 'true'); ansEl.removeAttribute('aria-hidden');
-    ansEl.style.opacity = ans.toFixed(3);
-    ansEl.style.transform = `translate3d(0,${(10 * (1 - ans)).toFixed(2)}px,0)`;
-    hideEl.style.opacity = (1 - EZ(seg(p, T.ans - 0.012, T.ans + 0.02))).toFixed(3);
-    (mobile ? $('#qs-sub') : $('#qs-head')).style.opacity = 1;
-    const lab = EZ(seg(p, T.renew + 0.01, T.renew + 0.04));
-    $('.qs-row-label .qs-l1').style.opacity = (1 - lab).toFixed(3);
-    $('.qs-row-label .qs-l2').style.opacity = lab.toFixed(3);
+    const ansEl = mobile ? txt.ansM : txt.ansD, other = mobile ? txt.ansD : txt.ansM;
+    if (txt.mobile !== mobile) {
+      other.style.opacity = 0; other.style.transform = '';
+      other.setAttribute('aria-hidden', 'true'); ansEl.removeAttribute('aria-hidden');
+      (mobile ? txt.sub : txt.head).style.opacity = 1;
+      txt.mobile = mobile; txt.last = {};
+    }
+    const at = `translate3d(0,${(10 * (1 - ans)).toFixed(2)}px,0)`;
+    setT(txt.last, ansEl, at, ans.toFixed(3));
+    const ho = (1 - EZ(seg(p, T.ans - 0.012, T.ans + 0.02))).toFixed(3);
+    if (txt.last.ho !== ho) { (mobile ? txt.head : txt.sub).style.opacity = ho; txt.last.ho = ho; }
+    const lab = EZ(seg(p, T.renew + 0.01, T.renew + 0.04)).toFixed(3);
+    if (txt.last.lab !== lab) { txt.l1.style.opacity = (1 - lab).toFixed(3); txt.l2.style.opacity = lab; txt.last.lab = lab; }
 
     prevP = p;
   }
@@ -455,9 +461,15 @@
 
   // ---------- loop ----------
   let cur = 0, target = 0, dirty = true, visible = true, lastT = 0;
-  const readTarget = () => M ? cl((scrollY - M.sectionTop) / Math.max(1, M.span)) : 0;
+  // read live, as main.js's progress() does: layout above can shift, and Safari's
+  // bars change innerHeight without changing the sticky stage
+  const readTarget = () => M ? cl(-section.getBoundingClientRect().top / Math.max(1, M.span)) : 0;
   addEventListener('scroll', () => { target = readTarget(); }, { passive: true });
-  new IntersectionObserver(es => { visible = es[0].isIntersecting; }, { rootMargin: '100px' }).observe(section);
+  new IntersectionObserver(es => {
+    const was = visible; visible = es[0].isIntersecting;
+    // back on screen from far away: be where the page is, not replay the way there
+    if (visible && !was) { target = cur = readTarget(); dirty = true; }
+  }, { rootMargin: '100px' }).observe(section);
 
   function tick(now) {
     requestAnimationFrame(tick);
@@ -479,12 +491,14 @@
   }
 
   let rz = 0;
+  // turning a phone on its side switches between the pinned scene and the still one
+  stillMQ.addEventListener('change', () => { reduce = stillMQ.matches; if (!M) return; measure(); target = cur = readTarget(); render(reduce ? 1 : cur); });
   addEventListener('resize', () => { clearTimeout(rz); rz = setTimeout(() => { measure(); target = readTarget(); }, 120); });
 
   const start = () => {
     measure();
     const qp = new URLSearchParams(location.search).get('qsp');
-    if (qp !== null) scrollTo(0, M.sectionTop + M.span * cl(parseFloat(qp) || 0));
+    if (qp !== null) scrollTo(0, section.getBoundingClientRect().top + scrollY + M.span * cl(parseFloat(qp) || 0));
     target = cur = readTarget();
     render(reduce ? 1 : cur);
     requestAnimationFrame(tick);
