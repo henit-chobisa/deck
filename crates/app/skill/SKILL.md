@@ -1688,8 +1688,7 @@ a sentence.
 
 **With the prose.** Name the value in the sentence that points at it: *line 6
 reads `metadata`, which arrived empty, so `orderId` is undefined.* The words and
-the line say the same thing. Write a key's name exactly as it is in the payload,
-and a sentence that names it opens the preview when the reader picks it.
+the line say the same thing. Write a key's name exactly as it is in the payload.
 
 **With a diff.** On a change already made (`--before`), values go on the lines
 that arrived and the lines that still run; lines that went carry none. On a
