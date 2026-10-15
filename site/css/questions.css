@@ -15,6 +15,7 @@
 /* lead-in / lead-out */
 .qs-lead{min-height:78vh;display:flex;align-items:center;justify-content:center;padding:96px 16px}
 .qs-lead .qs-in{width:min(720px,100%)}
+.qs-lead h2.qs-lit{color:transparent;background:linear-gradient(100deg,var(--fg) 0%,var(--fg) 40%,#fe9b52 50%,var(--fg) 60%,var(--fg) 100%);background-size:260% 100%;background-position:100% 0;-webkit-background-clip:text;background-clip:text}
 .qs-lead h2{font-weight:600;letter-spacing:-.02em;font-size:clamp(26px,3.4vw,38px);line-height:1.15;margin:18px 0 14px;color:var(--fg)}
 .qs-lead p{font-size:17px;line-height:1.6;color:var(--muted);margin:0;max-width:600px}
 .qs-lead.out{min-height:70vh}

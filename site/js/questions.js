@@ -482,3 +482,27 @@
   };
   (document.fonts && document.fonts.ready ? document.fonts.ready : Promise.resolve()).then(start);
 })();
+
+// The lead-in and lead-out headlines: a band of light crosses each one as it
+// passes the middle of the screen, scrubbed by the scroll, so it is read, not
+// skimmed. Left plain for anyone who has asked for less motion.
+(() => {
+  if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  const heads = [...document.querySelectorAll('.qs-lead h2')];
+  heads.forEach(h => h.classList.add('qs-lit'));
+  let queued = false;
+  const paint = () => {
+    queued = false;
+    const vh = innerHeight;
+    heads.forEach(h => {
+      const r = h.getBoundingClientRect();
+      if (r.bottom < 0 || r.top > vh) return;
+      // 0 as it rises past 85% of the screen, 1 by 35%
+      const t = Math.min(1, Math.max(0, (vh * 0.85 - r.top) / (vh * 0.5)));
+      const e = (1 - Math.cos(Math.PI * t)) / 2;
+      h.style.backgroundPosition = (100 - 100 * e).toFixed(2) + '% 0';
+    });
+  };
+  addEventListener('scroll', () => { if (!queued) { queued = true; requestAnimationFrame(paint); } }, { passive: true });
+  paint();
+})();

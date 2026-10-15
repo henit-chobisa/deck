@@ -259,10 +259,12 @@ button { font: inherit; color: inherit; }
 .play h2 { max-width: 16em; }
 .play .lede { margin-top: 18px; }
 .play .wrap.wide { margin-top: 44px; }
-.asks { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-bottom: 12px; font-size: 14px; color: var(--muted); }
-.asks button { min-height: 44px; padding: 0 16px; border-radius: 20px; border: 1px solid var(--edge-2); background: transparent; color: var(--fg); cursor: pointer; transition: border-color .2s, background .2s; }
-.asks button:hover { border-color: var(--accent); background: rgba(254,128,25,0.08); }
 .note { margin-bottom: 22px; font-size: 14px; color: var(--muted); }
+/* The questions hang under the deck, as deck's shelf does. */
+.shelf { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.shelf button { height: 30px; padding: 0 13px; border-radius: 10px; border: 1px solid var(--edge); background: var(--panel); color: var(--fg); font: 13px/28px var(--sans); white-space: nowrap; cursor: pointer; transition: background .15s, border-color .15s; }
+.shelf button:hover, .shelf button:focus-visible { background: #242526; border-color: var(--edge-2); }
+.shelf-note { margin: 12px 0 0; font-size: 13px; color: var(--faint); }
 
 /* loop */
 .two, .free-box { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: clamp(32px, 6vw, 80px); align-items: center; }
@@ -360,9 +362,6 @@ button { font: inherit; color: inherit; }
   .free { padding-top: 32px; }
   .play .wrap.wide { margin-top: 28px; }
   .play .lede { font-size: 16px; }
-  .asks { align-items: stretch; }
-  .asks > span { width: 100%; }
-  .asks button { text-align: left; padding: 10px 14px; border-radius: 8px; }
   .free-cta { padding: 24px; background: #121414; }
   .foot { padding-top: 40px; }
   .foot-cols { gap: 28px 40px; }
