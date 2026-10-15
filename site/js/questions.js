@@ -66,7 +66,7 @@
   });
 
   // deck's shelf arrows, for when the row hangs under the window
-  const arrows = ['\u2039', '\u203a'].map(g => { const a = document.createElement('div'); a.className = 'qs-arrow'; a.textContent = g; rowEl.appendChild(a); return { el: a }; });
+  const arrows = ['\u2039', '\u203a'].map(g => { const a = document.createElement('div'); a.className = 'qs-arrow'; a.setAttribute('aria-hidden', 'true'); a.textContent = g; rowEl.appendChild(a); return { el: a }; });
 
   // flyers + ghost letters for the four lifted questions
   ROW_A.forEach((key, qi) => {
@@ -265,7 +265,7 @@
       const i0 = Math.floor(bandPos), i1 = Math.min(i0 + 1, lines.length - 1), f = bandPos - i0;
       const a = M.lt[i0], b = M.lt[i1];
       const y = lerp(a.y, b.y, f), h = lerp(a.h, b.h, f);
-      setT(band, band, `translate3d(0,${y.toFixed(2)}px,0) scaleY(${(h / 100).toFixed(4)})`, (bandOp * (1 - 0.0 * back)).toFixed(3));
+      setT(band, band, `translate3d(0,${y.toFixed(2)}px,0) scaleY(${(h / 100).toFixed(4)})`, bandOp.toFixed(3));
     }
     // whispers
     whispers.forEach(w => {
@@ -394,8 +394,10 @@
       if (pl.last.z !== z) { pl.el.style.zIndex = z; pl.last.z = z; }
       const bc = k === 'pdf' && asked > 0 ? `rgba(254,128,25,${(0.55 * asked).toFixed(3)})` : '';
       if (pl.last.bc !== bc) { pl.el.style.borderColor = bc; pl.last.bc = bc; }
-      const pe = settled && ROW_B.includes(k) ? 'auto' : 'none';
+      const gone = op < 0.05;
+      const pe = settled && ROW_B.includes(k) && !gone ? 'auto' : 'none';
       if (pl.last.pe !== pe) { pl.el.style.pointerEvents = pe; pl.last.pe = pe; }
+      if (pl.last.gone !== gone) { pl.el.setAttribute('aria-hidden', gone ? 'true' : 'false'); pl.last.gone = gone; }
     });
 
     // ---- shelf arrows ----
@@ -422,6 +424,7 @@
     const hideEl = mobile ? $('#qs-head') : $('#qs-sub');
     const other = mobile ? $('#qs-answerD') : $('#qs-answerM');
     other.style.opacity = 0;
+    other.setAttribute('aria-hidden', 'true'); ansEl.removeAttribute('aria-hidden');
     ansEl.style.opacity = ans.toFixed(3);
     ansEl.style.transform = `translate3d(0,${(10 * (1 - ans)).toFixed(2)}px,0)`;
     hideEl.style.opacity = (1 - EZ(seg(p, T.ans - 0.012, T.ans + 0.02))).toFixed(3);
@@ -434,8 +437,12 @@
   }
 
   // ---------- real hover (once the row has settled) ----------
+  // a press takes you to the try-it deck below, where a question really is asked;
+  // through a #play link, so the site's own anchor scrolling carries it
+  const toPlay = () => { const a = document.createElement('a'); a.href = '#play'; document.body.appendChild(a); a.click(); a.remove(); };
   Object.values(pills).forEach(pl => {
     let tIn = 0, tOut = 0;
+    pl.el.addEventListener('click', toPlay);
     pl.el.addEventListener('pointerenter', () => {
       clearTimeout(tOut);
       tIn = setTimeout(() => { Object.values(pills).forEach(o => o.target = 0); pl.target = 1; dirty = true; }, 150);
@@ -449,8 +456,7 @@
   // ---------- loop ----------
   let cur = 0, target = 0, dirty = true, visible = true, lastT = 0;
   const readTarget = () => M ? cl((scrollY - M.sectionTop) / Math.max(1, M.span)) : 0;
-  let frozen = false;
-  addEventListener('scroll', () => { if (!frozen) target = readTarget(); }, { passive: true });
+  addEventListener('scroll', () => { target = readTarget(); }, { passive: true });
   new IntersectionObserver(es => { visible = es[0].isIntersecting; }, { rootMargin: '100px' }).observe(section);
 
   function tick(now) {
@@ -473,7 +479,7 @@
   }
 
   let rz = 0;
-  addEventListener('resize', () => { if (frozen) { measure(); render(cur); return; } clearTimeout(rz); rz = setTimeout(() => { measure(); target = readTarget(); }, 120); });
+  addEventListener('resize', () => { clearTimeout(rz); rz = setTimeout(() => { measure(); target = readTarget(); }, 120); });
 
   const start = () => {
     measure();
@@ -483,7 +489,7 @@
     render(reduce ? 1 : cur);
     requestAnimationFrame(tick);
     // web fonts can land after first layout; measure again whenever the layout moves
-    const again = () => { clearTimeout(rz); rz = setTimeout(() => { measure(); if (!frozen) target = readTarget(); }, 60); };
+    const again = () => { clearTimeout(rz); rz = setTimeout(() => { measure(); target = readTarget(); }, 60); };
     if ('ResizeObserver' in window) { const ro = new ResizeObserver(again); ro.observe($('#qs-wrap')); ro.observe(stage); }
     if (document.fonts) document.fonts.addEventListener('loadingdone', again);
   };
@@ -525,15 +531,17 @@
   });
   const arrows = [...shelf.querySelectorAll('.shelf-arrow')];
   arrows.forEach(a => a.addEventListener('click', () => {
+    if (a.getAttribute('aria-disabled') === 'true') return;
     const step = (qs[0] ? qs[0].offsetWidth + 8 : 200) * +a.dataset.dir;
     row.scrollBy({ left: step });
   }));
   // an arrow with nowhere to go steps back
   const ends = () => {
     const max = row.scrollWidth - row.clientWidth;
-    arrows.forEach(a => { a.disabled = +a.dataset.dir < 0 ? row.scrollLeft <= 1 : row.scrollLeft >= max - 1; });
+    arrows.forEach(a => a.setAttribute('aria-disabled', +a.dataset.dir < 0 ? row.scrollLeft <= 1 : row.scrollLeft >= max - 1));
   };
   row.addEventListener('scroll', ends, { passive: true });
-  addEventListener('resize', ends);
+  if ('ResizeObserver' in window) new ResizeObserver(ends).observe(row); else addEventListener('resize', ends);
+  if (document.fonts) document.fonts.ready.then(ends);
   ends();
 })();

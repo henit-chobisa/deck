@@ -132,5 +132,6 @@
 }
 @media (prefers-reduced-motion:reduce){
   #qs-oc{height:auto}
-  .qs-stage{position:relative;height:auto;padding:72px 0}
+  .qs-stage{position:relative;height:auto;padding:72px 0;flex-direction:column;gap:40px}
+  .qs-finale{position:static;order:-1;opacity:1!important;transform:none!important}
 }
