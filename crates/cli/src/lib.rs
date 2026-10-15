@@ -675,6 +675,7 @@ pub fn group_asking(
                     name: named.name,
                     after: named.after,
                     before: named.before,
+                    values: named.values,
                 }),
                 Pointing::Written(page) => Ref::Page(deck_core::protocol::PageRef {
                     id: format!("g{ord}p{nth}"),

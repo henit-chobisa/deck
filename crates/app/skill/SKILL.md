@@ -1293,7 +1293,8 @@ deck seal     no more coming
 deck wait     only with -d, when you detached the window yourself
 deck next     what the reader just did, when you want it without blocking
 
-deck show     move their eyes: --ref, --pane, --after for a proposed change
+deck show     move their eyes: --ref, --pane, --after for a proposed change,
+              --values to write what a line held onto it
 deck say      say something, spoken if they have a voice, with [point …] in it
 deck bring    a file this group never showed, or --diagram for a picture you write now,
               or --page for markup that moves
@@ -1633,6 +1634,80 @@ Rules:
   and a fifth ref is usually a second group wearing a disguise.
 - The grid is rows-biased and collapses to a single column on a narrow screen, so
   every ref stays readable. You do not lay anything out; just send the refs.
+
+### Values on the line, when the claim is a value
+
+A line can carry what it held when the code ran: `orderId` is `undefined`, the
+total is `81`, the session had the id one key over. A single value is written
+right after its name. An object becomes a preview under its line that opens to
+its keys. The reader stops taking your word for the value and reads it off the
+line that produced it.
+
+**Use it when the claim is a value.**
+
+- The bug is a wrong value: `orderId` is `undefined`, the total is `81` and not
+  `90`, `rowCount` is `0`. The value *is* the evidence; a sentence only reports it.
+- The wrong field: the data was there, one key over. Show the object with both
+  keys — the one that was read and the one that held it.
+- A value that changes as the code runs: a loop, a retry, a discount applied
+  twice. Write the line's history, `100 → 90  90 → 81`.
+- A payload that drives a branch: a webhook, a response, a config. Show the
+  field the branch turns on.
+- They ask *what was X*, or *show me*, about code already on screen. Answer with
+  `deck show --values`, not a sentence.
+
+**Leave it out when** the claim is about structure (who calls whom, why a module
+exists), when the value is plain from the code (`const limit = 10` needs no
+`10` beside it), or when nobody's claim turns on it. A value that could be
+removed without losing anything is noise: remove it.
+
+**Only values you have.** From a test run, a log, a payload you read, a
+debugger, or arithmetic anyone can check from the code. A value on a line reads
+as observed, so one you are inferring goes in the prose, said as an inference —
+*I expect orderId is undefined here* — and not on the line. **Never secrets:**
+no keys, tokens, passwords, card numbers or personal emails. Redact them,
+`"sk_live_…"`, `"m***@…"`.
+
+**How much.**
+
+- Only on lines the `say` points at with `[point …]`. The value is the evidence
+  for that sentence.
+- At most two values on a line, usually one. At most three or four lines with
+  values in a group; more is two groups.
+- `"lit": true` on the one value the claim turns on, never more than one per
+  sentence.
+
+**Objects.** Give one `keys` only when the claim needs two or more keys of it —
+the field read and the field that held it. The preview in `is` starts with the
+key that matters: `Session { client_reference_id: "ord_8F2kQ71", … }`. Name only
+the keys the prose talks about, plus the one that makes the contrast (the empty
+`metadata` beside the full `client_reference_id`), up to about six, in the
+value's own order. Every run you leave out is `{ "more": N }`. Each named key may
+carry a `why` of a few words — *set at checkout*, *nothing was put here* — never
+a sentence.
+
+**With the prose.** Name the value in the sentence that points at it: *line 6
+reads `metadata`, which arrived empty, so `orderId` is undefined.* The words and
+the line say the same thing. Write a key's name exactly as it is in the payload,
+and a sentence that names it opens the preview when the reader picks it.
+
+**With a diff.** On a change already made (`--before`), values go on the lines
+that arrived and the lines that still run; lines that went carry none. On a
+proposed change (`--after`), values describe the code as it is today — the bug.
+The proposal carries none: it has not run.
+
+`--values` follows the `--ref` it belongs to, as `--after` does. `at` is the
+name exactly as it is written on that line.
+
+```bash
+deck group "$DECK" \
+  --say 'In [webhook], line 6 reads the order id from metadata, which arrived empty, so [point 6] orderId is undefined.' \
+  --ref 'apps/api/src/stripe/webhooks.ts:5-7 [webhook] the handler Stripe calls' \
+  --values '[{"line":5,"at":"session","is":"Session { client_reference_id: \"ord_8F2kQ71\", … }","keys":[{"key":"client_reference_id","is":"\"ord_8F2kQ71\"","why":"set at checkout","lit":true},{"key":"metadata","is":"{}","why":"nothing was put here"},{"more":22}]},{"line":6,"at":"orderId","is":"undefined","lit":true}]'
+```
+
+Live, the same list goes on `deck show --ref file:first-last --values '…'`,
+onto code already on screen. One show per pane, about a second apart.
 
 ### Check before you write the first group
 

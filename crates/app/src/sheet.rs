@@ -68,7 +68,10 @@ pub struct Slot<'a> {
 /// One pane of a group.
 pub enum Sheet {
     /// A file, with a range lit inside it.
-    Code(Pane),
+    ///
+    /// Boxed: a code pane carries its rows, its values and their motion, and
+    /// is many times the size of the other two.
+    Code(Box<Pane>),
     /// A picture of something that is in no file.
     Drawn(Chart),
     /// A page, for the one idea in a deck that only makes sense moving.

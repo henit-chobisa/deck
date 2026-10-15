@@ -1516,6 +1516,12 @@ impl DeckView {
                 return;
             };
             code.spotlight(range);
+            // Values the answer wrote onto these lines come in where they
+            // belong: room opens for them, then their words.
+            let values = command.valuing().to_vec();
+            if !values.is_empty() {
+                code.set_values(values);
+            }
             // The answer is the new lines, and they are spliced in under the
             // range they replace — often below the fold. Showing the top of the
             // range would put the old code on screen and the point of the
@@ -1938,11 +1944,12 @@ impl DeckView {
             // about code as it stands. Showing what it replaced is a thing an
             // authored group does, where the agent still has the old text.
             before: None,
+            values: Vec::new(),
         };
         let pane = Pane::new(&spec, &source, cx);
         // What it displaces folds in the same movement, so the room moves once.
         self.apply_fold(&fold, fold_group, false, cx);
-        self.panes.push(Sheet::Code(pane));
+        self.panes.push(Sheet::Code(Box::new(pane)));
         self.folds.push(crate::pane::Fade::default());
         self.temporary.insert(self.panes.len() - 1);
         self.attend();
@@ -2418,7 +2425,7 @@ impl DeckView {
             if after_is_new {
                 pane.arrive();
             }
-            *slot = Sheet::Code(pane);
+            *slot = Sheet::Code(Box::new(pane));
         }
     }
 
@@ -3303,6 +3310,14 @@ impl DeckView {
         };
         self.drag_from = Some((pane_ix, anchor));
         self.pick(pane_ix, row, cx);
+    }
+
+    /// Open or close the value under `line` in pane `pane_ix`.
+    pub fn toggle_value(&mut self, pane_ix: usize, line: u32, cx: &mut Context<Self>) {
+        if let Some(Sheet::Code(pane)) = self.panes.get_mut(pane_ix) {
+            pane.toggle_value(line);
+            cx.notify();
+        }
     }
 
     /// Remember which row the pointer is over. Selects nothing by itself.
@@ -4957,7 +4972,7 @@ impl DeckView {
                         .entry(code.file.clone())
                         .or_insert_with(|| std::sync::Arc::from(read_source(&base, &code.file)))
                         .clone();
-                    Sheet::Code(Pane::new(code, &source, cx))
+                    Sheet::Code(Box::new(Pane::new(code, &source, cx)))
                 }
                 Ref::Diagram(drawn) => Sheet::Drawn(Chart::new(drawn)),
                 Ref::Page(page) => Sheet::Page(crate::page::Paper::new(page)),
@@ -6053,6 +6068,16 @@ impl DeckView {
                 div()
                     .h_flex()
                     .gap_4()
+                    // Always there, and always quiet. A deck puts the agent's
+                    // claims in the same type as the code they rest on, and a
+                    // value written on a line reads as observed; the reader is
+                    // owed a standing reminder that the one making the claims
+                    // can be wrong, the way every harness says so.
+                    .child(
+                        div()
+                            .text_color(paint(self.palette.muted.mix(self.palette.band, 0.35)))
+                            .child("Your agent can make incorrect claims"),
+                    )
                     .child(format!(
                         "{said} comment{}",
                         if said == 1 { "" } else { "s" }
@@ -7346,6 +7371,12 @@ use crate::pane::SPINE;
 impl Render for DeckView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         self.settle_said_light();
+        // Values that have finished closing are taken out of their panes.
+        for pane in &mut self.panes {
+            if let Sheet::Code(code) = pane {
+                code.settle();
+            }
+        }
         // Notes that have finished fading out are let go.
         if self.notes.is_some() && !self.notes_fade.on() && !self.notes_fade.moving() {
             self.notes = None;

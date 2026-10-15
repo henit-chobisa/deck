@@ -290,6 +290,15 @@ impl ShowCommand {
         }
     }
 
+    /// The values the agent is writing onto the shown lines, if any.
+    #[must_use]
+    pub fn valuing(&self) -> &[deck_core::protocol::Value] {
+        match &self.request.body {
+            RequestBody::Show { values, .. } => values,
+            _ => &[],
+        }
+    }
+
     /// What the shown range is being proposed to become, if anything.
     #[must_use]
     pub fn proposing(&self) -> Option<&str> {
@@ -622,6 +631,7 @@ mod tests {
                     group: None,
                     pane: None,
                     after: None,
+                    values: Vec::new(),
                 },
                 Duration::from_secs(1),
             )
@@ -649,6 +659,7 @@ mod tests {
                             group: None,
                             pane: None,
                             after: None,
+                            values: Vec::new(),
                         },
                         Duration::from_secs(1),
                     )

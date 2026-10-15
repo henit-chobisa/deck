@@ -39,6 +39,8 @@ pub struct Named {
     pub after: Option<String>,
     /// What the range replaced, when the change has already been made.
     pub before: Option<String>,
+    /// What lines in the range held when the code ran. Set by the caller.
+    pub values: Vec<deck_core::protocol::Value>,
 }
 
 /// What a `--diagram` argument said.
@@ -166,6 +168,7 @@ pub fn parse(argument: &str) -> anyhow::Result<Named> {
         // is one.
         after: None,
         before: None,
+        values: Vec::new(),
     })
 }
 

@@ -51,6 +51,13 @@ pub enum RequestBody {
         /// file on disk is never touched.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         after: Option<String>,
+        /// What the shown lines held when the code ran, written onto them.
+        ///
+        /// The live half of an authored ref's `values`: a question about code
+        /// already on screen is often answered by a value, and a value is
+        /// better on its line than in a sentence about it.
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        values: Vec<deck_core::protocol::Value>,
     },
     /// Say something to the reader, beside whatever is currently on screen.
     ///
@@ -1064,6 +1071,7 @@ mod tests {
             group: None,
             pane: None,
             after: None,
+            values: Vec::new(),
         };
         let json = serde_json::to_value(&plain).unwrap();
         assert!(json.get("after").is_none(), "{json}");
@@ -1074,6 +1082,7 @@ mod tests {
             group: None,
             pane: None,
             after: Some("let x = 1;".into()),
+            values: Vec::new(),
         };
         let there = serde_json::to_value(&proposing).unwrap();
         assert_eq!(there["after"], "let x = 1;");
@@ -1438,6 +1447,7 @@ mod tests {
                     group: None,
                     pane: None,
                     after: None,
+                    values: Vec::new(),
                 },
                 Duration::from_secs(1),
             ),
