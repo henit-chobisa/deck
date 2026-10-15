@@ -302,6 +302,9 @@ button { font: inherit; color: inherit; }
 .foot { border-top: 1px solid #1d1f1f; background: #0a0b0b; padding: 64px 0 32px; }
 .foot-top { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 48px; }
 .foot-brand p { margin-top: 14px; color: var(--muted); font-size: 15px; }
+.foot-badge { display: inline-block; margin-top: 18px; opacity: .85; transition: opacity .2s; }
+.foot-badge:hover, .foot-badge:focus-visible { opacity: 1; }
+.foot-badge img { display: block; width: 180px; height: auto; }
 .foot-cols { display: flex; flex-wrap: wrap; gap: clamp(40px, 7vw, 96px); font-size: 14.5px; }
 .foot-cols div { display: flex; flex-direction: column; gap: 10px; }
 .foot-cols h3 { font-family: var(--mono); font-size: 12px; font-weight: 400; letter-spacing: 0.1em; text-transform: uppercase; color: var(--faint); margin-bottom: 4px; }
