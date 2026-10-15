@@ -2,7 +2,9 @@
   const $ = s => document.querySelector(s);
   const wrap = $('#qs-wrap'), pane = $('.qs-pane'), textEl = $('.qs-text'), rowArea = $('.qs-row-area'), rowLabel = $('.qs-row-label'),
         win = $('#qs-win'), winBand = $('#qs-winBand'), winSide = $('#qs-winSide'), finale = $('#qs-finale');
-  const STORY = 0.78, ZOOM0 = 0.8, ZOOM1 = 0.96;   // the story, then the pull back into deck
+  // The story, then the pull back into deck, then a held moment: the scene
+  // stays pinned while the scroll carries a light across the last line.
+  const STORY = 0.61, ZOOM0 = 0.63, ZOOM1 = 0.755, LIT = 0.78;
   const stage = $('#qs-stage'), section = $('#qs-oc'), fly = $('#qs-fly'), rowEl = $('#qs-row'),
         code = $('#qs-code'), band = $('#qs-band'), cursor = $('#qs-cursor');
   const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -228,10 +230,11 @@
     const f = EZ(seg(z, 0.62, 1));
     const ft = `translate3d(0,${(12 * (1 - f)).toFixed(2)}px,0)`;
     if (zst.ft !== ft) { finale.style.transform = ft; finale.style.opacity = f.toFixed(3); zst.ft = ft; }
-    // then, with the window settled and the line fully there, a light crosses it once
-    const h3 = finale.lastElementChild, lit = reduce ? 1 : EZ(seg(pAll, 0.962, 0.996));
-    const bp = (100 - 100 * lit).toFixed(2) + '% 0';
-    if (zst.bp !== bp) { h3.style.backgroundPosition = bp; zst.bp = bp; }
+    // then, with the window settled and the line fully there, a light crosses it
+    // once at its own slow pace, however fast the page is scrolled; scrolling
+    // back above the zoom lets it cross again next time
+    const h3 = finale.lastElementChild, lit = pAll >= LIT ? 1 : pAll < ZOOM0 ? 0 : zst.lit;
+    if (zst.lit !== lit) { h3.classList.toggle('qs-shine', !!lit); zst.lit = lit; }
   }
 
   function renderStory(p, shelf = 0) {
@@ -485,4 +488,52 @@
     if (document.fonts) document.fonts.addEventListener('loadingdone', again);
   };
   (document.fonts && document.fonts.ready ? document.fonts.ready : Promise.resolve()).then(start);
+})();
+
+// The try-it deck's questions, behaving as deck's shelf does: a question opens
+// after the pointer rests 150 ms, holds 150 ms after it leaves, lights once as
+// it opens, and the rest of the row steps back. The arrows slide the row.
+(() => {
+  const shelf = document.querySelector('.shelf');
+  if (!shelf) return;
+  const row = shelf.querySelector('.shelf-row');
+  const qs = [...row.querySelectorAll('.shelf-q')];
+  const REST = 150, LEAVE = 150;
+  let open = null, tIn = 0, tOut = 0;
+  const show = q => {
+    if (open === q) return;
+    if (open) open.classList.remove('open', 'shine');
+    open = q;
+    q.classList.add('open');
+    q.classList.remove('shine'); void q.offsetWidth; q.classList.add('shine');
+    row.classList.add('lit');
+  };
+  const hide = () => {
+    if (!open) return;
+    open.classList.remove('open'); open = null;
+    row.classList.remove('lit');
+  };
+  qs.forEach(q => {
+    q.addEventListener('pointerenter', () => {
+      clearTimeout(tOut); clearTimeout(tIn);
+      // straight across from an open one, it hands over at once
+      if (open) show(q); else tIn = setTimeout(() => show(q), REST);
+    });
+    q.addEventListener('pointerleave', () => { clearTimeout(tIn); tOut = setTimeout(hide, LEAVE); });
+    q.addEventListener('focus', () => show(q));
+    q.addEventListener('blur', hide);
+  });
+  const arrows = [...shelf.querySelectorAll('.shelf-arrow')];
+  arrows.forEach(a => a.addEventListener('click', () => {
+    const step = (qs[0] ? qs[0].offsetWidth + 8 : 200) * +a.dataset.dir;
+    row.scrollBy({ left: step });
+  }));
+  // an arrow with nowhere to go steps back
+  const ends = () => {
+    const max = row.scrollWidth - row.clientWidth;
+    arrows.forEach(a => { a.disabled = +a.dataset.dir < 0 ? row.scrollLeft <= 1 : row.scrollLeft >= max - 1; });
+  };
+  row.addEventListener('scroll', ends, { passive: true });
+  addEventListener('resize', ends);
+  ends();
 })();

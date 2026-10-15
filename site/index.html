@@ -277,7 +277,7 @@
     </div>
     <div class="qs-finale" id="qs-finale">
       <div class="qs-kicker">Inside deck</div>
-      <h3>Under every group. One press deeper.</h3>
+      <h3>Grill the intent. Then the evidence.</h3>
     </div>
     <div class="qs-fly" id="qs-fly" aria-hidden="true">
       <svg class="qs-cursor" id="qs-cursor" viewBox="0 0 18 22"><path d="M2 1.5v16.2l4.3-4 2.9 6.6 2.7-1.2-2.9-6.5h5.9z" fill="#ebdbb2" stroke="#0d0f0f" stroke-width="1.2" stroke-linejoin="round"/></svg>
@@ -297,30 +297,15 @@
         <noscript><p class="dk-nojs">This deck needs JavaScript to run. The recordings above show the real window.</p></noscript>
       </div>
       <div class="shelf" aria-label="Questions you can ask the agent">
-        <button type="button" data-ask="0">Where does the 260 ms come from?</button>
-        <button type="button" data-ask="1">What if a worker crashes mid-receipt?</button>
-        <button type="button" data-ask="2">Why not buy bigger checkout machines?</button>
+        <button type="button" class="shelf-arrow" data-dir="-1" aria-label="Previous questions">&lsaquo;</button>
+        <div class="shelf-row">
+          <button type="button" class="shelf-q" data-ask="0"><span class="sq">Where does the 260 ms come from?</span><span class="sh">click to ask</span></button>
+          <button type="button" class="shelf-q" data-ask="1"><span class="sq">What if a worker crashes mid-receipt?</span><span class="sh">click to ask</span></button>
+          <button type="button" class="shelf-q" data-ask="2"><span class="sq">Why not buy bigger checkout machines?</span><span class="sh">click to ask</span></button>
+        </div>
+        <button type="button" class="shelf-arrow" data-dir="1" aria-label="More questions">&rsaquo;</button>
       </div>
       <p class="note shelf-note">Press one, the way you would in deck. This deck runs in your browser with answers written in advance; in the real window, your own agent answers whatever you ask.</p>
-    </div>
-  </section>
-
-  <!-- 4: the loop -->
-  <section class="loop" aria-labelledby="loop-title">
-    <div class="wrap two">
-      <div>
-        <p class="eyebrow">Then</p>
-        <h2 id="loop-title">You decide. It implements.</h2>
-        <p class="lede">When you submit, <code>deck open</code> ends and hands your agent what you said, pinned to the lines you said it about. It picks up where it was, with your decision in hand.</p>
-      </div>
-      <div class="term small" role="img" aria-label="Your agent receiving the review and making the change">
-        <div class="term-head"><i></i><i></i><i></i><span>your agent</span></div>
-        <div class="term-body">
-          <div class="out">review · <span id="loop-count">1 comment</span></div>
-          <div class="out" id="loop-comments"><span class="hl">invoice.worker.ts:9</span>  "Ship it with autoscaling. Cap it at twenty, and page us if a receipt waits more than a minute."</div>
-          <div class="work"><b class="bullet">⏺</b> Shipping the worker with autoscaling, capped at twenty, and an alert on queue age over sixty seconds.</div>
-        </div>
-      </div>
     </div>
   </section>
 

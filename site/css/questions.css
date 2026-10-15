@@ -14,7 +14,7 @@
 
 
 /* the pinned section */
-#qs-oc{position:relative;height:540vh}
+#qs-oc{position:relative;height:600vh}
 .qs-stage{position:sticky;top:0;height:100vh;overflow:hidden;display:flex;align-items:center;justify-content:center;padding-top:var(--qs-nav,56px)}
 .qs-wrap{position:relative;z-index:2;will-change:transform;width:min(1120px,calc(100% - 32px));display:grid;
   grid-template-columns:minmax(0,1fr) 610px;grid-template-areas:"text code" "text row";gap:28px 64px;align-items:center}
@@ -87,6 +87,9 @@
   border-top:1px solid var(--edge);background:#151717;font:10.5px 'JetBrains Mono',monospace;color:var(--faint)}
 .qs-win-foot .qs-on{color:var(--accent)}
 .qs-finale{position:absolute;left:0;right:0;top:0;z-index:3;text-align:center;opacity:0;pointer-events:none;will-change:opacity,transform}
+.qs-finale h3.qs-shine{animation:qs-shine 2.6s cubic-bezier(.45,0,.55,1) both}
+@keyframes qs-shine{from{background-position:100% 0}to{background-position:0% 0}}
+@media (prefers-reduced-motion:reduce){.qs-finale h3.qs-shine{animation:none}}
 .qs-finale h3{color:transparent;background:linear-gradient(100deg,var(--fg) 0%,var(--fg) 40%,#fe9b52 50%,var(--fg) 60%,var(--fg) 100%);background-size:260% 100%;background-position:100% 0;-webkit-background-clip:text;background-clip:text;font-weight:600;letter-spacing:-.02em;font-size:clamp(24px,2.6vw,34px);line-height:1.15;margin:12px 0 0}
 
 .qs-arrow{position:absolute;left:0;top:0;width:36px;height:30px;border-radius:10px;border:1px solid var(--edge);background:var(--panel);
