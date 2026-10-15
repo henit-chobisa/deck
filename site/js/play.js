@@ -471,16 +471,6 @@
       if (!st.comments.length) { say('Nothing to send yet. Select a line, press c, and add it to the review.'); return }
       const n = st.comments.length
       say('Review sent to your agent · ' + n + (n === 1 ? ' comment' : ' comments'))
-      const list = document.getElementById('loop-comments'), cnt = document.getElementById('loop-count')
-      if (list && cnt) {
-        list.textContent = ''
-        st.comments.forEach((c, i) => {
-          if (i) list.append(document.createElement('br'))
-          const at = document.createElement('span'); at.className = 'hl'; at.textContent = c.at
-          list.append(at, document.createTextNode('  "' + c.text + '"'))
-        })
-        cnt.textContent = n + (n === 1 ? ' comment' : ' comments')
-      }
       st.comments = []; updateCount(); remarkMarks()
     }
 

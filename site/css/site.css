@@ -252,26 +252,38 @@ button { font: inherit; color: inherit; }
 
 /* play section */
 .play, .install { padding: clamp(80px, 12vw, 160px) 0; }
-/* The loop and the free section are one pair: the same grid, the same
-   columns, the same rhythm, so their text and their cards line up. */
-.loop { padding: clamp(80px, 12vw, 160px) 0 clamp(48px, 6vw, 80px); }
 .free { padding: clamp(48px, 6vw, 80px) 0 0; }
 .play h2 { max-width: 16em; }
 .play .lede { margin-top: 18px; }
 .play .wrap.wide { margin-top: 44px; }
-.asks { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-bottom: 12px; font-size: 14px; color: var(--muted); }
-.asks button { min-height: 44px; padding: 0 16px; border-radius: 20px; border: 1px solid var(--edge-2); background: transparent; color: var(--fg); cursor: pointer; transition: border-color .2s, background .2s; }
-.asks button:hover { border-color: var(--accent); background: rgba(254,128,25,0.08); }
 .note { margin-bottom: 22px; font-size: 14px; color: var(--muted); }
-
-/* loop */
-.two, .free-box { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: clamp(32px, 6vw, 80px); align-items: center; }
-.two > :last-child, .free-box > :last-child { width: 100%; }
-
-@media (max-width: 900px) { .two, .free-box { grid-template-columns: minmax(0, 1fr); } }
+/* The questions hang under the deck, as deck's shelf does: arrows at either
+   end, and a question that opens to say how to press it, with a light that
+   crosses it once while the rest of the row steps back. */
+.shelf { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
+.shelf-row { flex: 1; min-width: 0; display: flex; gap: 8px; overflow-x: auto; scroll-behavior: smooth; scrollbar-width: none; }
+.shelf-row::-webkit-scrollbar { display: none; }
+.shelf button { flex: none; height: 30px; padding: 0 13px; border-radius: 10px; border: 1px solid var(--edge); background: var(--panel); color: var(--fg); font: 13px/28px var(--sans); white-space: nowrap; cursor: pointer; transition: background .2s; }
+.shelf button:hover, .shelf button:focus-visible { background: #242526; }
+.shelf-arrow { width: 36px; padding: 0 !important; font-size: 15px !important; }
+.shelf-arrow[aria-disabled="true"] { opacity: .35; cursor: default; background: var(--panel); }
+.shelf-q { display: inline-flex; align-items: center; }
+.shelf-q .sq { color: transparent; background: linear-gradient(100deg, var(--fg) 0%, var(--fg) 41%, #fe9b52 50%, var(--fg) 59%, var(--fg) 100%); background-size: 260% 100%; background-position: 100% 0; -webkit-background-clip: text; background-clip: text; transition: opacity .7s cubic-bezier(.22,1,.36,1); }
+.shelf-q .sh { display: inline-block; max-width: 0; overflow: hidden; opacity: 0; font-size: 12px; color: var(--faint); transition: max-width .7s cubic-bezier(.22,1,.36,1), opacity .5s .15s, padding .7s cubic-bezier(.22,1,.36,1); }
+.shelf-q.open .sh { max-width: 120px; opacity: 1; padding-left: 12px; }
+.shelf-q.shine .sq { animation: shelf-shine 1.8s cubic-bezier(.45,0,.55,1) both; }
+.shelf-row.lit .shelf-q:not(.open) .sq { opacity: .42; }
+@keyframes shelf-shine { from { background-position: 100% 0; } to { background-position: 0% 0; } }
+@media (prefers-reduced-motion: reduce) { .shelf-q.shine .sq { animation: none; } .shelf-row { scroll-behavior: auto; } }
+.shelf-note { margin: 12px 0 0; font-size: 13px; color: var(--faint); }
 
 /* free */
-.free-copy h2, .loop h2 { margin-bottom: 20px; }
+.free-box { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: clamp(32px, 6vw, 80px); align-items: center; }
+.free-box > :last-child { width: 100%; }
+
+@media (max-width: 900px) { .free-box { grid-template-columns: minmax(0, 1fr); } }
+
+.free-copy h2 { margin-bottom: 20px; }
 .free-copy .lede + .lede { margin-top: 14px; }
 .signed { margin-top: 22px; font-family: var(--mono); font-size: 14px; color: var(--muted); }
 .signed::before { content: "— "; }
@@ -356,13 +368,9 @@ button { font: inherit; color: inherit; }
 }
 @media (max-width: 900px) {
   .play, .install { padding: 64px 0; }
-  .loop { padding: 64px 0 32px; }
   .free { padding-top: 32px; }
   .play .wrap.wide { margin-top: 28px; }
   .play .lede { font-size: 16px; }
-  .asks { align-items: stretch; }
-  .asks > span { width: 100%; }
-  .asks button { text-align: left; padding: 10px 14px; border-radius: 8px; }
   .free-cta { padding: 24px; background: #121414; }
   .foot { padding-top: 40px; }
   .foot-cols { gap: 28px 40px; }
