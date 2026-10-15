@@ -1479,6 +1479,10 @@ impl DeckView {
                 .get(resolved.pane_ix)
                 .and_then(Sheet::code)
                 .is_none_or(|code| Some(code.spotlight_range()) != stage.range);
+        // Values onto code already lit are the commonest live case — *what
+        // was orderId here?* — and the lines being unchanged is no reason to
+        // drop them.
+        changed |= !command.valuing().is_empty();
         if changed {
             if self.group_ix != resolved.group_ix {
                 self.group_ix = resolved.group_ix;
@@ -3313,9 +3317,13 @@ impl DeckView {
     }
 
     /// Open or close the value under `line` in pane `pane_ix`.
-    pub fn toggle_value(&mut self, pane_ix: usize, line: u32, cx: &mut Context<Self>) {
+    pub fn toggle_value(&mut self, pane_ix: usize, who: crate::pane::Who, cx: &mut Context<Self>) {
+        // Rows under the value move, so a drag or hover kept by row index
+        // would carry on from somewhere else.
+        self.drag_from = None;
+        self.hovered = None;
         if let Some(Sheet::Code(pane)) = self.panes.get_mut(pane_ix) {
-            pane.toggle_value(line);
+            pane.toggle_value(who);
             cx.notify();
         }
     }

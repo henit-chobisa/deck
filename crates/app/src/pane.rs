@@ -193,6 +193,19 @@ impl Fade {
         self.from + (to - self.from) * eased
     }
 
+    /// Head towards `on` from wherever the straight-time level has got to,
+    /// for a light read with [`Fade::linear`]. Turned back halfway, `set`
+    /// would restart from the eased level and the motion would jump.
+    pub(crate) fn set_linear(&mut self, on: bool) -> bool {
+        if self.on == on {
+            return false;
+        }
+        self.from = self.linear();
+        self.on = on;
+        self.since = Some(std::time::Instant::now());
+        true
+    }
+
     /// Nought to one, straight with time: for a motion that brings its own
     /// curve and should not be eased twice.
     pub(crate) fn linear(&self) -> f32 {
@@ -265,6 +278,12 @@ struct Row {
     extra: Option<Extra>,
 }
 
+/// Which value a row belongs to: its line and the name it is written for.
+///
+/// Not the line alone. Two values with keys can hang under one line, and keyed
+/// by line they opened and closed together.
+pub(crate) type Who = (u32, SharedString);
+
 /// A row that carries a value rather than a line of the file.
 ///
 /// Under the line it belongs to, never beside it. A value written after a long
@@ -274,7 +293,7 @@ struct Row {
 enum Extra {
     /// `↳ name ▶ Preview { key: value, … }` — the handle that opens the keys.
     Chip {
-        line: u32,
+        who: Who,
         name: SharedString,
         preview: SharedString,
         open: bool,
@@ -283,8 +302,8 @@ enum Extra {
     },
     /// One key inside an opened value, or a run of keys left out.
     Key {
-        /// The line of the value this key is inside.
-        line: u32,
+        /// The value this key is inside.
+        who: Who,
         name: SharedString,
         is: SharedString,
         why: Option<SharedString>,
@@ -444,13 +463,13 @@ pub struct Pane {
     /// The values the ref carries, as written.
     values: Vec<Value>,
     /// The lines whose value the reader has opened.
-    open: std::collections::HashSet<u32>,
+    open: std::collections::HashSet<Who>,
     /// How far open each value is that has been touched, so opening and
     /// closing can be watched rather than happening between two frames.
-    unfolding: Vec<(u32, Fade)>,
+    unfolding: Vec<(Who, Fade)>,
     /// Values the agent has just written onto lines already on screen, and
     /// how far in each one is.
-    arriving_values: Vec<(u32, Fade)>,
+    arriving_values: Vec<(Who, Fade)>,
     /// Which row each file line is drawn on.
     ///
     /// Value rows go in under their lines, wherever those are, so a line's row
@@ -739,20 +758,21 @@ impl Pane {
             let indent = row.text.len() - row.text.trim_start().len();
             rows.push(row.clone());
             for value in here.iter().filter(|value| !value.keys.is_empty()) {
-                let open = self.open.contains(&value.line);
+                let who: Who = (value.line, value.at.clone().into());
+                let open = self.open.contains(&who);
                 // Still drawn while it closes: the code slides back over the
                 // keys, and only then are they taken away.
                 let shown = open
                     || self
                         .unfolding
                         .iter()
-                        .any(|(line, light)| *line == value.line && light.moving());
+                        .any(|(at, light)| *at == who && light.moving());
                 rows.push(Row {
                     text: SharedString::default(),
                     runs: Vec::new(),
                     number: None,
                     extra: Some(Extra::Chip {
-                        line: value.line,
+                        who: who.clone(),
                         name: value.at.clone().into(),
                         preview: value.is.clone().into(),
                         open,
@@ -794,7 +814,7 @@ impl Pane {
                         runs: Vec::new(),
                         number: None,
                         extra: Some(Extra::Key {
-                            line: value.line,
+                            who: who.clone(),
                             name: SharedString::default(),
                             is: SharedString::default(),
                             why: None,
@@ -819,7 +839,7 @@ impl Pane {
                             runs: Vec::new(),
                             number: None,
                             extra: Some(Extra::Key {
-                                line: value.line,
+                                who: who.clone(),
                                 name: key.key.clone().map_or_else(
                                     || format!("+ {} more", key.more.unwrap_or(0)).into(),
                                     SharedString::from,
@@ -882,26 +902,38 @@ impl Pane {
     ///
     /// The rows below move, so a selection held by row would land on
     /// different code: it is let go.
-    pub fn toggle_value(&mut self, line: u32) {
-        let opening = !self.open.remove(&line);
+    pub fn toggle_value(&mut self, who: Who) {
+        let opening = !self.open.remove(&who);
         if opening {
-            self.open.insert(line);
+            self.open.insert(who.clone());
         }
-        match self.unfolding.iter_mut().find(|(at, _)| *at == line) {
+        match self.unfolding.iter_mut().find(|(at, _)| *at == who) {
             // Turned back halfway, it goes back from where it had got to.
             Some((_, light)) => {
-                light.set(opening);
+                light.set_linear(opening);
             }
             None => {
                 let mut light = Fade::default().paced(UNFOLD, REFOLD);
-                light.set(opening);
-                self.unfolding.push((line, light));
+                light.set_linear(opening);
+                self.unfolding.push((who, light));
             }
         }
-        self.picked = None;
-        self.held = None;
-        self.selected = None;
         self.lay_out();
+        self.reselect();
+    }
+
+    /// After rows go in or come out, hold the same lines again.
+    ///
+    /// Selection is drawn by row, and every row under a value moves when it
+    /// opens, closes or arrives, so the old indices would light other code.
+    fn reselect(&mut self) {
+        match self.selected {
+            Some(lines) => self.select_lines(lines),
+            None => {
+                self.picked = None;
+                self.held = None;
+            }
+        }
     }
 
     /// Write values onto lines already on screen, as an answer does.
@@ -922,13 +954,15 @@ impl Pane {
                 }
                 self.values.remove(ix);
             }
+            let who: Who = (line, value.at.clone().into());
             self.values.push(value);
-            self.arriving_values.retain(|(at, _)| *at != line);
+            self.arriving_values.retain(|(at, _)| *at != who);
             let mut light = Fade::default().paced(UNFOLD, REFOLD);
             light.set(true);
-            self.arriving_values.push((line, light));
+            self.arriving_values.push((who, light));
         }
         self.lay_out();
+        self.reselect();
     }
 
     /// Let go of values that have finished closing. Called once a frame.
@@ -936,19 +970,20 @@ impl Pane {
         let open = &self.open;
         let unfolding = &self.unfolding;
         let finished = self.rows.iter().any(|row| match row.extra {
-            Some(Extra::Key { line, .. }) => {
-                !open.contains(&line)
+            Some(Extra::Key { ref who, .. }) => {
+                !open.contains(who)
                     && !unfolding
                         .iter()
-                        .any(|(at, light)| *at == line && light.moving())
+                        .any(|(at, light)| at == who && light.moving())
             }
             _ => false,
         });
         self.unfolding
-            .retain(|(line, light)| light.moving() || self.open.contains(line));
+            .retain(|(who, light)| light.moving() || self.open.contains(who));
         self.arriving_values.retain(|(_, light)| light.moving());
         if finished {
             self.lay_out();
+            self.reselect();
         }
     }
 
@@ -1416,12 +1451,14 @@ impl Pane {
         // Each stretch of rows in motion: its first and last row, how far the
         // room for it has opened, and how far its words are in.
         let mut blocks: Vec<(usize, usize, f32, f32)> = Vec::new();
-        for (line, light) in &self.unfolding {
+        for (who, light) in &self.unfolding {
             let keys: Vec<usize> = self
                 .rows
                 .iter()
                 .enumerate()
-                .filter(|(_, row)| matches!(row.extra, Some(Extra::Key { line: at, .. }) if at == *line))
+                .filter(
+                    |(_, row)| matches!(&row.extra, Some(Extra::Key { who: at, .. }) if at == who),
+                )
                 .map(|(ix, _)| ix)
                 .collect();
             if let (Some(first), Some(last)) = (keys.first(), keys.last()) {
@@ -1432,11 +1469,11 @@ impl Pane {
         // A value written live: its preview row opens the same way, and a
         // single value grows its own room on the line, then fills it.
         let mut arrivals: Vec<(u32, f32, f32)> = Vec::new();
-        for (line, light) in &self.arriving_values {
+        for (who, light) in &self.arriving_values {
             let (slide, show) = steps(light.linear());
-            arrivals.push((*line, slide, show));
+            arrivals.push((who.0, slide, show));
             if let Some(ix) = self.rows.iter().position(
-                |row| matches!(row.extra, Some(Extra::Chip { line: at, .. }) if at == *line),
+                |row| matches!(&row.extra, Some(Extra::Chip { who: at, .. }) if at == who),
             ) {
                 blocks.push((ix, ix, slide, show));
             }
@@ -1640,15 +1677,15 @@ impl Pane {
                                 .on_mouse_down(MouseButton::Left, {
                                     let view = view.clone();
                                     let handle = match row.extra {
-                                        Some(Extra::Chip { line, .. }) => Some(line),
+                                        Some(Extra::Chip { ref who, .. }) => Some(who.clone()),
                                         _ => None,
                                     };
                                     move |event: &MouseDownEvent, _window, cx| {
                                         let extend = event.modifiers.shift;
                                         let _ = view.update(cx, |deck, cx| {
                                             // A value's handle opens it; it is not code to pick.
-                                            if let Some(line) = handle {
-                                                deck.toggle_value(pane_ix, line, cx);
+                                            if let Some(who) = handle.clone() {
+                                                deck.toggle_value(pane_ix, who, cx);
                                             } else {
                                                 deck.start_pick(pane_ix, ix, extend, cx);
                                             }
@@ -1927,7 +1964,14 @@ impl Pane {
                 // Just under the last line the remark covers — counted in
                 // rows, not in line numbers, because a proposed replacement
                 // puts rows between the two.
-                let y = (self.row_of(mark.range.last) + 1) as f32 * row - top;
+                // Under everything that belongs to the line, its value rows
+                // included, or the card covers the value it is about.
+                let below = self
+                    .rows
+                    .iter()
+                    .rposition(|r| r.pin == mark.range.last)
+                    .unwrap_or_else(|| self.row_of(mark.range.last));
+                let y = (below + 1) as f32 * row - top;
 
                 // One surface, quiet chrome.
                 //

@@ -928,6 +928,19 @@ fn show(
             return ExitCode::FAILURE;
         }
     };
+    if let Some(stray) = values
+        .iter()
+        .find(|value| value.line < named.range.first || value.line > named.range.last)
+    {
+        println!(
+            "{}",
+            serde_json::json!({
+                "status": "invalid-request",
+                "reason": format!("a value is on line {}, outside {reference}: put values on the lines you show", stray.line)
+            })
+        );
+        return ExitCode::FAILURE;
+    }
     let Some(runtime) = deck_core::home::deck() else {
         println!(
             "{}",
