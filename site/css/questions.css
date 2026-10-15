@@ -1,7 +1,7 @@
 /* Suggested questions: the scroll scene where questions come out of the code
    and the camera pulls back into deck. Everything is qs- so nothing meets the
    site's own classes. */
-#qs-oc,.qs-lead{
+#qs-oc{
   --ground:#0d0f0f;--raise:#141717;--panel:#1a1a1a;
   --fg:#ebdbb2;--soft:#bdae93;--muted:#a89984;--faint:#928374;
   --edge:#2a2826;--edge2:#3a3735;
@@ -12,14 +12,6 @@
 .qs-mono{font-family:'JetBrains Mono',ui-monospace,monospace}
 .qs-kicker{font:500 11px/1 'JetBrains Mono',monospace;letter-spacing:.08em;text-transform:uppercase;color:var(--faint)}
 
-/* lead-in / lead-out */
-.qs-lead{min-height:78vh;display:flex;align-items:center;justify-content:center;padding:96px 16px}
-.qs-lead .qs-in{width:min(720px,100%)}
-.qs-lead h2.qs-lit{color:transparent;background:linear-gradient(100deg,var(--fg) 0%,var(--fg) 40%,#fe9b52 50%,var(--fg) 60%,var(--fg) 100%);background-size:260% 100%;background-position:100% 0;-webkit-background-clip:text;background-clip:text}
-.qs-lead h2{font-weight:600;letter-spacing:-.02em;font-size:clamp(26px,3.4vw,38px);line-height:1.15;margin:18px 0 14px;color:var(--fg)}
-.qs-lead p{font-size:17px;line-height:1.6;color:var(--muted);margin:0;max-width:600px}
-.qs-lead.out{min-height:70vh}
-.qs-lead.out p + p{margin-top:12px}
 
 /* the pinned section */
 #qs-oc{position:relative;height:540vh}
@@ -95,7 +87,7 @@
   border-top:1px solid var(--edge);background:#151717;font:10.5px 'JetBrains Mono',monospace;color:var(--faint)}
 .qs-win-foot .qs-on{color:var(--accent)}
 .qs-finale{position:absolute;left:0;right:0;top:0;z-index:3;text-align:center;opacity:0;pointer-events:none;will-change:opacity,transform}
-.qs-finale h3{font-weight:600;letter-spacing:-.02em;font-size:clamp(24px,2.6vw,34px);line-height:1.15;margin:12px 0 0;color:var(--fg)}
+.qs-finale h3{color:transparent;background:linear-gradient(100deg,var(--fg) 0%,var(--fg) 40%,#fe9b52 50%,var(--fg) 60%,var(--fg) 100%);background-size:260% 100%;background-position:100% 0;-webkit-background-clip:text;background-clip:text;font-weight:600;letter-spacing:-.02em;font-size:clamp(24px,2.6vw,34px);line-height:1.15;margin:12px 0 0}
 
 .qs-arrow{position:absolute;left:0;top:0;width:36px;height:30px;border-radius:10px;border:1px solid var(--edge);background:var(--panel);
   color:var(--fg);font-size:15px;line-height:28px;text-align:center;opacity:0;z-index:4;will-change:transform,opacity;pointer-events:none}
@@ -134,7 +126,6 @@
   .qs-pane-h{height:30px;font-size:11px;padding:0 12px}
   .qs-whisper{display:none}
   .qs-row-label{margin-bottom:10px}
-  .qs-lead p{font-size:16px}
 }
 @media (prefers-reduced-motion:reduce){
   #qs-oc{height:auto}

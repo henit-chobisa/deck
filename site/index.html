@@ -179,15 +179,41 @@
     </div>
   </section>
 
-  <!-- 2b-2: suggested questions, out of the code and back into deck -->
-<section class="qs-lead">
-  <div class="qs-in">
-    <div class="qs-kicker">deck · suggested questions</div>
-    <h2>Every decision goes deeper than its diff.</h2>
-    <p>Behind each change is a decision, and behind each decision are the things you would want to know before you agree. deck keeps them one press away, so you can go as deep as the decision needs.</p>
-  </div>
-</section>
+  <!-- 2c: in the window, real frames scrubbed by scroll -->
+  <section class="scene reel" data-scene="reel" id="window" aria-labelledby="reel-title">
+    <div class="stage split wide">
+      <div class="side">
+        <p class="eyebrow accent">In the window</p>
+        <h2 id="reel-title" class="swap">
+          <span data-at="0">Every claim arrives with its evidence.</span>
+          <span data-at="1">See the failure, not a description of it.</span>
+          <span data-at="2">Judge the fix against the same moment.</span>
+          <span data-at="3">Big changes, one concern at a time.</span>
+          <span data-at="4">Push back where the decision is.</span>
+          <span data-at="5">Questions come back with proof.</span>
+        </h2>
+        <p class="lede swap">
+          <span data-at="0">Your agent states what it found, and the lines that prove it are already in view. You check the reasoning instead of hunting for it.</span>
+          <span data-at="1">At ten o'clock the requests queue behind forty connections. A timeline you can watch is harder to misread than a paragraph about one.</span>
+          <span data-at="2">The proposed fix replays the same seconds with the expiry spread out, so you weigh it against the failure it claims to remove.</span>
+          <span data-at="3">A large branch comes as chapters. Each one brings only the files its argument needs, and the change lands as a diff beside its reason.</span>
+          <span data-at="4">Select the lines and say what you would change. Ask now, or hold it for the review; either way it reaches your agent pinned to those lines.</span>
+          <span data-at="5">Ask why popularity counts for 30 per cent, and the answer is the experiment that chose it: from the same agent, in the same session.</span>
+        </p>
+        <ol class="chapters" aria-hidden="true">
+          <li data-at="0">evidence</li><li data-at="1">behaviour</li><li data-at="2">the fix</li><li data-at="3">chapters</li><li data-at="4">your call</li><li data-at="5">answers</li>
+        </ol>
+        <p class="real">Real recordings of deck 0.1.4. Nothing on the right is a mock-up.</p>
+        <a class="try-live small" href="#play"><span class="live-dot" aria-hidden="true"></span>Now review one yourself</a>
+      </div>
+      <figure class="reel-frame">
+        <canvas class="reel-canvas" role="img" aria-label="Recordings of deck: a narrated walk lighting code line by line, a request timeline piling up, a diff arriving, a comment typed on a line, and the agent's answer as a chart"></canvas>
+        <div class="reel-progress" aria-hidden="true"><i></i></div>
+      </figure>
+    </div>
+  </section>
 
+  <!-- 2d: suggested questions, out of the code and back into deck -->
 <section id="qs-oc" aria-label="Suggested questions">
   <div class="qs-stage" id="qs-stage">
     <div class="qs-wrap" id="qs-wrap">
@@ -258,49 +284,6 @@
     </div>
   </div>
 </section>
-
-<section class="qs-lead qs-out">
-  <div class="qs-in">
-    <div class="qs-kicker">After every answer</div>
-    <h2>Go one level deeper, then the next.</h2>
-    <p>Press a question and your agent answers it right there, on the lines it rests on. Then the row follows you: what you've answered sinks away, and what the answer opened arrives.</p>
-    <p>They are only ever questions. The deciding stays with you.</p>
-  </div>
-</section>
-
-  <!-- 2c: in the window, real frames scrubbed by scroll -->
-  <section class="scene reel" data-scene="reel" id="window" aria-labelledby="reel-title">
-    <div class="stage split wide">
-      <div class="side">
-        <p class="eyebrow accent">In the window</p>
-        <h2 id="reel-title" class="swap">
-          <span data-at="0">Every claim arrives with its evidence.</span>
-          <span data-at="1">See the failure, not a description of it.</span>
-          <span data-at="2">Judge the fix against the same moment.</span>
-          <span data-at="3">Big changes, one concern at a time.</span>
-          <span data-at="4">Push back where the decision is.</span>
-          <span data-at="5">Questions come back with proof.</span>
-        </h2>
-        <p class="lede swap">
-          <span data-at="0">Your agent states what it found, and the lines that prove it are already in view. You check the reasoning instead of hunting for it.</span>
-          <span data-at="1">At ten o'clock the requests queue behind forty connections. A timeline you can watch is harder to misread than a paragraph about one.</span>
-          <span data-at="2">The proposed fix replays the same seconds with the expiry spread out, so you weigh it against the failure it claims to remove.</span>
-          <span data-at="3">A large branch comes as chapters. Each one brings only the files its argument needs, and the change lands as a diff beside its reason.</span>
-          <span data-at="4">Select the lines and say what you would change. Ask now, or hold it for the review; either way it reaches your agent pinned to those lines.</span>
-          <span data-at="5">Ask why popularity counts for 30 per cent, and the answer is the experiment that chose it: from the same agent, in the same session.</span>
-        </p>
-        <ol class="chapters" aria-hidden="true">
-          <li data-at="0">evidence</li><li data-at="1">behaviour</li><li data-at="2">the fix</li><li data-at="3">chapters</li><li data-at="4">your call</li><li data-at="5">answers</li>
-        </ol>
-        <p class="real">Real recordings of deck 0.1.4. Nothing on the right is a mock-up.</p>
-        <a class="try-live small" href="#play"><span class="live-dot" aria-hidden="true"></span>Now review one yourself</a>
-      </div>
-      <figure class="reel-frame">
-        <canvas class="reel-canvas" role="img" aria-label="Recordings of deck: a narrated walk lighting code line by line, a request timeline piling up, a diff arriving, a comment typed on a line, and the agent's answer as a chart"></canvas>
-        <div class="reel-progress" aria-hidden="true"><i></i></div>
-      </figure>
-    </div>
-  </section>
 
   <!-- 3: play -->
   <section class="play" id="play" aria-labelledby="play-title">

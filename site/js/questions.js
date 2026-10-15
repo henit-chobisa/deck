@@ -228,6 +228,10 @@
     const f = EZ(seg(z, 0.62, 1));
     const ft = `translate3d(0,${(12 * (1 - f)).toFixed(2)}px,0)`;
     if (zst.ft !== ft) { finale.style.transform = ft; finale.style.opacity = f.toFixed(3); zst.ft = ft; }
+    // then, with the window settled and the line fully there, a light crosses it once
+    const h3 = finale.lastElementChild, lit = reduce ? 1 : EZ(seg(pAll, 0.962, 0.996));
+    const bp = (100 - 100 * lit).toFixed(2) + '% 0';
+    if (zst.bp !== bp) { h3.style.backgroundPosition = bp; zst.bp = bp; }
   }
 
   function renderStory(p, shelf = 0) {
@@ -481,28 +485,4 @@
     if (document.fonts) document.fonts.addEventListener('loadingdone', again);
   };
   (document.fonts && document.fonts.ready ? document.fonts.ready : Promise.resolve()).then(start);
-})();
-
-// The lead-in and lead-out headlines: a band of light crosses each one as it
-// passes the middle of the screen, scrubbed by the scroll, so it is read, not
-// skimmed. Left plain for anyone who has asked for less motion.
-(() => {
-  if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
-  const heads = [...document.querySelectorAll('.qs-lead h2')];
-  heads.forEach(h => h.classList.add('qs-lit'));
-  let queued = false;
-  const paint = () => {
-    queued = false;
-    const vh = innerHeight;
-    heads.forEach(h => {
-      const r = h.getBoundingClientRect();
-      if (r.bottom < 0 || r.top > vh) return;
-      // 0 as it rises past 85% of the screen, 1 by 35%
-      const t = Math.min(1, Math.max(0, (vh * 0.85 - r.top) / (vh * 0.5)));
-      const e = (1 - Math.cos(Math.PI * t)) / 2;
-      h.style.backgroundPosition = (100 - 100 * e).toFixed(2) + '% 0';
-    });
-  };
-  addEventListener('scroll', () => { if (!queued) { queued = true; requestAnimationFrame(paint); } }, { passive: true });
-  paint();
 })();
