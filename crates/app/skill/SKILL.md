@@ -1295,6 +1295,7 @@ deck next     what the reader just did, when you want it without blocking
 
 deck show     move their eyes: --ref, --pane, --after for a proposed change,
               --values to write what a line held onto it
+deck values   values onto several panes at once: --on <pane> --values <json>, repeated
 deck say      say something, spoken if they have a voice, with [point …] in it
 deck bring    a file this group never showed, or --diagram for a picture you write now,
               or --page for markup that moves
@@ -1671,7 +1672,9 @@ no keys, tokens, passwords, card numbers or personal emails. Redact them,
 **How much.**
 
 - Only on lines the `say` points at with `[point …]`. The value is the evidence
-  for that sentence.
+  for that sentence, and the window holds it to that: while a sentence points
+  at code, only the values on the lines it points at are out, and the rest fold
+  away until their sentence comes. With nothing pointed at, every value shows.
 - At most two values on a line, usually one. At most three or four lines with
   values in a group; more is two groups.
 - `"lit": true` on the one value the claim turns on, never more than one per
@@ -1688,7 +1691,9 @@ a sentence.
 
 **With the prose.** Name the value in the sentence that points at it: *line 6
 reads `metadata`, which arrived empty, so `orderId` is undefined.* The words and
-the line say the same thing. Write a key's name exactly as it is in the payload.
+the line say the same thing. Write a key's name exactly as it is in the payload:
+a sentence that names a key opens its preview when the reader picks it, and
+closes it again when they let the sentence go.
 
 **With a diff.** On a change already made (`--before`), values go on the lines
 that arrived and the lines that still run; lines that went carry none. On a
@@ -1706,7 +1711,13 @@ deck group "$DECK" \
 ```
 
 Live, the same list goes on `deck show --ref file:first-last --values '…'`,
-onto code already on screen. One show per pane, about a second apart.
+onto code already on screen. An answer that spans panes is one movement, so
+write it with `deck values`, which lands every pane in the same frame — two
+shows are paced a second apart:
+
+```
+deck values "$DECK" --on webhook --values '[…]' --on markpaid --values '[…]'
+```
 
 ### Check before you write the first group
 

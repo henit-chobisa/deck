@@ -1363,6 +1363,26 @@ impl DeckView {
             command.finish(crate::live::ShowAnswer::said());
             return;
         }
+        // Values onto panes already on screen move nobody's eyes, so they are
+        // not paced and land on every pane named in one frame.
+        if let Some(sets) = command.writing() {
+            let sets = sets.to_vec();
+            for set in sets {
+                let target = set.pane.as_str();
+                for pane in &mut self.panes {
+                    if let Sheet::Code(code) = pane {
+                        let named = code.name.as_deref() == Some(target);
+                        let filed = code.file == std::path::Path::new(target);
+                        if named || filed {
+                            code.set_values(set.values.clone());
+                        }
+                    }
+                }
+            }
+            command.finish(crate::live::ShowAnswer::said());
+            cx.notify();
+            return;
+        }
         if let Some((panes, group, open)) = command.folding() {
             let (panes, group, open) = (panes.to_vec(), group, open);
             self.apply_fold(&panes, group, open, cx);
@@ -2260,6 +2280,9 @@ impl DeckView {
                     code.point_at(want);
                     moved = true;
                 }
+                // Values follow the narration: out on the lines it points at,
+                // away elsewhere, and all out when it points at no code.
+                code.follow_values(reading.is_some());
                 continue;
             }
             if let Some(chart) = pane.chart_mut() {
@@ -3337,7 +3360,7 @@ impl DeckView {
         self.drag_from = None;
         self.hovered = None;
         if let Some(Sheet::Code(pane)) = self.panes.get_mut(pane_ix) {
-            pane.toggle_value(who);
+            pane.hand_toggle(who);
             cx.notify();
         }
     }
@@ -7393,9 +7416,20 @@ use crate::pane::SPINE;
 impl Render for DeckView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         self.settle_said_light();
+        // The picked sentence opens the values whose keys it names.
+        let said = self.picked_said.and_then(|(from, to)| {
+            let group = self.group()?;
+            let words = crate::prose::words(&group.say);
+            let (a, b) = (
+                from.min(to),
+                from.max(to).min(words.len().saturating_sub(1)),
+            );
+            Some(words.get(a..=b)?.concat())
+        });
         // Values that have finished closing are taken out of their panes.
         for pane in &mut self.panes {
             if let Sheet::Code(code) = pane {
+                code.follow_prose(said.as_deref());
                 code.settle();
             }
         }

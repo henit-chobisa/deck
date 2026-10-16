@@ -263,6 +263,7 @@ impl ShowCommand {
             } => Some((file, *range, group.as_deref(), pane.as_deref())),
             RequestBody::Say { .. }
             | RequestBody::Doing { .. }
+            | RequestBody::Values { .. }
             | RequestBody::Clear
             | RequestBody::Fold { .. }
             | RequestBody::Bring { .. }
@@ -304,6 +305,15 @@ impl ShowCommand {
     pub fn proposing(&self) -> Option<&str> {
         match &self.request.body {
             RequestBody::Show { after, .. } => after.as_deref(),
+            _ => None,
+        }
+    }
+
+    /// The values this writes onto panes already on screen, pane by pane.
+    #[must_use]
+    pub fn writing(&self) -> Option<&[deck_cli::live::ValuesFor]> {
+        match &self.request.body {
+            RequestBody::Values { sets } => Some(sets),
             _ => None,
         }
     }
@@ -438,6 +448,7 @@ fn serve(owner: &Owner, control: &Control) {
             }
             RequestBody::Say { .. }
             | RequestBody::Doing { .. }
+            | RequestBody::Values { .. }
             | RequestBody::Show { .. }
             | RequestBody::Clear
             | RequestBody::Fold { .. }

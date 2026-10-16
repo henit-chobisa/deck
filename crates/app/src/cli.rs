@@ -264,6 +264,25 @@ enum What {
         timeout: u64,
     },
 
+    /// Write values onto panes already on screen, several at once.
+    ///
+    /// Pair each `--on` with the `--values` after it: the pane's name, or its
+    /// file, then a JSON list. All of them land in the same frame, which two
+    /// `deck show` calls cannot do — shows move the reader and are paced.
+    Values {
+        /// The `.deck` directory owned by the native window.
+        deck: PathBuf,
+        /// A pane, by its name or its file. Repeatable.
+        #[arg(long = "on", value_name = "PANE")]
+        on: Vec<String>,
+        /// What that pane's lines held, as a JSON list. One per `--on`.
+        #[arg(long, value_name = "JSON")]
+        values: Vec<String>,
+        /// Give up if the window has not taken it by then.
+        #[arg(long, default_value_t = 5)]
+        timeout: u64,
+    },
+
     /// Bring a file into the room that this group never showed.
     ///
     /// For a question the deck was not written for. Say what to show and what
@@ -640,6 +659,12 @@ impl Cli {
                 },
                 timeout,
             )),
+            What::Values {
+                deck,
+                on,
+                values,
+                timeout,
+            } => Err(write_values(&deck, &on, &values, timeout)),
             What::Bring {
                 deck,
                 reference,
@@ -1151,6 +1176,40 @@ fn bring(
 }
 
 /// Send one request that answers only with whether the window took it.
+/// Put values onto several panes at once.
+fn write_values(
+    deck: &std::path::Path,
+    on: &[String],
+    values: &[String],
+    timeout: u64,
+) -> ExitCode {
+    let refuse = |reason: String| {
+        println!(
+            "{}",
+            serde_json::json!({ "status": "invalid-request", "reason": reason })
+        );
+        ExitCode::FAILURE
+    };
+    if on.is_empty() || on.len() != values.len() {
+        return refuse("give each `--on` one `--values` straight after it".into());
+    }
+    let mut sets = Vec::with_capacity(on.len());
+    for (pane, json) in on.iter().zip(values) {
+        match serde_json::from_str::<Vec<deck_core::protocol::Value>>(json) {
+            Ok(values) => sets.push(deck_cli::live::ValuesFor {
+                pane: pane.clone(),
+                values,
+            }),
+            Err(err) => {
+                return refuse(format!(
+                    "the `--values` for {pane} is not a list of values: {err}"
+                ));
+            }
+        }
+    }
+    ask(deck, deck_cli::live::RequestBody::Values { sets }, timeout)
+}
+
 fn ask(deck: &std::path::Path, body: deck_cli::live::RequestBody, timeout: u64) -> ExitCode {
     let spoke = matches!(body, deck_cli::live::RequestBody::Say { .. });
     let Some(runtime) = deck_core::home::deck() else {

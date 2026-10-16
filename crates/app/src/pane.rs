@@ -272,7 +272,7 @@ struct Row {
     change: Option<Change>,
     /// A single value drawn right after a name on this line: where in the
     /// text it goes, what it says, and whether the claim turns on it.
-    inlay: Vec<(usize, SharedString, bool)>,
+    inlay: Vec<(usize, SharedString, bool, Who)>,
     /// What this row is when it is not a line of code: the preview of a value
     /// under the line that made it, or one key of that value, opened.
     extra: Option<Extra>,
@@ -467,9 +467,24 @@ pub struct Pane {
     /// How far open each value is that has been touched, so opening and
     /// closing can be watched rather than happening between two frames.
     unfolding: Vec<(Who, Fade)>,
-    /// Values the agent has just written onto lines already on screen, and
-    /// how far in each one is.
-    arriving_values: Vec<(Who, Fade)>,
+    /// Values coming in, going out, or out: written live and still arriving,
+    /// or folded away because the narration is pointing somewhere else.
+    ///
+    /// A value with no entry here is simply there.
+    presence: Vec<(Who, Fade)>,
+    /// Whether the narration is pointing anywhere in the window. While it is,
+    /// a pane shows only the values on the lines pointed at; when it is not,
+    /// every value is out.
+    narrowed: bool,
+    /// A value has been sent away and its rows are still drawn, to be taken
+    /// out once it has finished going.
+    hiding: bool,
+    /// The sentence of the narration the reader has picked, as last seen.
+    prose: Option<String>,
+    /// Values the picked sentence opened, by naming one of their keys. They
+    /// close again when the sentence is let go — unless the reader opened them
+    /// by hand, which takes them off this list.
+    prose_open: std::collections::HashSet<Who>,
     /// Which row each file line is drawn on.
     ///
     /// Value rows go in under their lines, wherever those are, so a line's row
@@ -689,7 +704,11 @@ impl Pane {
             values: code.values.clone(),
             open: std::collections::HashSet::new(),
             unfolding: Vec::new(),
-            arriving_values: Vec::new(),
+            presence: Vec::new(),
+            narrowed: false,
+            hiding: false,
+            prose: None,
+            prose_open: std::collections::HashSet::new(),
             line_row: Vec::new(),
             unwritten,
             spotlight: authored,
@@ -736,13 +755,14 @@ impl Pane {
                 self.values
                     .iter()
                     .filter(|value| Some(value.line) == row.number)
+                    .filter(|value| self.drawn(&(value.line, value.at.clone().into())))
                     .collect()
             } else {
                 Vec::new()
             };
             // A single value goes inline, after its name; a value with keys
             // gets a row of its own under the line.
-            let mut inlays: Vec<(usize, SharedString, bool)> = here
+            let mut inlays: Vec<(usize, SharedString, bool, Who)> = here
                 .iter()
                 .filter(|value| value.keys.is_empty())
                 .map(|value| {
@@ -750,10 +770,11 @@ impl Pane {
                         after_name(&row.text, &value.at),
                         value.is.clone().into(),
                         value.lit,
+                        (value.line, value.at.clone().into()),
                     )
                 })
                 .collect();
-            inlays.sort_by_key(|(at, _, _)| *at);
+            inlays.sort_by_key(|(at, _, _, _)| *at);
             row.inlay = inlays;
             let indent = row.text.len() - row.text.trim_start().len();
             rows.push(row.clone());
@@ -889,7 +910,7 @@ impl Pane {
                         + row
                             .inlay
                             .iter()
-                            .map(|(_, value, _)| value.chars().count() + 3)
+                            .map(|(_, value, _, _)| value.chars().count() + 3)
                             .sum::<usize>()
                 }
             })
@@ -983,25 +1004,140 @@ impl Pane {
             }
             let who: Who = (line, value.at.clone().into());
             self.values.push(value);
-            self.arriving_values.retain(|(at, _)| *at != who);
+            self.presence.retain(|(at, _)| *at != who);
+            // Room opens for it, then its words — or, when the narration is
+            // pointing elsewhere, it waits out of sight until its line is.
             let mut light = Fade::default().paced(UNFOLD, REFOLD);
-            light.set(true);
-            self.arriving_values.push((who, light));
+            light.set_linear(self.wants(line));
+            self.presence.push((who, light));
         }
         self.lay_out();
         self.reselect();
+    }
+
+    /// Open or close a value because the reader pressed it. Theirs from then
+    /// on: a sentence being let go no longer closes it.
+    pub fn hand_toggle(&mut self, who: Who) {
+        self.prose_open.remove(&who);
+        self.toggle_value(who);
+    }
+
+    /// Follow the sentence the reader has picked: a value whose key it names
+    /// opens, and closes again when the sentence is let go.
+    pub fn follow_prose(&mut self, said: Option<&str>) {
+        if self.prose.as_deref() == said {
+            return;
+        }
+        self.prose = said.map(str::to_string);
+        let want: std::collections::HashSet<Who> = said.map_or_else(Default::default, |text| {
+            self.values
+                .iter()
+                .filter(|value| {
+                    value
+                        .keys
+                        .iter()
+                        .filter_map(|key| key.key.as_deref())
+                        .any(|key| has_word(text, key))
+                })
+                .map(|value| (value.line, value.at.clone().into()))
+                .filter(|who| self.drawn(who))
+                .collect()
+        });
+        for who in self.prose_open.clone() {
+            if !want.contains(&who) {
+                if self.open.contains(&who) {
+                    self.toggle_value(who.clone());
+                }
+                self.prose_open.remove(&who);
+            }
+        }
+        for who in want {
+            if !self.open.contains(&who) {
+                self.toggle_value(who.clone());
+                self.prose_open.insert(who);
+            }
+        }
+    }
+
+    /// Whether a value on `line` should be out right now.
+    fn wants(&self, line: u32) -> bool {
+        !self.narrowed || self.point.is_some_and(|(at, _)| at.contains(line))
+    }
+
+    /// Whether a value is drawn: out, or on its way in or out.
+    fn drawn(&self, who: &Who) -> bool {
+        self.presence
+            .iter()
+            .find(|(at, _)| at == who)
+            .is_none_or(|(_, light)| light.on() || light.moving())
+    }
+
+    /// Follow the narration: values on the lines it points at come out, the
+    /// rest fold away, in the same slide and fade they arrive with.
+    ///
+    /// `narrowed` is whether the narration points anywhere in the window. A
+    /// pane nobody points at while a sentence points elsewhere shows none, and
+    /// with nothing pointed at every value is out, as written.
+    pub fn follow_values(&mut self, narrowed: bool) {
+        self.narrowed = narrowed;
+        let mut appearing = false;
+        let wanted: Vec<(Who, bool)> = self
+            .values
+            .iter()
+            .map(|value| {
+                (
+                    (value.line, value.at.clone().into()),
+                    self.wants(value.line),
+                )
+            })
+            .collect();
+        for (who, want) in wanted {
+            match self.presence.iter_mut().find(|(at, _)| *at == who) {
+                Some((_, light)) => {
+                    if light.set_linear(want) {
+                        appearing |= want;
+                        self.hiding |= !want;
+                    }
+                }
+                None if !want => {
+                    // Fully out until now: it leaves from all the way out.
+                    let mut light = Fade::default().paced(UNFOLD, REFOLD);
+                    light.on = true;
+                    light.set_linear(false);
+                    self.presence.push((who, light));
+                    self.hiding = true;
+                }
+                None => {}
+            }
+        }
+        if appearing {
+            self.lay_out();
+            self.reselect();
+        }
     }
 
     /// Let go of values that have finished closing. Called once a frame.
     pub fn settle(&mut self) {
         // Nothing closing and nothing arriving: nothing to let go of, and no
         // reason to look through the rows on every frame.
-        if self.arriving_values.is_empty()
+        let gone = self.hiding
             && self
-                .unfolding
+                .presence
                 .iter()
-                .all(|(who, _)| self.open.contains(who))
+                .all(|(_, light)| light.on() || !light.moving());
+        if gone {
+            self.hiding = false;
+            self.lay_out();
+            self.reselect();
+        }
+        if self
+            .unfolding
+            .iter()
+            .all(|(who, _)| self.open.contains(who))
         {
+            // Out and still: nothing to keep a record of.
+            self.presence
+                .retain(|(_, light)| light.moving() || !light.on());
             return;
         }
         let open = &self.open;
@@ -1017,7 +1153,8 @@ impl Pane {
         });
         self.unfolding
             .retain(|(who, light)| light.moving() || self.open.contains(who));
-        self.arriving_values.retain(|(_, light)| light.moving());
+        self.presence
+            .retain(|(_, light)| light.moving() || !light.on());
         if finished {
             self.lay_out();
             self.reselect();
@@ -1210,7 +1347,7 @@ impl Pane {
             || self.was.iter().any(|(_, _, going)| going.moving())
             || self.held.is_some_and(|(_, light)| light.moving())
             || self.unfolding.iter().any(|(_, light)| light.moving())
-            || self.arriving_values.iter().any(|(_, light)| light.moving())
+            || self.presence.iter().any(|(_, light)| light.moving())
     }
 
     /// The lines the narration is pointing at, if any.
@@ -1505,16 +1642,24 @@ impl Pane {
                 blocks.push((*first, *last, slide, show));
             }
         }
-        // A value written live: its preview row opens the same way, and a
-        // single value grows its own room on the line, then fills it.
-        let mut arrivals: Vec<(u32, f32, f32)> = Vec::new();
-        for (who, light) in &self.arriving_values {
+        // A value coming in or going out: its preview row (and its keys, if
+        // open) opens or closes the same way, and a single value grows its own
+        // room on the line, then fills it — or empties it, then gives it back.
+        let mut arrivals: Vec<(Who, f32, f32)> = Vec::new();
+        for (who, light) in self.presence.iter().filter(|(_, light)| light.moving()) {
             let (slide, show) = steps(light.linear());
-            arrivals.push((who.0, slide, show));
+            arrivals.push((who.clone(), slide, show));
             if let Some(ix) = self.rows.iter().position(
                 |row| matches!(&row.extra, Some(Extra::Chip { who: at, .. }) if at == who),
             ) {
-                blocks.push((ix, ix, slide, show));
+                let last = self
+                    .rows
+                    .iter()
+                    .rposition(
+                        |row| matches!(&row.extra, Some(Extra::Key { who: at, .. }) if at == who),
+                    )
+                    .unwrap_or(ix);
+                blocks.push((ix, last, slide, show));
             }
         }
         let lit = self.spotlight;
@@ -1605,11 +1750,16 @@ impl Pane {
                             // faded in, which read as the row swelling.
                             (if room > nth { 1. } else { 0. }, *show)
                         });
-                    let grow = row
-                        .number
-                        .filter(|_| !row.inlay.is_empty())
-                        .and_then(|number| arrivals.iter().find(|(at, _, _)| *at == number))
-                        .map_or((1., 1.), |(_, slide, show)| (*slide, *show));
+                    let grow: Vec<(f32, f32)> = row
+                        .inlay
+                        .iter()
+                        .map(|(_, _, _, who)| {
+                            arrivals
+                                .iter()
+                                .find(|(at, _, _)| at == who)
+                                .map_or((1., 1.), |(_, slide, show)| (*slide, *show))
+                        })
+                        .collect();
                     // What a press on this row means.
                     //
                     // The gutter still shows nothing for a spliced line — it is
@@ -1874,7 +2024,7 @@ impl Pane {
                                         // already there: a gap the colour of the lit
                                         // range, not a hole in it.
                                         .opacity(reveal)
-                                        .child(row_content(&row, &palette, advance, size, grow)),
+                                        .child(row_content(&row, &palette, advance, size, &grow)),
                                 ),
                         )
                         .into_any_element()
@@ -2517,7 +2667,7 @@ fn row_content(
     palette: &Palette,
     advance: Pixels,
     size: Pixels,
-    grow: (f32, f32),
+    grows: &[(f32, f32)],
 ) -> AnyElement {
     let faint = palette.muted.mix(palette.wash, 0.35);
     let soft = palette.fg.mix(palette.wash, 0.25);
@@ -2555,7 +2705,8 @@ fn row_content(
             };
             let mut line = div().h_flex().items_center().flex_none();
             let mut from = 0;
-            for (at, value, lit) in &row.inlay {
+            for (ix, (at, value, lit, _)) in row.inlay.iter().enumerate() {
+                let grow = grows.get(ix).copied().unwrap_or((1., 1.));
                 let at = (*at).clamp(from, row.text.len());
                 line = line.child(piece(from, at));
                 // Soft tint: faint words on a ground that is barely there,
@@ -2755,6 +2906,15 @@ fn after_name(text: &str, name: &str) -> usize {
     text.len()
 }
 
+/// Whether `name` appears in `text` as a whole word.
+fn has_word(text: &str, name: &str) -> bool {
+    if name.is_empty() {
+        return false;
+    }
+    let end = after_name(text, name);
+    end >= name.len() && text.get(end - name.len()..end) == Some(name)
+}
+
 /// A preview cut after its first key: `Session { a: 1, b: 2, … }` reads
 /// `Session { a: 1, … }`. The first key is the one the claim is about, and the
 /// rest made the button as wide as the line it hangs under.
@@ -2841,6 +3001,17 @@ mod tests {
         );
         // A name that is not there puts the value at the end of the line.
         assert_eq!(after_name(check, "missing"), check.len());
+    }
+
+    #[test]
+    fn a_sentence_names_a_key_only_as_a_whole_word() {
+        let said = "Stripe carried it in `client_reference_id`, and metadata was empty.";
+        assert!(has_word(said, "client_reference_id"));
+        assert!(has_word(said, "metadata"));
+        // Inside another word is not naming it.
+        assert!(!has_word("the reference was set", "ref"));
+        assert!(!has_word(said, "id"));
+        assert!(!has_word(said, ""));
     }
 
     #[test]
