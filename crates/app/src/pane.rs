@@ -1816,6 +1816,17 @@ impl Pane {
             .unwrap_or_else(|_| px(f32::from(size) * 0.62));
         #[allow(clippy::cast_precision_loss)]
         let span = advance * self.widest as f32 + px(96.);
+        // The values' smaller type, measured the same way, so a value's room
+        // is exactly as wide as its words: an estimate left the room wider
+        // than the box it handed over to, and the line jumped back at the end
+        // of every opening.
+        let small_advance = cx
+            .text_system()
+            .em_advance(
+                cx.text_system().resolve_font(&font(mono.clone())),
+                px(f32::from(size) * 0.92),
+            )
+            .unwrap_or(advance * 0.92);
         let across = self.across.clone();
 
         let list = uniform_list("deck-code", rows.len(), move |visible, _window, _cx| {
@@ -2126,7 +2137,14 @@ impl Pane {
                                         // already there: a gap the colour of the lit
                                         // range, not a hole in it.
                                         .opacity(reveal)
-                                        .child(row_content(&row, &palette, advance, size, &grow)),
+                                        .child(row_content(
+                                            &row,
+                                            &palette,
+                                            advance,
+                                            small_advance,
+                                            size,
+                                            &grow,
+                                        )),
                                 ),
                         )
                         // Under the last key, the half row the keys moved up
@@ -2829,6 +2847,7 @@ fn row_content(
     row: &Row,
     palette: &Palette,
     advance: Pixels,
+    small_advance: Pixels,
     size: Pixels,
     grows: &[(f32, f32)],
 ) -> AnyElement {
@@ -2876,12 +2895,16 @@ fn row_content(
                 // and no border. A box read as code; this reads as a note on
                 // it. Written live, it makes its own room first — the rest of
                 // the line eases right — and then its words come in.
+                // Always this wide, moving or still: the words plus their
+                // padding, measured from the font. A room that switched from
+                // an estimate to its natural width at rest jumped as it did.
                 #[allow(clippy::cast_precision_loss)]
-                let room = (advance * 0.92 * value.chars().count() as f32 + px(17.)) * grow.0;
+                let room = (small_advance * value.chars().count() as f32 + px(10.)) * grow.0;
                 line = line.child(
                     div()
                         .flex_none()
-                        .when(grow.0 < 1., |this| this.w(room).overflow_hidden())
+                        .w(room)
+                        .overflow_hidden()
                         .ml(px(5.) * grow.0)
                         .mr(px(2.) * grow.0)
                         .px(px(5.) * grow.0)
