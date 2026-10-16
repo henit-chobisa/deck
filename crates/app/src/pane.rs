@@ -915,16 +915,16 @@ impl Pane {
                     preview,
                     indent,
                     ..
-                }) => indent + name.chars().count() + preview.chars().count() + 8,
+                }) => indent + cells(name) + cells(preview) + 8,
                 Some(Extra::Key {
                     is, width, indent, ..
-                }) => indent + width + is.chars().count() + 4,
+                }) => indent + width + cells(is) + 4,
                 None => {
                     row.text.chars().count()
                         + row
                             .inlay
                             .iter()
-                            .map(|(_, value, _, _)| value.chars().count() + 3)
+                            .map(|(_, value, _, _)| cells(value) + 3)
                             .sum::<usize>()
                 }
             })
@@ -1034,8 +1034,7 @@ impl Pane {
             let who: Who = (line, value.at.clone().into());
             self.values.push(value);
             self.presence.retain(|(at, _)| *at != who);
-            // Room opens for it, then its words — or, when the narration is
-            // pointing elsewhere, it waits out of sight until its line is.
+            // Room opens for it, then its words.
             let mut light = Fade::default().paced(UNFOLD, REFOLD);
             light.set_linear(true);
             self.presence.push((who, light));
@@ -1075,7 +1074,7 @@ impl Pane {
                         .any(|key| has_word(text, key))
                 })
                 .map(|value| (value.line, value.at.clone().into()))
-                .filter(|who| self.wants_value(who))
+                .filter(|_| self.wants_value())
                 .collect()
         });
         for who in self.prose_open.clone() {
@@ -1094,9 +1093,15 @@ impl Pane {
         }
     }
 
-    /// Whether a value should be out right now: the pane's one gate.
-    fn wants_value(&self, _who: &Who) -> bool {
+    /// Whether the pane's values are out right now: its one gate.
+    fn wants_value(&self) -> bool {
         self.shown
+    }
+
+    /// Whether any of this pane's values sits on a line of `at`.
+    #[must_use]
+    pub fn holds_value_in(&self, at: LineRange) -> bool {
+        self.values.iter().any(|value| at.contains(value.line))
     }
 
     /// Whether a value is drawn: out, or on its way in or out.
@@ -1160,6 +1165,9 @@ impl Pane {
     /// Bring every value out, or send every value away, together.
     pub fn set_shown(&mut self, on: bool) {
         self.shown = on;
+        // A sentence already picked looks again: its chips could not open
+        // while the values were away.
+        self.prose = None;
         if on {
             self.reached = true;
         }
@@ -2158,7 +2166,7 @@ impl Pane {
                                     .top(row_px * (0.5 - lift))
                                     .h(row_px * 0.5)
                                     .opacity(cover)
-                                    .bg(paint(said))
+                                    .bg(paint(ground))
                                     .child(
                                         div()
                                             .absolute()
@@ -2899,7 +2907,7 @@ fn row_content(
                 // padding, measured from the font. A room that switched from
                 // an estimate to its natural width at rest jumped as it did.
                 #[allow(clippy::cast_precision_loss)]
-                let room = (small_advance * value.chars().count() as f32 + px(10.)) * grow.0;
+                let room = (small_advance * cells(value) as f32 + px(10.)) * grow.0;
                 line = line.child(
                     div()
                         .flex_none()
@@ -3105,6 +3113,21 @@ fn whole_word(text: &str, name: &str) -> Option<usize> {
     None
 }
 
+/// How many monospace cells `text` takes: two for a wide character, four for
+/// a tab. Counting characters clipped a value written in Japanese or with an
+/// emoji in it, because its room was half as wide as its words.
+fn cells(text: &str) -> usize {
+    text.chars()
+        .map(|ch| {
+            if ch == '\t' {
+                4
+            } else {
+                unicode_width::UnicodeWidthChar::width(ch).unwrap_or(0)
+            }
+        })
+        .sum()
+}
+
 /// A preview cut after its first key: `Session { a: 1, b: 2, … }` reads
 /// `Session { a: 1, … }`. The first key is the one the claim is about, and the
 /// rest made the button as wide as the line it hangs under.
@@ -3191,6 +3214,14 @@ mod tests {
         );
         // A name that is not there puts the value at the end of the line.
         assert_eq!(after_name(check, "missing"), check.len());
+    }
+
+    #[test]
+    fn a_value_is_measured_in_cells_not_characters() {
+        assert_eq!(cells("\"pay_12A\""), 9);
+        // Wide characters take two cells, and a tab four.
+        assert_eq!(cells("注文"), 4);
+        assert_eq!(cells("a\tb"), 6);
     }
 
     #[test]

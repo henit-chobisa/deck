@@ -1695,7 +1695,8 @@ a sentence.
 reads `metadata`, which arrived empty, so `orderId` is undefined.* The words and
 the line say the same thing. Write a key's name exactly as it is in the payload:
 a sentence that names a key opens its preview when the reader picks it, and
-closes it again when they let the sentence go.
+closes it again when they let the sentence go, as long as the pane's values are
+out.
 
 **With a diff.** On a change already made (`--before`), values go on the lines
 that arrived and the lines that still run; lines that went carry none. On a

@@ -5088,16 +5088,33 @@ impl DeckView {
             .collect();
         // A pane the prose points into keeps its values away until a sentence
         // reaches them; one it never points into shows them from the start.
+        // Reached is decided the way the narration will decide it: a point
+        // lights the first pane whose lit lines it overlaps, and opens the
+        // gate only on a line holding a value. Gating on overlap alone shut
+        // panes no sentence would ever open.
         let spots: Vec<LineRange> = crate::prose::pointed(&group.say, 0)
             .into_iter()
             .filter_map(|piece| piece.point.and_then(|spot| spot.lines))
             .collect();
-        for pane in &mut self.panes {
-            if let Sheet::Code(code) = pane {
-                let lit = code.spotlight_range();
-                if spots.iter().any(|at| at.overlaps(lit)) {
-                    code.gate();
-                }
+        let mut reached = vec![false; self.panes.len()];
+        for at in &spots {
+            let first = self.panes.iter().position(|pane| {
+                pane.code().is_some_and(|code| {
+                    let lit = code.spotlight_range();
+                    lit.first <= at.last && at.first <= lit.last
+                })
+            });
+            if let Some(ix) = first
+                && self.panes[ix]
+                    .code()
+                    .is_some_and(|code| code.holds_value_in(*at))
+            {
+                reached[ix] = true;
+            }
+        }
+        for (pane, reached) in self.panes.iter_mut().zip(reached) {
+            if reached && let Sheet::Code(code) = pane {
+                code.gate();
             }
         }
         // Every pane of a new group arrives open. A fold belongs to the group
