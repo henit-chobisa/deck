@@ -1565,6 +1565,7 @@ impl DeckView {
         // Values onto code already lit are the commonest live case — *what
         // was orderId here?* — and the lines being unchanged is no reason to
         // drop them.
+        let moved = changed;
         changed |= !command.valuing().is_empty();
         if changed {
             if self.group_ix != resolved.group_ix {
@@ -1589,8 +1590,13 @@ impl DeckView {
             // again rather than lit again. Only when it actually changes: a
             // rebuild loses where the reader had scrolled to and what they
             // had selected, which is too much to spend on a repeat.
+            // Values alone never retract a fix: annotating the lines a fix
+            // sits on keeps it. The same fix on other lines is built again,
+            // since it is numbered from the range it was proposed on.
             let wants = command.proposing().map(ToString::to_string);
-            let proposing = code.proposal().map(ToString::to_string) != wants;
+            let had = code.proposal().map(ToString::to_string);
+            let proposing = (had != wants && (wants.is_some() || moved))
+                || (wants.is_some() && code.spotlight_range() != range);
             let arriving = proposing && wants.is_some();
             if proposing {
                 self.propose(resolved.pane_ix, range, wants, cx);
