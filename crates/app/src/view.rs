@@ -1413,10 +1413,13 @@ impl DeckView {
                 };
                 let lit = self.panes[pane_ix].code().map(Pane::spotlight_range);
                 if let Some(lit) = lit
-                    && let Some(stray) = set
-                        .values
-                        .iter()
-                        .find(|value| !value.after && !lit.contains(value.line))
+                    && let Some(stray) = set.values.iter().find(|value| {
+                        !crate::cli::value_fits(
+                            value,
+                            lit,
+                            self.panes[pane_ix].code().and_then(Pane::proposal),
+                        )
+                    })
                 {
                     command.finish(refuse(
                         deck_cli::live::ResponseStatus::OutOfRange,
@@ -2511,12 +2514,23 @@ impl DeckView {
         // Values written onto this pane — the evidence for the bug — have to
         // survive the fix arriving beside them, and so does which of them the
         // reader had open. The authored ref alone would drop both.
-        let held = self
+        let was = self
+            .panes
+            .get(pane_ix)
+            .and_then(Sheet::code)
+            .and_then(|code| code.proposal().map(ToString::to_string));
+        let mut held = self
             .panes
             .get(pane_ix)
             .and_then(Sheet::code)
             .map(Pane::values_held);
-        if let Some(held) = &held {
+        if let Some(held) = &mut held {
+            // A fix's values were worked out for that fix. Retracted, or
+            // replaced by a different one, they would be drawn on lines they
+            // were never about.
+            if was != spec.after {
+                held.values.retain(|value| !value.after);
+            }
             spec.values.clone_from(&held.values);
         }
         if let Some(slot) = self.panes.get_mut(pane_ix) {

@@ -861,7 +861,7 @@ fn gather(
 /// value marked `after` — the proposed lines, numbered as they will be from the
 /// range's first line. A proposal can be longer than what it replaces, and an
 /// `after` value with no proposal has nothing to sit on.
-fn value_fits(
+pub(crate) fn value_fits(
     value: &deck_core::protocol::Value,
     range: deck_core::LineRange,
     after: Option<&str>,
@@ -870,9 +870,8 @@ fn value_fits(
         let Some(after) = after else {
             return false;
         };
-        let lines = u32::try_from(after.lines().count())
-            .unwrap_or(u32::MAX)
-            .max(1);
+        // A proposal that deletes has no arriving lines, and nothing to sit on.
+        let lines = u32::try_from(after.lines().count()).unwrap_or(u32::MAX);
         value.line >= range.first && value.line < range.first.saturating_add(lines)
     } else {
         value.line >= range.first && value.line <= range.last
