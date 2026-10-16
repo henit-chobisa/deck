@@ -479,6 +479,13 @@ pub struct Pane {
     /// A value has been sent away and its rows are still drawn, to be taken
     /// out once it has finished going.
     hiding: bool,
+    /// Values just written, which stay out whatever the narration is pointing
+    /// at until it next moves. An answer written while a sentence held its
+    /// point elsewhere landed out of sight and still said it had applied.
+    fresh: std::collections::HashSet<Who>,
+    /// The point and narrowing the values last followed, so only a real move
+    /// of the narration lets fresh values go.
+    followed: Option<(Option<(LineRange, crate::prose::Side)>, bool)>,
     /// The sentence of the narration the reader has picked, as last seen.
     prose: Option<String>,
     /// Values the picked sentence opened, by naming one of their keys. They
@@ -707,6 +714,8 @@ impl Pane {
             presence: Vec::new(),
             narrowed: false,
             hiding: false,
+            fresh: std::collections::HashSet::new(),
+            followed: None,
             prose: None,
             prose_open: std::collections::HashSet::new(),
             line_row: Vec::new(),
@@ -1008,9 +1017,12 @@ impl Pane {
             // Room opens for it, then its words — or, when the narration is
             // pointing elsewhere, it waits out of sight until its line is.
             let mut light = Fade::default().paced(UNFOLD, REFOLD);
-            light.set_linear(self.wants(line));
+            light.set_linear(true);
+            self.fresh.insert(who.clone());
             self.presence.push((who, light));
         }
+        // A sentence already picked may name a key of one of these.
+        self.prose = None;
         self.lay_out();
         self.reselect();
     }
@@ -1040,7 +1052,7 @@ impl Pane {
                         .any(|key| has_word(text, key))
                 })
                 .map(|value| (value.line, value.at.clone().into()))
-                .filter(|who| self.drawn(who))
+                .filter(|who| self.wants_value(who))
                 .collect()
         });
         for who in self.prose_open.clone() {
@@ -1064,6 +1076,12 @@ impl Pane {
         !self.narrowed || self.point.is_some_and(|(at, _)| at.contains(line))
     }
 
+    /// Whether this value should be out right now: one just written always
+    /// is, until the narration moves.
+    fn wants_value(&self, who: &Who) -> bool {
+        self.fresh.contains(who) || self.wants(who.0)
+    }
+
     /// Whether a value is drawn: out, or on its way in or out.
     fn drawn(&self, who: &Who) -> bool {
         self.presence
@@ -1080,15 +1098,22 @@ impl Pane {
     /// with nothing pointed at every value is out, as written.
     pub fn follow_values(&mut self, narrowed: bool) {
         self.narrowed = narrowed;
+        let now = (self.point, narrowed);
+        if self.followed != Some(now) {
+            // The narration moved: values written before it go where it says.
+            if self.followed.is_some() {
+                self.fresh.clear();
+            }
+            self.followed = Some(now);
+        }
         let mut appearing = false;
         let wanted: Vec<(Who, bool)> = self
             .values
             .iter()
             .map(|value| {
-                (
-                    (value.line, value.at.clone().into()),
-                    self.wants(value.line),
-                )
+                let who: Who = (value.line, value.at.clone().into());
+                let want = self.wants_value(&who);
+                (who, want)
             })
             .collect();
         for (who, want) in wanted {
@@ -2888,6 +2913,16 @@ fn row_content(
 /// A whole word, because a plain search for `id` found it inside `markPaid`
 /// and hung the value on the function's name.
 fn after_name(text: &str, name: &str) -> usize {
+    whole_word(text, name).unwrap_or(text.len())
+}
+
+/// Whether `name` appears in `text` as a whole word.
+fn has_word(text: &str, name: &str) -> bool {
+    !name.is_empty() && whole_word(text, name).is_some()
+}
+
+/// Where `name` first ends in `text` as a whole word, if it does at all.
+fn whole_word(text: &str, name: &str) -> Option<usize> {
     let word =
         |ch: Option<char>| ch.is_some_and(|ch| ch.is_alphanumeric() || ch == '_' || ch == '$');
     let mut from = 0;
@@ -2899,20 +2934,11 @@ fn after_name(text: &str, name: &str) -> usize {
         let starts_word = !word(name.chars().next()) || !word(before);
         let ends_word = !word(name.chars().next_back()) || !word(after);
         if starts_word && ends_word {
-            return end;
+            return Some(end);
         }
         from = start + name.len().max(1);
     }
-    text.len()
-}
-
-/// Whether `name` appears in `text` as a whole word.
-fn has_word(text: &str, name: &str) -> bool {
-    if name.is_empty() {
-        return false;
-    }
-    let end = after_name(text, name);
-    end >= name.len() && text.get(end - name.len()..end) == Some(name)
+    None
 }
 
 /// A preview cut after its first key: `Session { a: 1, b: 2, … }` reads
@@ -3012,6 +3038,8 @@ mod tests {
         assert!(!has_word("the reference was set", "ref"));
         assert!(!has_word(said, "id"));
         assert!(!has_word(said, ""));
+        // A line that merely ends in the name is not naming it.
+        assert!(!has_word("the field is client_id", "id"));
     }
 
     #[test]

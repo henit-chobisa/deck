@@ -1675,6 +1675,8 @@ no keys, tokens, passwords, card numbers or personal emails. Redact them,
   for that sentence, and the window holds it to that: while a sentence points
   at code, only the values on the lines it points at are out, and the rest fold
   away until their sentence comes. With nothing pointed at, every value shows.
+  Values you write live stay out until the narration next moves, so an answer
+  never lands out of sight.
 - At most two values on a line, usually one. At most three or four lines with
   values in a group; more is two groups.
 - `"lit": true` on the one value the claim turns on, never more than one per

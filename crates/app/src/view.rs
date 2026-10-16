@@ -1364,19 +1364,67 @@ impl DeckView {
             return;
         }
         // Values onto panes already on screen move nobody's eyes, so they are
-        // not paced and land on every pane named in one frame.
+        // not paced and land on every pane named in one frame. Every pane is
+        // found first and nothing is written unless all of them are: half an
+        // answer reported as applied is worse than none.
         if let Some(sets) = command.writing() {
             let sets = sets.to_vec();
-            for set in sets {
+            let base = self.deck.base();
+            let mut found: Vec<(usize, Vec<deck_core::protocol::Value>)> = Vec::new();
+            for set in &sets {
                 let target = set.pane.as_str();
-                for pane in &mut self.panes {
-                    if let Sheet::Code(code) = pane {
-                        let named = code.name.as_deref() == Some(target);
-                        let filed = code.file == std::path::Path::new(target);
-                        if named || filed {
-                            code.set_values(set.values.clone());
-                        }
+                let asked = resolved_path(&base, std::path::Path::new(target));
+                let matches: Vec<usize> = self
+                    .panes
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(ix, pane)| {
+                        let code = pane.code()?;
+                        (code.name.as_deref() == Some(target)
+                            || code.ref_id.as_ref() == target
+                            || resolved_path(&base, &code.file) == asked)
+                            .then_some(ix)
+                    })
+                    .collect();
+                let refuse =
+                    |status, reason: String| crate::live::ShowAnswer::refused(status, reason);
+                let pane_ix = match matches.as_slice() {
+                    [one] => *one,
+                    [] => {
+                        command.finish(refuse(
+                            deck_cli::live::ResponseStatus::NotFound,
+                            format!("no pane on screen is called or shows `{target}`"),
+                        ));
+                        return;
                     }
+                    _ => {
+                        command.finish(refuse(
+                            deck_cli::live::ResponseStatus::Ambiguous,
+                            format!(
+                                "more than one pane shows `{target}`: name it by the pane's name"
+                            ),
+                        ));
+                        return;
+                    }
+                };
+                let lit = self.panes[pane_ix].code().map(Pane::spotlight_range);
+                if let Some(lit) = lit
+                    && let Some(stray) = set.values.iter().find(|value| !lit.contains(value.line))
+                {
+                    command.finish(refuse(
+                        deck_cli::live::ResponseStatus::OutOfRange,
+                        format!(
+                            "a value is on line {}, outside the lines `{target}` shows ({lit})",
+                            stray.line
+                        ),
+                    ));
+                    return;
+                }
+                found.push((pane_ix, set.values.clone()));
+            }
+            for (pane_ix, values) in found {
+                if let Some(code) = self.panes.get_mut(pane_ix).and_then(Sheet::code_mut) {
+                    code.set_values(values);
                 }
             }
             command.finish(crate::live::ShowAnswer::said());
