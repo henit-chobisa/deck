@@ -254,6 +254,15 @@ pub struct Value {
     /// Whether the claim turns on this value. Drawn in the accent, quietly.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub lit: bool,
+    /// Whether this is what the *proposed* code would hold, on a ref with
+    /// `after`: `line` numbers the replacement as it will be, and the value is
+    /// worked out rather than seen.
+    ///
+    /// Added because a fix shown as a diff with values only on the lines going
+    /// left the reader to imagine the other half: the bug's 81 was there, the
+    /// fix's 90 was not.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub after: bool,
     /// The keys inside, in the order the value holds them.
     ///
     /// Only the ones that matter are named; runs of the rest are a count, so
@@ -589,6 +598,18 @@ mod tests {
             serde_json::from_str(&serde_json::to_string(&spec).expect("writes"))
                 .expect("reads back");
         assert_eq!(again.values, spec.values);
+    }
+
+    #[test]
+    fn a_value_for_the_proposed_code_says_so_and_a_plain_one_does_not() {
+        let json = r#"{"line":3,"at":"total","is":"90","after":true}"#;
+        let value: super::Value = serde_json::from_str(json).expect("reads");
+        assert!(value.after);
+        let plain: super::Value =
+            serde_json::from_str(r#"{"line":4,"at":"total","is":"81"}"#).expect("reads");
+        assert!(!plain.after);
+        let written = serde_json::to_string(&plain).expect("writes");
+        assert!(!written.contains("after"), "{written}");
     }
 
     #[test]

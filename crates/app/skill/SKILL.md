@@ -1701,8 +1701,14 @@ out.
 
 **With a diff.** On a change already made (`--before`), values go on the lines
 that arrived and the lines that still run; lines that went carry none. On a
-proposed change (`--after`), values describe the code as it is today — the bug.
-The proposal carries none: it has not run.
+proposed change (`--after`), the values on the lines going are the code as it is
+today — the bug. **Then give the fix its values too**, with `"after": true`,
+numbered as the replacement will be: the reader should see `total 90, then 81`
+on the line going and `total 90` on the line arriving, both halves changing, not
+the bug's numbers beside a silent fix. They are drawn in italic, as predicted.
+Only values you can work out from the code — the same arithmetic, the same
+inputs. If the fix's values depend on something you cannot see, leave them out
+and say so.
 
 `--values` follows the `--ref` it belongs to, as `--after` does. `at` is the
 name exactly as it is written on that line.

@@ -762,14 +762,19 @@ impl Pane {
         let mut rows = Vec::with_capacity(self.base.len() + self.values.len() * 2);
         for row in &self.base {
             let mut row = row.clone();
-            // A row of the half that is not on disk carries no value: it never ran.
+            // A row on disk carries what it held. A row of a proposal carries
+            // what it would hold, when the agent worked that out: the fix's
+            // values beside the bug's, so the reader sees both halves change.
             let on_disk =
                 row.number.is_some() && (row.change.is_none() || row.change != self.unwritten);
-            let here: Vec<&Value> = if on_disk {
+            let proposed = row.number.is_some()
+                && row.change == Some(Change::New)
+                && self.unwritten == Some(Change::New);
+            let here: Vec<&Value> = if on_disk || proposed {
                 self.values
                     .iter()
-                    .filter(|value| Some(value.line) == row.number)
-                    .filter(|value| self.drawn(&(value.line, value.at.clone().into())))
+                    .filter(|value| Some(value.line) == row.number && value.after == proposed)
+                    .filter(|value| self.drawn(&who_of(value)))
                     .collect()
             } else {
                 Vec::new()
@@ -784,7 +789,7 @@ impl Pane {
                         after_name(&row.text, &value.at),
                         value.is.clone().into(),
                         value.lit,
-                        (value.line, value.at.clone().into()),
+                        who_of(value),
                     )
                 })
                 .collect();
@@ -793,7 +798,7 @@ impl Pane {
             let indent = row.text.len() - row.text.trim_start().len();
             rows.push(row.clone());
             for value in here.iter().filter(|value| !value.keys.is_empty()) {
-                let who: Who = (value.line, value.at.clone().into());
+                let who: Who = who_of(value);
                 let open = self.open.contains(&who);
                 // Still drawn while it closes: the code slides back over the
                 // keys, and only then are they taken away.
@@ -1026,7 +1031,7 @@ impl Pane {
             let same = self
                 .values
                 .iter()
-                .position(|old| old.line == line && old.at == value.at);
+                .position(|old| old.line == line && old.at == value.at && old.after == value.after);
             if let Some(ix) = same {
                 if self.values[ix] == value {
                     // The same value written again is still an answer, and
@@ -1035,7 +1040,7 @@ impl Pane {
                 }
                 self.values.remove(ix);
             }
-            let who: Who = (line, value.at.clone().into());
+            let who: Who = who_of(&value);
             self.values.push(value);
             self.presence.retain(|(at, _)| *at != who);
             // Room opens for it, then its words.
@@ -1077,7 +1082,7 @@ impl Pane {
                         .filter_map(|key| key.key.as_deref())
                         .any(|key| has_word(text, key))
                 })
-                .map(|value| (value.line, value.at.clone().into()))
+                .map(who_of)
                 .filter(|_| self.wants_value())
                 .collect()
         });
@@ -1144,12 +1149,7 @@ impl Pane {
         self.presence = self
             .values
             .iter()
-            .map(|value| {
-                (
-                    (value.line, value.at.clone().into()),
-                    Fade::default().paced(UNFOLD, REFOLD),
-                )
-            })
+            .map(|value| (who_of(value), Fade::default().paced(UNFOLD, REFOLD)))
             .collect();
         self.lay_out();
     }
@@ -1175,11 +1175,7 @@ impl Pane {
         if on {
             self.reached = true;
         }
-        let all: Vec<Who> = self
-            .values
-            .iter()
-            .map(|value| (value.line, value.at.clone().into()))
-            .collect();
+        let all: Vec<Who> = self.values.iter().map(who_of).collect();
         for who in all {
             match self.presence.iter_mut().find(|(at, _)| *at == who) {
                 Some((_, light)) => {
@@ -2905,7 +2901,10 @@ fn row_content(
             };
             let mut line = div().h_flex().items_center().flex_none();
             let mut from = 0;
-            for (ix, (at, value, lit, _)) in row.inlay.iter().enumerate() {
+            for (ix, (at, value, lit, who)) in row.inlay.iter().enumerate() {
+                // Worked out for a proposal rather than seen: set in italic,
+                // so it reads as *would be* beside the values that *were*.
+                let predicted = who.1.starts_with('+');
                 let grow = grows.get(ix).copied().unwrap_or((1., 1.));
                 let at = (*at).clamp(from, row.text.len());
                 line = line.child(piece(from, at));
@@ -2954,6 +2953,7 @@ fn row_content(
                                 .flex_none()
                                 .whitespace_nowrap()
                                 .opacity(grow.1)
+                                .when(predicted, |this| this.italic())
                                 .child(value.clone()),
                         ),
                 );
@@ -3099,6 +3099,18 @@ fn row_content(
 /// and hung the value on the function's name.
 fn after_name(text: &str, name: &str) -> usize {
     whole_word(text, name).unwrap_or(text.len())
+}
+
+/// A value's identity: its line, its name, and which half of a change it is
+/// about. A proposal's value and the code's own can share a line number and a
+/// name, and they are two different values.
+fn who_of(value: &Value) -> Who {
+    let at: SharedString = if value.after {
+        format!("+{}", value.at).into()
+    } else {
+        value.at.clone().into()
+    };
+    (value.line, at)
 }
 
 /// Whether `name` appears in `text` as a whole word.

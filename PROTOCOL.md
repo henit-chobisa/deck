@@ -248,6 +248,7 @@ evidence the reader can check against the code beside it. Each is an object:
 | `at`   | string          | yes      | The name on that line the value belongs to, as written there. |
 | `is`   | string          | yes      | The value as the language prints it, or a one-line preview for one with `keys`. |
 | `lit`  | boolean         | no       | The claim turns on this value. Defaults to false. |
+| `after`| boolean         | no       | What the *proposed* code would hold, on a ref with `after`. Defaults to false. |
 | `keys` | array of key    | no       | The keys inside, in the value's own order. |
 
 A key is `{ "key", "is", "why", "lit" }` for one the claim names, or
@@ -256,7 +257,10 @@ A key is `{ "key", "is", "why", "lit" }` for one the claim names, or
 the line's end when `at` is not there. A value with `keys` is drawn under its
 line as the preview in `is`, which the reader can open to the named keys and a
 single count of the rest. On a ref with `after`, values describe the range as it
-is; on one with `before`, the lines that arrived. A client that does not render
+is, and values with `"after": true` describe the replacement, numbered as it will
+be from the range's first line; a client draws them on the arriving lines, set
+apart as predicted. On a ref with `before`, values describe the lines that
+arrived. A client that does not render
 `values` ignores them, and a ref without them is unchanged.
 
 Only values the agent has seen belong here: from a run, a log, a payload or

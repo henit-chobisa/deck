@@ -834,7 +834,7 @@ fn gather(
             if let Some(stray) = named
                 .values
                 .iter()
-                .find(|value| value.line < named.range.first || value.line > named.range.last)
+                .find(|value| !value_fits(value, named.range, named.after.as_deref()))
             {
                 anyhow::bail!(
                     "a value is on line {}, outside `{}`: put values on the lines the ref lights",
@@ -855,6 +855,28 @@ fn gather(
     }
 
     Ok(out)
+}
+
+/// Whether a value sits on lines its ref shows: the range itself, or — for a
+/// value marked `after` — the proposed lines, numbered as they will be from the
+/// range's first line. A proposal can be longer than what it replaces, and an
+/// `after` value with no proposal has nothing to sit on.
+fn value_fits(
+    value: &deck_core::protocol::Value,
+    range: deck_core::LineRange,
+    after: Option<&str>,
+) -> bool {
+    if value.after {
+        let Some(after) = after else {
+            return false;
+        };
+        let lines = u32::try_from(after.lines().count())
+            .unwrap_or(u32::MAX)
+            .max(1);
+        value.line >= range.first && value.line < range.first.saturating_add(lines)
+    } else {
+        value.line >= range.first && value.line <= range.last
+    }
 }
 
 /// Which `--ref` each `--after`, or each `--before`, belongs to.
@@ -955,7 +977,7 @@ fn show(
     };
     if let Some(stray) = values
         .iter()
-        .find(|value| value.line < named.range.first || value.line > named.range.last)
+        .find(|value| !value_fits(value, named.range, after.as_deref()))
     {
         println!(
             "{}",

@@ -1413,7 +1413,10 @@ impl DeckView {
                 };
                 let lit = self.panes[pane_ix].code().map(Pane::spotlight_range);
                 if let Some(lit) = lit
-                    && let Some(stray) = set.values.iter().find(|value| !lit.contains(value.line))
+                    && let Some(stray) = set
+                        .values
+                        .iter()
+                        .find(|value| !value.after && !lit.contains(value.line))
                 {
                     command.finish(refuse(
                         deck_cli::live::ResponseStatus::OutOfRange,
