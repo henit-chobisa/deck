@@ -1666,12 +1666,13 @@ impl Pane {
         // gap, and only then does what goes in it come in; going away runs the
         // other way. Moving and appearing at once was two things competing for
         // the same glance.
-        // A plain ease-out for the slide, and a straight fade after it. A
-        // curve that sped up through the middle made the room puff open like
-        // a balloon.
+        // The slide eases in and out the same way both directions, and the
+        // fade comes after it, straight. An ease-out run backwards for a close
+        // sped up into its end and stopped hard; the room appears empty and
+        // only then fills, so nothing is seen swelling.
         let slide = |x: f32| {
             let x = x.clamp(0., 1.);
-            1. - (1. - x).powi(3)
+            x * x * (3. - 2. * x)
         };
         let steps = move |t: f32| (slide(t / 0.6), ((t - 0.6) / 0.4).clamp(0., 1.));
         // Each stretch of rows in motion: its first and last row, how far the
@@ -1679,7 +1680,15 @@ impl Pane {
         let mut blocks: Vec<(usize, usize, f32, f32)> = Vec::new();
         // Only values in motion: one standing open has nothing to draw here,
         // and scanning the rows for it every frame was waste.
-        for (who, light) in self.unfolding.iter().filter(|(_, light)| light.moving()) {
+        // A value closed but not yet taken out is drawn closed, not skipped:
+        // skipping it for the frame between its light stopping and its rows
+        // going drew it fully open for that frame — a snap at the end of every
+        // close.
+        for (who, light) in self
+            .unfolding
+            .iter()
+            .filter(|(who, light)| light.moving() || !self.open.contains(who))
+        {
             let keys: Vec<usize> = self
                 .rows
                 .iter()
@@ -1698,7 +1707,11 @@ impl Pane {
         // open) opens or closes the same way, and a single value grows its own
         // room on the line, then fills it — or empties it, then gives it back.
         let mut arrivals: Vec<(Who, f32, f32)> = Vec::new();
-        for (who, light) in self.presence.iter().filter(|(_, light)| light.moving()) {
+        for (who, light) in self
+            .presence
+            .iter()
+            .filter(|(_, light)| light.moving() || !light.on())
+        {
             let (slide, show) = steps(light.linear());
             arrivals.push((who.clone(), slide, show));
             if let Some(ix) = self.rows.iter().position(
@@ -2923,8 +2936,13 @@ fn row_content(
                             .h_flex()
                             .items_center()
                             .pl(advance)
+                            // A wash of the accent over whatever is under it. A
+                            // fixed colour mixed from the page's ground went dull
+                            // on a lit or pointed line, darker than the row it sat on.
                             .when(*lit, |this| {
-                                this.bg(paint(palette.wash.mix(palette.accent, 0.12)))
+                                let mut wash = paint(palette.accent);
+                                wash.a = 0.18;
+                                this.bg(wash)
                             })
                             .child(
                                 div()
