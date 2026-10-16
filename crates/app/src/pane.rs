@@ -1887,17 +1887,47 @@ impl Pane {
                         leaving
                     };
 
+                    // What the row *is*: going, arriving, lit, or plain.
+                    let base = match row.change {
+                        Some(Change::Gone) => flash.mix(palette.gone, arrived),
+                        Some(Change::New) => flash.mix(palette.fresh, arrived),
+                        None if is_lit => palette.focus,
+                        None => palette.wash,
+                    };
+                    // Then what is being *said* about it, over the top.
+                    //
+                    // A pointed line deepens into more of its own colour rather
+                    // than taking the accent. Washing orange over the arriving
+                    // green gave a muddy brown and took away the one thing the
+                    // row was saying — that it is the half arriving. Red goes to
+                    // a darker red, green to a darker green, and only ordinary
+                    // paper takes the accent, where there is no meaning of its
+                    // own to drown.
+                    let said = match row.change {
+                        Some(Change::Gone) => base.mix(palette.gone_deep, pointed),
+                        Some(Change::New) => base.mix(palette.fresh_deep, pointed),
+                        None => base.mix(palette.accent, 0.26 * pointed),
+                    };
+                    let ground = said.mix(palette.accent, 0.14 * holding);
+                    // A key row is drawn half a row up, all of it — ground, bar
+                    // and words — into the blank row above the first key. That
+                    // leaves half a row clear above the keys and, under the last
+                    // one, half a row its own ground fills, so every band still
+                    // runs the width of the pane and lines up with its words.
                     let keyed = matches!(row.extra, Some(Extra::Key { pad: false, .. }));
-                    // The band a key row's lifted words carry, when it is picked
-                    // or pointed at.
-                    let band = (keyed && (holding > 0. || pointed > 0.)).then(|| {
-                        paint(
-                            palette
-                                .focus
-                                .mix(palette.accent, 0.26 * pointed)
-                                .mix(palette.accent, 0.14 * holding),
-                        )
-                    });
+                    let half = if keyed { row_px * 0.5 } else { px(0.) };
+                    // Where the trail runs: past the bar and the gutter, at
+                    // the key's indent.
+                    #[allow(clippy::cast_precision_loss)]
+                    let trail_at = match row.extra {
+                        Some(Extra::Key { indent, .. }) => px(56.) + advance * indent as f32,
+                        _ => px(0.),
+                    };
+                    let last_key = keyed
+                        && !matches!(
+                            rows.get(ix + 1).and_then(|next| next.extra.as_ref()),
+                            Some(Extra::Key { pad: false, .. })
+                        );
                     // The row's slot holds still and what is drawn in it moves.
                     // The list places each row itself and ignores an offset on
                     // the row, so moving the row did nothing and the code below
@@ -1913,7 +1943,7 @@ impl Pane {
                                 .absolute()
                                 .left_0()
                                 .right_0()
-                                .top(row_px * -lift)
+                                .top(row_px * -lift - half)
                                 .opacity(cover)
                                 // The row's ground has to span the pane, not stop
                                 // where its text does: a lit range that ends ragged
@@ -1985,49 +2015,7 @@ impl Pane {
                                 // the rest of the range gives up its bar, so the eye is
                                 // pulled to the sentence being said without the page
                                 // gaining a third kind of highlight to learn.
-                                .bg(paint({
-                                    // What the row *is*: going, arriving, lit, or plain.
-                                    let base = match row.change {
-                                        Some(Change::Gone) => flash.mix(palette.gone, arrived),
-                                        Some(Change::New) => flash.mix(palette.fresh, arrived),
-                                        None if is_lit => palette.focus,
-                                        None => palette.wash,
-                                    };
-                                    // A key's words sit half a row above its slot,
-                                    // so a band for picking or pointing at it is
-                                    // drawn with the words; the slot keeps only the
-                                    // plain ground.
-                                    if keyed {
-                                        base
-                                    } else {
-                                        let ground = match row.change {
-                                            Some(Change::Gone) => flash.mix(palette.gone, arrived),
-                                            Some(Change::New) => flash.mix(palette.fresh, arrived),
-                                            None if is_lit => palette.focus,
-                                            None => palette.wash,
-                                        };
-                                        // Then what is being *said* about it, over the top.
-                                        //
-                                        // A pointed line deepens into more of its own
-                                        // colour rather than taking the accent. Washing
-                                        // orange over the arriving green gave a muddy brown
-                                        // and took away the one thing the row was saying —
-                                        // that it is the half arriving. Red goes to a
-                                        // darker red, green to a darker green, and only
-                                        // ordinary paper takes the accent, where there is
-                                        // no meaning of its own to drown.
-                                        let ground = match row.change {
-                                            Some(Change::Gone) => {
-                                                ground.mix(palette.gone_deep, pointed)
-                                            }
-                                            Some(Change::New) => {
-                                                ground.mix(palette.fresh_deep, pointed)
-                                            }
-                                            None => ground.mix(palette.accent, 0.26 * pointed),
-                                        };
-                                        ground.mix(palette.accent, 0.14 * holding)
-                                    }
-                                }))
+                                .bg(paint(ground))
                                 .child(
                                     div()
                                         .w(px(12.))
@@ -2091,21 +2079,37 @@ impl Pane {
                                         .h_flex()
                                         .items_center()
                                         .gap_3()
-                                        // A key's words are drawn half a row up, over
-                                        // the row above; clipping would cut them in half.
-                                        .when(
-                                            !matches!(row.extra, Some(Extra::Key { .. })),
-                                            |this| this.overflow_hidden(),
-                                        )
+                                        .overflow_hidden()
                                         // The words come in, the ground under them was
                                         // already there: a gap the colour of the lit
                                         // range, not a hole in it.
                                         .opacity(reveal)
-                                        .child(row_content(
-                                            &row, &palette, advance, size, &grow, band,
-                                        )),
+                                        .child(row_content(&row, &palette, advance, size, &grow)),
                                 ),
                         )
+                        // Under the last key, the half row the keys moved up
+                        // out of, in the same ground, with the trail running on.
+                        .when(last_key, |slot| {
+                            slot.child(
+                                div()
+                                    .absolute()
+                                    .left_0()
+                                    .right_0()
+                                    .top(row_px * (0.5 - lift))
+                                    .h(row_px * 0.5)
+                                    .opacity(cover)
+                                    .bg(paint(said))
+                                    .child(
+                                        div()
+                                            .absolute()
+                                            .top_0()
+                                            .bottom_0()
+                                            .left(trail_at)
+                                            .w(px(1.))
+                                            .bg(paint(palette.edge.mix(palette.muted, 0.55))),
+                                    ),
+                            )
+                        })
                         .into_any_element()
                 })
                 .collect()
@@ -2747,7 +2751,6 @@ fn row_content(
     advance: Pixels,
     size: Pixels,
     grows: &[(f32, f32)],
-    band: Option<Hsla>,
 ) -> AnyElement {
     let faint = palette.muted.mix(palette.wash, 0.35);
     let soft = palette.fg.mix(palette.wash, 0.25);
@@ -2906,8 +2909,7 @@ fn row_content(
             .h_full()
             .child(gap(*indent))
             .child(
-                // The trail holds still down the whole row; the words sit half
-                // a row higher, into the blank row above the first key.
+                // The trail down the whole row, the key and its value beside it.
                 div()
                     .flex_1()
                     .h_full()
@@ -2918,14 +2920,12 @@ fn row_content(
                             .flex_1()
                             .h_full()
                             .relative()
-                            .top(size * (LINE_HEIGHT * -0.5))
                             .h_flex()
                             .items_center()
                             .pl(advance)
                             .when(*lit, |this| {
                                 this.bg(paint(palette.wash.mix(palette.accent, 0.12)))
                             })
-                            .when_some(band, |this, band| this.bg(band))
                             .child(
                                 div()
                                     .w({
