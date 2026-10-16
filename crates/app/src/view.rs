@@ -1374,18 +1374,22 @@ impl DeckView {
             for set in &sets {
                 let target = set.pane.as_str();
                 let asked = resolved_path(&base, std::path::Path::new(target));
-                let matches: Vec<usize> = self
-                    .panes
-                    .iter()
-                    .enumerate()
-                    .filter_map(|(ix, pane)| {
-                        let code = pane.code()?;
-                        (code.name.as_deref() == Some(target)
-                            || code.ref_id.as_ref() == target
-                            || resolved_path(&base, &code.file) == asked)
-                            .then_some(ix)
-                    })
-                    .collect();
+                // By name or ref id first; a file only when nothing is called
+                // that, or a name that is also another pane's file reads as
+                // ambiguous.
+                let by = |hit: &dyn Fn(&Pane) -> bool| -> Vec<usize> {
+                    self.panes
+                        .iter()
+                        .enumerate()
+                        .filter_map(|(ix, pane)| pane.code().filter(|code| hit(code)).map(|_| ix))
+                        .collect()
+                };
+                let mut matches = by(&|code: &Pane| {
+                    code.name.as_deref() == Some(target) || code.ref_id.as_ref() == target
+                });
+                if matches.is_empty() {
+                    matches = by(&|code: &Pane| resolved_path(&base, &code.file) == asked);
+                }
                 let refuse =
                     |status, reason: String| crate::live::ShowAnswer::refused(status, reason);
                 let pane_ix = match matches.as_slice() {
@@ -2501,13 +2505,13 @@ impl DeckView {
             .get(pane_ix)
             .and_then(Sheet::code)
             .map(Pane::values_held);
-        if let Some((values, _)) = &held {
-            spec.values.clone_from(values);
+        if let Some(held) = &held {
+            spec.values.clone_from(&held.values);
         }
         if let Some(slot) = self.panes.get_mut(pane_ix) {
             let mut pane = Pane::new(&spec, &source, cx);
-            if let Some((_, open)) = held {
-                pane.reopen(open);
+            if let Some(held) = held {
+                pane.reopen(held);
             }
             // Authored changes are part of the page from the first frame. This
             // one arrived while the reader was looking, so it arrives.

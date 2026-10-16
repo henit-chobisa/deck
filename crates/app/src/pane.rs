@@ -278,6 +278,15 @@ struct Row {
     extra: Option<Extra>,
 }
 
+/// What a pane's values were doing, carried across a rebuild.
+pub struct Held {
+    /// The values themselves.
+    pub values: Vec<Value>,
+    open: std::collections::HashSet<Who>,
+    prose_open: std::collections::HashSet<Who>,
+    fresh: std::collections::HashSet<Who>,
+}
+
 /// Which value a row belongs to: its line and the name it is written for.
 ///
 /// Not the line alone. Two values with keys can hang under one line, and keyed
@@ -983,13 +992,21 @@ impl Pane {
 
     /// The values this pane draws and which of them are open, so a pane built
     /// again — for a proposal — can carry them over.
-    pub fn values_held(&self) -> (Vec<Value>, std::collections::HashSet<Who>) {
-        (self.values.clone(), self.open.clone())
+    pub fn values_held(&self) -> Held {
+        Held {
+            values: self.values.clone(),
+            open: self.open.clone(),
+            prose_open: self.prose_open.clone(),
+            fresh: self.fresh.clone(),
+        }
     }
 
-    /// Open the values that were open before the pane was built again.
-    pub fn reopen(&mut self, open: std::collections::HashSet<Who>) {
-        self.open = open;
+    /// Put back what a pane built again had: which values were open, which
+    /// the prose opened, and which were just written.
+    pub fn reopen(&mut self, held: Held) {
+        self.open = held.open;
+        self.prose_open = held.prose_open;
+        self.fresh = held.fresh;
         self.lay_out();
     }
 
@@ -1007,6 +1024,13 @@ impl Pane {
                 .position(|old| old.line == line && old.at == value.at);
             if let Some(ix) = same {
                 if self.values[ix] == value {
+                    // The same value written again is still an answer: if the
+                    // narration had sent it away, it comes back out.
+                    let who: Who = (line, value.at.clone().into());
+                    self.fresh.insert(who.clone());
+                    if let Some((_, light)) = self.presence.iter_mut().find(|(at, _)| *at == who) {
+                        light.set_linear(true);
+                    }
                     continue;
                 }
                 self.values.remove(ix);
@@ -1021,6 +1045,9 @@ impl Pane {
             self.fresh.insert(who.clone());
             self.presence.push((who, light));
         }
+        // Fresh values are let go by the narration's next move, so the place it
+        // is now has to be known, or the first move would not count as one.
+        self.followed.get_or_insert((self.point, self.narrowed));
         // A sentence already picked may name a key of one of these.
         self.prose = None;
         self.lay_out();
@@ -1860,6 +1887,17 @@ impl Pane {
                         leaving
                     };
 
+                    let keyed = matches!(row.extra, Some(Extra::Key { pad: false, .. }));
+                    // The band a key row's lifted words carry, when it is picked
+                    // or pointed at.
+                    let band = (keyed && (holding > 0. || pointed > 0.)).then(|| {
+                        paint(
+                            palette
+                                .focus
+                                .mix(palette.accent, 0.26 * pointed)
+                                .mix(palette.accent, 0.14 * holding),
+                        )
+                    });
                     // The row's slot holds still and what is drawn in it moves.
                     // The list places each row itself and ignores an offset on
                     // the row, so moving the row did nothing and the code below
@@ -1949,32 +1987,46 @@ impl Pane {
                                 // gaining a third kind of highlight to learn.
                                 .bg(paint({
                                     // What the row *is*: going, arriving, lit, or plain.
-                                    let ground = match row.change {
+                                    let base = match row.change {
                                         Some(Change::Gone) => flash.mix(palette.gone, arrived),
                                         Some(Change::New) => flash.mix(palette.fresh, arrived),
                                         None if is_lit => palette.focus,
                                         None => palette.wash,
                                     };
-                                    // Then what is being *said* about it, over the top.
-                                    //
-                                    // A pointed line deepens into more of its own
-                                    // colour rather than taking the accent. Washing
-                                    // orange over the arriving green gave a muddy brown
-                                    // and took away the one thing the row was saying —
-                                    // that it is the half arriving. Red goes to a
-                                    // darker red, green to a darker green, and only
-                                    // ordinary paper takes the accent, where there is
-                                    // no meaning of its own to drown.
-                                    let ground = match row.change {
-                                        Some(Change::Gone) => {
-                                            ground.mix(palette.gone_deep, pointed)
-                                        }
-                                        Some(Change::New) => {
-                                            ground.mix(palette.fresh_deep, pointed)
-                                        }
-                                        None => ground.mix(palette.accent, 0.26 * pointed),
-                                    };
-                                    ground.mix(palette.accent, 0.14 * holding)
+                                    // A key's words sit half a row above its slot,
+                                    // so a band for picking or pointing at it is
+                                    // drawn with the words; the slot keeps only the
+                                    // plain ground.
+                                    if keyed {
+                                        base
+                                    } else {
+                                        let ground = match row.change {
+                                            Some(Change::Gone) => flash.mix(palette.gone, arrived),
+                                            Some(Change::New) => flash.mix(palette.fresh, arrived),
+                                            None if is_lit => palette.focus,
+                                            None => palette.wash,
+                                        };
+                                        // Then what is being *said* about it, over the top.
+                                        //
+                                        // A pointed line deepens into more of its own
+                                        // colour rather than taking the accent. Washing
+                                        // orange over the arriving green gave a muddy brown
+                                        // and took away the one thing the row was saying —
+                                        // that it is the half arriving. Red goes to a
+                                        // darker red, green to a darker green, and only
+                                        // ordinary paper takes the accent, where there is
+                                        // no meaning of its own to drown.
+                                        let ground = match row.change {
+                                            Some(Change::Gone) => {
+                                                ground.mix(palette.gone_deep, pointed)
+                                            }
+                                            Some(Change::New) => {
+                                                ground.mix(palette.fresh_deep, pointed)
+                                            }
+                                            None => ground.mix(palette.accent, 0.26 * pointed),
+                                        };
+                                        ground.mix(palette.accent, 0.14 * holding)
+                                    }
                                 }))
                                 .child(
                                     div()
@@ -2049,7 +2101,9 @@ impl Pane {
                                         // already there: a gap the colour of the lit
                                         // range, not a hole in it.
                                         .opacity(reveal)
-                                        .child(row_content(&row, &palette, advance, size, &grow)),
+                                        .child(row_content(
+                                            &row, &palette, advance, size, &grow, band,
+                                        )),
                                 ),
                         )
                         .into_any_element()
@@ -2693,6 +2747,7 @@ fn row_content(
     advance: Pixels,
     size: Pixels,
     grows: &[(f32, f32)],
+    band: Option<Hsla>,
 ) -> AnyElement {
     let faint = palette.muted.mix(palette.wash, 0.35);
     let soft = palette.fg.mix(palette.wash, 0.25);
@@ -2870,6 +2925,7 @@ fn row_content(
                             .when(*lit, |this| {
                                 this.bg(paint(palette.wash.mix(palette.accent, 0.12)))
                             })
+                            .when_some(band, |this, band| this.bg(band))
                             .child(
                                 div()
                                     .w({
