@@ -1678,35 +1678,14 @@ impl Pane {
         // Each stretch of rows in motion: its first and last row, how far the
         // room for it has opened, and how far its words are in.
         let mut blocks: Vec<(usize, usize, f32, f32)> = Vec::new();
-        // Only values in motion: one standing open has nothing to draw here,
-        // and scanning the rows for it every frame was waste.
-        // A value closed but not yet taken out is drawn closed, not skipped:
-        // skipping it for the frame between its light stopping and its rows
-        // going drew it fully open for that frame — a snap at the end of every
-        // close.
-        for (who, light) in self
-            .unfolding
-            .iter()
-            .filter(|(who, light)| light.moving() || !self.open.contains(who))
-        {
-            let keys: Vec<usize> = self
-                .rows
-                .iter()
-                .enumerate()
-                .filter(
-                    |(_, row)| matches!(&row.extra, Some(Extra::Key { who: at, .. }) if at == who),
-                )
-                .map(|(ix, _)| ix)
-                .collect();
-            if let (Some(first), Some(last)) = (keys.first(), keys.last()) {
-                let (slide, show) = steps(light.linear());
-                blocks.push((*first, *last, slide, show));
-            }
-        }
         // A value coming in or going out: its preview row (and its keys, if
         // open) opens or closes the same way, and a single value grows its own
         // room on the line, then fills it — or empties it, then gives it back.
+        // A value closed but not yet taken out is drawn at its end, not
+        // skipped: skipping it for the frame between its light stopping and its
+        // rows going drew it fully open for that frame.
         let mut arrivals: Vec<(Who, f32, f32)> = Vec::new();
+        let mut whole: Vec<Who> = Vec::new();
         for (who, light) in self
             .presence
             .iter()
@@ -1725,6 +1704,30 @@ impl Pane {
                     )
                     .unwrap_or(ix);
                 blocks.push((ix, last, slide, show));
+                whole.push(who.clone());
+            }
+        }
+        // A value opening or closing, its keys only. Not one that is also
+        // coming or going whole: its rows are already in that motion, and
+        // moving them twice slid the code below over the lines above it.
+        for (who, light) in self
+            .unfolding
+            .iter()
+            .filter(|(who, light)| light.moving() || !self.open.contains(who))
+            .filter(|(who, _)| !whole.contains(who))
+        {
+            let keys: Vec<usize> = self
+                .rows
+                .iter()
+                .enumerate()
+                .filter(
+                    |(_, row)| matches!(&row.extra, Some(Extra::Key { who: at, .. }) if at == who),
+                )
+                .map(|(ix, _)| ix)
+                .collect();
+            if let (Some(first), Some(last)) = (keys.first(), keys.last()) {
+                let (slide, show) = steps(light.linear());
+                blocks.push((*first, *last, slide, show));
             }
         }
         let lit = self.spotlight;
