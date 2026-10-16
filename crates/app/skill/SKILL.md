@@ -1287,7 +1287,7 @@ the agent never moves anything is a document with a bar under it.
 ```
 deck new      the header, and the bar
 deck open     the bar, in the background — and what wakes you at the end
-deck group    one group, one call — and --ask, three to five, for the pills under it
+deck group    one group, one call — --title for its heading, and --ask, three to five, for the pills under it
 deck asks     after an answer: renew one group's pills (--group g3 --ask …)
 deck seal     no more coming
 deck wait     only with -d, when you detached the window yourself
@@ -1330,6 +1330,8 @@ It prints the deck's path. Everything after this takes it.
 - `--title` is the first thing they read. Make it the QUESTION or the CLAIM the deck
   answers ("why the batch counter stalls"), not a label ("batch counter changes").
   A title that poses the question primes them to predict — which is how people learn best.
+  It names the whole deck: on the bar, and in the window's bottom strip once a
+  group with its own `--title` (§3) is on screen.
 
 ## 2. Put the bar up, before you have written anything
 
@@ -1369,8 +1371,18 @@ works — the group is written, with holes where the words were — so nothing t
 you it happened. If the prose has an apostrophe in it, use a quoted heredoc
 rather than escaping your way out.
 
+**Give every group a `--title`.** It heads the window while that group is on
+screen, and the deck's title steps down to the strip at the bottom beside
+`group 2/4`. The deck's title is the question; a group's title is the step of the
+answer on screen now — *The drag moves a share, not a width* — in sentence case,
+one line, at most 80 characters. Never the deck's title again, and never a label
+(*Drag handling*): a reader who skims only the titles should still follow the
+story. A group without one is headed by the deck's title, which is the confusion
+this exists to end.
+
 ```bash
 deck group <path> \
+  --title 'A pane has no width' \
   --say 'Okay, drag the line between two panes. Left one grows, right one gives way,
 nothing else on the page twitches. Feels like the most ordinary thing in the world.
 

@@ -67,6 +67,15 @@ pub struct Group {
     /// prose of group 3 assumes group 2 has been read.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ord: Option<u32>,
+    /// What this one group shows, as a heading in sentence case.
+    ///
+    /// The deck's title is the question the whole deck answers; this is the
+    /// step of the answer on screen now. A client shows it where the reader
+    /// looks first, and keeps the deck's title somewhere quieter. Optional,
+    /// and absent from a group written before it existed: such a group is
+    /// headed by the deck's title, as every group was.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
     /// The narration, as Markdown. May be long; the band scrolls.
     pub say: String,
     /// The evidence for this one claim. One pane each.

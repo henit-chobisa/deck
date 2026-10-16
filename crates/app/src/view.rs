@@ -1773,6 +1773,18 @@ impl DeckView {
         self.deck.groups().get(self.group_ix)
     }
 
+    /// The group's own title, when the agent gave it one.
+    ///
+    /// The band is headed by it, with the deck's title in a quieter line
+    /// above. With one heading for both, a reader moving through the deck
+    /// could not tell the question being answered from the step of the answer
+    /// on screen.
+    fn group_title(&self) -> Option<String> {
+        self.group()
+            .and_then(|group| group.title.as_deref())
+            .map(crate::load::heading)
+    }
+
     /// Walk to the group `step` away, if there is one.
     ///
     /// Walking off either end does nothing rather than wrapping: a deck is a
@@ -5203,10 +5215,14 @@ impl DeckView {
                     // thing that answers a double-click — which is exactly
                     // where somebody aiming at a titlebar clicks.
                     .child(
-                        // The title stays. It is what the deck is *for*, and
+                        // The title stays. It is what the group is *for*, and
                         // scrolling it away to read the middle of a long
                         // narration loses the one line that says what the
-                        // narration is about.
+                        // narration is about. Over it, a step quieter and in
+                        // the same type, the deck's title: the question this
+                        // group is one step of answering. A group written
+                        // without a title is headed by the deck's, alone, as
+                        // every group once was.
                         // It is also the deck's titlebar, so it behaves like
                         // one: double-click zooms the window. The real
                         // titlebar is there but made invisible and its traffic
@@ -5241,13 +5257,31 @@ impl DeckView {
                                         window.zoom_window();
                                     }
                                 })
-                                .child(
+                                .child({
+                                    let own = self.group_title();
                                     div()
-                                        .text_size(px(15.5))
-                                        .font_weight(FontWeight::SEMIBOLD)
-                                        .text_color(paint(self.palette.fg))
-                                        .child(self.deck.title()),
-                                )
+                                        .v_flex()
+                                        .gap(px(3.))
+                                        .min_w_0()
+                                        .when(own.is_some(), |this| {
+                                            this.child(
+                                                div()
+                                                    .text_size(px(12.5))
+                                                    .text_color(paint(self.palette.muted))
+                                                    .overflow_hidden()
+                                                    .text_ellipsis()
+                                                    .whitespace_nowrap()
+                                                    .child(self.deck.title()),
+                                            )
+                                        })
+                                        .child(
+                                            div()
+                                                .text_size(px(15.5))
+                                                .font_weight(FontWeight::SEMIBOLD)
+                                                .text_color(paint(self.palette.fg))
+                                                .child(own.unwrap_or_else(|| self.deck.title())),
+                                        )
+                                })
                                 .flex_1()
                                 .min_w_0(),
                         ),
@@ -6151,6 +6185,15 @@ impl DeckView {
                     .h_flex()
                     .items_center()
                     .gap(px(14.))
+                    // The side that gives way. The right side holds what the
+                    // reader acts on — the comment count, the version, the way
+                    // out — and a narrow window used to push it off the edge,
+                    // out of reach, while this side kept its room. Now this
+                    // side shrinks, and the caution at its end is cut short.
+                    .flex_1()
+                    .min_w_0()
+                    .overflow_hidden()
+                    .whitespace_nowrap()
                     // Where you are lives down here with the other counts,
                     // rather than beside the title. The title says what the
                     // group is about; the strip says where you are in the deck
@@ -6232,22 +6275,28 @@ impl DeckView {
                                     "still writing".to_string()
                                 }),
                         )
-                    }),
+                    })
+                    // Always there, and always quiet. A deck puts the agent's
+                    // claims in the same type as the code they rest on, and a
+                    // value written on a line reads as observed; the reader is
+                    // owed a standing reminder that the one making the claims
+                    // can be wrong, the way every harness says so. Last on
+                    // this side, so it is what a narrow window cuts short.
+                    .child(
+                        div()
+                            .min_w_0()
+                            .overflow_hidden()
+                            .text_ellipsis()
+                            .text_color(paint(self.palette.muted.mix(self.palette.band, 0.35)))
+                            .child("Your agent can make incorrect claims"),
+                    ),
             )
             .child(
                 div()
                     .h_flex()
                     .gap_4()
-                    // Always there, and always quiet. A deck puts the agent's
-                    // claims in the same type as the code they rest on, and a
-                    // value written on a line reads as observed; the reader is
-                    // owed a standing reminder that the one making the claims
-                    // can be wrong, the way every harness says so.
-                    .child(
-                        div()
-                            .text_color(paint(self.palette.muted.mix(self.palette.band, 0.35)))
-                            .child("Your agent can make incorrect claims"),
-                    )
+                    .flex_none()
+                    .whitespace_nowrap()
                     .child(format!(
                         "{said} comment{}",
                         if said == 1 { "" } else { "s" }

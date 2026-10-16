@@ -113,12 +113,26 @@ One thing the agent wants to say, and the evidence for it.
 | ------ | -------- | -------- | ------- |
 | `id`   | string   | yes      | Identifies the group within its deck. |
 | `ord`  | integer  | no       | Position in the story, counting from 1. |
+| `title` | string  | no       | What this group shows, as a one-line heading. See below. |
 | `say`  | string   | yes      | The narration. Markdown; see below. |
 | `refs` | array    | no       | The evidence. One pane each. Defaults to empty. |
 | `asks` | array    | no       | Up to five questions the reader can press to ask the agent. Defaults to empty. |
 
 The filename must start with `g` and end with `.json`. Nothing else about it is
 read — order comes from `ord`, not from the name and not from the filesystem.
+
+### A group's title
+
+`title` heads the group while it is on screen. The deck's `title` is the
+question the whole deck answers; a group's is the step of the answer in front
+of the reader. A client shows the group's title where it would otherwise show
+the deck's, capitalised at the front like the deck's, and keeps the deck's title
+somewhere quieter: deck's own window moves it to the bottom strip, beside the
+group count. A group without one is headed by the deck's title, as every group
+was before the field existed.
+
+`deck group --title` trims it and refuses one that is empty, runs over a line, or
+is longer than 80 characters.
 
 ### Questions to ask
 

@@ -109,6 +109,14 @@ enum What {
         /// written as `\n` is read as one too, outside backticks.
         #[arg(long, value_parser = prose)]
         say: String,
+        /// What this group shows, as a heading in sentence case: `The retry
+        /// runs twice`.
+        ///
+        /// It heads the window while the group is on screen. The deck's title
+        /// is the question the whole deck answers; this is the step of the
+        /// answer on screen now, so it is never the deck's title again.
+        #[arg(long)]
+        title: Option<String>,
         /// A file and the lines to light up, and optionally a note after a
         /// space: `src/batch.ts:140-148 decremented *twice*`.
         ///
@@ -581,6 +589,7 @@ impl Cli {
             What::Group {
                 deck,
                 say,
+                title,
                 refs,
                 after,
                 before,
@@ -595,7 +604,7 @@ impl Cli {
                     for note in deck_cli::what_will_not_light(&say, &refs) {
                         eprintln!("deck: {note}");
                     }
-                    deck_cli::group_asking(&deck, &say, refs, &ask).map(|path| {
+                    deck_cli::group_titled(&deck, title.as_deref(), &say, refs, &ask).map(|path| {
                         crate::usage::record(crate::usage::Count::GroupWritten);
                         crate::usage::record_many(
                             crate::usage::Count::QuestionsOffered,

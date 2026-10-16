@@ -447,6 +447,8 @@ mod tests {
                 continue;
             }
             // The arguments are single-quoted: the say first, the refs after.
+            // A `--title` may come before the say, and names no pane.
+            let block = block.find("--say").map_or(block, |at| &block[at..]);
             let quoted: Vec<&str> = block.split('\'').skip(1).step_by(2).collect();
             let Some((say, refs)) = quoted.split_first() else {
                 continue;

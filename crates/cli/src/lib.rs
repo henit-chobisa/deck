@@ -642,6 +642,29 @@ pub fn group_asking(
     pointing: Vec<Pointing>,
     asks: &[String],
 ) -> anyhow::Result<PathBuf> {
+    group_titled(root, None, say, pointing, asks)
+}
+
+/// The longest a group's title may be, in characters.
+///
+/// It heads the band on one line. Past this it wraps, and a heading that
+/// wraps is a sentence of the narration that ended up in the wrong place.
+pub const LONGEST_TITLE: usize = 80;
+
+/// [`group_asking`], headed by a title of its own.
+///
+/// # Errors
+///
+/// As [`group_asking`], and when the title is empty, runs over a line, or is
+/// longer than [`LONGEST_TITLE`].
+pub fn group_titled(
+    root: &Path,
+    title: Option<&str>,
+    say: &str,
+    pointing: Vec<Pointing>,
+    asks: &[String],
+) -> anyhow::Result<PathBuf> {
+    let title = title.map(heading).transpose()?;
     let asks = questions(asks)?;
     anyhow::ensure!(
         root.join("deck.json").is_file(),
@@ -696,6 +719,7 @@ pub fn group_asking(
     let group = Group {
         id: format!("g{ord}"),
         ord: Some(ord),
+        title,
         say: say.to_string(),
         refs,
         asks,
@@ -704,6 +728,25 @@ pub fn group_asking(
     let path = root.join(format!("g{ord}.json"));
     write_atomically(&path, &serde_json::to_vec_pretty(&group)?)?;
     Ok(path)
+}
+
+/// A group's title, checked: one line, said, and short enough to head the band.
+fn heading(title: &str) -> anyhow::Result<String> {
+    let title = title.trim();
+    anyhow::ensure!(
+        !title.is_empty(),
+        "--title is empty: give the group a heading, or leave --title out"
+    );
+    anyhow::ensure!(
+        !title.contains(['\n', '\r']),
+        "--title runs over a line: a heading is one line, and the rest belongs in --say"
+    );
+    let long = title.chars().count();
+    anyhow::ensure!(
+        long <= LONGEST_TITLE,
+        "--title is {long} characters, and at most {LONGEST_TITLE} fit on the band's line: say what this group shows, not the whole of it"
+    );
+    Ok(title.to_string())
 }
 
 /// Where a group's renewed questions are kept, beside the group itself.
@@ -1401,6 +1444,34 @@ mod tests {
             said.contains("220-240"),
             "and it says what to write instead"
         );
+    }
+
+    #[test]
+    fn a_group_title_is_kept_trimmed_and_held_to_one_short_line() {
+        let at = scratch("titled");
+        let root = new(&at, "Why the counter stalls", None, None).unwrap();
+
+        let path = group_titled(
+            &root,
+            Some("  The retry runs twice "),
+            "say",
+            Vec::new(),
+            &[],
+        )
+        .expect("a short title is fine");
+        let written: Group = serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap();
+        assert_eq!(written.title.as_deref(), Some("The retry runs twice"));
+
+        let path = group_asking(&root, "say", Vec::new(), &[]).unwrap();
+        let raw = std::fs::read_to_string(path).unwrap();
+        assert!(!raw.contains("\"title\""), "no title, no field: {raw}");
+
+        for bad in ["   ", "two\nlines", &"x".repeat(LONGEST_TITLE + 1)] {
+            assert!(
+                group_titled(&root, Some(bad), "say", Vec::new(), &[]).is_err(),
+                "{bad:?} is refused"
+            );
+        }
     }
 
     #[test]
