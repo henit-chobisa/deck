@@ -1672,11 +1672,11 @@ no keys, tokens, passwords, card numbers or personal emails. Redact them,
 **How much.**
 
 - Only on lines the `say` points at with `[point …]`. The value is the evidence
-  for that sentence, and the window holds it to that: while a sentence points
-  at code, only the values on the lines it points at are out, and the rest fold
-  away until their sentence comes. With nothing pointed at, every value shows.
-  Values you write live stay out until the narration next moves, so an answer
-  never lands out of sight.
+  for that sentence. A pane your prose points into keeps its values away until
+  a sentence first reaches one of their lines; then they all come out together,
+  once, and stay. The reader can hide or show them with the eye in the pane's
+  header. A pane your prose never points into shows its values from the start,
+  and values you write live come out at once.
 - At most two values on a line, usually one. At most three or four lines with
   values in a group; more is two groups.
 - `"lit": true` on the one value the claim turns on, never more than one per

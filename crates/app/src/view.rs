@@ -2332,9 +2332,9 @@ impl DeckView {
                     code.point_at(want);
                     moved = true;
                 }
-                // Values follow the narration: out on the lines it points at,
-                // away elsewhere, and all out when it points at no code.
-                code.follow_values(reading.is_some());
+                // The first time the narration reaches a pane's values, they
+                // come out, and stay.
+                code.follow_values();
                 continue;
             }
             if let Some(chart) = pane.chart_mut() {
@@ -3403,6 +3403,17 @@ impl DeckView {
         };
         self.drag_from = Some((pane_ix, anchor));
         self.pick(pane_ix, row, cx);
+    }
+
+    /// Show or hide every value in pane `pane_ix`: the eye in its header.
+    pub fn toggle_values_shown(&mut self, pane_ix: usize, cx: &mut Context<Self>) {
+        self.drag_from = None;
+        self.hovered = None;
+        if let Some(Sheet::Code(pane)) = self.panes.get_mut(pane_ix) {
+            let on = !pane.values_shown();
+            pane.set_shown(on);
+            cx.notify();
+        }
     }
 
     /// Open or close the value under `line` in pane `pane_ix`.
@@ -5075,6 +5086,20 @@ impl DeckView {
                 Ref::Page(page) => Sheet::Page(crate::page::Paper::new(page)),
             })
             .collect();
+        // A pane the prose points into keeps its values away until a sentence
+        // reaches them; one it never points into shows them from the start.
+        let spots: Vec<LineRange> = crate::prose::pointed(&group.say, 0)
+            .into_iter()
+            .filter_map(|piece| piece.point.and_then(|spot| spot.lines))
+            .collect();
+        for pane in &mut self.panes {
+            if let Sheet::Code(code) = pane {
+                let lit = code.spotlight_range();
+                if spots.iter().any(|at| at.overlaps(lit)) {
+                    code.gate();
+                }
+            }
+        }
         // Every pane of a new group arrives open. A fold belongs to the group
         // it was made in, and so does anything brought in to answer a question
         // about it.

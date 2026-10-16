@@ -284,7 +284,8 @@ pub struct Held {
     pub values: Vec<Value>,
     open: std::collections::HashSet<Who>,
     prose_open: std::collections::HashSet<Who>,
-    fresh: std::collections::HashSet<Who>,
+    shown: bool,
+    reached: bool,
 }
 
 /// Which value a row belongs to: its line and the name it is written for.
@@ -481,20 +482,16 @@ pub struct Pane {
     ///
     /// A value with no entry here is simply there.
     presence: Vec<(Who, Fade)>,
-    /// Whether the narration is pointing anywhere in the window. While it is,
-    /// a pane shows only the values on the lines pointed at; when it is not,
-    /// every value is out.
-    narrowed: bool,
+    /// Whether the pane's values are out. One gate for all of them: they come
+    /// and go together, by the eye in the header, never one line at a time.
+    shown: bool,
+    /// Whether the narration has reached this pane's values yet. A pane its
+    /// prose points into starts with them away, and they come out once, the
+    /// first time a sentence points at one of their lines.
+    reached: bool,
     /// A value has been sent away and its rows are still drawn, to be taken
     /// out once it has finished going.
     hiding: bool,
-    /// Values just written, which stay out whatever the narration is pointing
-    /// at until it next moves. An answer written while a sentence held its
-    /// point elsewhere landed out of sight and still said it had applied.
-    fresh: std::collections::HashSet<Who>,
-    /// The point and narrowing the values last followed, so only a real move
-    /// of the narration lets fresh values go.
-    followed: Option<(Option<(LineRange, crate::prose::Side)>, bool)>,
     /// The sentence of the narration the reader has picked, as last seen.
     prose: Option<String>,
     /// Values the picked sentence opened, by naming one of their keys. They
@@ -721,10 +718,9 @@ impl Pane {
             open: std::collections::HashSet::new(),
             unfolding: Vec::new(),
             presence: Vec::new(),
-            narrowed: false,
+            shown: true,
+            reached: true,
             hiding: false,
-            fresh: std::collections::HashSet::new(),
-            followed: None,
             prose: None,
             prose_open: std::collections::HashSet::new(),
             line_row: Vec::new(),
@@ -997,16 +993,21 @@ impl Pane {
             values: self.values.clone(),
             open: self.open.clone(),
             prose_open: self.prose_open.clone(),
-            fresh: self.fresh.clone(),
+            shown: self.shown,
+            reached: self.reached,
         }
     }
 
     /// Put back what a pane built again had: which values were open, which
-    /// the prose opened, and which were just written.
+    /// the prose opened, and whether the values were out.
     pub fn reopen(&mut self, held: Held) {
         self.open = held.open;
         self.prose_open = held.prose_open;
-        self.fresh = held.fresh;
+        self.reached = held.reached;
+        if !held.shown {
+            self.gate();
+            self.reached = held.reached;
+        }
         self.lay_out();
     }
 
@@ -1024,13 +1025,8 @@ impl Pane {
                 .position(|old| old.line == line && old.at == value.at);
             if let Some(ix) = same {
                 if self.values[ix] == value {
-                    // The same value written again is still an answer: if the
-                    // narration had sent it away, it comes back out.
-                    let who: Who = (line, value.at.clone().into());
-                    self.fresh.insert(who.clone());
-                    if let Some((_, light)) = self.presence.iter_mut().find(|(at, _)| *at == who) {
-                        light.set_linear(true);
-                    }
+                    // The same value written again is still an answer, and
+                    // the gate below opens for it.
                     continue;
                 }
                 self.values.remove(ix);
@@ -1042,12 +1038,12 @@ impl Pane {
             // pointing elsewhere, it waits out of sight until its line is.
             let mut light = Fade::default().paced(UNFOLD, REFOLD);
             light.set_linear(true);
-            self.fresh.insert(who.clone());
             self.presence.push((who, light));
         }
-        // Fresh values are let go by the narration's next move, so the place it
-        // is now has to be known, or the first move would not count as one.
-        self.followed.get_or_insert((self.point, self.narrowed));
+        // An answer is meant to be seen: the gate opens, and the pane's other
+        // values come out with it.
+        self.reached = true;
+        self.set_shown(true);
         // A sentence already picked may name a key of one of these.
         self.prose = None;
         self.lay_out();
@@ -1098,15 +1094,9 @@ impl Pane {
         }
     }
 
-    /// Whether a value on `line` should be out right now.
-    fn wants(&self, line: u32) -> bool {
-        !self.narrowed || self.point.is_some_and(|(at, _)| at.contains(line))
-    }
-
-    /// Whether this value should be out right now: one just written always
-    /// is, until the narration moves.
-    fn wants_value(&self, who: &Who) -> bool {
-        self.fresh.contains(who) || self.wants(who.0)
+    /// Whether a value should be out right now: the pane's one gate.
+    fn wants_value(&self, _who: &Who) -> bool {
+        self.shown
     }
 
     /// Whether a value is drawn: out, or on its way in or out.
@@ -1117,54 +1107,87 @@ impl Pane {
             .is_none_or(|(_, light)| light.on() || light.moving())
     }
 
-    /// Follow the narration: values on the lines it points at come out, the
-    /// rest fold away, in the same slide and fade they arrive with.
-    ///
-    /// `narrowed` is whether the narration points anywhere in the window. A
-    /// pane nobody points at while a sentence points elsewhere shows none, and
-    /// with nothing pointed at every value is out, as written.
-    pub fn follow_values(&mut self, narrowed: bool) {
-        self.narrowed = narrowed;
-        let now = (self.point, narrowed);
-        if self.followed != Some(now) {
-            // The narration moved: values written before it go where it says.
-            if self.followed.is_some() {
-                self.fresh.clear();
-            }
-            self.followed = Some(now);
+    /// The narration has moved. The first time it points at a line holding
+    /// one of this pane's values, they all come out together, once. Nothing
+    /// here ever sends them away again: only the reader does, with the eye.
+    pub fn follow_values(&mut self) {
+        if self.reached {
+            return;
         }
-        let mut appearing = false;
-        let wanted: Vec<(Who, bool)> = self
+        let reaches = self
+            .point
+            .is_some_and(|(at, _)| self.values.iter().any(|value| at.contains(value.line)));
+        if reaches {
+            self.reached = true;
+            self.set_shown(true);
+        }
+    }
+
+    /// Start with the values away, until the narration reaches them. For a
+    /// pane its prose points into: values ahead of the sentence being read are
+    /// the answer before the question.
+    pub fn gate(&mut self) {
+        if self.values.is_empty() {
+            return;
+        }
+        self.shown = false;
+        self.reached = false;
+        self.presence = self
             .values
             .iter()
             .map(|value| {
-                let who: Who = (value.line, value.at.clone().into());
-                let want = self.wants_value(&who);
-                (who, want)
+                (
+                    (value.line, value.at.clone().into()),
+                    Fade::default().paced(UNFOLD, REFOLD),
+                )
             })
             .collect();
-        for (who, want) in wanted {
+        self.lay_out();
+    }
+
+    /// Whether this pane carries values at all, so it wears the eye.
+    #[must_use]
+    pub fn has_values(&self) -> bool {
+        !self.values.is_empty()
+    }
+
+    /// Whether the pane's values are out, for the eye to say so.
+    #[must_use]
+    pub fn values_shown(&self) -> bool {
+        self.shown
+    }
+
+    /// Bring every value out, or send every value away, together.
+    pub fn set_shown(&mut self, on: bool) {
+        self.shown = on;
+        if on {
+            self.reached = true;
+        }
+        let all: Vec<Who> = self
+            .values
+            .iter()
+            .map(|value| (value.line, value.at.clone().into()))
+            .collect();
+        for who in all {
             match self.presence.iter_mut().find(|(at, _)| *at == who) {
                 Some((_, light)) => {
-                    if light.set_linear(want) {
-                        appearing |= want;
-                        self.hiding |= !want;
-                    }
+                    light.set_linear(on);
                 }
-                None if !want => {
+                None if !on => {
                     // Fully out until now: it leaves from all the way out.
                     let mut light = Fade::default().paced(UNFOLD, REFOLD);
                     light.on = true;
                     light.set_linear(false);
                     self.presence.push((who, light));
-                    self.hiding = true;
                 }
                 None => {}
             }
         }
-        if appearing {
+        if on {
             self.lay_out();
             self.reselect();
+        } else {
+            self.hiding = true;
         }
     }
 
@@ -1600,7 +1623,10 @@ impl Pane {
             self.name.clone(),
             self.label.clone(),
             self.note.clone(),
-            controls(slot, focus_button),
+            Controls {
+                values: self.has_values().then(|| values_button(slot, self.shown)),
+                ..controls(slot, focus_button)
+            },
             palette,
             cx,
         );
@@ -2443,6 +2469,7 @@ pub(crate) fn controls(slot: &Slot, focus_button: Option<AnyElement>) -> Control
     let open = slot.fold <= 0.;
     Controls {
         focus_button,
+        values: None,
         fold: (open && slot.foldable && !slot.temporary).then(|| fold_button(slot)),
         close: (open && slot.temporary).then(|| close_button(slot)),
     }
@@ -2473,6 +2500,39 @@ fn close_button(slot: &Slot) -> AnyElement {
 }
 
 /// The control that folds a pane away.
+/// The eye: every value in the pane out, or every value away.
+///
+/// Open when they are out and crossed when they are away, so it says what the
+/// pane is showing now — and pressing it is the one way they leave once out.
+fn values_button(slot: &Slot, shown: bool) -> AnyElement {
+    let palette = slot.palette;
+    let ix = slot.ix;
+    let view = slot.view.clone();
+    div()
+        .id(("values-pane", ix))
+        .size(px(18.))
+        .flex_none()
+        .rounded(px(5.))
+        .flex()
+        .items_center()
+        .justify_center()
+        .cursor_pointer()
+        .text_color(paint(if shown { palette.accent } else { palette.muted }))
+        .hover(|style| style.bg(paint(palette.band)))
+        .on_mouse_down(MouseButton::Left, move |_, _window, cx| {
+            let _ = view.update(cx, |deck, cx| deck.toggle_values_shown(ix, cx));
+        })
+        .child(
+            Icon::new(if shown {
+                IconName::Eye
+            } else {
+                IconName::EyeOff
+            })
+            .size(px(12.)),
+        )
+        .into_any_element()
+}
+
 fn fold_button(slot: &Slot) -> AnyElement {
     let palette = slot.palette;
     let ix = slot.ix;
@@ -2643,6 +2703,7 @@ pub fn chrome(
 ) -> impl IntoElement {
     let Controls {
         focus_button,
+        values,
         fold,
         close,
     } = controls;
@@ -2701,6 +2762,7 @@ pub fn chrome(
                 .items_center()
                 .gap(px(6.))
                 .children(focus_button)
+                .children(values)
                 .children(fold)
                 .children(close),
         )
@@ -2711,6 +2773,8 @@ pub fn chrome(
 pub struct Controls {
     /// The way back to the lit range, when it has been scrolled away from.
     pub focus_button: Option<AnyElement>,
+    /// The eye that shows or hides a pane's values, when it has any.
+    pub values: Option<AnyElement>,
     /// The way to fold the pane down to its spine.
     pub fold: Option<AnyElement>,
     /// The way to close a pane that was brought in to answer a question.
