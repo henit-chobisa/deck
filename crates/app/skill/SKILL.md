@@ -1672,11 +1672,12 @@ no keys, tokens, passwords, card numbers or personal emails. Redact them,
 **How much.**
 
 - Only on lines the `say` points at with `[point …]`. The value is the evidence
-  for that sentence. A pane your prose points into keeps its values away until
-  a sentence first reaches one of their lines; then they all come out together,
-  once, and stay. The reader can hide or show them with the eye in the pane's
-  header. A pane your prose never points into shows its values from the start,
-  and values you write live come out at once.
+  for that sentence. When a sentence points at a line holding one of a pane's
+  values, that pane keeps all its values away until such a sentence is first
+  reached; then they all come out together, once, and stay. A pane none of your
+  points land on a value line of shows its values from the start. Values you
+  write live come out at once, and bring out the rest of that pane's values with
+  them. The reader can hide or show a pane's values with the eye in its header.
 - At most two values on a line, usually one. At most three or four lines with
   values in a group; more is two groups.
 - `"lit": true` on the one value the claim turns on, never more than one per

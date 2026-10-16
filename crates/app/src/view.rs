@@ -1430,6 +1430,11 @@ impl DeckView {
                 if let Some(code) = self.panes.get_mut(pane_ix).and_then(Sheet::code_mut) {
                     code.set_values(values);
                 }
+                // Values written onto a folded pane would land out of sight:
+                // it comes back, as a pane does when the narration points in.
+                if let Some(fold) = self.folds.get_mut(pane_ix) {
+                    fold.set(false);
+                }
             }
             command.finish(crate::live::ShowAnswer::said());
             cx.notify();
@@ -1597,6 +1602,9 @@ impl DeckView {
             let values = command.valuing().to_vec();
             if !values.is_empty() {
                 code.set_values(values);
+                if let Some(fold) = self.folds.get_mut(resolved.pane_ix) {
+                    fold.set(false);
+                }
             }
             // The answer is the new lines, and they are spliced in under the
             // range they replace — often below the fold. Showing the top of the

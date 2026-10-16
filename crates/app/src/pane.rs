@@ -917,8 +917,12 @@ impl Pane {
                     ..
                 }) => indent + cells(name) + cells(preview) + 8,
                 Some(Extra::Key {
-                    is, width, indent, ..
-                }) => indent + width + cells(is) + 4,
+                    is,
+                    why,
+                    width,
+                    indent,
+                    ..
+                }) => indent + width + cells(is) + why.as_ref().map_or(0, |why| cells(why) + 2) + 4,
                 None => {
                     row.text.chars().count()
                         + row
