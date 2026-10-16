@@ -1363,6 +1363,89 @@ impl DeckView {
             command.finish(crate::live::ShowAnswer::said());
             return;
         }
+        // Values onto panes already on screen move nobody's eyes, so they are
+        // not paced and land on every pane named in one frame. Every pane is
+        // found first and nothing is written unless all of them are: half an
+        // answer reported as applied is worse than none.
+        if let Some(sets) = command.writing() {
+            let sets = sets.to_vec();
+            let base = self.deck.base();
+            let mut found: Vec<(usize, Vec<deck_core::protocol::Value>)> = Vec::new();
+            for set in &sets {
+                let target = set.pane.as_str();
+                let asked = resolved_path(&base, std::path::Path::new(target));
+                // By name or ref id first; a file only when nothing is called
+                // that, or a name that is also another pane's file reads as
+                // ambiguous.
+                let by = |hit: &dyn Fn(&Pane) -> bool| -> Vec<usize> {
+                    self.panes
+                        .iter()
+                        .enumerate()
+                        .filter_map(|(ix, pane)| pane.code().filter(|code| hit(code)).map(|_| ix))
+                        .collect()
+                };
+                let mut matches = by(&|code: &Pane| {
+                    code.name.as_deref() == Some(target) || code.ref_id.as_ref() == target
+                });
+                if matches.is_empty() {
+                    matches = by(&|code: &Pane| resolved_path(&base, &code.file) == asked);
+                }
+                let refuse =
+                    |status, reason: String| crate::live::ShowAnswer::refused(status, reason);
+                let pane_ix = match matches.as_slice() {
+                    [one] => *one,
+                    [] => {
+                        command.finish(refuse(
+                            deck_cli::live::ResponseStatus::NotFound,
+                            format!("no pane on screen is called or shows `{target}`"),
+                        ));
+                        return;
+                    }
+                    _ => {
+                        command.finish(refuse(
+                            deck_cli::live::ResponseStatus::Ambiguous,
+                            format!(
+                                "more than one pane shows `{target}`: name it by the pane's name"
+                            ),
+                        ));
+                        return;
+                    }
+                };
+                let lit = self.panes[pane_ix].code().map(Pane::spotlight_range);
+                if let Some(lit) = lit
+                    && let Some(stray) = set.values.iter().find(|value| {
+                        !crate::cli::value_fits(
+                            value,
+                            lit,
+                            self.panes[pane_ix].code().and_then(Pane::proposal),
+                        )
+                    })
+                {
+                    command.finish(refuse(
+                        deck_cli::live::ResponseStatus::OutOfRange,
+                        format!(
+                            "a value is on line {}, outside the lines `{target}` shows ({lit})",
+                            stray.line
+                        ),
+                    ));
+                    return;
+                }
+                found.push((pane_ix, set.values.clone()));
+            }
+            for (pane_ix, values) in found {
+                if let Some(code) = self.panes.get_mut(pane_ix).and_then(Sheet::code_mut) {
+                    code.set_values(values);
+                }
+                // Values written onto a folded pane would land out of sight:
+                // it comes back, as a pane does when the narration points in.
+                if let Some(fold) = self.folds.get_mut(pane_ix) {
+                    fold.set(false);
+                }
+            }
+            command.finish(crate::live::ShowAnswer::said());
+            cx.notify();
+            return;
+        }
         if let Some((panes, group, open)) = command.folding() {
             let (panes, group, open) = (panes.to_vec(), group, open);
             self.apply_fold(&panes, group, open, cx);
@@ -1479,6 +1562,11 @@ impl DeckView {
                 .get(resolved.pane_ix)
                 .and_then(Sheet::code)
                 .is_none_or(|code| Some(code.spotlight_range()) != stage.range);
+        // Values onto code already lit are the commonest live case — *what
+        // was orderId here?* — and the lines being unchanged is no reason to
+        // drop them.
+        let moved = changed;
+        changed |= !command.valuing().is_empty();
         if changed {
             if self.group_ix != resolved.group_ix {
                 self.group_ix = resolved.group_ix;
@@ -1502,8 +1590,13 @@ impl DeckView {
             // again rather than lit again. Only when it actually changes: a
             // rebuild loses where the reader had scrolled to and what they
             // had selected, which is too much to spend on a repeat.
+            // Values alone never retract a fix: annotating the lines a fix
+            // sits on keeps it. The same fix on other lines is built again,
+            // since it is numbered from the range it was proposed on.
             let wants = command.proposing().map(ToString::to_string);
-            let proposing = code.proposal().map(ToString::to_string) != wants;
+            let had = code.proposal().map(ToString::to_string);
+            let proposing = (had != wants && (wants.is_some() || moved))
+                || (wants.is_some() && code.spotlight_range() != range);
             let arriving = proposing && wants.is_some();
             if proposing {
                 self.propose(resolved.pane_ix, range, wants, cx);
@@ -1516,6 +1609,15 @@ impl DeckView {
                 return;
             };
             code.spotlight(range);
+            // Values the answer wrote onto these lines come in where they
+            // belong: room opens for them, then their words.
+            let values = command.valuing().to_vec();
+            if !values.is_empty() {
+                code.set_values(values);
+                if let Some(fold) = self.folds.get_mut(resolved.pane_ix) {
+                    fold.set(false);
+                }
+            }
             // The answer is the new lines, and they are spliced in under the
             // range they replace — often below the fold. Showing the top of the
             // range would put the old code on screen and the point of the
@@ -1938,11 +2040,12 @@ impl DeckView {
             // about code as it stands. Showing what it replaced is a thing an
             // authored group does, where the agent still has the old text.
             before: None,
+            values: Vec::new(),
         };
         let pane = Pane::new(&spec, &source, cx);
         // What it displaces folds in the same movement, so the room moves once.
         self.apply_fold(&fold, fold_group, false, cx);
-        self.panes.push(Sheet::Code(pane));
+        self.panes.push(Sheet::Code(Box::new(pane)));
         self.folds.push(crate::pane::Fade::default());
         self.temporary.insert(self.panes.len() - 1);
         self.attend();
@@ -2249,6 +2352,9 @@ impl DeckView {
                     code.point_at(want);
                     moved = true;
                 }
+                // The first time the narration reaches a pane's values, they
+                // come out, and stay.
+                code.follow_values();
                 continue;
             }
             if let Some(chart) = pane.chart_mut() {
@@ -2411,14 +2517,39 @@ impl DeckView {
             .entry(spec.file.clone())
             .or_insert_with(|| std::sync::Arc::from(read_source(&base, &spec.file)))
             .clone();
+        // Values written onto this pane — the evidence for the bug — have to
+        // survive the fix arriving beside them, and so does which of them the
+        // reader had open. The authored ref alone would drop both.
+        let was = self
+            .panes
+            .get(pane_ix)
+            .and_then(Sheet::code)
+            .and_then(|code| code.proposal().map(ToString::to_string));
+        let mut held = self
+            .panes
+            .get(pane_ix)
+            .and_then(Sheet::code)
+            .map(Pane::values_held);
+        if let Some(held) = &mut held {
+            // A fix's values were worked out for that fix. Retracted, or
+            // replaced by a different one, they would be drawn on lines they
+            // were never about.
+            if was != spec.after {
+                held.values.retain(|value| !value.after);
+            }
+            spec.values.clone_from(&held.values);
+        }
         if let Some(slot) = self.panes.get_mut(pane_ix) {
             let mut pane = Pane::new(&spec, &source, cx);
+            if let Some(held) = held {
+                pane.reopen(held);
+            }
             // Authored changes are part of the page from the first frame. This
             // one arrived while the reader was looking, so it arrives.
             if after_is_new {
                 pane.arrive();
             }
-            *slot = Sheet::Code(pane);
+            *slot = Sheet::Code(Box::new(pane));
         }
     }
 
@@ -3303,6 +3434,29 @@ impl DeckView {
         };
         self.drag_from = Some((pane_ix, anchor));
         self.pick(pane_ix, row, cx);
+    }
+
+    /// Show or hide every value in pane `pane_ix`: the eye in its header.
+    pub fn toggle_values_shown(&mut self, pane_ix: usize, cx: &mut Context<Self>) {
+        self.drag_from = None;
+        self.hovered = None;
+        if let Some(Sheet::Code(pane)) = self.panes.get_mut(pane_ix) {
+            let on = !pane.values_shown();
+            pane.set_shown(on);
+            cx.notify();
+        }
+    }
+
+    /// Open or close the value under `line` in pane `pane_ix`.
+    pub fn toggle_value(&mut self, pane_ix: usize, who: crate::pane::Who, cx: &mut Context<Self>) {
+        // Rows under the value move, so a drag or hover kept by row index
+        // would carry on from somewhere else.
+        self.drag_from = None;
+        self.hovered = None;
+        if let Some(Sheet::Code(pane)) = self.panes.get_mut(pane_ix) {
+            pane.hand_toggle(who);
+            cx.notify();
+        }
     }
 
     /// Remember which row the pointer is over. Selects nothing by itself.
@@ -4957,12 +5111,43 @@ impl DeckView {
                         .entry(code.file.clone())
                         .or_insert_with(|| std::sync::Arc::from(read_source(&base, &code.file)))
                         .clone();
-                    Sheet::Code(Pane::new(code, &source, cx))
+                    Sheet::Code(Box::new(Pane::new(code, &source, cx)))
                 }
                 Ref::Diagram(drawn) => Sheet::Drawn(Chart::new(drawn)),
                 Ref::Page(page) => Sheet::Page(crate::page::Paper::new(page)),
             })
             .collect();
+        // A pane the prose points into keeps its values away until a sentence
+        // reaches them; one it never points into shows them from the start.
+        // Reached is decided the way the narration will decide it: a point
+        // lights the first pane whose lit lines it overlaps, and opens the
+        // gate only on a line holding a value. Gating on overlap alone shut
+        // panes no sentence would ever open.
+        let spots: Vec<LineRange> = crate::prose::pointed(&group.say, 0)
+            .into_iter()
+            .filter_map(|piece| piece.point.and_then(|spot| spot.lines))
+            .collect();
+        let mut reached = vec![false; self.panes.len()];
+        for at in &spots {
+            let first = self.panes.iter().position(|pane| {
+                pane.code().is_some_and(|code| {
+                    let lit = code.spotlight_range();
+                    lit.first <= at.last && at.first <= lit.last
+                })
+            });
+            if let Some(ix) = first
+                && self.panes[ix]
+                    .code()
+                    .is_some_and(|code| code.holds_value_in(*at))
+            {
+                reached[ix] = true;
+            }
+        }
+        for (pane, reached) in self.panes.iter_mut().zip(reached) {
+            if reached && let Sheet::Code(code) = pane {
+                code.gate();
+            }
+        }
         // Every pane of a new group arrives open. A fold belongs to the group
         // it was made in, and so does anything brought in to answer a question
         // about it.
@@ -6053,6 +6238,16 @@ impl DeckView {
                 div()
                     .h_flex()
                     .gap_4()
+                    // Always there, and always quiet. A deck puts the agent's
+                    // claims in the same type as the code they rest on, and a
+                    // value written on a line reads as observed; the reader is
+                    // owed a standing reminder that the one making the claims
+                    // can be wrong, the way every harness says so.
+                    .child(
+                        div()
+                            .text_color(paint(self.palette.muted.mix(self.palette.band, 0.35)))
+                            .child("Your agent can make incorrect claims"),
+                    )
                     .child(format!(
                         "{said} comment{}",
                         if said == 1 { "" } else { "s" }
@@ -7346,6 +7541,23 @@ use crate::pane::SPINE;
 impl Render for DeckView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         self.settle_said_light();
+        // The picked sentence opens the values whose keys it names.
+        let said = self.picked_said.and_then(|(from, to)| {
+            let group = self.group()?;
+            let words = crate::prose::words(&group.say);
+            let (a, b) = (
+                from.min(to),
+                from.max(to).min(words.len().saturating_sub(1)),
+            );
+            Some(words.get(a..=b)?.concat())
+        });
+        // Values that have finished closing are taken out of their panes.
+        for pane in &mut self.panes {
+            if let Sheet::Code(code) = pane {
+                code.follow_prose(said.as_deref());
+                code.settle();
+            }
+        }
         // Notes that have finished fading out are let go.
         if self.notes.is_some() && !self.notes_fade.on() && !self.notes_fade.moving() {
             self.notes = None;

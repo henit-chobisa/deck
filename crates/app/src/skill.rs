@@ -456,6 +456,11 @@ mod tests {
                 "an example group points at nothing:\n{say}"
             );
             for one in refs {
+                // A `--values` list is JSON and starts with its bracket; it
+                // names no pane.
+                if one.trim_start().starts_with('[') {
+                    continue;
+                }
                 let Some(open) = one.find('[') else {
                     continue;
                 };

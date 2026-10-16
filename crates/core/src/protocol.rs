@@ -219,6 +219,76 @@ pub struct RefSpec {
     /// lines looks exactly like a highlight of old ones.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub before: Option<String>,
+    /// What lines in the range held when the code ran.
+    ///
+    /// Added because a claim about a bug is usually a claim about a value —
+    /// *orderId is undefined here* — and the reader had only the agent's word
+    /// for it, in prose, a pane away from the line that produced it. Written
+    /// on the line, it is evidence like the line itself.
+    ///
+    /// Empty is the ordinary case, and a ref without values is the ref it
+    /// always was.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub values: Vec<Value>,
+}
+
+/// One value, written on the line that produced it.
+///
+/// A value with no `keys` is a single thing — a number, a string, `undefined`
+/// — and is drawn inline, right after the name it belongs to. A value with
+/// `keys` is something with more inside, and is drawn as a preview under the
+/// line that opens to the keys the claim rests on.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct Value {
+    /// The file line, one-based, inside the ref's range.
+    pub line: u32,
+    /// The name on that line the value belongs to, as it is written there.
+    ///
+    /// The value is drawn after the first occurrence. A name that is not on
+    /// the line puts the value at the line's end.
+    pub at: String,
+    /// The value, as the language would print it: `"pay_12A"`, `4200`,
+    /// `undefined`. For something with keys, a one-line preview such as
+    /// `Session { client_reference_id: "ord_8F2kQ71", … }`.
+    pub is: String,
+    /// Whether the claim turns on this value. Drawn in the accent, quietly.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub lit: bool,
+    /// Whether this is what the *proposed* code would hold, on a ref with
+    /// `after`: `line` numbers the replacement as it will be, and the value is
+    /// worked out rather than seen.
+    ///
+    /// Added because a fix shown as a diff with values only on the lines going
+    /// left the reader to imagine the other half: the bug's 81 was there, the
+    /// fix's 90 was not.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub after: bool,
+    /// The keys inside, in the order the value holds them.
+    ///
+    /// Only the ones that matter are named; runs of the rest are a count, so
+    /// the shape stays honest without the payload being dumped.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub keys: Vec<Key>,
+}
+
+/// One key inside a value, or a run of keys left out.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct Key {
+    /// The key's name. Absent for a run of keys that were left out.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub key: Option<String>,
+    /// What it held. Absent for a left-out run.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub is: Option<String>,
+    /// A few words on why it matters.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub why: Option<String>,
+    /// Whether the claim turns on this key.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub lit: bool,
+    /// How many keys a left-out run stands for.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub more: Option<u32>,
 }
 
 /// Whether `name` can name a pane.
@@ -501,6 +571,47 @@ impl From<String> for Kind {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_ref_from_before_values_still_reads_and_is_written_the_same() {
+        let old = r#"{"id":"g1r1","file":"a.ts","range":[5,7]}"#;
+        let spec: super::RefSpec = serde_json::from_str(old).expect("an older ref reads");
+        assert!(spec.values.is_empty());
+        let written = serde_json::to_string(&spec).expect("writes");
+        assert!(
+            !written.contains("values"),
+            "no values, no field: {written}"
+        );
+    }
+
+    #[test]
+    fn a_value_and_its_keys_survive_the_trip() {
+        let json = r#"{"id":"g1r1","file":"a.ts","range":[5,7],"values":[
+            {"line":6,"at":"orderId","is":"undefined","lit":true},
+            {"line":5,"at":"session","is":"Session { … }","keys":[
+                {"key":"client_reference_id","is":"\"ord_1\"","why":"set at checkout","lit":true},
+                {"more":22}]}]}"#;
+        let spec: super::RefSpec = serde_json::from_str(json).expect("reads");
+        assert_eq!(spec.values.len(), 2);
+        assert!(spec.values[0].lit && spec.values[0].keys.is_empty());
+        assert_eq!(spec.values[1].keys[1].more, Some(22));
+        let again: super::RefSpec =
+            serde_json::from_str(&serde_json::to_string(&spec).expect("writes"))
+                .expect("reads back");
+        assert_eq!(again.values, spec.values);
+    }
+
+    #[test]
+    fn a_value_for_the_proposed_code_says_so_and_a_plain_one_does_not() {
+        let json = r#"{"line":3,"at":"total","is":"90","after":true}"#;
+        let value: super::Value = serde_json::from_str(json).expect("reads");
+        assert!(value.after);
+        let plain: super::Value =
+            serde_json::from_str(r#"{"line":4,"at":"total","is":"81"}"#).expect("reads");
+        assert!(!plain.after);
+        let written = serde_json::to_string(&plain).expect("writes");
+        assert!(!written.contains("after"), "{written}");
+    }
+
     #[test]
     fn a_group_from_before_questions_still_reads_and_is_written_the_same() {
         let old = r#"{"id":"g1","say":"the plan","refs":[]}"#;

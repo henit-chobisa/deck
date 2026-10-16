@@ -207,6 +207,7 @@ picture. There is no `kind` field, and no entry is both.
 | `note`  | string            | no       | A short label. Inline `*emphasis*` only. |
 | `after` | string            | no       | A proposed replacement for the range. |
 | `before`| string            | no       | What the range replaced, for a change already made. |
+| `values`| array of value    | no       | What lines in the range held when the code ran. |
 
 **`range` is one-based and inclusive**, written as a two-element array.
 `[140, 140]` is a single line. A client corrects a backwards or zero range
@@ -232,6 +233,38 @@ has no line numbers, because the file does not contain those lines any more.
 
 **Never both on one ref.** A range is what is going or what arrived and cannot
 be drawn as both; a client writing a deck is expected to refuse it.
+
+**`values` are what the code held, written on the lines that held it.** A claim
+about a bug is usually a claim about a value, and a value on its line is
+evidence the reader can check against the code beside it. Each is an object:
+
+```json
+{ "line": 6, "at": "orderId", "is": "undefined", "lit": true }
+```
+
+| field  | type            | required | meaning |
+| ------ | --------------- | -------- | ------- |
+| `line` | integer         | yes      | The file line, one-based, inside `range`. |
+| `at`   | string          | yes      | The name on that line the value belongs to, as written there. |
+| `is`   | string          | yes      | The value as the language prints it, or a one-line preview for one with `keys`. |
+| `lit`  | boolean         | no       | The claim turns on this value. Defaults to false. |
+| `after`| boolean         | no       | What the *proposed* code would hold, on a ref with `after`. Defaults to false. |
+| `keys` | array of key    | no       | The keys inside, in the value's own order. |
+
+A key is `{ "key", "is", "why", "lit" }` for one the claim names, or
+`{ "more": 12 }` for a run of keys left out. A client draws a value without
+`keys` right after the first whole-word occurrence of `at` on its line, or at
+the line's end when `at` is not there. A value with `keys` is drawn under its
+line as the preview in `is`, which the reader can open to the named keys and a
+single count of the rest. On a ref with `after`, values describe the range as it
+is, and values with `"after": true` describe the replacement, numbered as it will
+be from the range's first line; a client draws them on the arriving lines, set
+apart as predicted. On a ref with `before`, values describe the lines that
+arrived. A client that does not render
+`values` ignores them, and a ref without them is unchanged.
+
+Only values the agent has seen belong here: from a run, a log, a payload or
+arithmetic on the code. A value drawn on a line reads as observed.
 
 ### A diagram ref
 

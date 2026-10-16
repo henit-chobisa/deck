@@ -263,6 +263,7 @@ impl ShowCommand {
             } => Some((file, *range, group.as_deref(), pane.as_deref())),
             RequestBody::Say { .. }
             | RequestBody::Doing { .. }
+            | RequestBody::Values { .. }
             | RequestBody::Clear
             | RequestBody::Fold { .. }
             | RequestBody::Bring { .. }
@@ -290,11 +291,29 @@ impl ShowCommand {
         }
     }
 
+    /// The values the agent is writing onto the shown lines, if any.
+    #[must_use]
+    pub fn valuing(&self) -> &[deck_core::protocol::Value] {
+        match &self.request.body {
+            RequestBody::Show { values, .. } => values,
+            _ => &[],
+        }
+    }
+
     /// What the shown range is being proposed to become, if anything.
     #[must_use]
     pub fn proposing(&self) -> Option<&str> {
         match &self.request.body {
             RequestBody::Show { after, .. } => after.as_deref(),
+            _ => None,
+        }
+    }
+
+    /// The values this writes onto panes already on screen, pane by pane.
+    #[must_use]
+    pub fn writing(&self) -> Option<&[deck_cli::live::ValuesFor]> {
+        match &self.request.body {
+            RequestBody::Values { sets } => Some(sets),
             _ => None,
         }
     }
@@ -429,6 +448,7 @@ fn serve(owner: &Owner, control: &Control) {
             }
             RequestBody::Say { .. }
             | RequestBody::Doing { .. }
+            | RequestBody::Values { .. }
             | RequestBody::Show { .. }
             | RequestBody::Clear
             | RequestBody::Fold { .. }
@@ -622,6 +642,7 @@ mod tests {
                     group: None,
                     pane: None,
                     after: None,
+                    values: Vec::new(),
                 },
                 Duration::from_secs(1),
             )
@@ -649,6 +670,7 @@ mod tests {
                             group: None,
                             pane: None,
                             after: None,
+                            values: Vec::new(),
                         },
                         Duration::from_secs(1),
                     )

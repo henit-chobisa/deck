@@ -137,6 +137,15 @@ enum What {
         /// above them, which is what says *these are the ones I added*.
         #[arg(long, value_name = "WHAT_IT_REPLACED", allow_hyphen_values = true)]
         before: Vec<String>,
+        /// What lines of the range held when the code ran, as a JSON list:
+        /// `[{"line":6,"at":"orderId","is":"undefined","lit":true}]`. Applies
+        /// to the `--ref` it follows.
+        ///
+        /// Only values you have seen, only on lines the `say` points at, and
+        /// only the one or two the claim turns on. A value with `keys` gets a
+        /// preview under its line that opens to them.
+        #[arg(long, value_name = "JSON")]
+        values: Vec<String>,
         /// A picture, as a JSON file, with the same optional `[name]` and
         /// note a `--ref` takes: `flows/import.json [flow] how it travels`.
         /// See PROTOCOL.md for the file's shape.
@@ -181,6 +190,14 @@ enum What {
         /// it, and the reader can comment on the lines you are proposing.
         #[arg(long, value_name = "REPLACEMENT")]
         after: Option<String>,
+        /// What the shown lines held when the code ran, as a JSON list:
+        /// `[{"line":6,"at":"orderId","is":"undefined","lit":true}]`.
+        ///
+        /// A single value is written after its name. One with `keys` gets a
+        /// preview under its line that opens to them. Use it when the answer
+        /// is what a value was, not how the code reads.
+        #[arg(long, value_name = "JSON")]
+        values: Option<String>,
         /// Retry identity. Reusing it with the same request returns its result.
         #[arg(long)]
         request_id: Option<String>,
@@ -242,6 +259,25 @@ enum What {
         /// Open them again instead of folding them.
         #[arg(long)]
         open: bool,
+        /// Give up if the window has not taken it by then.
+        #[arg(long, default_value_t = 5)]
+        timeout: u64,
+    },
+
+    /// Write values onto panes already on screen, several at once.
+    ///
+    /// Pair each `--on` with the `--values` after it: the pane's name, or its
+    /// file, then a JSON list. All of them land in the same frame, which two
+    /// `deck show` calls cannot do — shows move the reader and are paced.
+    Values {
+        /// The `.deck` directory owned by the native window.
+        deck: PathBuf,
+        /// A pane, by its name or its file. Repeatable.
+        #[arg(long = "on", value_name = "PANE")]
+        on: Vec<String>,
+        /// What that pane's lines held, as a JSON list. One per `--on`.
+        #[arg(long, value_name = "JSON")]
+        values: Vec<String>,
         /// Give up if the window has not taken it by then.
         #[arg(long, default_value_t = 5)]
         timeout: u64,
@@ -548,11 +584,12 @@ impl Cli {
                 refs,
                 after,
                 before,
+                values,
                 diagram,
                 page,
                 ask,
             } => report(
-                gather(&refs, &after, &before, &diagram, &page).and_then(|refs| {
+                gather(&refs, &after, &before, &values, &diagram, &page).and_then(|refs| {
                     // Said before the path, because an agent that reads one line of
                     // output reads the last one.
                     for note in deck_cli::what_will_not_light(&say, &refs) {
@@ -584,10 +621,11 @@ impl Cli {
                 group,
                 pane,
                 after,
+                values,
                 request_id,
                 timeout,
             } => Err(show(
-                &deck, &reference, group, pane, after, request_id, timeout,
+                &deck, &reference, group, pane, after, values, request_id, timeout,
             )),
             What::Say {
                 deck,
@@ -621,6 +659,12 @@ impl Cli {
                 },
                 timeout,
             )),
+            What::Values {
+                deck,
+                on,
+                values,
+                timeout,
+            } => Err(write_values(&deck, &on, &values, timeout)),
             What::Bring {
                 deck,
                 reference,
@@ -756,12 +800,14 @@ fn gather(
     refs: &[String],
     after: &[String],
     before: &[String],
+    values: &[String],
     diagrams: &[String],
     pages: &[String],
 ) -> anyhow::Result<Vec<Pointing>> {
     let mut out = Vec::with_capacity(refs.len() + diagrams.len() + pages.len());
     let changes = paired(refs.len(), after, "--after")?;
     let replaced = paired(refs.len(), before, "--before")?;
+    let held = paired(refs.len(), values, "--values")?;
 
     for (ix, argument) in refs.iter().enumerate() {
         anyhow::ensure!(
@@ -775,6 +821,28 @@ fn gather(
         let mut named = deck_cli::refs::parse(argument)?;
         named.after.clone_from(&changes[ix]);
         named.before.clone_from(&replaced[ix]);
+        if let Some(json) = &held[ix] {
+            named.values = serde_json::from_str(json).map_err(|err| {
+                anyhow::anyhow!(
+                    "the `--values` after `{}` is not a list of values: {err}. Each one is \
+                     {{\"line\":6,\"at\":\"orderId\",\"is\":\"undefined\"}}",
+                    argument.split_whitespace().next().unwrap_or(argument)
+                )
+            })?;
+            // A value is evidence for lines the pane lights; one outside them
+            // would be drawn on code nobody is being shown.
+            if let Some(stray) = named
+                .values
+                .iter()
+                .find(|value| !value_fits(value, named.range, named.after.as_deref()))
+            {
+                anyhow::bail!(
+                    "a value is on line {}, outside `{}`: put values on the lines the ref lights",
+                    stray.line,
+                    argument.split_whitespace().next().unwrap_or(argument)
+                );
+            }
+        }
         out.push(Pointing::Code(named));
     }
 
@@ -787,6 +855,27 @@ fn gather(
     }
 
     Ok(out)
+}
+
+/// Whether a value sits on lines its ref shows: the range itself, or — for a
+/// value marked `after` — the proposed lines, numbered as they will be from the
+/// range's first line. A proposal can be longer than what it replaces, and an
+/// `after` value with no proposal has nothing to sit on.
+pub(crate) fn value_fits(
+    value: &deck_core::protocol::Value,
+    range: deck_core::LineRange,
+    after: Option<&str>,
+) -> bool {
+    if value.after {
+        let Some(after) = after else {
+            return false;
+        };
+        // A proposal that deletes has no arriving lines, and nothing to sit on.
+        let lines = u32::try_from(after.lines().count()).unwrap_or(u32::MAX);
+        value.line >= range.first && value.line < range.first.saturating_add(lines)
+    } else {
+        value.line >= range.first && value.line <= range.last
+    }
 }
 
 /// Which `--ref` each `--after`, or each `--before`, belongs to.
@@ -849,9 +938,22 @@ fn show(
     group: Option<String>,
     pane: Option<String>,
     after: Option<String>,
+    values: Option<String>,
     request_id: Option<String>,
     timeout: u64,
 ) -> ExitCode {
+    let values: Vec<deck_core::protocol::Value> = match values.as_deref().map(serde_json::from_str)
+    {
+        None => Vec::new(),
+        Some(Ok(values)) => values,
+        Some(Err(err)) => {
+            println!(
+                "{}",
+                serde_json::json!({ "status": "invalid-request", "reason": format!("--values is not a list of values: {err}") })
+            );
+            return ExitCode::FAILURE;
+        }
+    };
     let named = match deck_cli::refs::parse(reference) {
         Ok(named) if named.note.is_none() => named,
         Ok(_) => {
@@ -872,6 +974,19 @@ fn show(
             return ExitCode::FAILURE;
         }
     };
+    if let Some(stray) = values
+        .iter()
+        .find(|value| !value_fits(value, named.range, after.as_deref()))
+    {
+        println!(
+            "{}",
+            serde_json::json!({
+                "status": "invalid-request",
+                "reason": format!("a value is on line {}, outside {reference}: put values on the lines you show", stray.line)
+            })
+        );
+        return ExitCode::FAILURE;
+    }
     let Some(runtime) = deck_core::home::deck() else {
         println!(
             "{}",
@@ -902,6 +1017,7 @@ fn show(
         group,
         pane,
         after,
+        values,
     };
     let timeout = std::time::Duration::from_secs(timeout);
     let result = match request_id {
@@ -1081,6 +1197,40 @@ fn bring(
 }
 
 /// Send one request that answers only with whether the window took it.
+/// Put values onto several panes at once.
+fn write_values(
+    deck: &std::path::Path,
+    on: &[String],
+    values: &[String],
+    timeout: u64,
+) -> ExitCode {
+    let refuse = |reason: String| {
+        println!(
+            "{}",
+            serde_json::json!({ "status": "invalid-request", "reason": reason })
+        );
+        ExitCode::FAILURE
+    };
+    if on.is_empty() || on.len() != values.len() {
+        return refuse("give each `--on` one `--values` straight after it".into());
+    }
+    let mut sets = Vec::with_capacity(on.len());
+    for (pane, json) in on.iter().zip(values) {
+        match serde_json::from_str::<Vec<deck_core::protocol::Value>>(json) {
+            Ok(values) => sets.push(deck_cli::live::ValuesFor {
+                pane: pane.clone(),
+                values,
+            }),
+            Err(err) => {
+                return refuse(format!(
+                    "the `--values` for {pane} is not a list of values: {err}"
+                ));
+            }
+        }
+    }
+    ask(deck, deck_cli::live::RequestBody::Values { sets }, timeout)
+}
+
 fn ask(deck: &std::path::Path, body: deck_cli::live::RequestBody, timeout: u64) -> ExitCode {
     let spoke = matches!(body, deck_cli::live::RequestBody::Say { .. });
     let Some(runtime) = deck_core::home::deck() else {

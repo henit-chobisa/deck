@@ -25,6 +25,15 @@ const MAX_MESSAGE_BYTES: u64 = 1024 * 1024;
 /// Polling is only a wake-up mechanism; committed files remain the authority.
 const POLL_EVERY: Duration = Duration::from_millis(20);
 
+/// Values for one pane, in a [`RequestBody::Values`].
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ValuesFor {
+    /// The pane, by the name the prose calls it, or by its file.
+    pub pane: String,
+    /// What its lines held.
+    pub values: Vec<deck_core::protocol::Value>,
+}
+
 /// One typed request crossing the local owner mailbox.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case", tag = "type")]
@@ -51,6 +60,13 @@ pub enum RequestBody {
         /// file on disk is never touched.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         after: Option<String>,
+        /// What the shown lines held when the code ran, written onto them.
+        ///
+        /// The live half of an authored ref's `values`: a question about code
+        /// already on screen is often answered by a value, and a value is
+        /// better on its line than in a sentence about it.
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        values: Vec<deck_core::protocol::Value>,
     },
     /// Say something to the reader, beside whatever is currently on screen.
     ///
@@ -78,6 +94,15 @@ pub enum RequestBody {
     /// scrolls, and nothing being said stops: this is the agent taking its hand
     /// off the page, not asking for quiet.
     Clear,
+    /// Write values onto several panes in one movement.
+    ///
+    /// A `show` moves the reader's eyes, so shows are paced and one pane at a
+    /// time. Values on code already on screen move nobody, and an answer that
+    /// spans two panes reads as one answer only if both land together.
+    Values {
+        /// What to write, pane by pane.
+        sets: Vec<ValuesFor>,
+    },
     /// Fold panes away to their spines, or open them again.
     ///
     /// Folding is how the room is made for something else. A pane folded is
@@ -1064,6 +1089,7 @@ mod tests {
             group: None,
             pane: None,
             after: None,
+            values: Vec::new(),
         };
         let json = serde_json::to_value(&plain).unwrap();
         assert!(json.get("after").is_none(), "{json}");
@@ -1074,6 +1100,7 @@ mod tests {
             group: None,
             pane: None,
             after: Some("let x = 1;".into()),
+            values: Vec::new(),
         };
         let there = serde_json::to_value(&proposing).unwrap();
         assert_eq!(there["after"], "let x = 1;");
@@ -1438,6 +1465,7 @@ mod tests {
                     group: None,
                     pane: None,
                     after: None,
+                    values: Vec::new(),
                 },
                 Duration::from_secs(1),
             ),
