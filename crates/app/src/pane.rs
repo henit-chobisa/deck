@@ -1688,7 +1688,12 @@ impl Pane {
         view: &WeakEntity<DeckView>,
         cx: &App,
     ) -> impl IntoElement {
-        let row_px = px(f32::from(cx.theme().mono_font_size) * LINE_HEIGHT);
+        // Whole pixels. Layout rounds each row to the pixel and the list places
+        // rows by the height it measured, so 21.06 drawn as 21 put every
+        // line-to-position sum here a few pixels further out per hundred
+        // lines: three thousand lines into a file, a scroll to the pointed
+        // lines landed nine rows off, and the pane slid away from them.
+        let row_px = px((f32::from(cx.theme().mono_font_size) * LINE_HEIGHT).round());
         let mono = cx.theme().mono_font_family.clone();
         let size = cx.theme().mono_font_size;
 
@@ -1809,8 +1814,15 @@ impl Pane {
         let view = view.clone();
         let wheeling = view.clone();
 
-        self.laid_out.set(Some((lit_entry, f32::from(row_px))));
-        let cards = self.render_cards(marks, row_px, &palette, &view, cx);
+        // And the list's own measure, when it has one, over the sum.
+        let measured = self
+            .scroll
+            .0
+            .borrow()
+            .last_item_size
+            .map_or(row_px, |size| size.item.height);
+        self.laid_out.set(Some((lit_entry, f32::from(measured))));
+        let cards = self.render_cards(marks, measured, &palette, &view, cx);
 
         // How wide the rows have to be for the longest line to fit, asked of the
         // font rather than guessed from its size. A monospace font is one
@@ -2932,13 +2944,16 @@ fn row_content(
                             // colour of its own, so on a lit line it lightens
                             // the light instead of cutting a darker patch in it.
                             let mut tint = paint(if *lit { palette.accent } else { palette.fg });
-                            tint.a = if *lit { 0.10 } else { 0.07 } * grow.1;
+                            tint.a = if *lit { 0.16 } else { 0.10 } * grow.1;
                             tint
                         })
+                        // Readable at a glance: the value is the evidence, and
+                        // a faint grey made it the one thing on the line that
+                        // had to be looked for. The lit one takes the accent.
                         .text_color(paint(if *lit {
-                            palette.accent.mix(palette.muted, 0.15)
+                            palette.accent
                         } else {
-                            faint
+                            palette.fg.mix(palette.wash, 0.18)
                         }))
                         .child(
                             div()
