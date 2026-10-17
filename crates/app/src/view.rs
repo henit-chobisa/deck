@@ -3313,6 +3313,11 @@ impl DeckView {
     /// It goes on its own after [`crate::keys::DOCK_STAYS`]: help that stays
     /// beside you while you try, not a panel you have to remember to close.
     fn open_help(&mut self, cx: &mut Context<Self>) {
+        // Nothing to try the keys on yet, and nowhere to stand the dock: the
+        // waiting screen has no panes.
+        if self.deck.groups().is_empty() {
+            return;
+        }
         self.help.set(true);
         self.help_hit = None;
         self.leave_help(cx);
@@ -3333,9 +3338,12 @@ impl DeckView {
     fn close_help(&mut self, cx: &mut Context<Self>) {
         self.help.set(false);
         self.helping = Task::ready(());
-        // A card over a key on the dock goes with it.
+        // A card over a key on the dock goes with it, and so does a rest
+        // that was about to bring one up.
         if self.tip.is_some_and(|(_, place)| place == "dock") {
+            self.tipping = Task::ready(());
             self.tip_fade.set(false);
+            self.tip = None;
         }
         cx.notify();
     }
@@ -3347,6 +3355,10 @@ impl DeckView {
     /// a breath after it leaves, so moving from one key to the next hands the
     /// card over instead of closing and opening it.
     fn hover_key(&mut self, key: (&'static str, &'static str), over: bool, cx: &mut Context<Self>) {
+        // A dock on its way out answers no pointer.
+        if key.1 == "dock" && !self.help.on() {
+            return;
+        }
         if over {
             if self.tip_fade.on() && self.tip != Some(key) {
                 // Already reading cards: the next one comes straight away.
@@ -3523,12 +3535,6 @@ impl DeckView {
             self.stay(window, cx);
             return;
         }
-        // The dock is the newest thing on screen, so escape puts it away
-        // first, and the lights stay as they were.
-        if self.help.on() {
-            self.close_help(cx);
-            return;
-        }
         if self.explaining {
             self.understood(window, cx);
             return;
@@ -3536,6 +3542,12 @@ impl DeckView {
         // Notes over the window are the nearest thing to put away.
         if self.notes_fade.on() {
             self.hide_notes(window, cx);
+            return;
+        }
+        // Then the dock, before the lights: it is the newest thing on the
+        // window itself, and the lights stay as they were.
+        if self.help.on() {
+            self.close_help(cx);
             return;
         }
         if let Some((_, _, light)) = &mut self.pressed {
@@ -5431,9 +5443,6 @@ impl DeckView {
             |group| group.say.clone(),
         );
 
-        // Two columns, not a stack with a legend tucked beside the prose. The
-        // divider is the edge of the keys column, so it runs the whole height
-        // of the band.
         div()
             .h_flex()
             .flex_none()
@@ -6609,10 +6618,12 @@ impl DeckView {
                 div()
                     .h_flex()
                     .gap_4()
-                    .flex_none()
+                    .min_w_0()
                     .whitespace_nowrap()
                     // The three keys used most, each with a card on a rest,
-                    // and `?` for the rest of them.
+                    // and `?` for the rest of them. In a narrow window they
+                    // are what gives way, clipped from the left, so the
+                    // count, the version and the way out stay in reach.
                     .child({
                         let mono = cx.theme().mono_font_family.clone();
                         let named =
@@ -6633,6 +6644,9 @@ impl DeckView {
                         div()
                             .h_flex()
                             .items_center()
+                            .justify_end()
+                            .min_w_0()
+                            .overflow_hidden()
                             .gap(px(12.))
                             .child(named("n", "next", cx))
                             .child(named("p", "previous", cx))
@@ -8273,7 +8287,20 @@ impl Render for DeckView {
             // A key pressed while the dock is up lights on it, so trying a key
             // shows which one it was. Seen on the way down, before the key does
             // whatever it does.
-            .capture_key_down(cx.listener(|deck, event: &KeyDownEvent, _, cx| {
+            .capture_key_down(cx.listener(|deck, event: &KeyDownEvent, window, cx| {
+                // Only a key the deck itself takes: not typing in a comment,
+                // not under a card, not a chord like ⌘C.
+                let held = event.keystroke.modifiers;
+                if held.platform || held.control || held.alt {
+                    return;
+                }
+                if deck.notes_fade.on()
+                    || deck.quitting
+                    || deck.explaining
+                    || deck.typing(window, cx)
+                {
+                    return;
+                }
                 if deck.help.on()
                     && let Some(key) = crate::keys::pressed(&event.keystroke)
                 {

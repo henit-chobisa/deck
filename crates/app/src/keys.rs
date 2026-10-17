@@ -42,9 +42,6 @@ pub(crate) const HELP: &str = "?";
 /// The dock's close button, which has a card like a key.
 pub(crate) const CLOSE: &str = "×";
 
-/// The three keys a reader uses most, named in the strip.
-pub(crate) const IN_STRIP: &[&str] = &["n", "p", "c"];
-
 /// What each key does, and when to reach for it.
 ///
 /// Written from the reader's side: the moment they are in, not the mechanism.
