@@ -736,6 +736,10 @@ pub struct DeckView {
     tip_fade: crate::pane::Fade,
     /// The rest before a card comes up, or the breath before it goes.
     tipping: Task<()>,
+    /// The groups the reader has been to, which the review column ticks.
+    seen: std::collections::HashSet<usize>,
+    /// The review column's list, scrolled to keep the current group in view.
+    review_scroll: ScrollHandle,
     /// The loop watching the deck directory fill, while there is more coming.
     ///
     /// Dropping it stops it, which is what should happen when the window
@@ -1126,6 +1130,8 @@ impl DeckView {
             tip_fade: crate::pane::Fade::default()
                 .paced(crate::keys::TIP_RISE, crate::keys::TIP_FALL),
             tipping: Task::ready(()),
+            seen: std::collections::HashSet::new(),
+            review_scroll: ScrollHandle::new(),
         };
         if let Some((about, state, when)) = draft {
             view.live.pause(PauseReason::Composer);
@@ -5340,6 +5346,8 @@ impl DeckView {
         // A deck still waiting on its first group has none to look at.
         if self.group().is_some() {
             crate::usage::record_soon(crate::usage::Count::GroupViewed);
+            self.seen.insert(self.group_ix);
+            self.review_scroll.scroll_to_item(self.group_ix);
         }
         // Each group's questions start from their first.
         self.asks_carousel.reset();
@@ -5700,6 +5708,241 @@ impl DeckView {
                             ),
                     )
                     .children(self.render_track(cx)),
+            )
+            .when(!self.deck.groups().is_empty(), |this| {
+                this.child(self.render_review(cx))
+            })
+    }
+
+    /// Go to a group by its place in the deck.
+    fn go_to(&mut self, ix: usize, cx: &mut Context<Self>) {
+        let step = isize::try_from(ix).unwrap_or(0) - isize::try_from(self.group_ix).unwrap_or(0);
+        if step != 0 {
+            self.walk(step, cx);
+        }
+    }
+
+    /// The review column: every group by title, ticked once the reader has
+    /// been to it, the current one lit.
+    ///
+    /// It stands beside the narration and never makes the band taller: the
+    /// list scrolls inside it, the group in front of the reader is kept in
+    /// view, the edges fade, and a count says how many more there are above
+    /// and below.
+    fn render_review(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        let palette = &self.palette;
+        let mono = cx.theme().mono_font_family.clone();
+        let groups = self.deck.groups();
+        let seen = self.seen.len().min(groups.len());
+        let ground = paint(palette.band);
+        let mut clear = ground;
+        clear.a = 0.;
+
+        // How many rows sit past each edge, from where they were last drawn.
+        let view = self.review_scroll.bounds();
+        let (mut above, mut below) = (0usize, 0usize);
+        for ix in 0..groups.len() {
+            if let Some(row) = self.review_scroll.bounds_for_item(ix) {
+                let middle = row.top() + row.size.height / 2.;
+                if middle < view.top() + px(6.) {
+                    above += 1;
+                } else if middle > view.bottom() - px(6.) {
+                    below += 1;
+                }
+            }
+        }
+
+        let rows = groups.iter().enumerate().map(|(ix, group)| {
+            let here = ix == self.group_ix;
+            let been = self.seen.contains(&ix) && !here;
+            let said = self
+                .remarks
+                .iter()
+                .filter(|remark| remark.group == group.id)
+                .count();
+            div()
+                .id(("review-row", ix))
+                .h_flex()
+                .items_start()
+                .gap(px(8.))
+                .px(px(4.))
+                .mx(px(-4.))
+                .py(px(2.))
+                .rounded(px(6.))
+                .cursor_pointer()
+                .hover(|style| style.bg(paint(palette.wash)))
+                .on_click(cx.listener(move |deck, _, _, cx| deck.go_to(ix, cx)))
+                .text_size(px(12.))
+                .line_height(px(17.))
+                .text_color(paint(if here {
+                    palette.fg
+                } else if been {
+                    palette.muted.mix(palette.band, 0.2)
+                } else {
+                    palette.muted
+                }))
+                // The tick: the group has been read. Bold and warm enough to
+                // see at a glance, since it is the column's whole progress.
+                .child(
+                    div()
+                        .flex_none()
+                        .w(px(10.))
+                        .text_size(px(10.))
+                        .font_weight(FontWeight::BOLD)
+                        .text_color(paint(palette.accent.mix(palette.band, 0.25)))
+                        .when(been, |this| this.child("✓")),
+                )
+                .child(
+                    div()
+                        .flex_none()
+                        .w(px(14.))
+                        .font_family(mono.clone())
+                        .text_size(px(11.))
+                        .text_color(paint(if here {
+                            palette.accent
+                        } else {
+                            palette.muted.mix(palette.band, 0.3)
+                        }))
+                        .child(format!("{}", ix + 1)),
+                )
+                .child(div().flex_1().min_w_0().child(row_title(group)))
+                .when(said > 0, |this| {
+                    this.child(
+                        div()
+                            .flex_none()
+                            .font_family(mono.clone())
+                            .text_size(px(10.5))
+                            .text_color(paint(palette.muted.mix(palette.band, 0.3)))
+                            .child(format!("✎ {said}")),
+                    )
+                })
+        });
+
+        let more = |id: &'static str, label: String, down: bool| {
+            let scroll = self.review_scroll.clone();
+            div()
+                .id(id)
+                .absolute()
+                .right_0()
+                .when(down, |this| this.bottom_0())
+                .when(!down, |this| this.top_0())
+                .px(px(7.))
+                .py(px(1.))
+                .rounded(px(9.))
+                .bg(paint(palette.wash))
+                .border_1()
+                .border_color(paint(palette.edge))
+                .font_family(mono.clone())
+                .text_size(px(10.5))
+                .text_color(paint(palette.muted))
+                .cursor_pointer()
+                .on_click(cx.listener(move |_, _, _, cx| {
+                    let view = scroll.bounds().size.height;
+                    let mut at = scroll.offset();
+                    let last = (0..usize::MAX)
+                        .map_while(|ix| scroll.bounds_for_item(ix))
+                        .last();
+                    let first = scroll.bounds_for_item(0);
+                    let most = match (first, last) {
+                        (Some(first), Some(last)) => {
+                            (last.bottom() - first.top() - view).max(px(0.))
+                        }
+                        _ => px(0.),
+                    };
+                    at.y = if down {
+                        at.y - view * 0.8
+                    } else {
+                        at.y + view * 0.8
+                    };
+                    at.y = at.y.min(px(0.)).max(-most);
+                    scroll.set_offset(at);
+                    cx.notify();
+                }))
+                .child(label)
+        };
+
+        div()
+            .flex_none()
+            .w(px(270.))
+            .relative()
+            .border_l_1()
+            .border_color(paint(palette.edge))
+            .child(
+                div()
+                    .absolute()
+                    .top_0()
+                    .bottom_0()
+                    .left_0()
+                    .right_0()
+                    .v_flex()
+                    .gap(px(8.))
+                    .pt(px(16.))
+                    .pb(px(14.))
+                    .px(px(16.))
+                    .child(
+                        div()
+                            .h_flex()
+                            .justify_between()
+                            .child(
+                                div()
+                                    .text_size(px(10.))
+                                    .font_weight(FontWeight::SEMIBOLD)
+                                    .text_color(paint(palette.muted.mix(palette.band, 0.3)))
+                                    .child("YOUR REVIEW"),
+                            )
+                            .child(
+                                div()
+                                    .font_family(mono.clone())
+                                    .text_size(px(10.5))
+                                    .text_color(paint(palette.muted))
+                                    .child(format!("{seen} of {}", groups.len())),
+                            ),
+                    )
+                    .child(
+                        div()
+                            .flex_1()
+                            .min_h_0()
+                            .relative()
+                            .child(
+                                div()
+                                    .id("review-list")
+                                    .size_full()
+                                    .overflow_y_scroll()
+                                    .track_scroll(&self.review_scroll)
+                                    .on_scroll_wheel(cx.listener(|_, _, _, cx| cx.notify()))
+                                    .v_flex()
+                                    .gap(px(5.))
+                                    .py(px(6.))
+                                    .children(rows),
+                            )
+                            // The edges fade where the list goes on.
+                            .child(div().absolute().top_0().left_0().right_0().h(px(22.)).bg(
+                                linear_gradient(
+                                    180.,
+                                    linear_color_stop(ground, 0.),
+                                    linear_color_stop(clear, 1.),
+                                ),
+                            ))
+                            .child(
+                                div()
+                                    .absolute()
+                                    .bottom_0()
+                                    .left_0()
+                                    .right_0()
+                                    .h(px(30.))
+                                    .bg(linear_gradient(
+                                        180.,
+                                        linear_color_stop(clear, 0.),
+                                        linear_color_stop(ground, 1.),
+                                    )),
+                            )
+                            .when(above > 0, |this| {
+                                this.child(more("review-up", format!("↑ {above} more"), false))
+                            })
+                            .when(below > 0, |this| {
+                                this.child(more("review-down", format!("↓ {below} more"), true))
+                            }),
+                    ),
             )
     }
 
@@ -8480,6 +8723,43 @@ fn about(
     }
 }
 
+/// A group's name in the review column: its title, or for a group written
+/// without one, the opening of what it says.
+fn row_title(group: &Group) -> String {
+    if let Some(title) = group
+        .title
+        .as_deref()
+        .and_then(|title| title.lines().map(str::trim).find(|line| !line.is_empty()))
+    {
+        return crate::load::heading(title);
+    }
+    // The first sentence of the narration, without its directives and marks.
+    let mut plain = String::new();
+    let mut depth = 0usize;
+    for ch in group.say.chars() {
+        match ch {
+            '[' => depth += 1,
+            ']' => depth = depth.saturating_sub(1),
+            '*' | '`' | '_' => {}
+            '\n' if depth == 0 => plain.push(' '),
+            _ if depth == 0 => plain.push(ch),
+            _ => {}
+        }
+    }
+    let plain = plain.split_whitespace().collect::<Vec<_>>().join(" ");
+    let first = plain
+        .split_inclusive(['.', '?', '!'])
+        .next()
+        .unwrap_or(&plain)
+        .trim()
+        .trim_end_matches('.');
+    let mut out: String = first.chars().take(64).collect();
+    if first.chars().count() > 64 {
+        out.push('…');
+    }
+    crate::load::heading(&out)
+}
+
 #[cfg(test)]
 mod tests {
     #[test]
@@ -8622,6 +8902,25 @@ mod tests {
     use core::prelude::v1::test;
 
     use super::*;
+
+    #[test]
+    fn a_row_is_named_by_its_title_or_its_first_sentence() {
+        let group = |title: Option<&str>, say: &str| Group {
+            id: "g1".into(),
+            ord: Some(1),
+            title: title.map(Into::into),
+            say: say.into(),
+            refs: Vec::new(),
+            asks: Vec::new(),
+        };
+        assert_eq!(row_title(&group(Some("the loop"), "x")), "The loop");
+        assert_eq!(
+            row_title(&group(None, "[point 3-7] The *coupon* runs twice. Then more.")),
+            "The coupon runs twice",
+            "the first sentence, without its directive or marks"
+        );
+        assert_eq!(row_title(&group(Some("  "), "Said.")), "Said", "a blank title is none");
+    }
 
     #[test]
     fn the_frame_goes_round_what_is_being_talked_about() {
