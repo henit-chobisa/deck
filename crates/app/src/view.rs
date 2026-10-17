@@ -8915,11 +8915,18 @@ mod tests {
         };
         assert_eq!(row_title(&group(Some("the loop"), "x")), "The loop");
         assert_eq!(
-            row_title(&group(None, "[point 3-7] The *coupon* runs twice. Then more.")),
+            row_title(&group(
+                None,
+                "[point 3-7] The *coupon* runs twice. Then more."
+            )),
             "The coupon runs twice",
             "the first sentence, without its directive or marks"
         );
-        assert_eq!(row_title(&group(Some("  "), "Said.")), "Said", "a blank title is none");
+        assert_eq!(
+            row_title(&group(Some("  "), "Said.")),
+            "Said",
+            "a blank title is none"
+        );
     }
 
     #[test]
