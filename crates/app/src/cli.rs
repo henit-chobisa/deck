@@ -120,12 +120,15 @@ enum What {
         /// How sure you are of this group's claim: high, medium or low.
         ///
         /// Your basis, not a feeling. Start from the strongest evidence you
-        /// used: high, you watched it behave (ran it, reproduced it, read a
-        /// trace from the real system); medium, you read the complete path;
-        /// low, you inferred it. Drop a level for each of: indirect (sandbox,
-        /// old commit, a similar input), incomplete (a config value, another
-        /// service, a function you did not open), conflicting (something you
-        /// saw disagrees), or a never/always claim. Between two, pick the lower.
+        /// used: high, you watched it behave (ran it, reproduced it, ran a
+        /// test covering it, read a trace from the real system); medium, you
+        /// read every line it depends on; low, you inferred it. Drop a level
+        /// for each of: indirect (sandbox, old commit, a similar input),
+        /// incomplete (a config value, another service), conflicting
+        /// (something you saw disagrees), or a never/always claim. Count each
+        /// gap once. A second, independent kind of evidence cancels one drop
+        /// it does not share. Below low, do not make the claim. Between two,
+        /// pick the lower.
         #[arg(long, value_name = "LEVEL")]
         confidence: Option<String>,
         /// The basis, in one line the reader can check: on high, what showed

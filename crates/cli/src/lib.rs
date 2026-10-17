@@ -671,14 +671,14 @@ pub fn group_titled(
 /// card.
 pub const LONGEST_WHY: usize = 140;
 
-/// How sure the agent is, checked: a level it names, and a reason whenever
-/// that level is below high.
+/// How sure the agent is, checked: a level it names, and its basis, which
+/// is required below high.
 ///
 /// # Errors
 ///
 /// When the level is not high, medium or low; when medium or low comes
 /// without a reason; when a reason comes without a level; or when the reason
-/// is empty, runs over a line, or is longer than [`LONGEST_WHY`].
+/// basis is empty, runs over a line, or is longer than [`LONGEST_WHY`].
 pub fn confidence(
     level: Option<&str>,
     why: Option<&str>,

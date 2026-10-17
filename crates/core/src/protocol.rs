@@ -138,10 +138,11 @@ pub struct Confidence {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Level {
-    /// The agent watched it behave: ran it, reproduced it, or read a trace
-    /// from the system the claim is about, with nothing that drops it.
+    /// The agent watched it behave: ran it, reproduced it, ran a test that
+    /// covers this case, or read a trace from the system the claim is about,
+    /// with nothing that drops it.
     High,
-    /// It read the complete path without running it, or watched it behave
+    /// It read every line the claim depends on without running it, or watched it behave
     /// with one drop (indirect, incomplete, conflicting, or a never/always
     /// claim).
     Medium,

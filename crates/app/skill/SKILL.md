@@ -1380,17 +1380,18 @@ one line, at most 80 characters. Never the deck's title again, and never a label
 story. A group without one is headed by the deck's title, which is the confusion
 this exists to end.
 
-**Say how sure you are, by what you did.** Every group gets `--confidence` and a
-`--why`. Confidence is not a probability and not a feeling: it is how good your
+**Say how sure you are, by what you did.** Every group gets `--confidence`, and
+a `--why`: required below high, expected on high. Confidence is not a probability and not a feeling: it is how good your
 basis is. Models rate themselves high whatever the truth, so the level comes from
 the steps below, never from how the claim feels to you.
 
 *1. Start from the strongest kind of evidence you actually used:*
 
-- **high**: you watched it behave. You ran the code, reproduced the bug, or read a
-  trace or log from the system the claim is about.
-- **medium**: you read the complete path, every function, branch and value the
-  claim depends on, without running it.
+- **high**: you watched it behave. You ran the code, reproduced the bug, ran a
+  test that covers this exact case, or read a trace or log from the system the
+  claim is about.
+- **medium**: you read every line of code the claim depends on, every function
+  and branch, without running it.
 - **low**: you inferred it, from names, docs, part of the code, a similar pattern
   elsewhere, or memory.
 
@@ -1406,10 +1407,15 @@ the steps below, never from how the claim feels to you.
 - **Never or always**: the claim says something cannot happen, or always does, and
   rests on a few runs or a partial read. Examples cannot show absence.
 
+Count each gap once. A value you did not see is the incomplete drop, not a reason
+to start lower; code you did not read is what makes the start low, not a drop on
+top of it.
+
 *3. Floors and the one way up.* Below low, do not make the claim: say what you
 could not determine instead. Doing the same kind of thing again never raises the
-level. Two independent kinds that agree, a passing test and a full read, can cancel
-one drop. Between two levels, pick the lower.
+level. A second, independent kind of evidence that agrees cancels one drop, but
+only a drop it does not share: a test and a read, both from the sandbox, are still
+indirect. Between two levels, pick the lower.
 
 *4. `--why` is the basis, one line the reader can check.* On high, say what showed
 it ("ran checkout with a card that declines once"). Below high, name the drop or

@@ -251,11 +251,11 @@ pub(crate) fn level_words(level: Level) -> (&'static str, &'static str) {
     match level {
         Level::High => (
             "High",
-            "The agent watched it behave: ran it, reproduced it, or read a trace from the real system, with nothing to mark it down.",
+            "The agent watched it behave: ran it, reproduced it, ran a test that covers it, or read a trace from the real system, with nothing to mark it down.",
         ),
         Level::Medium => (
             "Medium",
-            "The agent read the whole path without running it, or watched it behave with one thing marking it down.",
+            "The agent read every line this rests on without running it, or watched it behave with one thing marking it down.",
         ),
         Level::Low => (
             "Low",
