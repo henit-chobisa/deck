@@ -261,6 +261,10 @@ impl Divide {
 /// lines of prose, which is what most groups carry.
 const BAND_NATURAL: f32 = 168.;
 
+/// The shortest the band is on its own: room for a short narration to
+/// breathe, and for the review column beside it to show a handful of rows.
+const BAND_LEAST: f32 = 231.;
+
 /// The tallest the band grows on its own before its prose scrolls.
 const BAND_MOST: f32 = 300.;
 
@@ -5475,7 +5479,12 @@ impl DeckView {
             // Left to itself the band is as tall as its narration, up to a
             // limit past which the prose scrolls. The keys column used to set
             // its height instead, and a short narration sat over empty band.
-            .when(self.band_height.is_none(), |this| this.max_h(px(BAND_MOST)))
+            // Never shorter than its natural height, though: a short
+            // narration squeezed the band until the review column beside it
+            // showed two rows, and the prose read as cramped.
+            .when(self.band_height.is_none(), |this| {
+                this.min_h(px(BAND_LEAST)).max_h(px(BAND_MOST))
+            })
             .child(
                 div()
                     .v_flex()
