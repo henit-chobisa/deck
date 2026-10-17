@@ -1114,93 +1114,140 @@ impl Chart {
         view: &WeakEntity<DeckView>,
         pace: crate::view::Pace,
     ) -> Option<impl IntoElement> {
-        if self.diagram.flows.is_empty() {
-            return None;
-        }
+        let flows = !self.diagram.flows.is_empty();
 
         Some(
             div()
                 .absolute()
                 .bottom(px(10.))
                 .right(px(10.))
+                // Held to the pane, so a narrow one wraps the pace control
+                // above the zoom rather than cutting off its left end.
+                .left(px(10.))
                 .h_flex()
+                .flex_wrap()
+                .justify_end()
                 .items_center()
                 .gap(px(6.))
-                .children(self.render_zoom(pane_ix, palette, view))
-                .child(
-                    div()
-                        .h_flex()
-                        .items_center()
-                        .rounded(px(11.))
-                        .border_1()
-                        .border_color(paint(palette.edge))
-                        .bg(paint(palette.bg))
-                        .p(px(2.))
-                        .rounded(px(11.))
-                        .border_1()
-                        .border_color(paint(palette.edge))
-                        .bg(paint(palette.bg))
-                        .children(crate::view::Pace::ALL.iter().map(|&which| {
-                            let on = which == pace;
-                            let view = view.clone();
-                            div()
-                                .id(("pace", pane_ix * 8 + which as usize))
-                                .px(px(8.))
-                                .py(px(2.))
-                                .rounded(px(9.))
-                                .text_size(px(10.))
-                                .bg(paint(if on {
-                                    palette.accent.mix(palette.bg, 0.82)
-                                } else {
-                                    palette.bg
-                                }))
-                                .text_color(paint(if on { palette.accent } else { palette.muted }))
-                                .cursor_pointer()
-                                .hover(|this| this.text_color(paint(palette.fg)))
-                                .child(which.label())
-                                .on_click(move |_, _window, cx| {
-                                    let _ = view
-                                        .update(cx, |deck, cx| deck.set_pace(pane_ix, which, cx));
-                                })
-                        })),
-                ),
+                .child(self.render_zoom(pane_ix, palette, view))
+                .when(flows, |this| {
+                    this.child(
+                        div()
+                            // A press on a control is a press on the control,
+                            // not the start of a drag on the picture under it.
+                            .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                            .h_flex()
+                            .items_center()
+                            .rounded(px(11.))
+                            .border_1()
+                            .border_color(paint(palette.edge))
+                            .bg(paint(palette.bg))
+                            .p(px(2.))
+                            .rounded(px(11.))
+                            .border_1()
+                            .border_color(paint(palette.edge))
+                            .bg(paint(palette.bg))
+                            .children(crate::view::Pace::ALL.iter().map(|&which| {
+                                let on = which == pace;
+                                let view = view.clone();
+                                div()
+                                    .id(("pace", pane_ix * 8 + which as usize))
+                                    .px(px(8.))
+                                    .py(px(2.))
+                                    .rounded(px(9.))
+                                    .text_size(px(10.))
+                                    .bg(paint(if on {
+                                        palette.accent.mix(palette.bg, 0.82)
+                                    } else {
+                                        palette.bg
+                                    }))
+                                    .text_color(paint(if on {
+                                        palette.accent
+                                    } else {
+                                        palette.muted
+                                    }))
+                                    .cursor_pointer()
+                                    .hover(|this| this.text_color(paint(palette.fg)))
+                                    .child(which.label())
+                                    .on_click(move |_, _window, cx| {
+                                        let _ = view.update(cx, |deck, cx| {
+                                            deck.set_pace(pane_ix, which, cx)
+                                        });
+                                    })
+                            })),
+                    )
+                }),
         )
     }
 
-    /// What size the picture is at, and a way back to the size it was drawn.
+    /// Take the picture in and out, and back to the size it was drawn.
     ///
-    /// Nothing at all until it has been changed. A control that says 100% on a
-    /// picture nobody has touched is a control explaining a thing that has not
-    /// happened.
+    /// Always there, small, in the corner: a held modifier and the wheel, or a
+    /// pinch, also zoom, but nobody finds a gesture nothing on screen offers.
+    /// The size between the two buttons puts the picture back when pressed.
     fn render_zoom(
         &self,
         pane_ix: usize,
         palette: &Palette,
         view: &WeakEntity<DeckView>,
-    ) -> Option<impl IntoElement> {
-        if (self.zoom - 1.).abs() < 0.01 {
-            return None;
-        }
-        let view = view.clone();
-
-        Some(
+    ) -> impl IntoElement {
+        /// One press: a fifth bigger, or back by the same step.
+        const STEP: f32 = 1.2;
+        /// The wheel's worth of zoom that makes one step, in `zoom_chart`'s
+        /// units (a pixel is 0.4% of a turn).
+        const IN: f32 = (STEP - 1.) / 0.004;
+        const OUT: f32 = (1. / STEP - 1.) / 0.004;
+        let changed = (self.zoom - 1.).abs() >= 0.01;
+        let button = |id: usize, label: &'static str, by: f32| {
+            let view = view.clone();
             div()
-                .id(("zoom", pane_ix))
-                .px(px(8.))
-                .py(px(4.))
-                .rounded(px(11.))
-                .border_1()
-                .border_color(paint(palette.edge))
-                .bg(paint(palette.bg))
-                .text_size(px(10.))
+                .id(("zoom-step", pane_ix * 4 + id))
+                .w(px(20.))
+                .h(px(18.))
+                .flex()
+                .items_center()
+                .justify_center()
+                .rounded(px(9.))
+                .text_size(px(12.))
                 .text_color(paint(palette.muted))
                 .cursor_pointer()
-                .hover(|this| this.text_color(paint(palette.accent)))
-                .child(format!("{:.0}%", self.zoom * 100.))
+                .hover(|this| this.text_color(paint(palette.fg)).bg(paint(palette.wash)))
+                .child(label)
                 .on_click(move |_, _window, cx| {
-                    let _ = view.update(cx, |deck, cx| deck.reset_zoom(pane_ix, cx));
-                }),
-        )
+                    let _ = view.update(cx, |deck, cx| deck.zoom_chart(pane_ix, by, cx));
+                })
+        };
+        let reset = {
+            let view = view.clone();
+            div()
+                .id(("zoom", pane_ix))
+                .min_w(px(38.))
+                .px(px(4.))
+                .text_center()
+                .text_size(px(10.))
+                .text_color(paint(if changed { palette.fg } else { palette.muted }))
+                .when(changed, |this| {
+                    this.cursor_pointer()
+                        .hover(|this| this.text_color(paint(palette.accent)))
+                        .on_click(move |_, _window, cx| {
+                            let _ = view.update(cx, |deck, cx| deck.reset_zoom(pane_ix, cx));
+                        })
+                })
+                .child(format!("{:.0}%", self.zoom * 100.))
+        };
+        div()
+            .id(("zoom-control", pane_ix))
+            .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+            .h_flex()
+            .items_center()
+            .p(px(2.))
+            .rounded(px(11.))
+            .border_1()
+            .border_color(paint(palette.edge))
+            .bg(paint(palette.bg))
+            .child(button(0, "\u{2212}", OUT))
+            .child(reset)
+            .child(button(1, "+", IN))
     }
 
     /// A measurement, at the size the picture is being drawn.
@@ -1233,6 +1280,13 @@ impl Chart {
         /// a machine that is not the one it was drawn on.
         const RANGE: (f32, f32) = (0.4, 3.0);
         self.zoom = (self.zoom * factor).clamp(RANGE.0, RANGE.1);
+        // Back at its drawn size, exactly, after a button's step: steps that
+        // began at a limit land a hair off 100%, which reads as 100% and would
+        // not reset. Only a step: a pinch or the wheel arrives as many small
+        // factors, and snapping those held the picture at 100% for good.
+        if (factor - 1.).abs() >= 0.1 && (self.zoom - 1.).abs() < 0.02 {
+            self.zoom = 1.;
+        }
     }
 
     /// The colour the flow at `ix` is lit in, if it asked for one.
@@ -1675,6 +1729,24 @@ mod tests {
         );
         chart.playing = None;
         assert_eq!(chart.lit("checkout"), Lit::On(1., None));
+    }
+
+    #[test]
+    fn a_pinch_leaves_the_drawn_size_and_a_step_comes_back_to_it() {
+        let mut chart = charted(&["a"], &[]);
+        for _ in 0..5 {
+            chart.zoom_by(1.004);
+        }
+        assert!(chart.zoom > 1.0, "small factors add up");
+        let mut chart = charted(&["a"], &[]);
+        chart.zoom = 0.4;
+        for _ in 0..5 {
+            chart.zoom_by(1.2);
+        }
+        assert!(
+            (chart.zoom - 1.).abs() < f32::EPSILON,
+            "five steps from 40% land on 100%"
+        );
     }
 
     #[test]
