@@ -265,6 +265,7 @@ mod tests {
             id: format!("g{}", ord.unwrap_or(0)),
             ord,
             title: None,
+            confidence: None,
             say: String::new(),
             refs: Vec::new(),
         }

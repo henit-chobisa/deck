@@ -3426,19 +3426,39 @@ impl DeckView {
         body.relative()
             .on_hover(cx.listener(move |deck, over: &bool, _, cx| deck.hover_key(at, *over, cx)))
             .when(level > 0., |this| {
-                this.children(
-                    crate::keys::card(key, level, &self.palette, sans, mono).map(|card| {
-                        // Laid over everything, above the key, and kept inside the
-                        // window when the key sits near its edge.
-                        div().absolute().top_0().left_0().child(deferred(
+                let card = if key == crate::keys::CONFIDENCE {
+                    self.group()
+                        .and_then(|group| group.confidence.as_ref())
+                        .map(|confidence| {
+                            crate::keys::confidence_card(confidence, level, &self.palette, sans)
+                        })
+                } else {
+                    crate::keys::card(key, level, &self.palette, sans, mono)
+                };
+                // Laid over everything and kept inside the window. A key's card
+                // rises above it, from the strip or the dock at the bottom; the
+                // confidence sits at the top of the window, where a card above
+                // it was pushed down over the very thing it explains, so its
+                // card opens below.
+                let below = key == crate::keys::CONFIDENCE;
+                this.children(card.map(|card| {
+                    div()
+                        .absolute()
+                        .left_0()
+                        .when(below, |this| this.bottom_0())
+                        .when(!below, |this| this.top_0())
+                        .child(deferred(
                             anchored()
-                                .anchor(Anchor::BottomLeft)
-                                .offset(point(px(-100.), px(0.)))
+                                .anchor(if below {
+                                    Anchor::TopLeft
+                                } else {
+                                    Anchor::BottomLeft
+                                })
+                                .offset(point(px(if below { -12. } else { -100. }), px(0.)))
                                 .snap_to_window_with_margin(px(12.))
                                 .child(card),
                         ))
-                    }),
-                )
+                }))
             })
     }
 
@@ -5357,6 +5377,15 @@ impl DeckView {
     /// comment being written — repaints without coming through here, because a
     /// rebuild throws away where the reader had scrolled to.
     fn build_panes(&mut self, cx: &mut App) {
+        // A card over the band belongs to the group on screen before, however
+        // the group changed (a step, a click, the agent jumping): its
+        // badge may not exist on the next one, and nothing would ever say the
+        // pointer left it.
+        if self.tip.is_some_and(|(_, place)| place == "band") {
+            self.tipping = Task::ready(());
+            self.tip_fade.set(false);
+            self.tip = None;
+        }
         // A deck still waiting on its first group has none to look at.
         if self.group().is_some() {
             crate::usage::record_soon(crate::usage::Count::GroupViewed);
@@ -5594,13 +5623,52 @@ impl DeckView {
                                         )
                                         .child(
                                             div()
-                                                .text_size(px(14.))
-                                                .font_weight(FontWeight::SEMIBOLD)
-                                                .text_color(paint(self.palette.fg))
-                                                .overflow_hidden()
-                                                .text_ellipsis()
-                                                .whitespace_nowrap()
-                                                .child(own.unwrap_or_else(|| self.deck.title())),
+                                                .h_flex()
+                                                .items_center()
+                                                .gap(px(10.))
+                                                .min_w_0()
+                                                .child(
+                                                    div()
+                                                        .min_w_0()
+                                                        .text_size(px(14.))
+                                                        .font_weight(FontWeight::SEMIBOLD)
+                                                        .text_color(paint(self.palette.fg))
+                                                        .overflow_hidden()
+                                                        .text_ellipsis()
+                                                        .whitespace_nowrap()
+                                                        .child(own.unwrap_or_else(|| self.deck.title())),
+                                                )
+                                                // How sure the agent is, after the claim it
+                                                // qualifies: bars and the level, and on a rest
+                                                // a card with what the level means and why.
+                                                .children(
+                                                    self.group()
+                                                        .and_then(|group| group.confidence.as_ref())
+                                                        .map(|confidence| {
+                                                            let (name, _) = crate::keys::level_words(confidence.level);
+                                                            self.tipped(
+                                                                crate::keys::CONFIDENCE,
+                                                                "band",
+                                                                div()
+                                                                    .id("confidence")
+                                                                    .flex_none()
+                                                                    .h_flex()
+                                                                    .items_center()
+                                                                    .gap(px(6.))
+                                                                    .child(crate::keys::bars(confidence.level, &self.palette))
+                                                                    .child(
+                                                                        div()
+                                                                            .text_size(px(11.))
+                                                                            .text_color(paint(crate::keys::level_colour(
+                                                                                confidence.level,
+                                                                                &self.palette,
+                                                                            )))
+                                                                            .child(name),
+                                                                    ),
+                                                                cx,
+                                                            )
+                                                        }),
+                                                ),
                                         )
                                 })
                                 .flex_1()
@@ -8931,6 +8999,7 @@ mod tests {
             id: "g1".into(),
             ord: Some(1),
             title: title.map(Into::into),
+            confidence: None,
             say: say.into(),
             refs: Vec::new(),
             asks: Vec::new(),

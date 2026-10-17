@@ -1287,7 +1287,7 @@ the agent never moves anything is a document with a bar under it.
 ```
 deck new      the header, and the bar
 deck open     the bar, in the background — and what wakes you at the end
-deck group    one group, one call — --title for its heading, and --ask, three to five, for the pills under it
+deck group    one group, one call — --title for its heading, --confidence (and --why) for how sure you are, --ask for the pills
 deck asks     after an answer: renew one group's pills (--group g3 --ask …)
 deck seal     no more coming
 deck wait     only with -d, when you detached the window yourself
@@ -1380,9 +1380,55 @@ one line, at most 80 characters. Never the deck's title again, and never a label
 story. A group without one is headed by the deck's title, which is the confusion
 this exists to end.
 
+**Say how sure you are, by what you did.** Every group gets `--confidence`, and
+a `--why`: required below high, expected on high. Confidence is not a probability and not a feeling: it is how good your
+basis is. Models rate themselves high whatever the truth, so the level comes from
+the steps below, never from how the claim feels to you.
+
+*1. Start from the strongest kind of evidence you actually used:*
+
+- **high**: you watched it behave. You ran the code, reproduced the bug, ran a
+  test that covers this exact case, or read a trace or log from the system the
+  claim is about.
+- **medium**: you read every line of code the claim depends on, every function
+  and branch, without running it.
+- **low**: you inferred it, from names, docs, part of the code, a similar pattern
+  elsewhere, or memory.
+
+*2. Drop one level for each of these that applies:*
+
+- **Indirect**: the evidence is from somewhere other than what the claim is about.
+  The sandbox, not production; an older commit; a similar input, not this one.
+- **Incomplete**: a link in the path you did not see. A config value, an
+  environment variable, dynamic dispatch, generated code, another service, a
+  function you did not open.
+- **Conflicting**: something you saw disagrees, a test, a comment, a log, and you
+  have not explained why.
+- **Never or always**: the claim says something cannot happen, or always does, and
+  rests on a few runs or a partial read. Examples cannot show absence.
+
+Count each gap once. A value you did not see is the incomplete drop, not a reason
+to start lower; code you did not read is what makes the start low, not a drop on
+top of it.
+
+*3. Floors and the one way up.* Below low, do not make the claim: say what you
+could not determine instead. Doing the same kind of thing again never raises the
+level. A second, independent kind of evidence that agrees cancels one drop, but
+only a drop it does not share: a test and a read, both from the sandbox, are still
+indirect. Between two levels, pick the lower.
+
+*4. `--why` is the basis, one line the reader can check.* On high, say what showed
+it ("ran checkout with a card that declines once"). Below high, name the drop or
+what is missing ("indirect: reproduced in the sandbox; production retries may
+differ"). The window shows the level as bars after the group's title and the basis
+on hover. A reader who finds your highs earned trusts them, and one who catches a
+single unearned high distrusts every badge you give.
+
 ```bash
 deck group <path> \
   --title 'A pane has no width' \
+  --confidence medium \
+  --why 'read both functions; did not drag it' \
   --say 'Okay, drag the line between two panes. Left one grows, right one gives way,
 nothing else on the page twitches. Feels like the most ordinary thing in the world.
 
