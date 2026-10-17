@@ -1121,13 +1121,21 @@ impl Chart {
                 .absolute()
                 .bottom(px(10.))
                 .right(px(10.))
+                // Held to the pane, so a narrow one wraps the pace control
+                // above the zoom rather than cutting off its left end.
+                .left(px(10.))
                 .h_flex()
+                .flex_wrap()
+                .justify_end()
                 .items_center()
                 .gap(px(6.))
                 .child(self.render_zoom(pane_ix, palette, view))
                 .when(flows, |this| {
                     this.child(
                         div()
+                            // A press on a control is a press on the control,
+                            // not the start of a drag on the picture under it.
+                            .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
                             .h_flex()
                             .items_center()
                             .rounded(px(11.))
@@ -1228,6 +1236,8 @@ impl Chart {
                 .child(format!("{:.0}%", self.zoom * 100.))
         };
         div()
+            .id(("zoom-control", pane_ix))
+            .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
             .h_flex()
             .items_center()
             .p(px(2.))
@@ -1270,6 +1280,11 @@ impl Chart {
         /// a machine that is not the one it was drawn on.
         const RANGE: (f32, f32) = (0.4, 3.0);
         self.zoom = (self.zoom * factor).clamp(RANGE.0, RANGE.1);
+        // Back at its drawn size, exactly: steps that began at a limit land
+        // a hair off 100%, which reads as 100% and would not reset.
+        if (self.zoom - 1.).abs() < 0.02 {
+            self.zoom = 1.;
+        }
     }
 
     /// The colour the flow at `ix` is lit in, if it asked for one.
