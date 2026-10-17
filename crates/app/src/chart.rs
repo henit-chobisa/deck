@@ -1280,9 +1280,11 @@ impl Chart {
         /// a machine that is not the one it was drawn on.
         const RANGE: (f32, f32) = (0.4, 3.0);
         self.zoom = (self.zoom * factor).clamp(RANGE.0, RANGE.1);
-        // Back at its drawn size, exactly: steps that began at a limit land
-        // a hair off 100%, which reads as 100% and would not reset.
-        if (self.zoom - 1.).abs() < 0.02 {
+        // Back at its drawn size, exactly, after a button's step: steps that
+        // began at a limit land a hair off 100%, which reads as 100% and would
+        // not reset. Only a step: a pinch or the wheel arrives as many small
+        // factors, and snapping those held the picture at 100% for good.
+        if (factor - 1.).abs() >= 0.1 && (self.zoom - 1.).abs() < 0.02 {
             self.zoom = 1.;
         }
     }
@@ -1727,6 +1729,24 @@ mod tests {
         );
         chart.playing = None;
         assert_eq!(chart.lit("checkout"), Lit::On(1., None));
+    }
+
+    #[test]
+    fn a_pinch_leaves_the_drawn_size_and_a_step_comes_back_to_it() {
+        let mut chart = charted(&["a"], &[]);
+        for _ in 0..5 {
+            chart.zoom_by(1.004);
+        }
+        assert!(chart.zoom > 1.0, "small factors add up");
+        let mut chart = charted(&["a"], &[]);
+        chart.zoom = 0.4;
+        for _ in 0..5 {
+            chart.zoom_by(1.2);
+        }
+        assert!(
+            (chart.zoom - 1.).abs() < f32::EPSILON,
+            "five steps from 40% land on 100%"
+        );
     }
 
     #[test]
