@@ -5814,8 +5814,9 @@ impl DeckView {
     ///
     /// It stands beside the narration and never makes the band taller: the
     /// list scrolls inside it, the group in front of the reader is kept in
-    /// view, the edges fade, and a count says how many more there are above
-    /// and below.
+    /// view, the edges fade, and a count says how many more there are below.
+    /// Only below: what is above is behind the reader, ticked and done, and a
+    /// second chip pointing back was one more thing in a calm column.
     fn render_review(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let palette = &self.palette;
         let mono = cx.theme().mono_font_family.clone();
@@ -6021,9 +6022,6 @@ impl DeckView {
                                             linear_color_stop(ground, 1.),
                                         )),
                                 )
-                            })
-                            .when(above > 0, |this| {
-                                this.child(more("review-up", format!("↑ {above} more"), false))
                             })
                             .when(below > 0, |this| {
                                 this.child(more("review-down", format!("↓ {below} more"), true))
