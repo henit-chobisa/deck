@@ -127,9 +127,10 @@ read — order comes from `ord`, not from the name and not from the filesystem.
 question the whole deck answers; a group's is the step of the answer in front
 of the reader. A client shows the group's title where it would otherwise show
 the deck's, capitalised at the front like the deck's, and keeps the deck's title
-somewhere quieter: deck's own window moves it to the bottom strip, beside the
-group count. A group without one is headed by the deck's title, as every group
-was before the field existed.
+somewhere quieter: deck's own window sets it in a small line above the group's
+title, beside the group's number, and keeps it there for every group. A group
+without one is headed by the deck's title, as every group was before the field
+existed.
 
 `deck group --title` trims it and refuses one that is empty, runs over a line, or
 is longer than 80 characters.

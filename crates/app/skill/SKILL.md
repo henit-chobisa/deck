@@ -742,7 +742,7 @@ window. Pressing one asks you, straight away, and you answer in the deck. The
 bar is that **two of them are what the reader was about to type.**
 
 ```sh
-deck group <path> --say "…" --ref "…" \
+deck group <path> --title "…" --say "…" --ref "…" \
   --ask "What's an outbox, basics first?" \
   --ask "Draw it: enqueue → worker → email" \
   --ask "Does the refund worker also retry forever?" \
@@ -1330,8 +1330,8 @@ It prints the deck's path. Everything after this takes it.
 - `--title` is the first thing they read. Make it the QUESTION or the CLAIM the deck
   answers ("why the batch counter stalls"), not a label ("batch counter changes").
   A title that poses the question primes them to predict — which is how people learn best.
-  It names the whole deck: on the bar, and in the window's bottom strip once a
-  group with its own `--title` (§3) is on screen.
+  It names the whole deck: on the bar, and in a small line over the heading once
+  a group with its own `--title` (§3) is on screen.
 
 ## 2. Put the bar up, before you have written anything
 
@@ -1372,8 +1372,8 @@ you it happened. If the prose has an apostrophe in it, use a quoted heredoc
 rather than escaping your way out.
 
 **Give every group a `--title`.** It heads the window while that group is on
-screen, and the deck's title steps down to the strip at the bottom beside
-`group 2/4`. The deck's title is the question; a group's title is the step of the
+screen, beside the group's number, and the deck's title steps down to a small
+line above it. The deck's title is the question; a group's title is the step of the
 answer on screen now — *The drag moves a share, not a width* — in sentence case,
 one line, at most 80 characters. Never the deck's title again, and never a label
 (*Drag handling*): a reader who skims only the titles should still follow the
@@ -1417,6 +1417,7 @@ admire and hard to copy:
 
 ```bash
 deck group <path> \
+  --title 'Cancel never reaches the attempt in flight' \
   --say 'You cancelled the job and the log kept going for another ninety seconds.
 
 In [retry], the guard is the first thing in the loop. [point 106-110] It reads
@@ -1513,6 +1514,7 @@ refuses a group that claims it is both.
 
 ```bash
 deck group <path> \
+  --title 'The error path counts twice' \
   --say "The counter is decremented on the **error path** too." \
   --ref "src/batch.ts:140-148 decremented *twice* when the write fails" \
   --after "    } catch (err) {
@@ -1529,6 +1531,7 @@ would be**:
 
 ```bash
 deck group <path> \
+  --title 'Two checks become one pass' \
   --say 'That check ran twice. [point 140-142] Both calls hit the same key.
 [pause] [point +140-143] The new one folds them into a single pass.' \
   --ref "src/batch.ts:140-142 [batch] the check that runs twice" \
@@ -1575,6 +1578,7 @@ the flag is there.
 
 ```bash
 deck group <path> \
+  --title 'One buffer, reused' \
   --say 'It allocated on every pass. [point 140-148] [batch] reuses one buffer now.' \
   --ref "src/batch.ts:140-148 [batch] what it became" \
   --before "  for (const row of rows) {
@@ -1593,6 +1597,7 @@ highlight of lines that have been there for two years, so the reader has to take
 
 ```bash
 deck group <path> \
+  --title 'Three routes under the existing path' \
   --say 'Three new routes. [point 35-48] [urls] hangs them off the path the
 existing one already lives under.' \
   --ref "apps/api/urls/asset.py:35-48 [urls] the three new ones" \
@@ -1727,6 +1732,7 @@ name exactly as it is written on that line.
 
 ```bash
 deck group "$DECK" \
+  --title 'orderId is undefined here' \
   --say 'In [webhook], line 6 reads the order id from metadata, which arrived empty, so [point 6] orderId is undefined.' \
   --ref 'apps/api/src/stripe/webhooks.ts:5-7 [webhook] the handler Stripe calls' \
   --values '[{"line":5,"at":"session","is":"Session { client_reference_id: \"ord_8F2kQ71\", … }","keys":[{"key":"client_reference_id","is":"\"ord_8F2kQ71\"","why":"set at checkout","lit":true},{"key":"metadata","is":"{}","why":"nothing was put here"},{"more":22}]},{"line":6,"at":"orderId","is":"undefined","lit":true}]'
@@ -1820,6 +1826,7 @@ together they are one.
 
 ```bash
 deck group <path> \
+  --title 'The installed check returns early, silently' \
   --say 'You press Connect and nothing happens — no error, no spinner, nothing.
 
 [point q] In [flow], the request stops at the installed check before it ever
@@ -1938,6 +1945,7 @@ grows, fills, races or changes value when you point, it is a page.
 
 ```bash
 deck group <path> \
+  --title 'Two workers, one lost increment' \
   --say '[point read-a] Worker A reads the count: 5. [point read-b] Worker B reads
 it too, and also sees 5. [point write-b] Both write 6, and one increment is gone —
 [race], and [bump] is where it happens.' \
@@ -2219,6 +2227,7 @@ where it should read 7.
 
 ```bash
 deck group <path> \
+  --title 'Two workers, one lost increment' \
   --say '[point read-a] Worker A reads the count: 5. [point read-b] Before A is done,
 worker B reads it too, and also sees 5. [point write-a] A writes 6. [point write-b] Then
 B writes 6 over it, and one increment is gone. That is [race], and [bump] is

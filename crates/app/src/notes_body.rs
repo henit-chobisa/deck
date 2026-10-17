@@ -60,8 +60,9 @@ impl Render for NotesBody {
         let mono = cx.theme().mono_font_family.clone();
         let look = crate::prose::Look {
             size: 13.,
-            leading: 20.5,
+            leading: 19.5,
             tone: palette.fg,
+            spacing: 20.5 * 0.42,
         };
         let prose = |text: &str| {
             crate::prose::render_look(

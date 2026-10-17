@@ -280,6 +280,13 @@ impl Divide {
 /// lines of prose, which is what most groups carry.
 const BAND_NATURAL: f32 = 168.;
 
+/// How wide the group's number sits, and the line that runs down from it.
+const STEM: f32 = 30.;
+
+/// The gap between the group's number and the titles beside it, which the
+/// prose under them keeps too, so the three share one left edge.
+const STEM_GAP: f32 = 14.;
+
 /// What a remark is about.
 ///
 /// Either a line of code, or the group's claim itself. The second is what a
@@ -1780,8 +1787,12 @@ impl DeckView {
     /// could not tell the question being answered from the step of the answer
     /// on screen.
     fn group_title(&self) -> Option<String> {
+        // Trimmed and cut at the first line, and none at all when that
+        // leaves nothing: `deck group` checks a title, but a deck written by
+        // another client may not have.
         self.group()
             .and_then(|group| group.title.as_deref())
+            .and_then(|title| title.lines().map(str::trim).find(|line| !line.is_empty()))
             .map(crate::load::heading)
     }
 
@@ -5221,8 +5232,8 @@ impl DeckView {
                         // narration is about. Over it, a step quieter and in
                         // the same type, the deck's title: the question this
                         // group is one step of answering. A group written
-                        // without a title is headed by the deck's, alone, as
-                        // every group once was.
+                        // without a title is headed by the deck's, as every
+                        // group once was, and the small line stays over it.
                         // It is also the deck's titlebar, so it behaves like
                         // one: double-click zooms the window. The real
                         // titlebar is there but made invisible and its traffic
@@ -5244,8 +5255,8 @@ impl DeckView {
                             div()
                                 .id("deck-titlebar")
                                 .h_flex()
-                                .items_baseline()
-                                .gap(px(14.))
+                                .items_center()
+                                .gap(px(STEM_GAP))
                                 .pt(px(15.))
                                 .pl(px(18.))
                                 .pr(px(18.))
@@ -5257,28 +5268,56 @@ impl DeckView {
                                         window.zoom_window();
                                     }
                                 })
+                                // The group's number, faint in the accent, then the
+                                // deck's title over the group's. The number says
+                                // *step*, so the group's heading is never taken
+                                // for the deck's: the question sits small above
+                                // it, and the step of the answer is the line in
+                                // bold.
+                                .when(self.group().is_some(), |this| {
+                                    this.child(
+                                        div()
+                                            .flex_none()
+                                            .w(px(STEM))
+                                            .h_flex()
+                                            .justify_center()
+                                            .text_size(px(36.))
+                                            .line_height(px(36.))
+                                            .font_weight(FontWeight::LIGHT)
+                                            .text_color(paint(
+                                                self.palette.band.mix(self.palette.accent, 0.45),
+                                            ))
+                                            .child(format!("{}", self.group_ix + 1)),
+                                    )
+                                })
                                 .child({
                                     let own = self.group_title();
                                     div()
                                         .v_flex()
-                                        .gap(px(3.))
+                                        .gap(px(2.))
                                         .min_w_0()
-                                        .when(own.is_some(), |this| {
-                                            this.child(
-                                                div()
-                                                    .text_size(px(12.5))
-                                                    .text_color(paint(self.palette.muted))
-                                                    .overflow_hidden()
-                                                    .text_ellipsis()
-                                                    .whitespace_nowrap()
-                                                    .child(self.deck.title()),
-                                            )
-                                        })
+                                        // Always there, even over a group headed
+                                        // by the deck's title: the line above the
+                                        // heading is where the question lives, and
+                                        // a reader who learned that should never
+                                        // find it gone.
                                         .child(
                                             div()
-                                                .text_size(px(15.5))
+                                                .text_size(px(11.5))
+                                                .text_color(paint(self.palette.muted))
+                                                .overflow_hidden()
+                                                .text_ellipsis()
+                                                .whitespace_nowrap()
+                                                .child(self.deck.title()),
+                                        )
+                                        .child(
+                                            div()
+                                                .text_size(px(14.))
                                                 .font_weight(FontWeight::SEMIBOLD)
                                                 .text_color(paint(self.palette.fg))
+                                                .overflow_hidden()
+                                                .text_ellipsis()
+                                                .whitespace_nowrap()
                                                 .child(own.unwrap_or_else(|| self.deck.title())),
                                         )
                                 })
@@ -5308,68 +5347,96 @@ impl DeckView {
                             .track_scroll(&self.band_scroll)
                             .text_size(px(13.2))
                             .text_color(paint(self.palette.fg))
-                            .child(crate::prose::render(
-                                crate::prose::parse(&say),
-                                &self.palette,
-                                cx.theme().mono_font_family.clone(),
-                                &crate::prose::Picking {
-                                    range: self.said_lit.map(|(words, _)| words),
-                                    shown: self.said_lit.map_or(0., |(_, light)| light.level()),
-                                    down: {
-                                        let deck = cx.entity().downgrade();
-                                        std::rc::Rc::new(move |at, _window, cx| {
-                                            deck.update(cx, |deck, cx| deck.start_say_pick(at, cx))
-                                                .ok();
-                                        })
-                                    },
-                                    over: {
-                                        let deck = cx.entity().downgrade();
-                                        std::rc::Rc::new(move |at, entered, _window, cx| {
-                                            deck.update(cx, |deck, _| deck.hover_say(at, entered))
-                                                .ok();
-                                        })
-                                    },
-                                    names: self
-                                        .panes
-                                        .iter()
-                                        .filter_map(|pane| pane.name().cloned())
-                                        .collect(),
-                                    named: self.name_hovered.clone().or(self.name_pinned.clone()),
-                                    heard: self
-                                        .heard_in(crate::speech::Narration::Group(self.group_ix)),
-                                    lit_also: [self.track_hover, self.track_hover_was]
-                                        .into_iter()
-                                        .filter(|_| self.aloud)
-                                        .flatten()
-                                        .map(|(range, light)| (range, light.level()))
-                                        .filter(|(_, level)| *level > 0.)
-                                        .collect(),
-                                    pickable: true,
-                                    // Only this group's. A word range means
-                                    // nothing against another group's prose —
-                                    // the same numbers there are different
-                                    // words entirely.
-                                    remarked: self
-                                        .remarks
-                                        .iter()
-                                        .filter(|remark| {
-                                            self.group().is_some_and(|group| {
-                                                remark.group.as_ref() == group.id
-                                            })
-                                        })
-                                        .filter_map(|remark| remark.said)
-                                        .collect(),
-                                    name: {
-                                        let deck = cx.entity().downgrade();
-                                        std::rc::Rc::new(move |name, naming, _window, cx| {
-                                            deck.update(cx, |deck, cx| {
-                                                deck.on_name(name, naming, cx)
-                                            })
-                                            .ok();
-                                        })
-                                    },
-                                },
-                            )),
+                            // Hung on a line that runs down from the group's
+                            // number, and stops where the prose stops: the
+                            // number is the step, and this is what it says.
+                            .child(
+                                div()
+                                    .ml(px(STEM / 2.))
+                                    .pl(px(STEM / 2. + STEM_GAP - 1.))
+                                    // Drawn up into the column's gap: the prose
+                                    // belongs to the title over it, and the line
+                                    // height already leaves air above the words.
+                                    .mt(px(-4.))
+                                    .border_l_1()
+                                    .border_color(paint(
+                                        self.palette.edge.mix(self.palette.muted, 0.25),
+                                    ))
+                                    .child(crate::prose::render(
+                                        crate::prose::parse(&say),
+                                        &self.palette,
+                                        cx.theme().mono_font_family.clone(),
+                                        &crate::prose::Picking {
+                                            range: self.said_lit.map(|(words, _)| words),
+                                            shown: self
+                                                .said_lit
+                                                .map_or(0., |(_, light)| light.level()),
+                                            down: {
+                                                let deck = cx.entity().downgrade();
+                                                std::rc::Rc::new(move |at, _window, cx| {
+                                                    deck.update(cx, |deck, cx| {
+                                                        deck.start_say_pick(at, cx)
+                                                    })
+                                                    .ok();
+                                                })
+                                            },
+                                            over: {
+                                                let deck = cx.entity().downgrade();
+                                                std::rc::Rc::new(move |at, entered, _window, cx| {
+                                                    deck.update(cx, |deck, _| {
+                                                        deck.hover_say(at, entered)
+                                                    })
+                                                    .ok();
+                                                })
+                                            },
+                                            names: self
+                                                .panes
+                                                .iter()
+                                                .filter_map(|pane| pane.name().cloned())
+                                                .collect(),
+                                            named: self
+                                                .name_hovered
+                                                .clone()
+                                                .or(self.name_pinned.clone()),
+                                            heard: self.heard_in(crate::speech::Narration::Group(
+                                                self.group_ix,
+                                            )),
+                                            lit_also: [self.track_hover, self.track_hover_was]
+                                                .into_iter()
+                                                .filter(|_| self.aloud)
+                                                .flatten()
+                                                .map(|(range, light)| (range, light.level()))
+                                                .filter(|(_, level)| *level > 0.)
+                                                .collect(),
+                                            pickable: true,
+                                            // Only this group's. A word range means
+                                            // nothing against another group's prose —
+                                            // the same numbers there are different
+                                            // words entirely.
+                                            remarked: self
+                                                .remarks
+                                                .iter()
+                                                .filter(|remark| {
+                                                    self.group().is_some_and(|group| {
+                                                        remark.group.as_ref() == group.id
+                                                    })
+                                                })
+                                                .filter_map(|remark| remark.said)
+                                                .collect(),
+                                            name: {
+                                                let deck = cx.entity().downgrade();
+                                                std::rc::Rc::new(
+                                                    move |name, naming, _window, cx| {
+                                                        deck.update(cx, |deck, cx| {
+                                                            deck.on_name(name, naming, cx)
+                                                        })
+                                                        .ok();
+                                                    },
+                                                )
+                                            },
+                                        },
+                                    )),
+                            ),
                     )
                     .children(self.render_track(cx)),
             )
