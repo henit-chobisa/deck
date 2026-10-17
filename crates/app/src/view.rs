@@ -743,6 +743,10 @@ pub struct DeckView {
     seen: std::collections::HashSet<usize>,
     /// The review column's list, scrolled to keep the current group in view.
     review_scroll: ScrollHandle,
+    /// The group changed: render once more after the next frame, when the
+    /// scroll to it has been painted and the rows past each edge can be
+    /// counted.
+    review_settle: bool,
     /// The loop watching the deck directory fill, while there is more coming.
     ///
     /// Dropping it stops it, which is what should happen when the window
@@ -1136,6 +1140,7 @@ impl DeckView {
                 .paced(crate::keys::TIP_RISE, crate::keys::TIP_FALL),
             tipping: Task::ready(()),
             review_scroll: ScrollHandle::new(),
+            review_settle: false,
         };
         if let Some((about, state, when)) = draft {
             view.live.pause(PauseReason::Composer);
@@ -1826,15 +1831,6 @@ impl DeckView {
         self.live.pause(PauseReason::Navigation);
         self.group_ix = next;
         self.build_panes(cx);
-        // The review column scrolls to the new group as it is painted, and
-        // its counts of rows past each edge are read from the frame after.
-        cx.spawn(async move |view, cx| {
-            cx.background_executor()
-                .timer(std::time::Duration::from_millis(32))
-                .await;
-            let _ = view.update(cx, |_, cx| cx.notify());
-        })
-        .detach();
         // `build_panes` has just stopped the voice mid-sentence, because what
         // it was saying belonged to the group that left the screen. If the
         // reader is being read to, the new group picks up where they now are.
@@ -5362,6 +5358,7 @@ impl DeckView {
             crate::usage::record_soon(crate::usage::Count::GroupViewed);
             self.seen.insert(self.group_ix);
             self.review_scroll.scroll_to_item(self.group_ix);
+            self.review_settle = true;
         }
         // Each group's questions start from their first.
         self.asks_carousel.reset();
@@ -8159,6 +8156,9 @@ impl Render for DeckView {
         if self.help.moving() || self.tip_fade.moving() || hit {
             window.request_animation_frame();
         }
+        if std::mem::take(&mut self.review_settle) {
+            cx.on_next_frame(window, |_, _, cx| cx.notify());
+        }
         // The picked sentence opens the values whose keys it names.
         let said = self.picked_said.and_then(|(from, to)| {
             let group = self.group()?;
@@ -8746,38 +8746,28 @@ fn row_title(group: &Group) -> String {
     {
         return crate::load::heading(title);
     }
-    // The first sentence of the narration, without its directives and marks.
-    // Brackets are directives and pane names; an underscore is kept, since
-    // it is far likelier to be in an identifier than to be emphasis.
-    let mut plain = String::new();
-    let mut held = String::new();
-    let mut depth = 0usize;
-    for ch in group.say.chars() {
-        match ch {
-            '[' => depth += 1,
-            ']' if depth > 0 => {
-                depth -= 1;
-                if depth == 0 {
-                    held.clear();
-                }
-            }
-            '*' | '`' => {}
-            '\n' if depth == 0 => plain.push(' '),
-            _ if depth == 0 => plain.push(ch),
-            _ => held.push(ch),
-        }
-    }
-    // A bracket never closed was not a directive: keep what followed it.
-    if depth > 0 {
-        plain.push_str(&held);
-    }
-    let plain = plain.split_whitespace().collect::<Vec<_>>().join(" ");
-    let first = plain
-        .split_inclusive(['.', '?', '!'])
-        .next()
-        .unwrap_or(&plain)
-        .trim()
-        .trim_end_matches('.');
+    // The first sentence of the narration, as the reader sees it: points,
+    // beats and pane brackets taken out the way the rail does, then the
+    // marks.
+    let seen = crate::prose::unname(&crate::prose::unbeat(&crate::prose::unpoint(&group.say)));
+    let plain = seen
+        .chars()
+        .filter(|ch| !matches!(ch, '*' | '`'))
+        .collect::<String>()
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ");
+    // A sentence ends at a stop followed by a space or the end, so a file
+    // name like `config.yaml` does not end it.
+    let chars: Vec<char> = plain.chars().collect();
+    let end = (0..chars.len())
+        .find(|&ix| {
+            matches!(chars[ix], '.' | '?' | '!')
+                && chars.get(ix + 1).is_none_or(|next| next.is_whitespace())
+        })
+        .map_or(chars.len(), |ix| ix + 1);
+    let first_owned: String = chars[..end].iter().collect();
+    let first = first_owned.trim().trim_end_matches('.');
     let mut out: String = first.chars().take(64).collect();
     if first.chars().count() > 64 {
         out.push('…');
@@ -8953,7 +8943,15 @@ mod tests {
         );
         assert_eq!(
             row_title(&group(None, "Open [bracket here.")),
-            "Open bracket here"
+            "Open [bracket here"
+        );
+        assert_eq!(
+            row_title(&group(None, "[retry] fails twice. Then.")),
+            "Retry fails twice"
+        );
+        assert_eq!(
+            row_title(&group(None, "config.yaml is read first. Then.")),
+            "Config.yaml is read first"
         );
         assert_eq!(
             row_title(&group(Some("  "), "Said.")),
