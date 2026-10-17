@@ -482,6 +482,8 @@ pub struct Session {
     rail_scroll: ScrollHandle,
     aloud: bool,
     heard_groups: std::collections::HashSet<usize>,
+    /// The groups the reader has been to, for the review column's ticks.
+    seen: std::collections::HashSet<usize>,
     draft: Option<(About, Entity<TextareaState>, deck_core::When)>,
     group_ix: usize,
     turn: Option<u8>,
@@ -513,6 +515,7 @@ impl Session {
             rail_scroll: ScrollHandle::new(),
             aloud: false,
             heard_groups: std::collections::HashSet::new(),
+            seen: std::collections::HashSet::new(),
             draft: None,
             group_ix: 0,
             // Whatever the reader last turned a page to. `None` only for
@@ -985,6 +988,7 @@ impl DeckView {
             rail_scroll,
             aloud,
             heard_groups,
+            seen,
             draft,
             group_ix,
             turn,
@@ -1055,6 +1059,7 @@ impl DeckView {
             composing_when: deck_core::When::Interrupt,
             aloud,
             heard_groups,
+            seen,
             track_hover: None,
             track_hover_was: None,
             unheard,
@@ -1130,7 +1135,6 @@ impl DeckView {
             tip_fade: crate::pane::Fade::default()
                 .paced(crate::keys::TIP_RISE, crate::keys::TIP_FALL),
             tipping: Task::ready(()),
-            seen: std::collections::HashSet::new(),
             review_scroll: ScrollHandle::new(),
         };
         if let Some((about, state, when)) = draft {
@@ -1822,6 +1826,15 @@ impl DeckView {
         self.live.pause(PauseReason::Navigation);
         self.group_ix = next;
         self.build_panes(cx);
+        // The review column scrolls to the new group as it is painted, and
+        // its counts of rows past each edge are read from the frame after.
+        cx.spawn(async move |view, cx| {
+            cx.background_executor()
+                .timer(std::time::Duration::from_millis(32))
+                .await;
+            let _ = view.update(cx, |_, cx| cx.notify());
+        })
+        .detach();
         // `build_panes` has just stopped the voice mid-sentence, because what
         // it was saying belonged to the group that left the screen. If the
         // reader is being read to, the new group picks up where they now are.
@@ -5120,6 +5133,7 @@ impl DeckView {
             rail_scroll: self.rail_scroll.clone(),
             aloud: self.aloud,
             heard_groups: self.heard_groups.clone(),
+            seen: self.seen.clone(),
             draft: self
                 .composing
                 .as_ref()
@@ -5743,7 +5757,8 @@ impl DeckView {
         let (mut above, mut below) = (0usize, 0usize);
         for ix in 0..groups.len() {
             if let Some(row) = self.review_scroll.bounds_for_item(ix) {
-                let middle = row.top() + row.size.height / 2.;
+                // Laid-out bounds, before the scroll: the offset is added here.
+                let middle = row.top() + self.review_scroll.offset().y + row.size.height / 2.;
                 if middle < view.top() + px(6.) {
                     above += 1;
                 } else if middle > view.bottom() - px(6.) {
@@ -5839,22 +5854,12 @@ impl DeckView {
                 .on_click(cx.listener(move |_, _, _, cx| {
                     let view = scroll.bounds().size.height;
                     let mut at = scroll.offset();
-                    let last = (0..usize::MAX)
-                        .map_while(|ix| scroll.bounds_for_item(ix))
-                        .last();
-                    let first = scroll.bounds_for_item(0);
-                    let most = match (first, last) {
-                        (Some(first), Some(last)) => {
-                            (last.bottom() - first.top() - view).max(px(0.))
-                        }
-                        _ => px(0.),
-                    };
                     at.y = if down {
                         at.y - view * 0.8
                     } else {
                         at.y + view * 0.8
                     };
-                    at.y = at.y.min(px(0.)).max(-most);
+                    at.y = at.y.min(px(0.)).max(-scroll.max_offset().y);
                     scroll.set_offset(at);
                     cx.notify();
                 }))
@@ -5915,27 +5920,35 @@ impl DeckView {
                                     .py(px(6.))
                                     .children(rows),
                             )
-                            // The edges fade where the list goes on.
-                            .child(div().absolute().top_0().left_0().right_0().h(px(22.)).bg(
-                                linear_gradient(
-                                    180.,
-                                    linear_color_stop(ground, 0.),
-                                    linear_color_stop(clear, 1.),
-                                ),
-                            ))
-                            .child(
-                                div()
-                                    .absolute()
-                                    .bottom_0()
-                                    .left_0()
-                                    .right_0()
-                                    .h(px(30.))
-                                    .bg(linear_gradient(
-                                        180.,
-                                        linear_color_stop(clear, 0.),
-                                        linear_color_stop(ground, 1.),
-                                    )),
-                            )
+                            // The edges fade where the list goes on, and only there:
+                            // at rest a fade over the first row dimmed the very
+                            // group being read.
+                            .when(above > 0, |this| {
+                                this.child(
+                                    div().absolute().top_0().left_0().right_0().h(px(22.)).bg(
+                                        linear_gradient(
+                                            180.,
+                                            linear_color_stop(ground, 0.),
+                                            linear_color_stop(clear, 1.),
+                                        ),
+                                    ),
+                                )
+                            })
+                            .when(below > 0, |this| {
+                                this.child(
+                                    div()
+                                        .absolute()
+                                        .bottom_0()
+                                        .left_0()
+                                        .right_0()
+                                        .h(px(30.))
+                                        .bg(linear_gradient(
+                                            180.,
+                                            linear_color_stop(clear, 0.),
+                                            linear_color_stop(ground, 1.),
+                                        )),
+                                )
+                            })
                             .when(above > 0, |this| {
                                 this.child(more("review-up", format!("↑ {above} more"), false))
                             })
@@ -8734,17 +8747,29 @@ fn row_title(group: &Group) -> String {
         return crate::load::heading(title);
     }
     // The first sentence of the narration, without its directives and marks.
+    // Brackets are directives and pane names; an underscore is kept, since
+    // it is far likelier to be in an identifier than to be emphasis.
     let mut plain = String::new();
+    let mut held = String::new();
     let mut depth = 0usize;
     for ch in group.say.chars() {
         match ch {
             '[' => depth += 1,
-            ']' => depth = depth.saturating_sub(1),
-            '*' | '`' | '_' => {}
+            ']' if depth > 0 => {
+                depth -= 1;
+                if depth == 0 {
+                    held.clear();
+                }
+            }
+            '*' | '`' => {}
             '\n' if depth == 0 => plain.push(' '),
             _ if depth == 0 => plain.push(ch),
-            _ => {}
+            _ => held.push(ch),
         }
+    }
+    // A bracket never closed was not a directive: keep what followed it.
+    if depth > 0 {
+        plain.push_str(&held);
     }
     let plain = plain.split_whitespace().collect::<Vec<_>>().join(" ");
     let first = plain
@@ -8921,6 +8946,14 @@ mod tests {
             )),
             "The coupon runs twice",
             "the first sentence, without its directive or marks"
+        );
+        assert_eq!(
+            row_title(&group(None, "`order_id` is null.")),
+            "Order_id is null"
+        );
+        assert_eq!(
+            row_title(&group(None, "Open [bracket here.")),
+            "Open bracket here"
         );
         assert_eq!(
             row_title(&group(Some("  "), "Said.")),
