@@ -117,6 +117,19 @@ enum What {
         /// answer on screen now, so it is never the deck's title again.
         #[arg(long)]
         title: Option<String>,
+        /// How sure you are of this group's claim: high, medium or low.
+        ///
+        /// By what you did, not how it feels. High: you ran it and watched,
+        /// a test covers this case, or the whole path is on screen. Medium:
+        /// you read all of it but did not run it, or it depends on something
+        /// you did not see. Low: you are inferring. Medium and low need
+        /// `--why`. Between two, pick the lower.
+        #[arg(long, value_name = "LEVEL")]
+        confidence: Option<String>,
+        /// Why you are not more sure: what you did not see or could not run,
+        /// in one line the reader can check or answer.
+        #[arg(long)]
+        why: Option<String>,
         /// A file and the lines to light up, and optionally a note after a
         /// space: `src/batch.ts:140-148 decremented *twice*`.
         ///
@@ -590,6 +603,8 @@ impl Cli {
                 deck,
                 say,
                 title,
+                confidence,
+                why,
                 refs,
                 after,
                 before,
@@ -604,14 +619,25 @@ impl Cli {
                     for note in deck_cli::what_will_not_light(&say, &refs) {
                         eprintln!("deck: {note}");
                     }
-                    deck_cli::group_titled(&deck, title.as_deref(), &say, refs, &ask).map(|path| {
-                        crate::usage::record(crate::usage::Count::GroupWritten);
-                        crate::usage::record_many(
-                            crate::usage::Count::QuestionsOffered,
-                            ask.len() as u64,
-                        );
-                        println!("{}", path.display());
-                    })
+                    deck_cli::confidence(confidence.as_deref(), why.as_deref())
+                        .and_then(|judged| {
+                            deck_cli::group_judged(
+                                &deck,
+                                title.as_deref(),
+                                judged,
+                                &say,
+                                refs,
+                                &ask,
+                            )
+                        })
+                        .map(|path| {
+                            crate::usage::record(crate::usage::Count::GroupWritten);
+                            crate::usage::record_many(
+                                crate::usage::Count::QuestionsOffered,
+                                ask.len() as u64,
+                            );
+                            println!("{}", path.display());
+                        })
                 }),
             ),
             What::Walk => report(crate::setup::live()),

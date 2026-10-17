@@ -664,6 +664,78 @@ pub fn group_titled(
     pointing: Vec<Pointing>,
     asks: &[String],
 ) -> anyhow::Result<PathBuf> {
+    group_judged(root, title, None, say, pointing, asks)
+}
+
+/// The longest a confidence's reason may be, in characters: one line in a
+/// card.
+pub const LONGEST_WHY: usize = 140;
+
+/// How sure the agent is, checked: a level it names, and a reason whenever
+/// that level is below high.
+///
+/// # Errors
+///
+/// When the level is not high, medium or low; when medium or low comes
+/// without a reason; when a reason comes without a level; or when the reason
+/// is empty, runs over a line, or is longer than [`LONGEST_WHY`].
+pub fn confidence(
+    level: Option<&str>,
+    why: Option<&str>,
+) -> anyhow::Result<Option<deck_core::protocol::Confidence>> {
+    use deck_core::protocol::{Confidence, Level};
+    let why = why.map(str::trim);
+    let Some(level) = level else {
+        anyhow::ensure!(
+            why.is_none(),
+            "--why says why you are not more sure, so it needs --confidence medium or low"
+        );
+        return Ok(None);
+    };
+    let level = match level.trim().to_ascii_lowercase().as_str() {
+        "high" => Level::High,
+        "medium" => Level::Medium,
+        "low" => Level::Low,
+        other => anyhow::bail!("--confidence is high, medium or low, not {other:?}"),
+    };
+    if let Some(why) = why {
+        anyhow::ensure!(
+            !why.is_empty(),
+            "--why is empty: say what you could not check, or leave it out"
+        );
+        anyhow::ensure!(
+            !why.contains(['\n', '\r']),
+            "--why runs over a line: one sentence the reader can check or answer"
+        );
+        let long = why.chars().count();
+        anyhow::ensure!(
+            long <= LONGEST_WHY,
+            "--why is {long} characters, and at most {LONGEST_WHY} fit on the card"
+        );
+    }
+    anyhow::ensure!(
+        level == Level::High || why.is_some(),
+        "--confidence medium or low needs --why: what you did not see or could not run, so the reader can check it"
+    );
+    Ok(Some(Confidence {
+        level,
+        why: why.map(ToString::to_string),
+    }))
+}
+
+/// [`group_titled`], with how sure the agent is of the claim.
+///
+/// # Errors
+///
+/// As [`group_titled`].
+pub fn group_judged(
+    root: &Path,
+    title: Option<&str>,
+    confidence: Option<deck_core::protocol::Confidence>,
+    say: &str,
+    pointing: Vec<Pointing>,
+    asks: &[String],
+) -> anyhow::Result<PathBuf> {
     let title = title.map(heading).transpose()?;
     let asks = questions(asks)?;
     anyhow::ensure!(
@@ -720,6 +792,7 @@ pub fn group_titled(
         id: format!("g{ord}"),
         ord: Some(ord),
         title,
+        confidence,
         say: say.to_string(),
         refs,
         asks,
@@ -1444,6 +1517,28 @@ mod tests {
             said.contains("220-240"),
             "and it says what to write instead"
         );
+    }
+
+    #[test]
+    fn confidence_needs_a_reason_below_high() {
+        use deck_core::protocol::Level;
+        assert_eq!(confidence(None, None).unwrap(), None);
+        assert_eq!(
+            confidence(Some("High"), None).unwrap().unwrap().level,
+            Level::High
+        );
+        let medium = confidence(Some("medium"), Some(" not run "))
+            .unwrap()
+            .unwrap();
+        assert_eq!(medium.level, Level::Medium);
+        assert_eq!(medium.why.as_deref(), Some("not run"));
+        assert!(confidence(Some("low"), None).is_err(), "low needs a reason");
+        assert!(
+            confidence(None, Some("x")).is_err(),
+            "a reason needs a level"
+        );
+        assert!(confidence(Some("sure"), None).is_err(), "only three levels");
+        assert!(confidence(Some("low"), Some("two\nlines")).is_err());
     }
 
     #[test]

@@ -114,6 +114,7 @@ One thing the agent wants to say, and the evidence for it.
 | `id`   | string   | yes      | Identifies the group within its deck. |
 | `ord`  | integer  | no       | Position in the story, counting from 1. |
 | `title` | string  | no       | What this group shows, as a one-line heading. See below. |
+| `confidence` | object | no | How sure the agent is of the claim: `{ "level": "high" \| "medium" \| "low", "why"?: string }`. See below. |
 | `say`  | string   | yes      | The narration. Markdown; see below. |
 | `refs` | array    | no       | The evidence. One pane each. Defaults to empty. |
 | `asks` | array    | no       | Up to five questions the reader can press to ask the agent. Defaults to empty. |
@@ -134,6 +135,16 @@ existed.
 
 `deck group --title` trims it and refuses one that is empty, runs over a line, or
 is longer than 80 characters.
+
+### Confidence
+
+`confidence` says how sure the agent is of the group's claim, by what it did:
+
+- `high`: it saw it happen or proved it. It ran the code and watched, a test covers this case, or the whole path is on screen with no input it could not see.
+- `medium`: it read all the code the claim rests on and the logic holds, but did not run it, or the result depends on something it did not see (configuration, production data, another service).
+- `low`: it is inferring, from names, part of the code, or a pattern elsewhere.
+
+`why` is one line saying what the agent did not see or could not run, so the reader can check or answer it. `deck group --confidence` refuses medium or low without `--why`, a `--why` without a level, a level other than the three, and a reason that is empty, runs over a line, or is longer than 140 characters. deck's own window shows the level as three bars and its name after the group's title, and on a rest a card with what the level means and the reason. A group without `confidence` shows nothing.
 
 ### Questions to ask
 

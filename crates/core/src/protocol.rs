@@ -76,6 +76,11 @@ pub struct Group {
     /// headed by the deck's title, as every group was.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub title: Option<String>,
+    /// How sure the agent is of this group's claim, by fixed rules, with a
+    /// reason whenever it is less than high. Optional: a group without it
+    /// says nothing about its confidence.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub confidence: Option<Confidence>,
     /// The narration, as Markdown. May be long; the band scrolls.
     pub say: String,
     /// The evidence for this one claim. One pane each.
@@ -89,6 +94,34 @@ pub struct Group {
     /// Optional, and absent from a group written before it existed.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub asks: Vec<String>,
+}
+
+/// How sure the agent is of a group's claim.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Confidence {
+    /// The level, by the rules in [`Level`].
+    pub level: Level,
+    /// Why it is not higher: something the reader can check or answer.
+    /// Required below high, and pointless at it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub why: Option<String>,
+}
+
+/// A claim's confidence, by what the agent did rather than how it feels.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Level {
+    /// Saw it happen or proved it: ran it and watched, a test covers this
+    /// case, or the whole path is in front of the reader with no input
+    /// the agent could not see.
+    High,
+    /// Read all the code the claim rests on and the logic holds, but did not
+    /// run it, or it depends on something not seen: configuration, data in
+    /// production, another service.
+    Medium,
+    /// Inferring: from names, from part of the code, from a pattern
+    /// elsewhere, or with a piece it could not find.
+    Low,
 }
 
 /// One pane's worth of evidence.

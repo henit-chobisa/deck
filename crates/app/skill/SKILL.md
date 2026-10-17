@@ -1287,7 +1287,7 @@ the agent never moves anything is a document with a bar under it.
 ```
 deck new      the header, and the bar
 deck open     the bar, in the background — and what wakes you at the end
-deck group    one group, one call — --title for its heading, and --ask, three to five, for the pills under it
+deck group    one group, one call — --title for its heading, --confidence (and --why) for how sure you are, --ask for the pills
 deck asks     after an answer: renew one group's pills (--group g3 --ask …)
 deck seal     no more coming
 deck wait     only with -d, when you detached the window yourself
@@ -1380,9 +1380,26 @@ one line, at most 80 characters. Never the deck's title again, and never a label
 story. A group without one is headed by the deck's title, which is the confusion
 this exists to end.
 
+**Say how sure you are, by what you did.** `--confidence high`, `medium` or `low`:
+
+- **high**: you saw it happen or proved it. You ran it and watched, a test covers
+  this exact case, or the whole path is on screen with no input you could not see.
+- **medium**: you read all the code the claim rests on and the logic holds, but you
+  did not run it, or it depends on something you did not see: configuration, data
+  in production, another service.
+- **low**: you are inferring, from names, from part of the code, from a pattern
+  elsewhere, or a piece you need is missing.
+
+Medium and low need `--why`: one line naming what you did not see or could not
+run, which the reader can check or answer ("read, not run; depends on how
+production retries a declined card"). Between two levels, pick the lower. The
+window shows the level as bars after the group's title, and the reason on hover;
+a reader who learns your highs are earned trusts them.
+
 ```bash
 deck group <path> \
   --title 'A pane has no width' \
+  --confidence high \
   --say 'Okay, drag the line between two panes. Left one grows, right one gives way,
 nothing else on the page twitches. Feels like the most ordinary thing in the world.
 

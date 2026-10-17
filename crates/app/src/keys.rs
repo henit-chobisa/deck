@@ -8,6 +8,7 @@
 
 use std::time::Duration;
 
+use deck_core::protocol::{Confidence, Level};
 use deck_core::theme::Palette;
 use gpui_kit::component::*;
 use gpui_kit::prelude::FluentBuilder as _;
@@ -229,4 +230,125 @@ pub(crate) fn card(
                     }),
             ),
     )
+}
+
+/// The confidence on a group's claim answers to the pointer like a key, with
+/// a card of its own.
+pub(crate) const CONFIDENCE: &str = "confidence";
+
+/// A level's colour: the palette's own green and red at the ends, the accent
+/// leaning toward the text between them.
+pub(crate) fn level_colour(level: Level, palette: &Palette) -> deck_core::theme::Rgb {
+    match level {
+        Level::High => palette.add,
+        Level::Medium => palette.accent.mix(palette.fg, 0.3),
+        Level::Low => palette.del,
+    }
+}
+
+/// The level's name and what it means, said the way the skill says it.
+pub(crate) fn level_words(level: Level) -> (&'static str, &'static str) {
+    match level {
+        Level::High => (
+            "High",
+            "The agent saw it happen or proved it: ran it, a test covers this case, or the whole path is on screen.",
+        ),
+        Level::Medium => (
+            "Medium",
+            "The agent read all the code this rests on, but did not run it, or it depends on something it did not see.",
+        ),
+        Level::Low => (
+            "Low",
+            "The agent is inferring: from names, part of the code, or a pattern elsewhere.",
+        ),
+    }
+}
+
+/// Three bars, filled to the level, like signal strength.
+pub(crate) fn bars(level: Level, palette: &Palette) -> Div {
+    let filled = match level {
+        Level::High => 3,
+        Level::Medium => 2,
+        Level::Low => 1,
+    };
+    let on = paint(level_colour(level, palette));
+    let off = paint(palette.edge.mix(palette.fg, 0.08));
+    div()
+        .flex()
+        .items_end()
+        .gap(px(2.))
+        .h(px(11.))
+        .children((1..=3).map(|n| {
+            div()
+                .w(px(3.))
+                .h(px(2. + 3. * n as f32))
+                .rounded(px(1.))
+                .bg(if n <= filled { on } else { off })
+        }))
+}
+
+/// The card over a group's confidence: the level, what it means, and the
+/// agent's reason when there is one.
+pub(crate) fn confidence_card(
+    confidence: &Confidence,
+    level: f32,
+    palette: &Palette,
+    sans: SharedString,
+) -> Div {
+    let (name, means) = level_words(confidence.level);
+    let colour = paint(level_colour(confidence.level, palette));
+    div()
+        .w(px(270.))
+        .font_family(sans)
+        .whitespace_normal()
+        .mt(px(10. - 4. * (1. - level)))
+        .opacity(level)
+        .px(px(13.))
+        .pt(px(11.))
+        .pb(px(12.))
+        .rounded(px(11.))
+        .bg(paint(palette.band.mix(palette.fg, 0.05)))
+        .border_1()
+        .border_color(paint(palette.edge.mix(palette.fg, 0.06)))
+        .shadow_lg()
+        .text_size(px(12.))
+        .line_height(px(18.))
+        .text_color(paint(palette.fg.mix(palette.band, 0.22)))
+        .child(
+            div()
+                .h_flex()
+                .items_center()
+                .gap(px(8.))
+                .mb(px(5.))
+                .child(bars(confidence.level, palette))
+                .child(
+                    div()
+                        .font_weight(FontWeight::SEMIBOLD)
+                        .text_size(px(12.5))
+                        .text_color(paint(palette.fg))
+                        .child(format!("{name} confidence")),
+                ),
+        )
+        .child(div().child(means))
+        .when_some(confidence.why.clone(), |this, why| {
+            this.child(
+                div()
+                    .mt(px(7.))
+                    .pt(px(7.))
+                    .border_t_1()
+                    .border_color(paint(palette.edge))
+                    .text_color(paint(palette.muted))
+                    .child({
+                        const LEAD: &str = "Why ";
+                        StyledText::new(format!("{LEAD}{why}")).with_highlights([(
+                            0..LEAD.len(),
+                            HighlightStyle {
+                                color: Some(colour),
+                                font_weight: Some(FontWeight::SEMIBOLD),
+                                ..HighlightStyle::default()
+                            },
+                        )])
+                    }),
+            )
+        })
 }
