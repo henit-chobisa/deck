@@ -144,7 +144,7 @@ is longer than 80 characters.
 - `medium`: it read all the code the claim rests on and the logic holds, but did not run it, or the result depends on something it did not see (configuration, production data, another service).
 - `low`: it is inferring, from names, part of the code, or a pattern elsewhere.
 
-`why` is one line saying what the agent did not see or could not run, so the reader can check or answer it. `deck group --confidence` refuses medium or low without `--why`, a `--why` without a level, a level other than the three, and a reason that is empty, runs over a line, or is longer than 140 characters. deck's own window shows the level as three bars and its name after the group's title, and on a rest a card with what the level means and the reason. A group without `confidence` shows nothing.
+`why` is one line saying what the agent did not see or could not run, so the reader can check or answer it. `deck group --confidence` refuses medium or low without `--why`, high with one, a `--why` without a level, a level other than the three, and a reason that is empty, runs over a line, or is longer than 140 characters. deck's own window shows the level as three bars and its name after the group's title, and on a rest a card with what the level means and the reason. A group without `confidence` shows nothing.
 
 ### Questions to ask
 

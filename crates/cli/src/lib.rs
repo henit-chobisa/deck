@@ -714,6 +714,10 @@ pub fn confidence(
         );
     }
     anyhow::ensure!(
+        level != Level::High || why.is_none(),
+        "--why is for medium and low: a high claim is one you saw or proved, and needs no reason"
+    );
+    anyhow::ensure!(
         level == Level::High || why.is_some(),
         "--confidence medium or low needs --why: what you did not see or could not run, so the reader can check it"
     );
@@ -1539,6 +1543,10 @@ mod tests {
         );
         assert!(confidence(Some("sure"), None).is_err(), "only three levels");
         assert!(confidence(Some("low"), Some("two\nlines")).is_err());
+        assert!(
+            confidence(Some("high"), Some("ran it")).is_err(),
+            "high needs no reason"
+        );
     }
 
     #[test]

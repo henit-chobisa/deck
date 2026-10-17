@@ -1834,6 +1834,14 @@ impl DeckView {
         }
         self.live.pause(PauseReason::Navigation);
         self.group_ix = next;
+        // A card over the band belongs to the group that just left: its
+        // badge may not exist on the next one, and nothing would ever say the
+        // pointer left it.
+        if self.tip.is_some_and(|(_, place)| place == "band") {
+            self.tipping = Task::ready(());
+            self.tip_fade.set(false);
+            self.tip = None;
+        }
         self.build_panes(cx);
         // `build_panes` has just stopped the voice mid-sentence, because what
         // it was saying belonged to the group that left the screen. If the

@@ -79,7 +79,11 @@ pub struct Group {
     /// How sure the agent is of this group's claim, by fixed rules, with a
     /// reason whenever it is less than high. Optional: a group without it
     /// says nothing about its confidence.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "harmless_confidence"
+    )]
     pub confidence: Option<Confidence>,
     /// The narration, as Markdown. May be long; the band scrolls.
     pub say: String,
@@ -94,6 +98,28 @@ pub struct Group {
     /// Optional, and absent from a group written before it existed.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub asks: Vec<String>,
+}
+
+/// A confidence that does not parse is read as none, never as a broken group.
+///
+/// A group that fails to parse is dropped, and every group after a gap waits
+/// for it, so a level this client does not know — `"High"` by hand, or a level
+/// added later — would hide the rest of the deck. The badge is worth less than
+/// that.
+fn harmless_confidence<'de, D>(deserializer: D) -> Result<Option<Confidence>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum Read {
+        Known(Confidence),
+        Other(serde::de::IgnoredAny),
+    }
+    Ok(match Option::<Read>::deserialize(deserializer)? {
+        Some(Read::Known(confidence)) => Some(confidence),
+        Some(Read::Other(_)) | None => None,
+    })
 }
 
 /// How sure the agent is of a group's claim.
@@ -692,6 +718,16 @@ mod tests {
     }
 
     use super::*;
+
+    #[test]
+    fn a_confidence_this_client_cannot_read_does_not_hide_the_group() {
+        let json = r#"{ "id": "g1", "ord": 1, "say": "s", "confidence": { "level": "certain" } }"#;
+        let group: Group = serde_json::from_str(json).expect("the group still reads");
+        assert!(group.confidence.is_none());
+        let json = r#"{ "id": "g1", "ord": 1, "say": "s", "confidence": { "level": "medium", "why": "not run" } }"#;
+        let group: Group = serde_json::from_str(json).unwrap();
+        assert_eq!(group.confidence.unwrap().level, Level::Medium);
+    }
 
     #[test]
     fn a_name_is_a_word_a_sentence_can_carry() {
