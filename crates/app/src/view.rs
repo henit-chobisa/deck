@@ -3293,12 +3293,6 @@ impl DeckView {
         )
     }
 
-    /// Put the reader's own light out.
-    ///
-    /// Everything on screen that a person put there: the sentence pressed in
-    /// the rail, the one picked in the narration, the lines picked in a pane,
-    /// and the spotlight those raised. What the agent is pointing at is left
-    /// alone — it is mid-sentence, and its light goes out by itself.
     /// `?`: the help dock, up or away.
     fn on_help(&mut self, _: &Help, _: &mut Window, cx: &mut Context<Self>) {
         if self.help.on() {
@@ -3374,6 +3368,10 @@ impl DeckView {
             self.tipping = cx.spawn(async move |view, cx| {
                 cx.background_executor().timer(crate::keys::REST).await;
                 let _ = view.update(cx, |deck, cx| {
+                    // The dock went while the pointer rested on one of its keys.
+                    if key.1 == "dock" && !deck.help.on() {
+                        return;
+                    }
                     deck.tip = Some(key);
                     deck.tip_fade.set(true);
                     cx.notify();
@@ -3530,6 +3528,12 @@ impl DeckView {
         )
     }
 
+    /// Put the reader's own light out.
+    ///
+    /// Everything on screen that a person put there: the sentence pressed in
+    /// the rail, the one picked in the narration, the lines picked in a pane,
+    /// and the spotlight those raised. What the agent is pointing at is left
+    /// alone — it is mid-sentence, and its light goes out by itself.
     fn on_unlight(&mut self, _: &Unlight, window: &mut Window, cx: &mut Context<Self>) {
         if self.quitting {
             self.stay(window, cx);
@@ -6614,56 +6618,58 @@ impl DeckView {
                             .child("Your agent can make incorrect claims"),
                     ),
             )
+            // The three keys used most, each with a card on a rest,
+            // and `?` for the rest of them. Their own part of the
+            // strip, sharing the spare width with where you are: in a
+            // narrow window they give way, clipped, and the group
+            // count, the version and the way out all stay in reach.
+            .child({
+                let mono = cx.theme().mono_font_family.clone();
+                let named = |key: &'static str, name: &'static str, cx: &mut Context<Self>| {
+                    self.tipped(
+                        key,
+                        "strip",
+                        div()
+                            .id(SharedString::from(format!("strip-{key}")))
+                            .h_flex()
+                            .items_center()
+                            .gap(px(6.))
+                            .child(crate::keys::cap(key, &self.palette, mono.clone()))
+                            .child(name),
+                        cx,
+                    )
+                };
+                div()
+                    .h_flex()
+                    .items_center()
+                    .justify_end()
+                    .flex_1()
+                    .min_w_0()
+                    .overflow_hidden()
+                    .whitespace_nowrap()
+                    .gap(px(12.))
+                    .child(named("n", "next", cx))
+                    .child(named("p", "previous", cx))
+                    .child(named("c", "comment", cx))
+                    .child(div().w(px(1.)).h(px(12.)).bg(paint(self.palette.edge)))
+                    .child(
+                        named(crate::keys::HELP, "keys", cx)
+                            .cursor_pointer()
+                            .on_click(cx.listener(|deck, _, _, cx| {
+                                if deck.help.on() {
+                                    deck.close_help(cx);
+                                } else {
+                                    deck.open_help(cx);
+                                }
+                            })),
+                    )
+            })
             .child(
                 div()
                     .h_flex()
                     .gap_4()
-                    .min_w_0()
+                    .flex_none()
                     .whitespace_nowrap()
-                    // The three keys used most, each with a card on a rest,
-                    // and `?` for the rest of them. In a narrow window they
-                    // are what gives way, clipped from the left, so the
-                    // count, the version and the way out stay in reach.
-                    .child({
-                        let mono = cx.theme().mono_font_family.clone();
-                        let named =
-                            |key: &'static str, name: &'static str, cx: &mut Context<Self>| {
-                                self.tipped(
-                                    key,
-                                    "strip",
-                                    div()
-                                        .id(SharedString::from(format!("strip-{key}")))
-                                        .h_flex()
-                                        .items_center()
-                                        .gap(px(6.))
-                                        .child(crate::keys::cap(key, &self.palette, mono.clone()))
-                                        .child(name),
-                                    cx,
-                                )
-                            };
-                        div()
-                            .h_flex()
-                            .items_center()
-                            .justify_end()
-                            .min_w_0()
-                            .overflow_hidden()
-                            .gap(px(12.))
-                            .child(named("n", "next", cx))
-                            .child(named("p", "previous", cx))
-                            .child(named("c", "comment", cx))
-                            .child(div().w(px(1.)).h(px(12.)).bg(paint(self.palette.edge)))
-                            .child(
-                                named(crate::keys::HELP, "keys", cx)
-                                    .cursor_pointer()
-                                    .on_click(cx.listener(|deck, _, _, cx| {
-                                        if deck.help.on() {
-                                            deck.close_help(cx);
-                                        } else {
-                                            deck.open_help(cx);
-                                        }
-                                    })),
-                            )
-                    })
                     .child(format!(
                         "{said} comment{}",
                         if said == 1 { "" } else { "s" }
