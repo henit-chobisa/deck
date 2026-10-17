@@ -99,11 +99,7 @@ impl Deck {
     /// only thing there is to go on.
     #[must_use]
     pub fn title(&self) -> String {
-        let mut letters = self.header.title.chars();
-        match letters.next() {
-            Some(first) => first.to_uppercase().chain(letters).collect(),
-            None => String::new(),
-        }
+        heading(&self.header.title)
     }
 
     /// The story so far: every group that can be read in order.
@@ -248,6 +244,16 @@ pub fn read_source(base: &Path, file: &Path) -> String {
         .unwrap_or_else(|err| format!("could not read {}\n\n{err}", full.display()))
 }
 
+/// A title as it is shown: capitalised at the front, as [`Deck::title`] says.
+#[must_use]
+pub fn heading(title: &str) -> String {
+    let mut letters = title.chars();
+    match letters.next() {
+        Some(first) => first.to_uppercase().chain(letters).collect(),
+        None => String::new(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -258,6 +264,8 @@ mod tests {
             asks: Vec::new(),
             id: format!("g{}", ord.unwrap_or(0)),
             ord,
+            title: None,
+            confidence: None,
             say: String::new(),
             refs: Vec::new(),
         }

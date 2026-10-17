@@ -113,12 +113,38 @@ One thing the agent wants to say, and the evidence for it.
 | ------ | -------- | -------- | ------- |
 | `id`   | string   | yes      | Identifies the group within its deck. |
 | `ord`  | integer  | no       | Position in the story, counting from 1. |
+| `title` | string  | no       | What this group shows, as a one-line heading. See below. |
+| `confidence` | object | no | How good the agent's basis for the claim is: `{ "level": "high" \| "medium" \| "low", "why"?: string }`. See below. |
 | `say`  | string   | yes      | The narration. Markdown; see below. |
 | `refs` | array    | no       | The evidence. One pane each. Defaults to empty. |
 | `asks` | array    | no       | Up to five questions the reader can press to ask the agent. Defaults to empty. |
 
 The filename must start with `g` and end with `.json`. Nothing else about it is
 read — order comes from `ord`, not from the name and not from the filesystem.
+
+### A group's title
+
+`title` heads the group while it is on screen. The deck's `title` is the
+question the whole deck answers; a group's is the step of the answer in front
+of the reader. A client shows the group's title where it would otherwise show
+the deck's, capitalised at the front like the deck's, and keeps the deck's title
+somewhere quieter: deck's own window sets it in a small line above the group's
+title, beside the group's number, and keeps it there for every group. A group
+without one is headed by the deck's title, as every group was before the field
+existed.
+
+`deck group --title` trims it and refuses one that is empty, runs over a line, or
+is longer than 80 characters.
+
+### Confidence
+
+`confidence` says how good the agent's basis for the claim is. It is not a probability. The level starts from the strongest kind of evidence the agent used, then drops one step for each problem:
+
+- Start at `high` if it watched the behaviour (ran it, reproduced it, ran a test covering this case, read a trace from the system the claim is about), `medium` if it read every line the claim depends on without running it, `low` if it inferred it. Each gap counts once.
+- Drop one level for each that applies: indirect (evidence from another environment, commit or input), incomplete (a config value, another service, or a function not seen), conflicting (something seen disagrees and is not explained), or a never/always claim resting on examples.
+- A second, independent kind of evidence that agrees cancels one drop it does not share; repeating the same kind never raises it; below `low`, the claim is not made.
+
+`why` is the basis in one line the reader can check: on `high`, what showed it; below, the drop or what is missing. `deck group --confidence` refuses medium or low without `--why`, a `--why` without a level, a level other than the three, and a basis that is empty, runs over a line, or is longer than 140 characters. deck's own window shows the level as three bars and its name after the group's title, and on a rest a card with what the level means and the basis. A group without `confidence` shows nothing; a confidence a client cannot read is treated as none.
 
 ### Questions to ask
 

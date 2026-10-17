@@ -642,6 +642,101 @@ pub fn group_asking(
     pointing: Vec<Pointing>,
     asks: &[String],
 ) -> anyhow::Result<PathBuf> {
+    group_titled(root, None, say, pointing, asks)
+}
+
+/// The longest a group's title may be, in characters.
+///
+/// It heads the band on one line. Past this it wraps, and a heading that
+/// wraps is a sentence of the narration that ended up in the wrong place.
+pub const LONGEST_TITLE: usize = 80;
+
+/// [`group_asking`], headed by a title of its own.
+///
+/// # Errors
+///
+/// As [`group_asking`], and when the title is empty, runs over a line, or is
+/// longer than [`LONGEST_TITLE`].
+pub fn group_titled(
+    root: &Path,
+    title: Option<&str>,
+    say: &str,
+    pointing: Vec<Pointing>,
+    asks: &[String],
+) -> anyhow::Result<PathBuf> {
+    group_judged(root, title, None, say, pointing, asks)
+}
+
+/// The longest a confidence's reason may be, in characters: one line in a
+/// card.
+pub const LONGEST_WHY: usize = 140;
+
+/// How sure the agent is, checked: a level it names, and its basis, which
+/// is required below high.
+///
+/// # Errors
+///
+/// When the level is not high, medium or low; when medium or low comes
+/// without a reason; when a reason comes without a level; or when the reason
+/// basis is empty, runs over a line, or is longer than [`LONGEST_WHY`].
+pub fn confidence(
+    level: Option<&str>,
+    why: Option<&str>,
+) -> anyhow::Result<Option<deck_core::protocol::Confidence>> {
+    use deck_core::protocol::{Confidence, Level};
+    let why = why.map(str::trim);
+    let Some(level) = level else {
+        anyhow::ensure!(
+            why.is_none(),
+            "--why is the basis for a confidence, so it needs --confidence"
+        );
+        return Ok(None);
+    };
+    let level = match level.trim().to_ascii_lowercase().as_str() {
+        "high" => Level::High,
+        "medium" => Level::Medium,
+        "low" => Level::Low,
+        other => anyhow::bail!("--confidence is high, medium or low, not {other:?}"),
+    };
+    if let Some(why) = why {
+        anyhow::ensure!(
+            !why.is_empty(),
+            "--why is empty: say what you could not check, or leave it out"
+        );
+        anyhow::ensure!(
+            !why.contains(['\n', '\r']),
+            "--why runs over a line: one sentence the reader can check or answer"
+        );
+        let long = why.chars().count();
+        anyhow::ensure!(
+            long <= LONGEST_WHY,
+            "--why is {long} characters, and at most {LONGEST_WHY} fit on the card"
+        );
+    }
+    anyhow::ensure!(
+        level == Level::High || why.is_some(),
+        "--confidence medium or low needs --why: the drop that lowered it, or what is missing, so the reader can check it"
+    );
+    Ok(Some(Confidence {
+        level,
+        why: why.map(ToString::to_string),
+    }))
+}
+
+/// [`group_titled`], with how sure the agent is of the claim.
+///
+/// # Errors
+///
+/// As [`group_titled`].
+pub fn group_judged(
+    root: &Path,
+    title: Option<&str>,
+    confidence: Option<deck_core::protocol::Confidence>,
+    say: &str,
+    pointing: Vec<Pointing>,
+    asks: &[String],
+) -> anyhow::Result<PathBuf> {
+    let title = title.map(heading).transpose()?;
     let asks = questions(asks)?;
     anyhow::ensure!(
         root.join("deck.json").is_file(),
@@ -696,6 +791,8 @@ pub fn group_asking(
     let group = Group {
         id: format!("g{ord}"),
         ord: Some(ord),
+        title,
+        confidence,
         say: say.to_string(),
         refs,
         asks,
@@ -704,6 +801,25 @@ pub fn group_asking(
     let path = root.join(format!("g{ord}.json"));
     write_atomically(&path, &serde_json::to_vec_pretty(&group)?)?;
     Ok(path)
+}
+
+/// A group's title, checked: one line, said, and short enough to head the band.
+fn heading(title: &str) -> anyhow::Result<String> {
+    let title = title.trim();
+    anyhow::ensure!(
+        !title.is_empty(),
+        "--title is empty: give the group a heading, or leave --title out"
+    );
+    anyhow::ensure!(
+        !title.contains(['\n', '\r']),
+        "--title runs over a line: a heading is one line, and the rest belongs in --say"
+    );
+    let long = title.chars().count();
+    anyhow::ensure!(
+        long <= LONGEST_TITLE,
+        "--title is {long} characters, and at most {LONGEST_TITLE} fit on the band's line: say what this group shows, not the whole of it"
+    );
+    Ok(title.to_string())
 }
 
 /// Where a group's renewed questions are kept, beside the group itself.
@@ -1401,6 +1517,65 @@ mod tests {
             said.contains("220-240"),
             "and it says what to write instead"
         );
+    }
+
+    #[test]
+    fn confidence_needs_a_reason_below_high() {
+        use deck_core::protocol::Level;
+        assert_eq!(confidence(None, None).unwrap(), None);
+        assert_eq!(
+            confidence(Some("High"), None).unwrap().unwrap().level,
+            Level::High
+        );
+        let medium = confidence(Some("medium"), Some(" not run "))
+            .unwrap()
+            .unwrap();
+        assert_eq!(medium.level, Level::Medium);
+        assert_eq!(medium.why.as_deref(), Some("not run"));
+        assert!(confidence(Some("low"), None).is_err(), "low needs a reason");
+        assert!(
+            confidence(None, Some("x")).is_err(),
+            "a reason needs a level"
+        );
+        assert!(confidence(Some("sure"), None).is_err(), "only three levels");
+        assert!(confidence(Some("low"), Some("two\nlines")).is_err());
+        assert_eq!(
+            confidence(Some("high"), Some("ran it"))
+                .unwrap()
+                .unwrap()
+                .why
+                .as_deref(),
+            Some("ran it"),
+            "high carries its basis"
+        );
+    }
+
+    #[test]
+    fn a_group_title_is_kept_trimmed_and_held_to_one_short_line() {
+        let at = scratch("titled");
+        let root = new(&at, "Why the counter stalls", None, None).unwrap();
+
+        let path = group_titled(
+            &root,
+            Some("  The retry runs twice "),
+            "say",
+            Vec::new(),
+            &[],
+        )
+        .expect("a short title is fine");
+        let written: Group = serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap();
+        assert_eq!(written.title.as_deref(), Some("The retry runs twice"));
+
+        let path = group_asking(&root, "say", Vec::new(), &[]).unwrap();
+        let raw = std::fs::read_to_string(path).unwrap();
+        assert!(!raw.contains("\"title\""), "no title, no field: {raw}");
+
+        for bad in ["   ", "two\nlines", &"x".repeat(LONGEST_TITLE + 1)] {
+            assert!(
+                group_titled(&root, Some(bad), "say", Vec::new(), &[]).is_err(),
+                "{bad:?} is refused"
+            );
+        }
     }
 
     #[test]

@@ -22,6 +22,7 @@ mod conversation;
 mod draft;
 mod hook;
 mod icon;
+mod keys;
 mod live;
 mod load;
 #[cfg(target_os = "macos")]

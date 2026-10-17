@@ -67,6 +67,24 @@ pub struct Group {
     /// prose of group 3 assumes group 2 has been read.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ord: Option<u32>,
+    /// What this one group shows, as a heading in sentence case.
+    ///
+    /// The deck's title is the question the whole deck answers; this is the
+    /// step of the answer on screen now. A client shows it where the reader
+    /// looks first, and keeps the deck's title somewhere quieter. Optional,
+    /// and absent from a group written before it existed: such a group is
+    /// headed by the deck's title, as every group was.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+    /// How sure the agent is of this group's claim, by fixed rules, with a
+    /// reason whenever it is less than high. Optional: a group without it
+    /// says nothing about its confidence.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "harmless_confidence"
+    )]
+    pub confidence: Option<Confidence>,
     /// The narration, as Markdown. May be long; the band scrolls.
     pub say: String,
     /// The evidence for this one claim. One pane each.
@@ -80,6 +98,56 @@ pub struct Group {
     /// Optional, and absent from a group written before it existed.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub asks: Vec<String>,
+}
+
+/// A confidence that does not parse is read as none, never as a broken group.
+///
+/// A group that fails to parse is dropped, and every group after a gap waits
+/// for it, so a level this client does not know — `"High"` by hand, or a level
+/// added later — would hide the rest of the deck. The badge is worth less than
+/// that.
+fn harmless_confidence<'de, D>(deserializer: D) -> Result<Option<Confidence>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum Read {
+        Known(Confidence),
+        Other(serde::de::IgnoredAny),
+    }
+    Ok(match Option::<Read>::deserialize(deserializer)? {
+        Some(Read::Known(confidence)) => Some(confidence),
+        Some(Read::Other(_)) | None => None,
+    })
+}
+
+/// How sure the agent is of a group's claim.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Confidence {
+    /// The level, by the rules in [`Level`].
+    pub level: Level,
+    /// The basis, in a line the reader can check: on high, what showed it;
+    /// below high, the drop that lowered it or what is missing. Required
+    /// below high.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub why: Option<String>,
+}
+
+/// A claim's confidence, by what the agent did rather than how it feels.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Level {
+    /// The agent watched it behave: ran it, reproduced it, ran a test that
+    /// covers this case, or read a trace from the system the claim is about,
+    /// with nothing that drops it.
+    High,
+    /// It read every line the claim depends on without running it, or watched it behave
+    /// with one drop (indirect, incomplete, conflicting, or a never/always
+    /// claim).
+    Medium,
+    /// It inferred it, or its evidence took drops down to here.
+    Low,
 }
 
 /// One pane's worth of evidence.
@@ -650,6 +718,16 @@ mod tests {
     }
 
     use super::*;
+
+    #[test]
+    fn a_confidence_this_client_cannot_read_does_not_hide_the_group() {
+        let json = r#"{ "id": "g1", "ord": 1, "say": "s", "confidence": { "level": "certain" } }"#;
+        let group: Group = serde_json::from_str(json).expect("the group still reads");
+        assert!(group.confidence.is_none());
+        let json = r#"{ "id": "g1", "ord": 1, "say": "s", "confidence": { "level": "medium", "why": "not run" } }"#;
+        let group: Group = serde_json::from_str(json).unwrap();
+        assert_eq!(group.confidence.unwrap().level, Level::Medium);
+    }
 
     #[test]
     fn a_name_is_a_word_a_sentence_can_carry() {

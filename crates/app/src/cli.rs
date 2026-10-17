@@ -109,6 +109,32 @@ enum What {
         /// written as `\n` is read as one too, outside backticks.
         #[arg(long, value_parser = prose)]
         say: String,
+        /// What this group shows, as a heading in sentence case: `The retry
+        /// runs twice`.
+        ///
+        /// It heads the window while the group is on screen. The deck's title
+        /// is the question the whole deck answers; this is the step of the
+        /// answer on screen now, so it is never the deck's title again.
+        #[arg(long)]
+        title: Option<String>,
+        /// How sure you are of this group's claim: high, medium or low.
+        ///
+        /// Your basis, not a feeling. Start from the strongest evidence you
+        /// used: high, you watched it behave (ran it, reproduced it, ran a
+        /// test covering it, read a trace from the real system); medium, you
+        /// read every line it depends on; low, you inferred it. Drop a level
+        /// for each of: indirect (sandbox, old commit, a similar input),
+        /// incomplete (a config value, another service), conflicting
+        /// (something you saw disagrees), or a never/always claim. Count each
+        /// gap once. A second, independent kind of evidence cancels one drop
+        /// it does not share. Below low, do not make the claim. Between two,
+        /// pick the lower.
+        #[arg(long, value_name = "LEVEL")]
+        confidence: Option<String>,
+        /// The basis, in one line the reader can check: on high, what showed
+        /// it; below high, the drop or what is missing. Needed below high.
+        #[arg(long)]
+        why: Option<String>,
         /// A file and the lines to light up, and optionally a note after a
         /// space: `src/batch.ts:140-148 decremented *twice*`.
         ///
@@ -581,6 +607,9 @@ impl Cli {
             What::Group {
                 deck,
                 say,
+                title,
+                confidence,
+                why,
                 refs,
                 after,
                 before,
@@ -595,14 +624,25 @@ impl Cli {
                     for note in deck_cli::what_will_not_light(&say, &refs) {
                         eprintln!("deck: {note}");
                     }
-                    deck_cli::group_asking(&deck, &say, refs, &ask).map(|path| {
-                        crate::usage::record(crate::usage::Count::GroupWritten);
-                        crate::usage::record_many(
-                            crate::usage::Count::QuestionsOffered,
-                            ask.len() as u64,
-                        );
-                        println!("{}", path.display());
-                    })
+                    deck_cli::confidence(confidence.as_deref(), why.as_deref())
+                        .and_then(|judged| {
+                            deck_cli::group_judged(
+                                &deck,
+                                title.as_deref(),
+                                judged,
+                                &say,
+                                refs,
+                                &ask,
+                            )
+                        })
+                        .map(|path| {
+                            crate::usage::record(crate::usage::Count::GroupWritten);
+                            crate::usage::record_many(
+                                crate::usage::Count::QuestionsOffered,
+                                ask.len() as u64,
+                            );
+                            println!("{}", path.display());
+                        })
                 }),
             ),
             What::Walk => report(crate::setup::live()),

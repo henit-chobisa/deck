@@ -637,6 +637,8 @@ pub struct Look {
     pub leading: f32,
     /// The colour of ordinary words.
     pub tone: deck_core::theme::Rgb,
+    /// The space between paragraphs.
+    pub spacing: f32,
 }
 
 impl Look {
@@ -644,9 +646,14 @@ impl Look {
     #[must_use]
     pub fn band(palette: &Palette) -> Self {
         Self {
-            size: 13.2,
-            leading: 21.,
-            tone: palette.fg,
+            size: 12.5,
+            leading: 21.5,
+            // A step off the page's ink, so the group's title is the
+            // brightest line in the band and the prose reads as its body.
+            tone: palette.fg.mix(palette.band, 0.22),
+            // Close: a group's paragraphs are beats of one claim, and a wide
+            // gap between them read as separate statements.
+            spacing: 5.,
         }
     }
 
@@ -659,8 +666,9 @@ impl Look {
     pub fn rail(palette: &Palette) -> Self {
         Self {
             size: 12.2,
-            leading: 18.6,
+            leading: 17.6,
             tone: palette.fg.mix(palette.muted, 0.22),
+            spacing: 18.6 * 0.42,
         }
     }
 }
@@ -674,7 +682,7 @@ pub fn render_look(
     picking: &Picking,
     look: Look,
 ) -> impl IntoElement {
-    div().v_flex().gap(px(look.leading * 0.42)).children(
+    div().v_flex().gap(px(look.spacing)).children(
         paragraphs
             .into_iter()
             .map(|para| para.render(palette, mono.clone(), picking, look)),
@@ -694,7 +702,9 @@ impl Paragraph {
             .flex_wrap()
             .items_center()
             .text_size(px(look.size))
-            .line_height(px(look.leading))
+            // Each word stands in its line with `LIT_INSET` of clear space
+            // above and below it, so the line's pitch is still `leading`.
+            .line_height(px(look.leading - 2. * LIT_INSET))
             .text_color(paint(look.tone))
             .children(
                 self.tokens
@@ -726,6 +736,12 @@ impl Token {
         } else {
             0.
         };
+        // A picked sentence is one bar, not a row of pills: only its two outer
+        // ends are rounded. Rounding every word notched the bar between each
+        // pair of them.
+        let (first, last) = picking.range.map_or((false, false), |(from, to)| {
+            (at == from.min(to), at == from.max(to))
+        });
         let lit = picking
             .lit_also
             .iter()
@@ -803,9 +819,10 @@ impl Token {
             .iter()
             .any(|(from, to)| at >= *from && at <= *to);
         let wrap = move |inner: AnyElement| {
-            div()
-                .id(("say", at))
-                .when(pickable, |this| this.cursor_pointer())
+            // Two boxes. The outer one is the word's whole share of its line,
+            // and takes the pointer, so there is no dead strip between lines.
+            // The inner one is what is painted, set in from the top and bottom.
+            let bar = div()
                 .when(lit > 0., |this| {
                     // Firm enough to see at a glance. Three quarters of the way
                     // to the band was a tint you could hold a whole sentence in
@@ -813,7 +830,16 @@ impl Token {
                     // nothing — and a reader who thinks nothing happened does
                     // not try again.
                     let firm = palette.accent.mix(palette.band, 0.55);
-                    this.bg(paint(palette.band.mix(firm, lit))).rounded(px(2.))
+                    // The bar starts a little before its first word, as far
+                    // as the space after its last word reaches past the end,
+                    // so the words sit inside it rather than against its edge.
+                    // Pulled left by as much as it is padded, so lighting a
+                    // sentence moves no word.
+                    this.bg(paint(palette.band.mix(firm, lit)))
+                        .when(first, |this| {
+                            this.ml(px(-LIT_LEAD)).pl(px(LIT_LEAD)).rounded_l(px(4.))
+                        })
+                        .when(last, |this| this.rounded_r(px(4.)))
                 })
                 .when(lit <= 0. && heard > 0., |this| {
                     this.bg(paint(palette.band.mix(palette.accent, 0.2 * heard)))
@@ -829,6 +855,15 @@ impl Token {
                 // word's height the moment one lands, and the whole paragraph
                 // reflows around it — the line the reader is looking at moves
                 // under them as they write about it.
+                // The rule's pixel, matched above it, so the words sit in the
+                // middle of their ground when a sentence is lit instead of a
+                // pixel high.
+                .pt(px(1.))
+                // Clear of the line above and the one below: a lit sentence is
+                // a bar set in its line, not the whole height of it. Painted
+                // edge to edge, a sentence that wraps became one block, and a
+                // single line looked sliced off at the top and bottom.
+                .my(px(LIT_INSET))
                 .border_b_1()
                 .border_color(if remarked {
                     paint(palette.comment)
@@ -842,12 +877,15 @@ impl Token {
                     // guessing what is behind it costs a line under everything.
                     gpui_kit::transparent_black()
                 })
-                .when(remarked, |this| this.cursor_pointer())
+                .child(inner);
+            div()
+                .id(("say", at))
+                .when(pickable || remarked, |this| this.cursor_pointer())
                 .on_mouse_down(MouseButton::Left, move |_, window, cx| {
                     down(at, window, cx);
                 })
                 .on_hover(move |entered, window, cx| over(at, *entered, window, cx))
-                .child(inner)
+                .child(bar)
                 .into_any_element()
         };
 
@@ -882,6 +920,13 @@ impl Token {
         })
     }
 }
+
+/// The clear space above and below a lit sentence's bar, inside its line.
+const LIT_INSET: f32 = 3.;
+
+/// How far a lit sentence's bar reaches before its first word: about the
+/// width of the space after its last, which is the bar's margin at that end.
+const LIT_LEAD: f32 = 4.;
 
 /// The text without its trailing spaces, and those spaces.
 ///
