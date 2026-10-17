@@ -688,7 +688,7 @@ pub fn confidence(
     let Some(level) = level else {
         anyhow::ensure!(
             why.is_none(),
-            "--why says why you are not more sure, so it needs --confidence medium or low"
+            "--why is the basis for a confidence, so it needs --confidence"
         );
         return Ok(None);
     };
@@ -714,12 +714,8 @@ pub fn confidence(
         );
     }
     anyhow::ensure!(
-        level != Level::High || why.is_none(),
-        "--why is for medium and low: a high claim is one you saw or proved, and needs no reason"
-    );
-    anyhow::ensure!(
         level == Level::High || why.is_some(),
-        "--confidence medium or low needs --why: what you did not see or could not run, so the reader can check it"
+        "--confidence medium or low needs --why: the drop that lowered it, or what is missing, so the reader can check it"
     );
     Ok(Some(Confidence {
         level,
@@ -1543,9 +1539,14 @@ mod tests {
         );
         assert!(confidence(Some("sure"), None).is_err(), "only three levels");
         assert!(confidence(Some("low"), Some("two\nlines")).is_err());
-        assert!(
-            confidence(Some("high"), Some("ran it")).is_err(),
-            "high needs no reason"
+        assert_eq!(
+            confidence(Some("high"), Some("ran it"))
+                .unwrap()
+                .unwrap()
+                .why
+                .as_deref(),
+            Some("ran it"),
+            "high carries its basis"
         );
     }
 

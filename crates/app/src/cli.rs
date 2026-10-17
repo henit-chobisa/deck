@@ -119,15 +119,17 @@ enum What {
         title: Option<String>,
         /// How sure you are of this group's claim: high, medium or low.
         ///
-        /// By what you did, not how it feels. High: you ran it and watched,
-        /// a test covers this case, or the whole path is on screen. Medium:
-        /// you read all of it but did not run it, or it depends on something
-        /// you did not see. Low: you are inferring. Medium and low need
-        /// `--why`. Between two, pick the lower.
+        /// Your basis, not a feeling. Start from the strongest evidence you
+        /// used: high, you watched it behave (ran it, reproduced it, read a
+        /// trace from the real system); medium, you read the complete path;
+        /// low, you inferred it. Drop a level for each of: indirect (sandbox,
+        /// old commit, a similar input), incomplete (a config value, another
+        /// service, a function you did not open), conflicting (something you
+        /// saw disagrees), or a never/always claim. Between two, pick the lower.
         #[arg(long, value_name = "LEVEL")]
         confidence: Option<String>,
-        /// Why you are not more sure: what you did not see or could not run,
-        /// in one line the reader can check or answer.
+        /// The basis, in one line the reader can check: on high, what showed
+        /// it; below high, the drop or what is missing. Needed below high.
         #[arg(long)]
         why: Option<String>,
         /// A file and the lines to light up, and optionally a note after a

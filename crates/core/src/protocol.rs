@@ -127,8 +127,9 @@ where
 pub struct Confidence {
     /// The level, by the rules in [`Level`].
     pub level: Level,
-    /// Why it is not higher: something the reader can check or answer.
-    /// Required below high, and pointless at it.
+    /// The basis, in a line the reader can check: on high, what showed it;
+    /// below high, the drop that lowered it or what is missing. Required
+    /// below high.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub why: Option<String>,
 }
@@ -137,16 +138,14 @@ pub struct Confidence {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Level {
-    /// Saw it happen or proved it: ran it and watched, a test covers this
-    /// case, or the whole path is in front of the reader with no input
-    /// the agent could not see.
+    /// The agent watched it behave: ran it, reproduced it, or read a trace
+    /// from the system the claim is about, with nothing that drops it.
     High,
-    /// Read all the code the claim rests on and the logic holds, but did not
-    /// run it, or it depends on something not seen: configuration, data in
-    /// production, another service.
+    /// It read the complete path without running it, or watched it behave
+    /// with one drop (indirect, incomplete, conflicting, or a never/always
+    /// claim).
     Medium,
-    /// Inferring: from names, from part of the code, from a pattern
-    /// elsewhere, or with a piece it could not find.
+    /// It inferred it, or its evidence took drops down to here.
     Low,
 }
 

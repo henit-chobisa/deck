@@ -251,15 +251,15 @@ pub(crate) fn level_words(level: Level) -> (&'static str, &'static str) {
     match level {
         Level::High => (
             "High",
-            "The agent saw it happen or proved it: ran it, a test covers this case, or the whole path is on screen.",
+            "The agent watched it behave: ran it, reproduced it, or read a trace from the real system, with nothing to mark it down.",
         ),
         Level::Medium => (
             "Medium",
-            "The agent read all the code this rests on, but did not run it, or it depends on something it did not see.",
+            "The agent read the whole path without running it, or watched it behave with one thing marking it down.",
         ),
         Level::Low => (
             "Low",
-            "The agent is inferring: from names, part of the code, or a pattern elsewhere.",
+            "The agent is inferring, from names, part of the code, or a pattern elsewhere, or its evidence was marked down to here.",
         ),
     }
 }
@@ -339,7 +339,7 @@ pub(crate) fn confidence_card(
                     .border_color(paint(palette.edge))
                     .text_color(paint(palette.muted))
                     .child({
-                        const LEAD: &str = "Why ";
+                        const LEAD: &str = "Basis ";
                         StyledText::new(format!("{LEAD}{why}")).with_highlights([(
                             0..LEAD.len(),
                             HighlightStyle {
