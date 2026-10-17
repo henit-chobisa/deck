@@ -43,32 +43,10 @@ gpui_kit::actions!(
         Close,
         Leave,
         Unlight,
-        AddToReview
+        AddToReview,
+        Help
     ]
 );
-
-/// The keys, and what the legend says about them.
-///
-/// One list, so a binding and its legend entry cannot drift apart. The legend
-/// is built from this at render time rather than written out beside it.
-///
-/// One word each. They were small sentences — *walk me through it*, *put it
-/// away* — which read as an explanation of the deck rather than as a list of
-/// things you can do, and a reader looking for the key to press had to read a
-/// phrase to find it. Ordered the way a walk goes: move, be walked through,
-/// say something, change the view, then leave.
-const KEYS: &[(&str, &str, &str)] = &[
-    ("n", "next", "next"),
-    ("p", "prev", "previous"),
-    ("w", "walk", "walk"),
-    ("c", "comment", "comment"),
-    ("t", "turn", "turn"),
-    ("⎋", "clear", "clear"),
-    ("z", "zen", "lights"),
-    ("h", "hide", "hide"),
-    ("s", "submit", "submit"),
-    ("q", "close", "close"),
-];
 
 /// A shortcut as it is labelled on this keyboard.
 ///
@@ -114,6 +92,9 @@ pub fn bindings() -> Vec<KeyBinding> {
         // holds a modifier to quit means it, and refusing them is worse than
         // any comment.
         KeyBinding::new("q", Leave, Some("Deck")),
+        // `?`, typed: shift and the slash on most keyboards, matched on the
+        // character it makes.
+        KeyBinding::new("?", Help, Some("Deck")),
         // Escape is bound in the composer too, for discarding a remark. That
         // context is deeper than this one, so while somebody is writing it
         // takes the key and this never runs.
@@ -279,6 +260,9 @@ impl Divide {
 /// The band's height before anyone drags it — enough for a title and a few
 /// lines of prose, which is what most groups carry.
 const BAND_NATURAL: f32 = 168.;
+
+/// The tallest the band grows on its own before its prose scrolls.
+const BAND_MOST: f32 = 300.;
 
 /// How wide the group's number sits, and the line that runs down from it.
 const STEM: f32 = 30.;
@@ -739,6 +723,19 @@ pub struct DeckView {
     spread: bool,
     /// The beat before it does.
     spreading: Task<()>,
+    /// The help dock `?` brings up over the code, and the timer that puts it
+    /// away again.
+    help: crate::pane::Fade,
+    helping: Task<()>,
+    /// The key last pressed while the dock was up, and when, so it lights.
+    help_hit: Option<(&'static str, std::time::Instant)>,
+    /// The key whose card is up, or coming up, and where that key is: the
+    /// same key sits in the strip and on the dock, and only the one under the
+    /// pointer has a card.
+    tip: Option<(&'static str, &'static str)>,
+    tip_fade: crate::pane::Fade,
+    /// The rest before a card comes up, or the breath before it goes.
+    tipping: Task<()>,
     /// The loop watching the deck directory fill, while there is more coming.
     ///
     /// Dropping it stops it, which is what should happen when the window
@@ -1121,6 +1118,14 @@ impl DeckView {
             controlling: Task::ready(()),
             spread: false,
             spreading: Task::ready(()),
+            help: crate::pane::Fade::default()
+                .paced(crate::keys::DOCK_RISE, crate::keys::DOCK_FALL),
+            helping: Task::ready(()),
+            help_hit: None,
+            tip: None,
+            tip_fade: crate::pane::Fade::default()
+                .paced(crate::keys::TIP_RISE, crate::keys::TIP_FALL),
+            tipping: Task::ready(()),
         };
         if let Some((about, state, when)) = draft {
             view.live.pause(PauseReason::Composer);
@@ -3294,9 +3299,234 @@ impl DeckView {
     /// the rail, the one picked in the narration, the lines picked in a pane,
     /// and the spotlight those raised. What the agent is pointing at is left
     /// alone — it is mid-sentence, and its light goes out by itself.
+    /// `?`: the help dock, up or away.
+    fn on_help(&mut self, _: &Help, _: &mut Window, cx: &mut Context<Self>) {
+        if self.help.on() {
+            self.close_help(cx);
+        } else {
+            self.open_help(cx);
+        }
+    }
+
+    /// Bring the help dock up, for as long as it takes to try a few keys.
+    ///
+    /// It goes on its own after [`crate::keys::DOCK_STAYS`]: help that stays
+    /// beside you while you try, not a panel you have to remember to close.
+    fn open_help(&mut self, cx: &mut Context<Self>) {
+        self.help.set(true);
+        self.help_hit = None;
+        self.leave_help(cx);
+        cx.notify();
+    }
+
+    /// Start the dock's clock: it goes once nobody has looked at it for
+    /// [`crate::keys::DOCK_STAYS`].
+    fn leave_help(&mut self, cx: &mut Context<Self>) {
+        self.helping = cx.spawn(async move |view, cx| {
+            cx.background_executor()
+                .timer(crate::keys::DOCK_STAYS)
+                .await;
+            let _ = view.update(cx, |deck, cx| deck.close_help(cx));
+        });
+    }
+
+    fn close_help(&mut self, cx: &mut Context<Self>) {
+        self.help.set(false);
+        self.helping = Task::ready(());
+        // A card over a key on the dock goes with it.
+        if self.tip.is_some_and(|(_, place)| place == "dock") {
+            self.tip_fade.set(false);
+        }
+        cx.notify();
+    }
+
+    /// The pointer arrived on a key, or left it.
+    ///
+    /// The question pills' manners: a card comes up after the pointer rests,
+    /// so passing over a row of keys does not flash a card at each, and stays
+    /// a breath after it leaves, so moving from one key to the next hands the
+    /// card over instead of closing and opening it.
+    fn hover_key(&mut self, key: (&'static str, &'static str), over: bool, cx: &mut Context<Self>) {
+        if over {
+            if self.tip_fade.on() && self.tip != Some(key) {
+                // Already reading cards: the next one comes straight away.
+                self.tip = Some(key);
+                self.tipping = Task::ready(());
+                cx.notify();
+                return;
+            }
+            if self.tip == Some(key) && self.tip_fade.on() {
+                self.tipping = Task::ready(());
+                return;
+            }
+            self.tipping = cx.spawn(async move |view, cx| {
+                cx.background_executor().timer(crate::keys::REST).await;
+                let _ = view.update(cx, |deck, cx| {
+                    deck.tip = Some(key);
+                    deck.tip_fade.set(true);
+                    cx.notify();
+                });
+            });
+        } else if self.tip == Some(key) || !self.tip_fade.on() {
+            self.tipping = cx.spawn(async move |view, cx| {
+                cx.background_executor().timer(crate::keys::LEAVE).await;
+                let _ = view.update(cx, |deck, cx| {
+                    deck.tip_fade.set(false);
+                    cx.notify();
+                });
+            });
+        }
+    }
+
+    /// A key the reader can point at: its card comes up over it on a rest.
+    fn tipped(
+        &self,
+        key: &'static str,
+        place: &'static str,
+        body: Stateful<Div>,
+        cx: &mut Context<Self>,
+    ) -> Stateful<Div> {
+        let at = (key, place);
+        let level = if self.tip == Some(at) {
+            self.tip_fade.level()
+        } else {
+            0.
+        };
+        let mono = cx.theme().mono_font_family.clone();
+        let sans = cx.theme().font_family.clone();
+        body.relative()
+            .on_hover(cx.listener(move |deck, over: &bool, _, cx| deck.hover_key(at, *over, cx)))
+            .when(level > 0., |this| {
+                this.children(
+                    crate::keys::card(key, level, &self.palette, sans, mono).map(|card| {
+                        // Laid over everything, above the key, and kept inside the
+                        // window when the key sits near its edge.
+                        div().absolute().top_0().left_0().child(deferred(
+                            anchored()
+                                .anchor(Anchor::BottomLeft)
+                                .offset(point(px(-100.), px(0.)))
+                                .snap_to_window_with_margin(px(12.))
+                                .child(card),
+                        ))
+                    }),
+                )
+            })
+    }
+
+    /// The help dock: every key in one row over the bottom of the code, with
+    /// a way to put it away.
+    fn render_help(&self, cx: &mut Context<Self>) -> Option<impl IntoElement> {
+        let level = self.help.level();
+        if level <= 0. {
+            return None;
+        }
+        let palette = &self.palette;
+        let mono = cx.theme().mono_font_family.clone();
+        let ready = crate::speech::asked(cx).offered();
+        let lit = |key: &str| {
+            self.help_hit.and_then(|(hit, at)| {
+                let t = at.elapsed().as_secs_f32() / crate::keys::HIT.as_secs_f32();
+                (hit == key && t < 1.).then_some(1. - t)
+            })
+        };
+        let keys = crate::keys::TIPS
+            .iter()
+            .filter(|(key, ..)| *key != crate::keys::HELP && *key != crate::keys::CLOSE)
+            // The walk is only offered to somebody who has set a voice up.
+            .filter(|(key, ..)| *key != "w" || ready)
+            .map(|(key, name, ..)| {
+                let glow = lit(key).unwrap_or(0.);
+                self.tipped(
+                    key,
+                    "dock",
+                    div()
+                        .id(SharedString::from(format!("help-{key}")))
+                        .h_flex()
+                        .items_center()
+                        .gap(px(7.))
+                        .px(px(9.))
+                        .py(px(5.))
+                        .rounded(px(8.))
+                        .when(glow > 0., |this| {
+                            this.bg(paint(palette.band.mix(palette.accent, 0.28 * glow)))
+                        })
+                        .child(crate::keys::cap(key, palette, mono.clone()))
+                        .child(*name),
+                    cx,
+                )
+            })
+            .collect::<Vec<_>>();
+        let close = self.tipped(
+            crate::keys::CLOSE,
+            "dock",
+            div()
+                .id("help-close")
+                .flex_none()
+                .size(px(24.))
+                .ml(px(4.))
+                .h_flex()
+                .justify_center()
+                .rounded(px(7.))
+                .cursor_pointer()
+                .text_size(px(16.))
+                .text_color(paint(palette.muted))
+                .hover(|style| style.bg(paint(palette.wash)).text_color(paint(palette.fg)))
+                .on_click(cx.listener(|deck, _, _, cx| deck.close_help(cx)))
+                .child("×"),
+            cx,
+        );
+        Some(
+            div()
+                .absolute()
+                .left_0()
+                .right_0()
+                .bottom(px(16. - 10. * (1. - level)))
+                .h_flex()
+                .justify_center()
+                .opacity(level)
+                .child(
+                    div()
+                        .id("help-dock")
+                        // Never while the pointer is on it; its clock starts
+                        // again each time the pointer leaves.
+                        .on_hover(cx.listener(|deck, over: &bool, _, cx| {
+                            if !deck.help.on() {
+                                return;
+                            }
+                            if *over {
+                                deck.helping = Task::ready(());
+                            } else {
+                                deck.leave_help(cx);
+                            }
+                        }))
+                        .h_flex()
+                        .items_center()
+                        .gap(px(2.))
+                        .pl(px(10.))
+                        .pr(px(8.))
+                        .py(px(7.))
+                        .rounded(px(12.))
+                        .bg(paint(palette.band.mix(palette.fg, 0.03)))
+                        .border_1()
+                        .border_color(paint(palette.edge.mix(palette.fg, 0.06)))
+                        .shadow_lg()
+                        .text_size(px(11.5))
+                        .text_color(paint(palette.fg.mix(palette.band, 0.22)))
+                        .children(keys)
+                        .child(close),
+                ),
+        )
+    }
+
     fn on_unlight(&mut self, _: &Unlight, window: &mut Window, cx: &mut Context<Self>) {
         if self.quitting {
             self.stay(window, cx);
+            return;
+        }
+        // The dock is the newest thing on screen, so escape puts it away
+        // first, and the lights stay as they were.
+        if self.help.on() {
+            self.close_help(cx);
             return;
         }
         if self.explaining {
@@ -5210,6 +5440,10 @@ impl DeckView {
             .items_stretch()
             .bg(paint(self.palette.band))
             .when_some(self.band_height, |this, height| this.h(px(height)))
+            // Left to itself the band is as tall as its narration, up to a
+            // limit past which the prose scrolls. The keys column used to set
+            // its height instead, and a short narration sat over empty band.
+            .when(self.band_height.is_none(), |this| this.max_h(px(BAND_MOST)))
             .child(
                 div()
                     .v_flex()
@@ -5454,7 +5688,6 @@ impl DeckView {
                     )
                     .children(self.render_track(cx)),
             )
-            .child(self.render_legend(cx))
     }
 
     /// Move the seam between the narration and the code.
@@ -6378,6 +6611,45 @@ impl DeckView {
                     .gap_4()
                     .flex_none()
                     .whitespace_nowrap()
+                    // The three keys used most, each with a card on a rest,
+                    // and `?` for the rest of them.
+                    .child({
+                        let mono = cx.theme().mono_font_family.clone();
+                        let named =
+                            |key: &'static str, name: &'static str, cx: &mut Context<Self>| {
+                                self.tipped(
+                                    key,
+                                    "strip",
+                                    div()
+                                        .id(SharedString::from(format!("strip-{key}")))
+                                        .h_flex()
+                                        .items_center()
+                                        .gap(px(6.))
+                                        .child(crate::keys::cap(key, &self.palette, mono.clone()))
+                                        .child(name),
+                                    cx,
+                                )
+                            };
+                        div()
+                            .h_flex()
+                            .items_center()
+                            .gap(px(12.))
+                            .child(named("n", "next", cx))
+                            .child(named("p", "previous", cx))
+                            .child(named("c", "comment", cx))
+                            .child(div().w(px(1.)).h(px(12.)).bg(paint(self.palette.edge)))
+                            .child(
+                                named(crate::keys::HELP, "keys", cx)
+                                    .cursor_pointer()
+                                    .on_click(cx.listener(|deck, _, _, cx| {
+                                        if deck.help.on() {
+                                            deck.close_help(cx);
+                                        } else {
+                                            deck.open_help(cx);
+                                        }
+                                    })),
+                            )
+                    })
                     .child(format!(
                         "{said} comment{}",
                         if said == 1 { "" } else { "s" }
@@ -6718,74 +6990,6 @@ impl DeckView {
                 )
                 .into_any_element(),
         )
-    }
-
-    /// The legend, built from [`KEYS`] so a rebound key is never stale on it.
-    fn render_legend(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        let mono = cx.theme().mono_font_family.clone();
-        let ready = crate::speech::asked(cx).offered();
-
-        div()
-            .v_flex()
-            .flex_none()
-            .w(px(168.))
-            // A band dragged shorter than the keys cuts them off rather than
-            // letting them spill over the panes.
-            .min_h_0()
-            .overflow_hidden()
-            .flex_none()
-            .pl(px(14.))
-            .pr(px(14.))
-            .pt(px(15.))
-            .pb(px(14.))
-            // A divider, not a box. The keys are part of the band, set apart
-            // from the prose rather than floated on top of it.
-            .border_l_1()
-            .border_color(paint(self.palette.edge))
-            .child(
-                div()
-                    .pb(px(9.))
-                    .font_family(mono.clone())
-                    .text_size(px(9.5))
-                    .text_color(paint(self.palette.muted))
-                    .child("KEYS"),
-            )
-            // The walk is only offered to somebody who has set a voice up.
-            // Everything else here works out of the box; that one does not, and
-            // a key that does nothing is worse than a key that is not there.
-            .children(KEYS.iter().filter(|(key, _, _)| *key != "w" || ready).map(
-                |(key, _, says)| {
-                    div()
-                        .h_flex()
-                        .items_center()
-                        .gap(px(9.))
-                        .py(px(2.5))
-                        .font_family(mono.clone())
-                        .text_size(px(11.))
-                        .text_color(paint(self.palette.fg.mix(self.palette.band, 0.28)))
-                        // A key is a thing you press, so it is drawn as one — a
-                        // cap with a thicker bottom edge, the way a key catches
-                        // light.
-                        .child(
-                            div()
-                                .min_w(px(19.))
-                                .flex_none()
-                                .px(px(4.))
-                                .py(px(3.))
-                                .text_center()
-                                .rounded(px(4.))
-                                .border_1()
-                                .border_b_2()
-                                .border_color(paint(self.palette.edge))
-                                .bg(paint(self.palette.wash))
-                                .text_size(px(10.5))
-                                .line_height(px(10.5))
-                                .text_color(paint(self.palette.fg))
-                                .child(*key),
-                        )
-                        .child(*says)
-                },
-            ))
     }
 }
 
@@ -7671,6 +7875,14 @@ use crate::pane::SPINE;
 impl Render for DeckView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         self.settle_said_light();
+        // The dock, a key's card, and a key lit on the dock all move on their
+        // own clock.
+        let hit = self
+            .help_hit
+            .is_some_and(|(_, at)| at.elapsed() < crate::keys::HIT);
+        if self.help.moving() || self.tip_fade.moving() || hit {
+            window.request_animation_frame();
+        }
         // The picked sentence opens the values whose keys it names.
         let said = self.picked_said.and_then(|(from, to)| {
             let group = self.group()?;
@@ -8057,6 +8269,18 @@ impl Render for DeckView {
             .on_action(cx.listener(Self::on_walk))
             .on_action(cx.listener(Self::on_follow))
             .on_action(cx.listener(Self::on_unlight))
+            .on_action(cx.listener(Self::on_help))
+            // A key pressed while the dock is up lights on it, so trying a key
+            // shows which one it was. Seen on the way down, before the key does
+            // whatever it does.
+            .capture_key_down(cx.listener(|deck, event: &KeyDownEvent, _, cx| {
+                if deck.help.on()
+                    && let Some(key) = crate::keys::pressed(&event.keystroke)
+                {
+                    deck.help_hit = Some((key, std::time::Instant::now()));
+                    cx.notify();
+                }
+            }))
             .on_action(cx.listener(Self::on_close))
             .on_action(cx.listener(Self::on_leave))
             .on_action(cx.listener(Self::on_comment))
@@ -8157,7 +8381,9 @@ impl Render for DeckView {
                             .min_w_0()
                             .h_full()
                             .min_h_0()
-                            .children(rows),
+                            .relative()
+                            .children(rows)
+                            .children(self.render_help(cx)),
                     )
                     .children(right_spines)
                     // No seam on a folded rail: there is nothing to drag, and
@@ -8479,7 +8705,7 @@ mod tests {
 
     #[test]
     fn every_key_in_the_legend_is_a_key_that_is_bound() {
-        // The legend is built from KEYS and the bindings are written out
+        // The keys' cards are built from TIPS and the bindings are written out
         // beside it. Turning the panes moved to `t`, and a legend still
         // offering `l` would be the first thing a reader tried.
         let bound: Vec<String> = bindings()
@@ -8489,7 +8715,10 @@ mod tests {
             // comparison is against the letter, not against the label.
             .map(|stroke| stroke.to_string().to_lowercase())
             .collect();
-        for (key, _, says) in KEYS {
+        for (key, says, ..) in crate::keys::TIPS
+            .iter()
+            .filter(|(key, ..)| *key != crate::keys::CLOSE)
+        {
             assert!(
                 bound.iter().any(|stroke| stroke == key),
                 "the legend offers `{key}` for {says}, and nothing binds it"
