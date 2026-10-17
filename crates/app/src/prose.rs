@@ -819,9 +819,10 @@ impl Token {
             .iter()
             .any(|(from, to)| at >= *from && at <= *to);
         let wrap = move |inner: AnyElement| {
-            div()
-                .id(("say", at))
-                .when(pickable, |this| this.cursor_pointer())
+            // Two boxes. The outer one is the word's whole share of its line,
+            // and takes the pointer, so there is no dead strip between lines.
+            // The inner one is what is painted, set in from the top and bottom.
+            let bar = div()
                 .when(lit > 0., |this| {
                     // Firm enough to see at a glance. Three quarters of the way
                     // to the band was a tint you could hold a whole sentence in
@@ -876,12 +877,15 @@ impl Token {
                     // guessing what is behind it costs a line under everything.
                     gpui_kit::transparent_black()
                 })
-                .when(remarked, |this| this.cursor_pointer())
+                .child(inner);
+            div()
+                .id(("say", at))
+                .when(pickable || remarked, |this| this.cursor_pointer())
                 .on_mouse_down(MouseButton::Left, move |_, window, cx| {
                     down(at, window, cx);
                 })
                 .on_hover(move |entered, window, cx| over(at, *entered, window, cx))
-                .child(inner)
+                .child(bar)
                 .into_any_element()
         };
 

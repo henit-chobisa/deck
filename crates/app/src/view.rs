@@ -5281,7 +5281,14 @@ impl DeckView {
                                             .w(px(STEM))
                                             .h_flex()
                                             .justify_center()
-                                            .text_size(px(36.))
+                                            // A step smaller from ten on, so two
+                                            // digits stay in the column the line
+                                            // hangs from.
+                                            .text_size(px(if self.group_ix >= 9 {
+                                                27.
+                                            } else {
+                                                36.
+                                            }))
                                             .line_height(px(36.))
                                             .font_weight(FontWeight::LIGHT)
                                             .text_color(paint(
@@ -5332,6 +5339,12 @@ impl DeckView {
                         // better to put it.
                         div()
                             .id("deck-claim")
+                            // Drawn up into the column's gap: the prose
+                            // belongs to the title over it, and the line height
+                            // already leaves air above the words. On this
+                            // scrolling box, not on what it holds — pulled up
+                            // inside it, the first line was clipped at the top.
+                            .mt(px(-4.))
                             .pl(px(18.))
                             .pr(px(18.))
                             // Scrolls, because a `say` is as long as the agent
@@ -5352,13 +5365,14 @@ impl DeckView {
                             // number is the step, and this is what it says.
                             .child(
                                 div()
-                                    .ml(px(STEM / 2.))
-                                    .pl(px(STEM / 2. + STEM_GAP - 1.))
-                                    // Drawn up into the column's gap: the prose
-                                    // belongs to the title over it, and the line
-                                    // height already leaves air above the words.
-                                    .mt(px(-4.))
-                                    .border_l_1()
+                                    // Only under a group's number: with nothing
+                                    // loaded yet there is no number to hang
+                                    // from, and the placeholder sits flush.
+                                    .when(self.group().is_some(), |this| {
+                                        this.ml(px(STEM / 2.))
+                                            .pl(px(STEM / 2. + STEM_GAP - 1.))
+                                            .border_l_1()
+                                    })
                                     .border_color(paint(
                                         self.palette.edge.mix(self.palette.muted, 0.25),
                                     ))

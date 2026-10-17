@@ -1330,8 +1330,8 @@ It prints the deck's path. Everything after this takes it.
 - `--title` is the first thing they read. Make it the QUESTION or the CLAIM the deck
   answers ("why the batch counter stalls"), not a label ("batch counter changes").
   A title that poses the question primes them to predict — which is how people learn best.
-  It names the whole deck: on the bar, and in a small line over the heading once
-  a group with its own `--title` (§3) is on screen.
+  It names the whole deck: on the bar, and in a small line over every group's
+  heading in the window.
 
 ## 2. Put the bar up, before you have written anything
 
@@ -1372,8 +1372,8 @@ you it happened. If the prose has an apostrophe in it, use a quoted heredoc
 rather than escaping your way out.
 
 **Give every group a `--title`.** It heads the window while that group is on
-screen, beside the group's number, and the deck's title steps down to a small
-line above it. The deck's title is the question; a group's title is the step of the
+screen, beside the group's number, with the deck's title in a small line above
+it. The deck's title is the question; a group's title is the step of the
 answer on screen now — *The drag moves a share, not a width* — in sentence case,
 one line, at most 80 characters. Never the deck's title again, and never a label
 (*Drag handling*): a reader who skims only the titles should still follow the
