@@ -56,6 +56,8 @@
 <p>The request also carries a <code>User-Agent: deck/&lt;version&gt;</code> header.</p>
 <p><strong>Never sent:</strong> code, file paths, repository or project names, deck titles, narration, comments, questions, or anything you type.</p>
 <p>The counts go to <a href="https://posthog.com">PostHog</a>, hosted in the EU. Each event is sent without a person profile and with location lookup turned off, and the project discards IP addresses.</p>
+<h2 id="this-website">This website</h2>
+<p>The deck app above counts nothing until you say yes. This website is different: it counts visits, so we can see how people find deck and what they read. It uses <a href="https://posthog.com">PostHog</a>, in the EU, and keeps no cookie: the id for a visit lives in your browser tab's session storage and is gone when the tab closes. It records pages viewed, clicks, scrolling and time on a page, and recordings of visits with anything you type masked; a recording still carries your browser, the page you came from and your screen size. No location is looked up. With Do Not Track or Global Privacy Control on, nothing is loaded at all. A visit is never linked to the deck app's counts: they share no id.</p>
 <h2 id="seeing-it-for-yourself">Seeing it for yourself</h2>
 <pre><code>deck telemetry show      # exactly what the next send carries, and when
 deck telemetry status    # whether counts are shared, and if not, why</code></pre>
