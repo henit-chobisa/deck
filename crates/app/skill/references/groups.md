@@ -375,16 +375,38 @@ line that produced it.
   field the branch turns on.
 - They ask *what was X*, or *show me*, about code already on screen. Answer with
   `deck show --values`, not a sentence.
+- They ask you to explain it *with values*, *with an example*, or to *walk it
+  through*. That is a request for values on the lines, every time — the answer
+  is the values landing where they live, one point at a time, not a paragraph
+  that mentions them.
+- **Your own narration names a value.** If a sentence says the key is `42`, the
+  name comes back as `Acme`, the row gets the id `opt-9`, that value belongs on
+  the line that holds it. A value in prose is read once and then has to be
+  carried in the reader's head to the line it belongs to; a value on its line is
+  read exactly where it matters. If you are about to write a value into a
+  sentence, put it on the line and point at it instead.
 
 **Leave it out when** the claim is about structure (who calls whom, why a module
 exists), when the value is plain from the code (`const limit = 10` needs no
 `10` beside it), or when nobody's claim turns on it. A value that could be
 removed without losing anything is noise: remove it.
 
-**Only values you have.** From a test run, a log, a payload you read, a
-debugger, or arithmetic anyone can check from the code. A value on a line reads
-as observed, so one you are inferring goes in the prose, said as an inference —
-*I expect orderId is undefined here* — and not on the line. **Never secrets:**
+**Only values you have, or an example you said is one.** From a test run, a
+log, a payload you read, a debugger, or arithmetic anyone can check from the
+code. A value on a line reads as observed, so a guess about what a real run
+held goes in the prose, said as a guess — *I expect orderId is undefined here*
+— and not on the line.
+
+**An example is the exception, and it is the commonest case in a plan.** For a
+design, a plan, or code that has not run, nothing was observed — so pick one
+concrete case and walk it through on the lines. Say it is an example first, in
+the prose: *say the Customer property is `p-7` and the CRM returns `42`,
+`Acme`*. Then put those values on every line they pass through, the same key
+the whole way, pointing at each as you go — `42` on the line that receives it,
+`42 → Acme` on the lookup, `opt-9` on the row it becomes. Keep the example true
+to the code: the arithmetic and the shape must be what this code would really
+do with that input. Never mix an example's values and observed ones in one
+group. **Never secrets:**
 no keys, tokens, passwords, card numbers or personal emails. Redact them,
 `"sk_live_…"`, `"m***@…"`.
 

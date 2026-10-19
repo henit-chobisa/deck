@@ -2095,4 +2095,24 @@ mod tests {
         assert!(dir.join("references/mine").is_dir());
         assert!(!current(&home));
     }
+
+    #[test]
+    fn a_value_the_narration_names_goes_on_its_line() {
+        // A reader asked to have a plan explained "using values", and the
+        // answer named 42, Acme and opt-9 in a paragraph while every line they
+        // belonged to sat bare beside it. The rule said values must be
+        // observed, so an example was kept in prose; an example said as one
+        // now goes on the lines.
+        let flat = ALL.split_whitespace().collect::<Vec<_>>().join(" ");
+        for said in [
+            "Your own narration names a value.",
+            "That is a request for values on the lines, every time",
+            "Only values you have, or an example you said is one.",
+            "An example is the exception, and it is the commonest case in a plan.",
+            "Never mix an example's values and observed ones in one group.",
+            "When the answer is a value, put it on the line.",
+        ] {
+            assert!(flat.contains(said), "the skill never says `{said}`");
+        }
+    }
 }

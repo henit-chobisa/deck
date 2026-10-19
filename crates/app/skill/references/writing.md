@@ -697,6 +697,14 @@ live, as a diff they can read and comment on. The file on disk is never touched.
 Offering two or three alternatives? Show them one at a time, each with its own
 `--after`, and say what each one gives up.
 
+**When the answer is a value, put it on the line.** *What does it hold here?*,
+*explain it with values*, *walk me through an example* — answer with `deck show
+--values` on the pane already showing the code, or `deck values` when the walk
+crosses panes, and point at each value as you say it. A paragraph that says
+`42` becomes `Acme` becomes `opt-9` is a debugger described from memory; the
+same three values on their three lines are the debugger. If the values are an
+example, say so first (see "Values on the line" in groups.md).
+
 **When the answer is a shape rather than a file, draw it there and then.** The
 commonest live question is *how does this actually flow?* — and the commonest bad
 answer is four `deck show` calls in a row, which asks the reader to hold the
