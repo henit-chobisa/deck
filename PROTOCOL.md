@@ -338,7 +338,8 @@ arrived. A client that does not render
 Only values the agent has seen belong here: from a run, a log, a payload or
 arithmetic on the code. A value drawn on a line reads as observed. The one
 exception is a worked example, for code that has not run: the narration says it
-is one, and the ref's `note` starts `example:`, so the line says so too.
+is one, and the ref's `note` starts `example:` (after its `[name]`, if it has
+one), so the line says so too.
 
 ### A diagram ref
 

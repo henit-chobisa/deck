@@ -413,8 +413,11 @@ group.
 
 An example has to be visible as one on the line too, because the line stays on
 screen after the sentence that announced it has scrolled away: the note of
-every ref carrying example values starts `example:`, and the group's `--why`
-says *worked example, not a run*. Choose the example's inputs before `deck new`
+every ref carrying example values starts `example:`, after its `[name]` if it
+has one — `[webhook] example: the handler` — because a name is only read at the
+very front of a note. The group's `--why` keeps its basis and adds *worked
+example, not a run*; its confidence rates your reading of the code, not the
+example. Choose the example's inputs before `deck new`
 and reuse exactly those values in every group — `p-7` in group two is `p-7` in
 group four. **Never secrets:**
 no keys, tokens, passwords, card numbers or personal emails. Redact them,
@@ -422,7 +425,7 @@ no keys, tokens, passwords, card numbers or personal emails. Redact them,
 
 **How much.**
 
-- Only on lines the `say` points at with `[point …]`. The value is the evidence
+- Put values only on lines the `say` points at with `[point …]`. The value is the evidence
   for that sentence. When a sentence points at a line holding one of a pane's
   values, that pane keeps all its values away until such a sentence is first
   reached; then they all come out together, once, and stay. A pane none of your

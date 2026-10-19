@@ -2114,6 +2114,8 @@ mod tests {
             "A question about what something holds is answered on the lines.",
             "the note of every ref carrying example values starts `example:`",
             "Choose the example's inputs before `deck new`",
+            "`[webhook] example: the handler`",
+            "A live example has to be marked on the line too",
         ] {
             assert!(flat.contains(said), "the skill never says `{said}`");
         }
