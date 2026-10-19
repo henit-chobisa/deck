@@ -942,4 +942,59 @@ mod tests {
         // Not `Source::Diff` — a client that says nothing has told us nothing.
         assert_eq!(comment.source, None);
     }
+
+    #[test]
+    fn every_field_a_ref_writes_is_in_its_section_of_the_protocol() {
+        // Pages and pane names shipped for several releases with nothing in
+        // PROTOCOL.md about either, so a client written from the spec skipped
+        // every group with a page in it. Each kind of ref is written with every
+        // field it has, and each field it writes needs a row in the table of
+        // that kind's own section: a `name` row under diagrams says nothing
+        // about whether a code ref's name is documented.
+        let spec = include_str!("../../../PROTOCOL.md");
+        let section = |heading: &str| {
+            let from = spec
+                .find(heading)
+                .unwrap_or_else(|| panic!("no `{heading}`"));
+            let rest = &spec[from + heading.len()..];
+            let end = rest
+                .find("\n### ")
+                .into_iter()
+                .chain(rest.find("\n## "))
+                .min();
+            &rest[..end.unwrap_or(rest.len())]
+        };
+        let kinds = [
+            (
+                "### A code ref",
+                r#"{"id":"g1r1","file":"a.ts","range":[5,7],"note":"n","name":"retry",
+                    "after":"x","values":[{"line":6,"at":"a","is":"1"}]}"#,
+            ),
+            (
+                "### A code ref",
+                r#"{"id":"g1r2","file":"a.ts","range":[5,7],"before":"y"}"#,
+            ),
+            (
+                "### A diagram ref",
+                r#"{"id":"g1d1","diagram":{"nodes":[{"id":"a","label":"A"}]},"note":"n","name":"flow"}"#,
+            ),
+            (
+                "### A page ref",
+                r#"{"id":"g1p1","page":"<p></p>","note":"n","name":"race"}"#,
+            ),
+        ];
+        for (heading, json) in kinds {
+            let rows = section(heading);
+            let one: super::Ref = serde_json::from_str(json).expect("a ref reads");
+            let written = serde_json::to_value(&one).expect("and writes");
+            for key in written.as_object().expect("as an object").keys() {
+                assert!(
+                    rows.contains(&format!("| `{key}`")),
+                    "`{heading}` in PROTOCOL.md has no row for `{key}`"
+                );
+            }
+        }
+        assert!(spec.contains("### A pane's name"));
+        assert!(spec.contains("### Points"));
+    }
 }
