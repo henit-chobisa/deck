@@ -942,4 +942,35 @@ mod tests {
         // Not `Source::Diff` — a client that says nothing has told us nothing.
         assert_eq!(comment.source, None);
     }
+
+    #[test]
+    fn every_field_a_ref_writes_is_in_the_protocol() {
+        // Pages and pane names shipped for several releases with nothing in
+        // PROTOCOL.md about either, so a client written from the spec skipped
+        // every group with a page in it. Each kind of ref is written with every
+        // field it has, and each field it writes has to have a row in the spec.
+        let spec = include_str!("../../../PROTOCOL.md");
+        let full = [
+            r#"{"id":"g1r1","file":"a.ts","range":[5,7],"note":"n","name":"retry",
+                "after":"x","values":[{"line":6,"at":"a","is":"1"}]}"#,
+            r#"{"id":"g1r2","file":"a.ts","range":[5,7],"before":"y"}"#,
+            r#"{"id":"g1d1","diagram":{"nodes":[{"id":"a","label":"A"}]},"note":"n","name":"flow"}"#,
+            r#"{"id":"g1p1","page":"<p></p>","note":"n","name":"race"}"#,
+        ];
+        let mut kinds = 0;
+        for json in full {
+            let one: super::Ref = serde_json::from_str(json).expect("a ref reads");
+            let written = serde_json::to_value(&one).expect("and writes");
+            for key in written.as_object().expect("as an object").keys() {
+                assert!(
+                    spec.contains(&format!("| `{key}`")),
+                    "PROTOCOL.md has no row for a ref's `{key}`"
+                );
+            }
+            kinds += 1;
+        }
+        assert_eq!(kinds, 4);
+        assert!(spec.contains("### A page ref"));
+        assert!(spec.contains("### A pane's name"));
+    }
 }

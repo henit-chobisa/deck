@@ -200,18 +200,34 @@ implement them must take them out rather than show them: `[pause]`, `[pause
 short]` and `[pause long]` are beats for a voice; `[point …]` says where to
 light while the words after it are read — file line numbers, `[point 106-110]`
 or `[point 140]`, the id of a diagram block, `[point checkout]`, or one of each
-to light a file and a picture together, `[point 106-110 checkout]`; and
-`[a-name]` matching a ref's `name` is that pane, which a client may render as
-something the reader can press. A directive it cannot parse is prose and stays
+to light a file and a picture together, `[point 106-110 checkout]`, or a name a
+page answers to, `[point hop]`; and `[a-name]` matching a ref's `name` is that
+pane, which a client may render as something the reader can press. A directive it cannot parse is prose and stays
 as written.
 
 ---
 
 ## Refs
 
-A ref is one pane of evidence. There are two kinds, and they are told apart by
+A ref is one pane of evidence. There are three kinds, and they are told apart by
 what they carry: an entry with a `file` is code, an entry with a `diagram` is a
-picture. There is no `kind` field, and no entry is both.
+picture, and an entry with a `page` is markup the agent wrote. There is no
+`kind` field, and no entry is more than one.
+
+### A pane's name
+
+Any ref may carry a `name`: what the narration calls that pane. `[retry]` in
+`say` means the pane named `retry`, wherever the layout has put it. A name is
+how prose says which pane it means without saying where it sits, which is the
+window's decision and changes with its width.
+
+A name is one lowercase ASCII word: a letter, then letters, digits or dashes,
+not ending in a dash, at most 24 characters. `pause` and `point` are not names,
+because `[pause]` and `[point …]` are already directives. Two refs in one group
+never share a name; a client writing a deck is expected to refuse it.
+
+A name in `say` that no ref of its group carries is prose, and stays as written.
+A ref with no name is still a pane; the prose just cannot address it.
 
 ### A code ref
 
@@ -231,6 +247,7 @@ picture. There is no `kind` field, and no entry is both.
 | `file`  | string            | yes      | Relative to `cwd`, or absolute. |
 | `range` | `[first, last]`   | yes      | Lines to light up. |
 | `note`  | string            | no       | A short label. Inline `*emphasis*` only. |
+| `name`  | string            | no       | What the narration calls this pane. See "A pane's name". |
 | `after` | string            | no       | A proposed replacement for the range. |
 | `before`| string            | no       | What the range replaced, for a change already made. |
 | `values`| array of value    | no       | What lines in the range held when the code ran. |
@@ -313,6 +330,71 @@ arithmetic on the code. A value drawn on a line reads as observed.
 A picture is a pane like any other, so the prose has to be able to say which one
 it means. Added after code panes got names, which had left a diagram as the one
 kind of pane a sentence could not address.
+
+### A page ref
+
+```json
+{
+  "id": "g2p1",
+  "name": "race",
+  "note": "two workers, one count",
+  "page": "<meta name=\"deck-points\" content=\"read-a read-b write-b\"><svg>…</svg><script>…</script>"
+}
+```
+
+| field  | type   | required | meaning |
+| ------ | ------ | -------- | ------- |
+| `id`   | string | yes      | Identifies the ref within its deck. |
+| `page` | string | yes      | The whole document, as the agent wrote it: markup, style and script. |
+| `note` | string | no       | A short label, as a code ref's is. |
+| `name` | string | no       | What the narration calls this pane, as a code ref's `name` is. |
+
+A page is for the one thing in a deck that only makes sense moving: two workers
+racing on a timeline, a queue filling, a structure changing. It is not a
+document and not a diagram drawn in HTML: the prose carries the argument, and
+boxes and arrows are a diagram. A client writing a deck is expected to refuse a
+page that shows more than forty words, not counting numbers and measurements.
+
+**`page` is complete in itself.** Nothing is fetched to show it, and a client
+renders it with no network behind it: no remote scripts, styles, fonts or
+images, and no navigation away from the document.
+
+**A page answers to names, and a point moves it.** The names a page answers to
+are the `id`s of its elements, every name listed in
+`<meta name="deck-points" content="…">`, and every name in a `data-on`,
+`data-show` or `data-from` attribute. `[point read-b]` in `say` lands in the page
+that answers to `read-b`. A client that shows pages gives the document, before
+any of its own script runs:
+
+- `window.deck.at`: the name the narration is on now, or `null`;
+- a `deck:point` event on `window`, whose `detail` is that name, each time the
+  narration reaches one of the page's names, and once more when the document
+  has loaded, so a page opened halfway through a walk shows the step the
+  narration is on;
+- a `deck:remark` event whose `detail` is the text of a comment the reader
+  pressed, so a page can show what the comment is about;
+- the class `on` on an element while the point is one of its `data-on` names;
+  `data-show` elements visible only while the point is one of their names; and
+  `data-from` elements visible from their name onwards, in the order
+  `deck-points` lists.
+
+A page is only ever moved forward. When the narration leaves it, it is told
+nothing and keeps the moment it is showing; it starts at rest and never plays
+on a clock of its own.
+
+**A page wears the reader's colours.** A client provides these CSS custom
+properties, in the theme the rest of its window is in:
+
+```
+--deck-bg  --deck-fg  --deck-accent  --deck-on-accent  --deck-muted
+--deck-edge  --deck-wash  --deck-add  --deck-del  --deck-comment
+```
+
+The page's background is transparent and its font is the client's monospace,
+so a page that uses only these looks like part of the window in any theme.
+
+A comment on a page carries `ref` and no `range`, as one on a diagram does, and
+its `quote` is the pane's label.
 
 ---
 
@@ -547,7 +629,9 @@ reader one keystroke and is the difference between a blocker and an aside.
 - **Never write to a file a ref points at.** Deck reads code. `after` is a
   proposal, not an edit.
 - **Say what it could not do.** A ref whose file is missing is shown as a pane
-  saying so. A deck that silently drops the evidence for its own claim is worse
+  saying so, and so is a kind of ref the client does not draw: a client that
+  cannot show pages shows a pane saying a page is there, rather than skipping
+  the group that has one. A deck that silently drops the evidence for its own claim is worse
   than one that admits the file has moved.
 - **Fail loudly to the agent.** A deck with a wrong `cwd` that is ignored in
   silence leaves the agent believing it presented something the reader never
