@@ -384,7 +384,8 @@ line that produced it.
   the line that holds it. A value in prose is read once and then has to be
   carried in the reader's head to the line it belongs to; a value on its line is
   read exactly where it matters. If you are about to write a value into a
-  sentence, put it on the line and point at it as well: the sentence may still
+  sentence — one you have, or a stated example; a guess stays in the sentence —
+  put it on the line and point at it as well: the sentence may still
   say it, the line is where it lives. A value the code already spells out —
   `const limit = 10` — needs nothing beside it; this is for values the code
   does not show.
@@ -409,8 +410,9 @@ the prose: *say the Customer property is `p-7` and the CRM returns `42`,
 the whole way, pointing at each as you go — `42` on the line that receives it,
 `42 → Acme` on the lookup, `opt-9` on the row it becomes. Keep the example true
 to the code: the arithmetic and the shape must be what this code would really
-do with that input. Never mix an example's values and observed ones in one
-group.
+do with that input. Never mix an example's values and observed ones on one
+pane. An example asked for live goes on a brought pane of its own
+(answering.md).
 
 An example has to be visible as one on the line too, because the line stays on
 screen after the sentence that announced it has scrolled away: the note of

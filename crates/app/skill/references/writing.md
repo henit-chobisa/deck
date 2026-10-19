@@ -485,7 +485,8 @@ can show them. Recognising the problem is your job. Values are the answer when:
 
 The tell is in your own draft: a number, an id, a customer's or a record's name
 (not an identifier in the code), or a quoted string in a sentence is a value
-looking for its line. Not when the claim is structure — who calls whom, why a
+looking for its line — a value you have or a stated example; a guess stays
+in the sentence. Not when the claim is structure — who calls whom, why a
 module exists — and not when the code already spells the value out. How is
 "Values on the line" in groups.md.
 
