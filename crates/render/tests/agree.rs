@@ -29,13 +29,13 @@ fn main() {
         .expect("Plex loads");
     let window = WindowTextSystem::new(system.clone());
 
-    let (mut checked, mut wrong, mut fallback, mut ties) = (0, Vec::new(), 0, Vec::new());
+    let (mut checked, mut wrong, mut fallback) = (0, Vec::new(), 0);
     for (weight, gpui_weight) in [
         (Weight::Regular, FontWeight::NORMAL),
         (Weight::Medium, FontWeight::MEDIUM),
         (Weight::Semibold, FontWeight::SEMIBOLD),
     ] {
-        for size in [10., 10.5, 12.] {
+        for size in [10., 10.5, 12., 13.2, 9.6, 15., 11.025] {
             let mut face = font("IBM Plex Sans");
             face.weight = gpui_weight;
             let mut wrapper = system.line_wrapper(face.clone(), px(size));
@@ -48,7 +48,7 @@ fn main() {
                     underline: None,
                     strikethrough: None,
                 };
-                for width in [40., 60., 80., 100., 116., 136., 172.] {
+                for width in [40., 60., 80., 100., 116., 136., 172., 47.5, 93.3, 150.25] {
                     // How the window breaks a label in a box this wide.
                     let lines = window
                         .shape_text(
@@ -94,14 +94,7 @@ fn main() {
                         fallback += usize::from(differs);
                         continue;
                     }
-                    // A line within a thousandth of a pixel of the box is a
-                    // tie: CoreText keeps a few more bits than f32 can carry
-                    // back out, and the last one decides it. Reported, not
-                    // asserted, when nudging the box by that much agrees.
-                    let tie = |nudge: f32| boundaries(label, size, weight, width + nudge) == broken;
-                    if ours != broken && (tie(-0.001) || tie(0.001)) {
-                        ties.push(format!("{label:?} at {width}px, {size}px {weight:?}"));
-                    } else if ours != broken {
+                    if ours != broken {
                         wrong.push(format!("{label:?} at {width}px, {size}px {weight:?}: deck breaks {ours:?}, window {broken:?}"));
                     }
                     if ours_cut != cut {
@@ -112,7 +105,7 @@ fn main() {
             }
         }
     }
-    assert!(checked > 1000, "only {checked} cases");
+    assert!(checked > 6000, "only {checked} cases");
     assert!(
         wrong.is_empty(),
         "{} differ:\n{}",
@@ -120,14 +113,7 @@ fn main() {
         wrong.join("\n")
     );
     println!(
-        "deck breaks and cuts {checked} labels where the window does; {} sit on the edge of their box to a thousandth of a pixel and round the other way ({}); {fallback} more, in characters Plex alone does not draw, differ as expected",
-        ties.len(),
-        ties.join("; ")
-    );
-    assert!(
-        ties.len() <= 2,
-        "{} ties is more than rounding explains",
-        ties.len()
+        "deck breaks and cuts {checked} labels where the window does; {fallback} more, in characters Plex alone does not draw, differ as expected"
     );
 }
 

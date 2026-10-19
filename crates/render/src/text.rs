@@ -76,7 +76,7 @@ impl Face {
             .glyph_index(c)
             .unwrap_or(rustybuzz::ttf_parser::GlyphId(0));
         let units = self.font.glyph_hor_advance(glyph).unwrap_or(0);
-        f32::from(units) / self.units_per_em * size
+        f32::from(units) / self.units_per_em * shaped_size(size)
     }
 
     /// `text` shaped as the window shapes it, kerning and all: each glyph's
@@ -86,11 +86,9 @@ impl Face {
         buffer.push_str(text);
         buffer.guess_segment_properties();
         let shaped = rustybuzz::shape(&self.font, &[], buffer);
-        // Positions are added up in f64 and each one rounded to f32 once, as
-        // CoreText lays a line out in doubles and GPUI keeps f32. Summing in
-        // f32 drifts by a few millionths over a line, and a break that falls
-        // exactly on the edge of the box then falls the other way.
-        let scale = f64::from(size) / f64::from(self.units_per_em);
+        // Positions are added up in f64 and each rounded to f32 once, as
+        // CoreText lays a line out in doubles and GPUI keeps f32.
+        let scale = f64::from(shaped_size(size)) / f64::from(self.units_per_em);
         let mut x = 0f64;
         let mut glyphs = Vec::with_capacity(shaped.len());
         for (info, at) in shaped.glyph_infos().iter().zip(shaped.glyph_positions()) {
@@ -127,6 +125,14 @@ pub fn covers(text: &str) -> bool {
 pub fn width(text: &str, size: f32, weight: Weight) -> f32 {
     let face = face(weight);
     text.chars().map(|c| face.advance(c, size)).sum()
+}
+
+/// The size the window really shapes at: one float step above the size
+/// asked for, which GPUI's Mac text system bumps the first run to. Every label
+/// is one run, and per-character widths go through the same path, so both the
+/// shaped line and the single characters are measured at this size.
+fn shaped_size(size: f32) -> f32 {
+    size.next_up()
 }
 
 /// How wide `text` is once shaped, kerning included: what the window draws.
@@ -190,18 +196,24 @@ pub fn boundaries(line: &str, size: f32, weight: Weight, wrap_width: f32) -> Vec
 
 /// `text` broken into the lines the window would draw it in, at `wrap_width`.
 ///
+/// At the window's own zoom of 100%: zoomed, the window scales a label's
+/// width and size but not the padding inside its box, so its breaks move.
+/// An export draws at 100%.
+///
 /// Each paragraph — the text between two newlines — is wrapped on its own, as
-/// the window lays out each one. A line keeps no trailing space.
+/// the window lays out each one. A line keeps its trailing space, because the
+/// window centres each line with that space included; trim it only to draw a
+/// line left-aligned.
 #[must_use]
 pub fn wrap(text: &str, size: f32, weight: Weight, wrap_width: f32) -> Vec<String> {
     let mut lines = Vec::new();
     for paragraph in text.split('\n') {
         let mut from = 0;
         for at in boundaries(paragraph, size, weight, wrap_width) {
-            lines.push(paragraph[from..at].trim_end().to_string());
+            lines.push(paragraph[from..at].to_string());
             from = at;
         }
-        lines.push(paragraph[from..].trim_end().to_string());
+        lines.push(paragraph[from..].to_string());
     }
     lines
 }
@@ -308,6 +320,18 @@ pub const CORPUS: &[&str] = &[
     "AVAWAY To Ty Yo Wave Tower",
     "a/b/c/d/e/f/g/h foo?bar=baz&q=1",
     "tab\tseparated\tlabel words",
+    "office affirm fluff flight difficult",
+    "ffi ffl fi fl ft tt Th",
+    "0123456789 1/2 3x4 10:30 v2.0.1",
+    "\u{201c}curly\u{201d} \u{2018}single\u{2019} it\u{2019}s won't",
+    "-> => != <= >= :: && || --",
+    "Total: $1,234.56 (42%) #7 @user",
+    "fetchUserProfile() returns Option<T>",
+    "WAVE AVATAR LTA PTY Tj Yj ff.",
+    "naïve coöperate Æsir Œuvre ß",
+    "x\u{2014}y \u{2013} a\u{2026}b \u{00a0}nbsp",
+    "deploy/staging → prod",
+    "1st 2nd 3rd 4th H2O CO2",
 ];
 
 #[cfg(test)]
@@ -339,9 +363,11 @@ mod tests {
             60.,
         );
         assert!(lines.len() > 1, "{lines:?}");
-        for line in &lines {
-            assert!(!line.ends_with(' '), "{line:?} keeps no trailing space");
-        }
+        assert_eq!(
+            lines.concat(),
+            "the request stops at the installed check",
+            "nothing is lost or added"
+        );
         let short = truncate(
             "apps/api/plane/app/views/external_connect/dropdown.py",
             10.5,
