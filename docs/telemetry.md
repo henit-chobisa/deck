@@ -62,7 +62,7 @@ project discards IP addresses.
 
 ## This website
 
-The deck app above counts nothing until you say yes. This website is different: it counts visits, so we can see how people find deck and what they read. It uses [PostHog](https://posthog.com), in the EU, and keeps no cookie: the id for a visit lives in your browser tab's session storage and is gone when the tab closes. It records pages viewed, clicks, scrolling and time on a page, and anonymised replays of visits with every input masked. It honours Do Not Track. Nothing here is linked to the deck app's counts.
+The deck app above counts nothing until you say yes. This website is different: it counts visits, so we can see how people find deck and what they read. It uses [PostHog](https://posthog.com), in the EU, and keeps no cookie: the id for a visit lives in your browser tab's session storage and is gone when the tab closes. It records pages viewed, clicks, scrolling and time on a page, and recordings of visits with anything you type masked; a recording still carries your browser, the page you came from and your screen size. No location is looked up. With Do Not Track or Global Privacy Control on, nothing is loaded at all. A visit is never linked to the deck app's counts: they share no id.
 
 ## Seeing it for yourself
 

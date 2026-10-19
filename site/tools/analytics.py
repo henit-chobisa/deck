@@ -9,8 +9,9 @@ built site, before it is uploaded:
 What is counted, and what is not, is written on /telemetry/. The website's
 counter is PostHog, in its EU region. It keeps no cookie and nothing that
 outlives the tab: the visitor id lives in session storage, so one visit is
-followed from page to page and forgotten when the tab closes. Do Not Track is
-honoured, and session replay masks every input.
+followed from page to page and forgotten when the tab closes. Do Not Track and
+Global Privacy Control load nothing at all, no location is looked up, and
+session replay masks everything typed.
 """
 
 import pathlib
@@ -41,10 +42,19 @@ LOADER = (
 CONFIG = (
     "posthog.init('%s',{api_host:'%s',persistence:'sessionStorage',"
     "person_profiles:'identified_only',respect_dnt:true,capture_pageview:true,"
-    "capture_pageleave:true,session_recording:{maskAllInputs:true}});" % (KEY, HOST)
+    "capture_pageleave:true,session_recording:{maskAllInputs:true},"
+    # No location is looked up for a visit, as none is for the app's counts.
+    "loaded:function(p){p.register({$geoip_disable:true})}});" % (KEY, HOST)
 )
 
-SNIPPET = "<script>" + LOADER + CONFIG + "</script>\n"
+# A visitor who asked not to be tracked, by Do Not Track or Global Privacy
+# Control, gets nothing: not the counter, and not the request that fetches it.
+SNIPPET = (
+    "<script>if(navigator.doNotTrack!=='1'&&window.doNotTrack!=='1'&&!navigator.globalPrivacyControl){"
+    + LOADER
+    + CONFIG
+    + "}</script>\n"
+)
 
 
 def main(root: str) -> None:
