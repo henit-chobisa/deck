@@ -962,7 +962,17 @@ mod tests {
                 .into_iter()
                 .chain(rest.find("\n## "))
                 .min();
-            &rest[..end.unwrap_or(rest.len())]
+            let section = &rest[..end.unwrap_or(rest.len())];
+            // The kind's own table: from its header row to the blank line that
+            // ends it. A nested table further down — a value's `after` — does
+            // not count for the ref's.
+            let table = section
+                .find("| field")
+                .unwrap_or_else(|| panic!("`{heading}` has no table"));
+            let end = section[table..]
+                .find("\n\n")
+                .map_or(section.len(), |at| table + at);
+            &section[table..end]
         };
         let kinds = [
             (

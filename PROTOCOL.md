@@ -195,12 +195,14 @@ tables — a group is a claim, not a document.
 Emphasis means *look at this word*. A client is free to render it in its accent
 rather than in italics, which is what deck's own window does.
 
-Three bracketed directives may also appear in `say`, and a client that does not
-implement them must take them out rather than show them: `[pause]`, `[pause
-short]` and `[pause long]` are beats for a voice; `[point …]` says where to
-light while the words after it are read (see "Points"); and `[a-name]` matching
-a ref's `name` is that pane, which a client may render as something the reader
-can press. A directive it cannot parse is prose and stays as written.
+Three bracketed directives may also appear in `say`: `[pause]`, `[pause short]`
+and `[pause long]` are beats for a voice; `[point …]` says where to light while
+the words after it are read (see "Points"); and `[a-name]` matching a ref's
+`name` is that pane, which a client may render as something the reader can
+press. A client that does not implement pauses or points takes them out rather
+than showing them. A name is part of the sentence: a client that does not make
+it pressable shows the name as a plain word, without its brackets. A directive
+it cannot parse is prose and stays as written.
 
 ### Points
 
@@ -240,8 +242,8 @@ A ref is one pane of evidence. There are three kinds, and they are told apart by
 what they carry: an entry with a `file` is code, an entry with a `diagram` is a
 picture, and an entry with a `page` is markup the agent wrote. There is no
 `kind` field. An entry should carry only one of the three; one that carries
-more is read as the first it has, in that order — `file`, then `diagram`, then
-`page`.
+more is read as the first kind it is a valid instance of, in the order `file`,
+`diagram`, `page`.
 
 ### A pane's name
 
@@ -395,15 +397,17 @@ document; a page does not rely on what comes before it.
 **A page answers to names, and a point moves it.** The names a page answers to
 are the `id`s of its elements, every name listed in
 `<meta name="deck-points" content="…">` (written with `name` before `content`),
-and every name in a `data-on`, `data-show` or `data-from` attribute. A point can
-only reach a name made of letters, digits, `-` and `_`. `[point read-b]` in
+and every name in a `data-on`, `data-show` or `data-from` attribute — each
+attribute written with double quotes, `id="read-b"`. A point can only reach a
+name made of letters, digits, `-` and `_`. `[point read-b]` in
 `say` lands in the page that answers to `read-b`. A client that shows pages
 gives the document, before any of its own script runs:
 
 - `window.deck.at`: the last of its names this page was told, or `null` before
   the first;
 - a `deck:point` event on `window`, whose `detail` is that name, each time the
-  narration reaches one of the page's names; and once more when the document
+  narration reaches one of the page's names other than the one it was last
+  told; and once more when the document
   has loaded, if `window.deck.at` is not `null`, so a page opened halfway
   through a walk shows the step the narration is on;
 - a `deck:remark` event whose `detail` is the text of a comment the reader has
@@ -411,8 +415,10 @@ gives the document, before any of its own script runs:
 - the class `on` on an element while the point is one of its `data-on` names;
   `data-show` elements shown only while the point is one of their names; and a
   `data-from` element shown from its first name onwards, in the order
-  `deck-points` lists — a `data-from` naming something `deck-points` does not
-  list is never shown.
+  `deck-points` lists. The step through that order moves only on a name
+  `deck-points` lists: a point at any other name in between leaves it where it
+  was. A `data-from` naming something `deck-points` does not list is never
+  shown.
 
 A page is only ever moved forward. When the narration leaves it, it is told
 nothing, `window.deck.at` keeps its last name, and the page keeps the moment it
