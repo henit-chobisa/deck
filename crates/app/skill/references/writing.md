@@ -466,6 +466,27 @@ files. These have their own rules, and they come first:
   and the second. One picture with two flows, never two pictures.
 - **A boundary matters** — browser and server, process and thread, trust. Clusters.
 
+**Put values on the lines when the answer is a value — whether or not anybody
+asked.** Readers almost never ask for values, because they do not know a deck
+can show them. Recognising the problem is your job. Values are the answer when:
+
+- **Something holds the wrong thing.** A field is empty, a total is 81 and not
+  90, an id is one key over, a flag is off. The value is the bug.
+- **A value changes on its way through.** A key becomes an option id, a payload
+  is trimmed, a price is discounted, a string is escaped. One concrete input,
+  on every line it passes.
+- **A branch turns on data.** Which way the `if` went depends on what arrived.
+  The field it reads, on the line that reads it.
+- **Something repeats.** A loop, a retry, a counter: the history on its line,
+  `3 → 2 → 1`.
+- **The code is abstract until it has an input.** A plan, a mapping, a
+  generic function, a reducer. One worked example makes it concrete — say it is
+  an example, then put it on the lines.
+
+The tell is in your own draft: a number, an id, a name or a quoted string in a
+sentence is a value looking for its line. How is "Values on the line" in
+groups.md.
+
 **Make a page when something changes over time**, and only then:
 
 - **Two or more actors act in an order** — events, messages, retries, timeouts, races. A

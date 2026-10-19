@@ -505,6 +505,11 @@ one, and the mistake is stopping at the first, which is the one you reach for wi
 noticing:
 
 - **A file**, when the evidence is code that exists. Most groups.
+- **Values on that file**, when the answer is something the code held or would
+  hold — a wrong field, a value changing on its way, the data a branch turns
+  on, a loop's history, a worked example for code that has not run. Nobody will
+  ask for these; they do not know a deck can do it. Decide it here, for every
+  group, the way you decide a picture.
 - **A picture**, when answering means naming three or more places and the order they run
   in. See §4.
 - **A page**, when the answer is something they should watch happen — a race on a
