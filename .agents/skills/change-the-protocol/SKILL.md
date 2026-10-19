@@ -48,8 +48,9 @@ an empty one on the way out, or every existing document changes shape.
    client does with it. Somebody is writing a second client from this document
    alone.
 
-3. **The skill**, `crates/app/skill/SKILL.md` — an agent cannot use a field it
-   has never been told about. This is the step most often missed, and the
+3. **The skill**, `crates/app/skill/` — in the reference the field belongs to
+   (`references/groups.md` for a `deck group` flag), and in `SKILL.md`'s verb
+   list for a new verb. An agent cannot use a field it has never been told about. This is the step most often missed, and the
    symptom is a feature nothing ever emits.
 
 4. **The app**, so the field does something.

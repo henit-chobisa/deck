@@ -105,8 +105,9 @@ pub fn run() -> anyhow::Result<()> {
 /// compaction 66% pointed; after two, 48% did, nothing was drawn, and no
 /// answer showed a file. The rules had not changed. The agent had lost them.
 ///
-/// So it is told to load the skill again, and given the four things that go
-/// first in the meantime. Only for a compaction — a fresh session has nothing
+/// So it is told to load the skill again, and the references SKILL.md sends it
+/// to before every deck, which a summary drops, and given the four things that
+/// go first in the meantime. Only for a compaction — a fresh session has nothing
 /// to have lost — and only when the session had used deck, because a reminder
 /// about a tool nobody is using is noise in every other conversation.
 ///
@@ -119,7 +120,9 @@ fn reload(event: &Value, used: bool) -> Option<String> {
     Some(
         "This conversation was just compacted, and the deck skill you loaded \
          earlier was cut off with it. Before you write another `deck group`, or \
-         answer in a deck, load the deck skill again with the Skill tool. Until \
+         answer in a deck, load the deck skill again with the Skill tool, and \
+         read the three references it names before the next group: \
+         writing.md, situations.md and groups.md. Until \
          you have: every sentence points at the lines it is about with a bare \
          [point 12-14], never in backticks; a group has four panes at most; draw what moves, as a \
          diagram or a page; and answer a question by showing it — `deck show` \

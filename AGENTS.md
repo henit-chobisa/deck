@@ -98,7 +98,7 @@ relevant one before starting:
 | --- | --- |
 | `change-the-window` | anything in `crates/app`. Four mistakes, three of which abort the process. |
 | `change-the-protocol` | adding a field. Five places, and v1 is frozen. |
-| `change-the-skill` | editing `SKILL.md`. Rewriting it has destroyed it twice. |
+| `change-the-skill` | editing `SKILL.md` or its references. Rewriting it has destroyed it twice. |
 | `cut-a-release` | shipping a version. Six things in four places. |
 
 ## Use deck on deck

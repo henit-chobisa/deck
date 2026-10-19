@@ -129,9 +129,11 @@ expects.
 
 ## Changing the skill
 
-`crates/app/skill/SKILL.md` is what tells an agent deck exists and how to write
-a good deck. It is compiled into the binary, so a change to it ships with a
-release rather than as a file anybody copies.
+`crates/app/skill/` is what tells an agent deck exists and how to write a good
+deck: `SKILL.md` is the loop and a table of which reference to read when, and
+`references/` holds the rest. All of it is compiled into the binary, so a change
+ships with a release rather than as a file anybody copies. `SKILL.md` stays
+under 500 lines; a new rule goes in the reference for its job.
 
 Tests in [`crates/app/src/skill.rs`](crates/app/src/skill.rs) assert that
 specific sentences are present. That looks odd until you have watched a rewrite

@@ -1,7 +1,7 @@
 # .agents
 
 Skills for working **on** deck, not deck's own skill — that one lives at
-`crates/app/skill/SKILL.md` and ships inside the binary for agents to use deck
+`crates/app/skill/` (`SKILL.md` and its `references/`) and ships inside the binary for agents to use deck
 *with*.
 
 Each of these is a workflow that has been got wrong at least once, written down
