@@ -3,6 +3,17 @@
 What to do when `deck open` or `deck wait` brings back `{"asked": …}`. Read it before your first answer in a walk. Then renew the group's pills: "When one is pressed" and "After every answer" are in [groups.md](groups.md).
 
 §1–§2 and §6–§8 are in [SKILL.md](../SKILL.md), §3 in [groups.md](groups.md), §4 in [pictures.md](pictures.md), §5 in [pages.md](pages.md). "Plan the context" and the other sections on how to tell it are in [writing.md](writing.md).
+
+## Contents
+
+- When they answer back
+  - They can answer the sentence, not only the code
+  - A remark interrupts you unless the reader says otherwise
+  - Answer fast; do not report on your progress
+  - The walk is for talking; do not start the work
+  - Two or three sentences, and move their eyes while you answer
+  - A question about what something holds is answered on the lines
+
 ## When they answer back
 
 `deck wait` returns before the review is finished whenever the reader says
