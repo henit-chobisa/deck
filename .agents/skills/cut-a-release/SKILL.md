@@ -110,9 +110,9 @@ Tell them the command, and whether they need it:
 brew upgrade deck
 ```
 
-If the release is only the skill, say so: `crates/app/skill/SKILL.md` is read
-from disk by their agents, so a copy to `~/.agents/skills/deck/SKILL.md` reaches
-them immediately and the upgrade only re-syncs the copy inside the binary.
+If the release is only the skill, say so: `crates/app/skill/` is read from disk
+by their agents, so a copy of `SKILL.md` and `references/` to
+`~/.agents/skills/deck/` reaches them immediately and the upgrade only re-syncs the copy inside the binary.
 
 **Warn them not to run `deck setup` before upgrading** in that case — it writes
 the binary's older embedded skill back over the newer file.

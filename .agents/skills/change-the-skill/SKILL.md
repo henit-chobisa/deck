@@ -1,11 +1,11 @@
 ---
 name: change-the-skill
 description: >-
-  Edit crates/app/skill/SKILL.md, the file that tells an agent when and how to
-  use deck. Use whenever the skill is being improved, rewritten, or a rule is
-  being added to it. It is compiled into the binary, it is pinned by tests that
-  look strange until you know why, and rewriting it has quietly destroyed the
-  parts that made it work — twice.
+  Edit crates/app/skill/SKILL.md and its references/, the files that tell an
+  agent when and how to use deck. Use whenever the skill is being improved,
+  rewritten, or a rule is being added to it. It is compiled into the binary,
+  it is pinned by tests that look strange until you know why, and rewriting it
+  has quietly destroyed the parts that made it work — twice.
 ---
 
 # Changing the skill
@@ -16,15 +16,36 @@ commands are the easy half; this file is the product.
 ## Where it lives, and the copy that is read now
 
 ```
-crates/app/skill/SKILL.md      the source. include_str!'d into the binary.
-~/.agents/skills/deck/SKILL.md what agents on this machine read right now.
+crates/app/skill/SKILL.md      the loop, and which reference to read when.
+crates/app/skill/references/   the rest: writing, groups, pictures, pages, …
+~/.agents/skills/deck/         what agents on this machine read right now.
 ```
+
+All of it is `include_str!`'d into the binary, and written to disk together.
+
+## SKILL.md stays short; the detail goes in a reference
+
+`SKILL.md` is read whole every time the skill is used and stays in context
+for the session. After a compaction only its first 5,000 tokens come back. At
+2,551 lines everything past the voice sections — the loop, the waiter, the
+review — was what a long session lost. A test holds it under 500 lines and
+20,000 bytes.
+
+So a new rule goes in the reference for the job it belongs to, and
+`SKILL.md` keeps only the loop and the table that says which reference to read
+when. A new reference needs a row in that table, an entry in `REFERENCES` in
+`crates/app/src/skill.rs`, and a contents list if it runs past 100 lines; the
+tests check all three.
+
+Moving text between files is a move, not a rewrite. When it was split into
+references every line went across word for word, and only the cross-references
+that now pointed into another file were changed.
 
 An edit to the source does nothing until either a release ships or the file is
 copied:
 
 ```sh
-cp crates/app/skill/SKILL.md ~/.agents/skills/deck/SKILL.md
+cp -R crates/app/skill/SKILL.md crates/app/skill/references ~/.agents/skills/deck/
 ```
 
 Do that when testing a change — otherwise you are watching the old one.
@@ -82,7 +103,7 @@ Whatever decides *whether* to build a deck belongs in the description.
 
 ```sh
 cargo test -p deck-app skill
-cp crates/app/skill/SKILL.md ~/.agents/skills/deck/SKILL.md
+cp -R crates/app/skill/SKILL.md crates/app/skill/references ~/.agents/skills/deck/
 ```
 
 Then the real test, which is not a test: use it. Ask the person you are working

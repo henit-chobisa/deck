@@ -250,5 +250,6 @@ kind of machine.
 - [`crates/core/src/lib.rs`](../crates/core/src/lib.rs) — the model, and a map of
   its modules.
 - [`crates/app/skill/SKILL.md`](../crates/app/skill/SKILL.md) — what an agent is
-  told about when and how to use deck.
+  told about when and how to use deck, with the detail in its
+  [`references/`](../crates/app/skill/references).
 - [`CONTRIBUTING.md`](../CONTRIBUTING.md) — conventions, and what needs doing.
