@@ -112,6 +112,7 @@ line" in groups.md before your first one, if it is not in front of you.
 
 A live example has to be marked on the line too, and `deck show` takes no
 note. So bring the file again as a pane of its own — `deck bring --ref
-'file:first-last [name] example: …'` — and put the example's values there,
-never on a pane that already carries values that were observed. Say *example*
+'file:first-last [name] example: …'` — and put the example's values there with
+`deck values <path> --on <name> --values '[…]'` (`deck show` does not reach a
+brought pane), never on a pane that already carries values that were observed. Say *example*
 in the sentence that points at the first of them.

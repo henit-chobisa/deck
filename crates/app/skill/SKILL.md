@@ -104,11 +104,12 @@ deck wait     only with -d, when you detached the window yourself
 deck next     what the reader just did, when you want it without blocking
 
 deck show     move their eyes: --ref, --pane, --after for a proposed change,
-              --values to write what a line held, or an example you announced, onto it
+              --values to write what a line held onto it
 deck values   values onto several panes at once: --on <pane> --values <json>, repeated
 deck say      say something, spoken if they have a voice, with [point …] in it
 deck bring    a file this group never showed, or --diagram for a picture you write now,
               or --page for markup that moves
+              — an example: bring it as `[name] example: …`, then deck values --on name
 deck fold     put a pane on its spine, or --open to bring it back
 deck clear    take your hand off the page
 ```

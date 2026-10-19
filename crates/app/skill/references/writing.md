@@ -703,7 +703,8 @@ Offering two or three alternatives? Show them one at a time, each with its own
 crosses panes, and point at each value as you say it. A paragraph that says
 `42` becomes `Acme` becomes `opt-9` is a debugger described from memory; the
 same three values on their three lines are the debugger. If the values are an
-example, say so first (see "Values on the line" in groups.md).
+example, say so first, and bring them as a pane of their own (answering.md; the
+rules are "Values on the line" in groups.md).
 
 **When the answer is a shape rather than a file, draw it there and then.** The
 commonest live question is *how does this actually flow?* — and the commonest bad
