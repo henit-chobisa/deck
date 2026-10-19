@@ -1,6 +1,6 @@
 # Answering back
 
-What to do when `deck open` or `deck wait` brings back `{"asked": …}`. Read it before your first answer in a walk.
+What to do when `deck open` or `deck wait` brings back `{"asked": …}`. Read it before your first answer in a walk. Then renew the group's pills: "When one is pressed" and "After every answer" are in [groups.md](groups.md).
 
 §1–§2 and §6–§8 are in [SKILL.md](../SKILL.md), §3 in [groups.md](groups.md), §4 in [pictures.md](pictures.md), §5 in [pages.md](pages.md). "Plan the context" and the other sections on how to tell it are in [writing.md](writing.md).
 ## When they answer back

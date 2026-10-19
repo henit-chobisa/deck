@@ -51,16 +51,16 @@ the skill, kept apart so each is read when it is needed. Read each one whole.
 
 | Read | When |
 | ---- | ---- |
+| [writing.md](references/writing.md) | before `deck new`: whether this is one deck or chapters, who is talking, how to present, what to draw and where, points and beats |
 | [situations.md](references/situations.md) | before the first group: which kind of deck this is, and its shape |
-| [writing.md](references/writing.md) | before the first group: who is talking, how to present, what to draw and where, points and beats. Before `deck new` too, when the question is a whole system |
-| [groups.md](references/groups.md) | before the first group: §3, every `deck group` flag, highlights and diffs, the checks, the pills |
-| [pictures.md](references/pictures.md) | before a `--diagram`: §4 |
+| [groups.md](references/groups.md) | before the first group: §3, every `deck group` flag, highlights and diffs, values on a line, the checks, the pills |
+| [pictures.md](references/pictures.md) | before a `--diagram`, §4: the first group of a deck about a whole system or a flow is one |
 | [pages.md](references/pages.md) | before a `--page`: §5 |
-| [values.md](references/values.md) | before `--values` or `deck values` |
-| [answering.md](references/answering.md) | when `{"asked": …}` comes back, with "After every answer" in groups.md |
+| [answering.md](references/answering.md) | when `{"asked": …}` comes back, with "When one is pressed" and "After every answer" in groups.md |
 
-The first three go together: read them in one go, while the bar is up and
-before the first group. After your context is compacted, read them again
+Every deck needs the first three. Read writing.md before `deck new`, since it
+decides how many decks this is; read the other two while the bar is up,
+before the first group. After your context is compacted, read all three again
 before your next group: a summary keeps this file and drops them.
 
 ## The loop
@@ -173,8 +173,7 @@ in front of somebody.
 
 ## 3. Write one group per tool call
 
-In [references/groups.md](references/groups.md), with
-[values.md](references/values.md) for values on a line.
+In [references/groups.md](references/groups.md).
 
 ## 4. When the answer is a picture
 
@@ -236,6 +235,8 @@ one.
 there, leaves it alone, and goes back to listening. That is the loop for a live
 walk: open, get woken, answer with `deck say`, open again. Every time, for as
 long as they are in there.
+How to answer is in [references/answering.md](references/answering.md), and
+how to renew the pills after it is "After every answer", in groups.md.
 
 ```bash
 deck say <path> --text "…"   # answer them
@@ -274,6 +275,7 @@ what it printed:
 - `{"asked": …}` → **a question, not a review and not consent.** Answer it with
   `deck say`, move their eyes with `deck show`, and then **arm the waiter again**
   — you are back where you were, and nothing has been submitted.
+  How: [references/answering.md](references/answering.md).
 - A review payload — the object with `comments` in it — → they submitted. Proceed.
 - **Anything else is NOT a review.** Nothing was submitted. They may not have seen the
   deck at all.
@@ -344,4 +346,5 @@ review means they saw every page or explicitly chose not to.
 - As a substitute for actually making the change. A deck is for the argument, not the diff.
 - To Socratically quiz them on a routine change they just want to approve (ship mode). Read
   the mode; do not force teaching where they want speed.
+  The two modes are in writing.md.
 - For a one-line fix, or for something they watched you do.

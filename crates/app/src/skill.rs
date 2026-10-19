@@ -44,7 +44,6 @@ const REFERENCES: &[(&str, &str)] = &[
         "situations.md",
         include_str!("../skill/references/situations.md"),
     ),
-    ("values.md", include_str!("../skill/references/values.md")),
     ("writing.md", include_str!("../skill/references/writing.md")),
 ];
 
@@ -252,25 +251,59 @@ pub fn keep_up(home: &Path) -> Vec<PathBuf> {
             }
             continue;
         }
-        // No stamp: written by `deck setup` before stamps existed, and deck's.
-        // A stamp: deck's only while the words are still the ones it wrote,
-        // and only for a deck strictly newer than the one that wrote them. The
-        // same version with other words is a second build of it, and two
-        // builds that each took the skill back would trade it on every run.
-        // A stamp that will not read is nobody's to guess at.
-        if let Some(said) = said {
-            let Some((by, wrote)) = stamped(&said) else {
-                continue;
-            };
-            if wrote != was.print() || !crate::upgrade::newer(RUNNING, &by) {
-                continue;
-            }
+        if !decks(&was, said.as_deref()) {
+            continue;
         }
         if write_into(&dir, &at).is_ok() {
             rewritten.push(at);
         }
     }
     rewritten
+}
+
+/// Whether a copy that is not this deck's words is still deck's to rewrite,
+/// going by what its stamp `said`.
+///
+/// No stamp: written by `deck setup` before stamps existed, and deck's. A
+/// stamp: deck's only while the words are still the ones it wrote, and only
+/// for a deck strictly newer than the one that wrote them. The same version
+/// with other words is a second build of it, and two builds that each took the
+/// skill back would trade it on every run. A stamp that will not read is
+/// nobody's to guess at.
+///
+/// Three more, each a copy deck left half written rather than one somebody
+/// changed:
+///
+/// - A `pending` stamp is a write that was cut off. Whatever it left is a mix
+///   of two decks' words and matches no fingerprint, so the stamp says so
+///   before the first file goes down.
+/// - References that are all this deck's own, word for word, are nothing of
+///   anybody's. Beside this deck's `SKILL.md` they are a copy missing a file
+///   or two — the second of two agents whose `SKILL.md` links to one file,
+///   whose stamp sits beside that file and was written with the first.
+/// - Beside a `SKILL.md` stamped the way decks before references stamped it,
+///   they are an upgrade that stopped after the references, or an older
+///   `deck setup` that wrote its `SKILL.md` and left them there.
+fn decks(was: &OnDisk, said: Option<&str>) -> bool {
+    let only_ours = was.references.iter().all(|(name, bytes)| {
+        REFERENCES
+            .iter()
+            .any(|(ours, text)| ours == name && text.as_bytes() == bytes.as_slice())
+    });
+    if only_ours && was.skill == SKILL.as_bytes() {
+        return true;
+    }
+    let Some(said) = said else {
+        return true;
+    };
+    if let Some(by) = pending(said) {
+        return !crate::upgrade::newer(&by, RUNNING);
+    }
+    let Some((by, wrote)) = stamped(said) else {
+        return false;
+    };
+    let unchanged = wrote == was.print() || (only_ours && wrote == fnv(&was.skill));
+    unchanged && crate::upgrade::newer(RUNNING, &by)
 }
 
 /// Whether every agent deck has told reads the skill this deck carries.
@@ -325,7 +358,12 @@ fn on_disk(dir: &Path, at: &Path) -> Option<OnDisk> {
     if let Ok(entries) = std::fs::read_dir(dir.join(REFERENCES_DIR)) {
         for entry in entries.flatten() {
             let name = entry.file_name().to_string_lossy().into_owned();
-            if name.starts_with('.') || !entry.path().is_file() {
+            if name.starts_with('.') {
+                continue;
+            }
+            // A directory deck never makes, which makes the copy somebody's.
+            if !entry.path().is_file() {
+                references.push((format!("{name}/"), Vec::new()));
                 continue;
             }
             references.push((name, std::fs::read(entry.path()).ok()?));
@@ -373,6 +411,16 @@ fn stamp_path(at: &Path) -> PathBuf {
 #[cfg(test)]
 fn stamp(at: &Path) -> Option<(String, u64)> {
     stamped(&std::fs::read_to_string(stamp_path(at)).ok()?)
+}
+
+/// The version of a deck whose write was cut off, if the stamp says one was.
+///
+/// Written before the first file of a write goes down and replaced by the
+/// fingerprint once the last is down. A deck from before references cannot
+/// read it, and leaves the copy alone, as it does any stamp it cannot read.
+fn pending(said: &str) -> Option<String> {
+    let by = said.trim().strip_suffix(" pending")?;
+    Some(by.to_string())
 }
 
 /// The version and fingerprint a stamp says.
@@ -482,7 +530,15 @@ fn write(at: &Path) -> anyhow::Result<()> {
 /// sending it to a file that is not there yet. A reference this deck does not
 /// carry is taken away: whatever was in `references/` was deck's, or this copy
 /// would not be being written.
+///
+/// The stamp says `pending` for as long as the write takes. A write cut off
+/// halfway leaves two decks' words mixed, which no fingerprint matches, and
+/// without it the copy would read as somebody's edit and never be finished.
 fn write_into(dir: &Path, at: &Path) -> anyhow::Result<()> {
+    if let Some(parent) = at.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    replace(&stamp_path(at), format!("{RUNNING} pending\n").as_bytes())?;
     let references = dir.join(REFERENCES_DIR);
     std::fs::create_dir_all(&references)?;
     for (name, text) in REFERENCES {
@@ -495,9 +551,6 @@ fn write_into(dir: &Path, at: &Path) -> anyhow::Result<()> {
                 let _ = std::fs::remove_file(entry.path());
             }
         }
-    }
-    if let Some(parent) = at.parent() {
-        std::fs::create_dir_all(parent)?;
     }
     replace(at, SKILL.as_bytes())?;
     let wrote = format!("{RUNNING} {:x}\n", print_of_ours());
@@ -1813,5 +1866,87 @@ mod tests {
 
         assert_eq!(keep_up(&home).len(), 1);
         assert!(current(&home), "SKILL.md and every reference");
+    }
+
+    #[test]
+    fn a_write_cut_off_halfway_is_finished_next_time() {
+        // The stamp said the write had begun, one reference went down, then
+        // it stopped: two decks' words, matching no fingerprint.
+        let home = scratch("references-cut-off");
+        std::fs::create_dir_all(home.join(".claude")).unwrap();
+        install_all(&home).unwrap();
+        let dir = home.join(".claude/skills/deck");
+        std::fs::write(dir.join("SKILL.md"), "older").unwrap();
+        std::fs::write(dir.join("references/writing.md"), "older").unwrap();
+        std::fs::write(stamp_path(&dir.join("SKILL.md")), "0.0.1 pending\n").unwrap();
+
+        assert_eq!(keep_up(&home).len(), 1);
+        assert!(current(&home));
+    }
+
+    #[test]
+    fn an_upgrade_that_stopped_after_the_references_is_finished() {
+        // A deck from before references: its SKILL.md and its stamp, and this
+        // deck's references beside them. An older `deck setup` run after this
+        // deck leaves the same.
+        let home = scratch("references-stopped");
+        std::fs::create_dir_all(home.join(".claude")).unwrap();
+        install_all(&home).unwrap();
+        let at = home.join(".claude/skills/deck/SKILL.md");
+        std::fs::write(&at, "older").unwrap();
+        std::fs::write(stamp_path(&at), format!("0.0.1 {:x}\n", fnv(b"older"))).unwrap();
+
+        assert_eq!(keep_up(&home).len(), 1);
+        assert!(current(&home));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn two_agents_linking_one_skill_file_both_get_the_references() {
+        // The stamp sits beside the one file and is written with the first
+        // agent. The second finds this deck's SKILL.md and no references.
+        let home = scratch("references-file-links");
+        let kept = home.join("dotfiles/SKILL.md");
+        std::fs::create_dir_all(kept.parent().unwrap()).unwrap();
+        std::fs::write(&kept, "older").unwrap();
+        for agent in [".claude/skills/deck", ".codex/skills/deck"] {
+            let dir = home.join(agent);
+            std::fs::create_dir_all(&dir).unwrap();
+            std::os::unix::fs::symlink(&kept, dir.join("SKILL.md")).unwrap();
+        }
+
+        keep_up(&home);
+        for agent in [".claude/skills/deck", ".codex/skills/deck"] {
+            let dir = home.join(agent);
+            assert!(
+                dir.join("SKILL.md")
+                    .symlink_metadata()
+                    .unwrap()
+                    .is_symlink()
+            );
+            assert!(
+                on_disk(&dir, &dir.join("SKILL.md")).unwrap().is_ours(),
+                "{agent} has every reference"
+            );
+        }
+        assert_eq!(stamp(&kept), Some((RUNNING.to_string(), print_of_ours())));
+    }
+
+    #[test]
+    fn a_directory_somebody_added_to_the_references_makes_the_copy_theirs() {
+        let home = scratch("references-directory");
+        std::fs::create_dir_all(home.join(".claude")).unwrap();
+        install_all(&home).unwrap();
+        let dir = home.join(".claude/skills/deck");
+        let at = dir.join("SKILL.md");
+        std::fs::write(&at, "older").unwrap();
+        std::fs::create_dir_all(dir.join("references/mine")).unwrap();
+        let was = on_disk(&dir, &at).unwrap();
+        std::fs::write(stamp_path(&at), format!("0.0.1 {:x}\n", fnv(b"older"))).unwrap();
+
+        assert!(!was.is_ours());
+        assert!(keep_up(&home).is_empty());
+        assert!(dir.join("references/mine").is_dir());
+        assert!(!current(&home));
     }
 }
