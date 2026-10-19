@@ -466,20 +466,48 @@ files. These have their own rules, and they come first:
   and the second. One picture with two flows, never two pictures.
 - **A boundary matters** — browser and server, process and thread, trust. Clusters.
 
+**Put values on the lines when the answer is a value — whether or not anybody
+asked.** Readers almost never ask for values, because they do not know a deck
+can show them. Recognising the problem is your job. Values are the answer when:
+
+- **Something holds the wrong thing.** A field is empty, a total is 81 and not
+  90, an id is one key over, a flag is off. The value is the bug.
+- **A value changes on its way through.** A key becomes an option id, a payload
+  is trimmed, a price is discounted, a string is escaped. One concrete input,
+  on every line it passes.
+- **A branch turns on data.** Which way the `if` went depends on what arrived.
+  The field it reads, on the line that reads it.
+- **Something repeats.** A loop, a retry, a counter: the history on its line,
+  `3 → 2 → 1`.
+- **The code is abstract until it has an input.** A plan, a mapping, a
+  generic function, a reducer. One worked example makes it concrete — say it is
+  an example, then put it on the lines.
+
+The tell is in your own draft: a number, an id, a customer's or a record's name
+(not an identifier in the code), or a quoted string in a sentence is a value
+looking for its line — a value you have or a stated example; a guess stays
+in the sentence. Not when the claim is structure — who calls whom, why a
+module exists — and not when the code already spells the value out. How is
+"Values on the line" in groups.md.
+
 **Make a page when something changes over time**, and only then:
 
 - **Two or more actors act in an order** — events, messages, retries, timeouts, races. A
   timeline.
 - **A quantity changes** — a queue's depth, a buffer, a rate limit, latency. A level or a
   chart that moves.
-- **One record changes shape** across steps — a payload through its handlers. The same
-  record, fields filling in or dropping out.
+- **One record changes shape** across steps — a payload whose fields fill in or
+  drop out, the same record each time.
 - **A structure is mutated** — a list spliced, an entry evicted, a tree rebalanced.
 - **The bug lives in runtime state** — two names for one object, a mutation through a
   reference, ownership moving, what is on the stack and what is not. The variables and
   objects as boxes and arrows that change with each point. People cannot run this in
   their heads, and most misunderstandings live here.
 - **You would have to draw it twice**, before and after, and the meaning is the gap.
+
+*A payload through its handlers* is values on the lines, each handler's line
+showing what it holds there — unless the reader has to watch its shape change
+from field to field; then it is a page, with the values beside it on the code.
 
 Some of these have a shape that has already landed with readers: "A catalog of shapes
 that have worked" in §5.
@@ -696,6 +724,15 @@ compare it against the one on screen. `deck show --ref file:first-last --after
 live, as a diff they can read and comment on. The file on disk is never touched.
 Offering two or three alternatives? Show them one at a time, each with its own
 `--after`, and say what each one gives up.
+
+**When the answer is a value, put it on the line.** *What does it hold here?*
+— answer with `deck show --values` on the pane already showing the code, when
+you have the values, or `deck values` when the walk crosses panes, and point at each value as you say it. A paragraph that says
+`42` becomes `Acme` becomes `opt-9` is a debugger described from memory; the
+same three values on their three lines are the debugger. If the values are an
+example — and *explain it with values* over code you have no run of always is
+one — say so first, and bring them as a pane of their own (answering.md; the
+rules are "Values on the line" in groups.md).
 
 **When the answer is a shape rather than a file, draw it there and then.** The
 commonest live question is *how does this actually flow?* — and the commonest bad

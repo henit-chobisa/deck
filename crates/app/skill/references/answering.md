@@ -3,6 +3,17 @@
 What to do when `deck open` or `deck wait` brings back `{"asked": …}`. Read it before your first answer in a walk. Then renew the group's pills: "When one is pressed" and "After every answer" are in [groups.md](groups.md).
 
 §1–§2 and §6–§8 are in [SKILL.md](../SKILL.md), §3 in [groups.md](groups.md), §4 in [pictures.md](pictures.md), §5 in [pages.md](pages.md). "Plan the context" and the other sections on how to tell it are in [writing.md](writing.md).
+
+## Contents
+
+- When they answer back
+  - They can answer the sentence, not only the code
+  - A remark interrupts you unless the reader says otherwise
+  - Answer fast; do not report on your progress
+  - The walk is for talking; do not start the work
+  - Two or three sentences, and move their eyes while you answer
+  - A question about what something holds is answered on the lines
+
 ## When they answer back
 
 `deck wait` returns before the review is finished whenever the reader says
@@ -90,3 +101,24 @@ it replaces.
 And move their eyes while you answer. `deck show` puts the spotlight on what you
 are talking about, which is the half of an answer that prose cannot carry, and
 `[point …]` inside what you say walks your finger down it as you speak.
+
+**A question about what something holds is answered on the lines.** Most
+readers will never say *values*; they ask *why is it 81*, *what does this return
+for Acme*, *why did it take the else*, *what does the row look like after*.
+Those are questions about a value, and so are *what is it here?* and *show me
+with values* — answer with `deck show --values` on the pane showing the code, when you have the values,
+or `deck values` when the walk crosses panes, and point at each value as you say it.
+Never with a sentence that lists them. A walk longer than four valued lines is
+several shows in a row, each with its own pointed sentence — or, for an
+example, several `deck values --on <name>` calls, each followed by a `deck say`
+that points at what it just wrote. Read "Values on the
+line" in groups.md before your first one, if it is not in front of you.
+
+Any of these over code you have no run of, or for an input you chose —
+*explain it with values*, *with an example*, *walk me through it*, *what would
+it hold* — wants an example, and an example never goes through `deck show`: it has to
+be marked on the line too, and `deck show` takes no note. So bring the file again as a pane of its own — `deck bring --ref
+'file:first-last [name] example: …'` — and put the example's values there with
+`deck values <path> --on <name> --values '[…]'` (`deck show` does not reach a
+brought pane), never on a pane already on screen. Say *example*
+in the sentence that points at the first of them.

@@ -336,7 +336,11 @@ arrived. A client that does not render
 `values` ignores them, and a ref without them is unchanged.
 
 Only values the agent has seen belong here: from a run, a log, a payload or
-arithmetic on the code. A value drawn on a line reads as observed.
+arithmetic on the code from an input that was observed (arithmetic on an input
+the agent chose is an example). A value drawn on a line reads as observed. The one
+exception is a worked example, for code that has not run or that the agent has no run of: the narration says it
+is one, and the ref's `note` starts `example:` (after its `[name]`, if it has
+one), so the line says so too.
 
 ### A diagram ref
 

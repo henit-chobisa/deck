@@ -374,23 +374,64 @@ line that produced it.
 - A payload that drives a branch: a webhook, a response, a config. Show the
   field the branch turns on.
 - They ask *what was X*, or *show me*, about code already on screen. Answer with
-  `deck show --values`, not a sentence.
+  `deck show --values` when you have the values, not a sentence; over code you
+  have no run of, it is an example on a brought pane (answering.md).
+- They ask you to explain it *with values*, *with an example*, or to *walk it
+  through*. That is a request for values on the lines, every time — the answer
+  is the values landing where they live, one point at a time, not a paragraph
+  that mentions them. Over code you have no run of, that is an example, on a
+  brought pane of its own (answering.md).
+- **Your own narration names a value.** If a sentence says the key is `42`, the
+  name comes back as `Acme`, the row gets the id `opt-9`, that value belongs on
+  the line that holds it. A value in prose is read once and then has to be
+  carried in the reader's head to the line it belongs to; a value on its line is
+  read exactly where it matters. If you are about to write a value into a
+  sentence — one you have, or a stated example; a guess stays in the sentence —
+  put it on the line and point at it as well: the sentence may still
+  say it, the line is where it lives. A value the code already spells out —
+  `const limit = 10` — needs nothing beside it; this is for values the code
+  does not show.
 
 **Leave it out when** the claim is about structure (who calls whom, why a module
 exists), when the value is plain from the code (`const limit = 10` needs no
 `10` beside it), or when nobody's claim turns on it. A value that could be
 removed without losing anything is noise: remove it.
 
-**Only values you have.** From a test run, a log, a payload you read, a
-debugger, or arithmetic anyone can check from the code. A value on a line reads
-as observed, so one you are inferring goes in the prose, said as an inference —
-*I expect orderId is undefined here* — and not on the line. **Never secrets:**
+**Only values you have, or an example you said is one.** From a test run, a
+log, a payload you read, a debugger, or arithmetic anyone can check from the
+code. Arithmetic on an input you chose is still an example: the
+input was yours, so the values are too. A value on a line reads as observed, so a guess about what a real run
+held goes in the prose, said as a guess — *I expect orderId is undefined here*
+— and not on the line.
+
+**An example is the exception, and it is the commonest case in a plan.** For a
+design, a plan, or code that has not run — or that you have no run of —
+nothing was observed — so pick one
+concrete case and walk it through on the lines. Say it is an example first, in
+the prose: *say the Customer property is `p-7` and the CRM returns `42`,
+`Acme`*. Then put those values on every line they pass through, the same key
+the whole way, pointing at each as you go — `42` on the line that receives it,
+`42 → Acme` on the lookup, `opt-9` on the row it becomes. Keep the example true
+to the code: the arithmetic and the shape must be what this code would really
+do with that input. Never mix an example's values and observed ones on one
+pane. An example asked for live goes on a brought pane of its own
+(answering.md).
+
+An example has to be visible as one on the line too, because the line stays on
+screen after the sentence that announced it has scrolled away: the note of
+every ref carrying example values starts `example:`, after its `[name]` if it
+has one — `[webhook] example: the handler` — because a name is only read at the
+very front of a note. The group's `--why` keeps its basis and adds *worked
+example, not a run*; its confidence rates your reading of the code, not the
+example. Choose the example's inputs before `deck new`
+and reuse exactly those values in every group — `p-7` in group two is `p-7` in
+group four. **Never secrets:**
 no keys, tokens, passwords, card numbers or personal emails. Redact them,
 `"sk_live_…"`, `"m***@…"`.
 
 **How much.**
 
-- Only on lines the `say` points at with `[point …]`. The value is the evidence
+- Put values only on lines the `say` points at with `[point …]`. The value is the evidence
   for that sentence. When a sentence points at a line holding one of a pane's
   values, that pane keeps all its values away until such a sentence is first
   reached; then they all come out together, once, and stay. A pane none of your
@@ -398,7 +439,11 @@ no keys, tokens, passwords, card numbers or personal emails. Redact them,
   write live come out at once, and bring out the rest of that pane's values with
   them. The reader can hide or show a pane's values with the eye in its header.
 - At most two values on a line, usually one. At most three or four lines with
-  values in a group; more is two groups.
+  values in a group; more is two groups — a walk that passes eight lines is two
+  or three groups in a row, or, live, two or three shows. A loop shows its first
+  two steps and where it ends, `100 → 90  90 → 81  … → 53 (5 times)`. An arrow
+  on one line is that line's history; a value that becomes another across lines
+  is a value on each line, not an arrow.
 - `"lit": true` on the one value the claim turns on, never more than one per
   sentence.
 
@@ -466,6 +511,11 @@ one, and the mistake is stopping at the first, which is the one you reach for wi
 noticing:
 
 - **A file**, when the evidence is code that exists. Most groups.
+- **Values on that file**, when the answer is something the code held or would
+  hold — a wrong field, a value changing on its way, the data a branch turns
+  on, a loop's history, a worked example for code that has not run. Nobody will
+  ask for these; they do not know a deck can do it. Decide it here, for every
+  group, the way you decide a picture.
 - **A picture**, when answering means naming three or more places and the order they run
   in. See §4.
 - **A page**, when the answer is something they should watch happen — a race on a

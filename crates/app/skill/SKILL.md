@@ -109,6 +109,7 @@ deck values   values onto several panes at once: --on <pane> --values <json>, re
 deck say      say something, spoken if they have a voice, with [point …] in it
 deck bring    a file this group never showed, or --diagram for a picture you write now,
               or --page for markup that moves
+              — an example: bring it as `[name] example: …`, then deck values --on name
 deck fold     put a pane on its spine, or --open to bring it back
 deck clear    take your hand off the page
 ```
