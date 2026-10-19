@@ -16,6 +16,8 @@
 
 #![forbid(unsafe_code)]
 
+pub mod text;
+
 use std::ops::Range;
 use std::path::Path;
 use std::sync::Arc;

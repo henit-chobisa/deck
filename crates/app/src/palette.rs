@@ -263,12 +263,9 @@ pub fn install(palette: &Palette, dark: bool, cx: &mut App) {
 /// the same size, so prose set in the fallback reads washed out and loose no
 /// matter what colour it is given. A deck must look the same on every machine,
 /// so the font ships with it. IBM Plex is under the SIL Open Font License;
-/// `fonts/LICENSE-IBM-Plex.txt` travels with the files.
-const PLEX: &[(&[u8], &str)] = &[
-    (include_bytes!("../fonts/IBMPlexSans-400.ttf"), "regular"),
-    (include_bytes!("../fonts/IBMPlexSans-500.ttf"), "medium"),
-    (include_bytes!("../fonts/IBMPlexSans-600.ttf"), "semibold"),
-];
+/// `crates/render/fonts/LICENSE-IBM-Plex.txt` travels with the files, which
+/// live in deck-render so the window and every export set words in the same face.
+const PLEX: &[(&[u8], &str)] = deck_render::text::PLEX;
 
 /// Load the embedded faces. Called once, before any window is opened.
 pub fn embed_fonts(cx: &App) {

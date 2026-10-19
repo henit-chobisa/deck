@@ -1672,6 +1672,7 @@ dependencies = [
  "deck-core",
  "gpui-kit",
  "serde_json",
+ "ttf-parser",
 ]
 
 [[package]]
