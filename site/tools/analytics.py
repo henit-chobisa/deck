@@ -44,7 +44,10 @@ CONFIG = (
     "person_profiles:'identified_only',respect_dnt:true,capture_pageview:true,"
     "capture_pageleave:true,session_recording:{maskAllInputs:true},"
     # No location is looked up for a visit, as none is for the app's counts.
-    "loaded:function(p){p.register({$geoip_disable:true})}});" % (KEY, HOST)
+    # And every event says it came from the website: the site and the app
+    # share one PostHog project, and `source` is the filter that keeps them
+    # apart (the app's single event is `deck usage`, sent by `$lib` deck).
+    "loaded:function(p){p.register({$geoip_disable:true,source:'website'})}});" % (KEY, HOST)
 )
 
 # A visitor who asked not to be tracked, by Do Not Track or Global Privacy
