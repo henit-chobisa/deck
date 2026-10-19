@@ -20,6 +20,7 @@
 //! - [`relocate`] — following a pinned line while the file moves under it.
 //! - [`layout`] — how many panes fit beside each other.
 //! - [`diagram`] — pictures of things that are not in any one file.
+//! - [`geometry`] — where a placed diagram's boxes, arrows and frames go.
 //! - [`theme`] — the palette, derived from the editor's own colours.
 
 #![forbid(unsafe_code)]

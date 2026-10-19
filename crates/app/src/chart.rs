@@ -83,8 +83,8 @@ pub struct Plan {
 
 /// Turn a placed grid into a drawing, in the window's pixels.
 ///
-/// The geometry itself is [`geometry::plan`], which every export asks too, so
-/// a picture in a PDF is the picture the reader saw. This only changes its
+/// The geometry itself is [`geometry::plan`], which the exports will ask too,
+/// so a picture in a PDF is the picture the reader saw. This only changes its
 /// units at the window's edge.
 #[must_use]
 pub fn plan(diagram: &Diagram, layout: &Layout) -> Plan {
@@ -1620,6 +1620,10 @@ mod tests {
             h: f32::from(at.size.height),
         };
 
+        assert_eq!(
+            (ours.spots.len(), ours.routes.len(), ours.frames.len()),
+            (theirs.spots.len(), theirs.routes.len(), theirs.frames.len())
+        );
         assert_eq!(f32::from(ours.size.width), theirs.width);
         assert_eq!(f32::from(ours.size.height), theirs.height);
         for (ours, theirs) in ours.spots.iter().zip(&theirs.spots) {
@@ -1645,9 +1649,5 @@ mod tests {
                 (theirs.cluster_ix, theirs.at)
             );
         }
-        assert_eq!(
-            (ours.spots.len(), ours.routes.len(), ours.frames.len()),
-            (theirs.spots.len(), theirs.routes.len(), theirs.frames.len())
-        );
     }
 }

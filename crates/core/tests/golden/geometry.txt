@@ -38,6 +38,25 @@ edge 0 186,57 214,57 214,57 242,57
 edge 1 398,57 426,57 426,57 454,57
 edge 2 back 532,84 532,105 108,105 108,84
 
+# a cluster naming a node that is not there
+size 231 210
+node 0 30 30 156 54
+node 1 30 126 156 54
+edge 0 108,84 108,105 108,105 108,126
+frame 0 15 -4 186 103
+
+# a back edge across columns
+size 852 114
+node 0 30 30 156 54
+node 1 666 30 156 54
+node 2 242 30 156 54
+node 3 454 30 156 54
+edge 0 186,57 638,57 638,57 666,57
+edge 1 186,57 214,57 214,57 242,57
+edge 2 398,57 426,57 426,57 454,57
+edge 3 610,57 638,57 638,57 666,57
+edge 4 back 744,84 744,105 108,105 108,84
+
 # clusters and a long edge
 size 231 513
 node 0 30 30 156 54

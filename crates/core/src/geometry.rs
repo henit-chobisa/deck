@@ -5,8 +5,8 @@
 //! window's own pixels, which left it the one part of a picture nothing else
 //! could draw: an export would have had to work out the geometry again, and a
 //! second answer to *where does this arrow go* is a picture that differs from
-//! the one the reader saw. So it is here, in plain numbers, and the window and
-//! every export ask the same function.
+//! the one the reader saw. So it is here, in plain numbers, for the window and
+//! for the exports to come (#170) to ask the same function.
 //!
 //! # Why every box is the same size
 //!
@@ -518,6 +518,24 @@ mod tests {
                 ),
             ),
             (
+                "a cluster naming a node that is not there",
+                diagram(
+                    Direction::Down,
+                    &["a", "b"],
+                    &[("a", "b")],
+                    &[("core", &["a", "ghost"]), ("empty", &["ghost"])],
+                ),
+            ),
+            (
+                "a back edge across columns",
+                diagram(
+                    Direction::Right,
+                    &["a", "b", "c", "d"],
+                    &[("a", "b"), ("a", "c"), ("c", "d"), ("d", "b"), ("b", "a")],
+                    &[],
+                ),
+            ),
+            (
                 "clusters and a long edge",
                 diagram(
                     Direction::Down,
@@ -542,7 +560,7 @@ mod tests {
             .collect::<Vec<_>>()
             .join("\n");
         let at = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/golden/geometry.txt");
-        if std::env::var_os("UPDATE_GOLDEN").is_some() {
+        if std::env::var("UPDATE_GOLDEN").as_deref() == Ok("1") {
             std::fs::create_dir_all(at.parent().expect("a parent")).expect("writable");
             std::fs::write(&at, &now).expect("writable");
         }
