@@ -60,6 +60,10 @@ The counts go to [PostHog](https://posthog.com), hosted in the EU. Each event is
 sent without a person profile and with location lookup turned off, and the
 project discards IP addresses.
 
+## This website
+
+The deck app above counts nothing until you say yes. This website is different: it counts visits, so we can see how people find deck and what they read. It uses [PostHog](https://posthog.com), in the EU, and keeps no cookie: the id for a visit lives in your browser tab's session storage and is gone when the tab closes. It records pages viewed, clicks, scrolling and time on a page, and anonymised replays of visits with every input masked. It honours Do Not Track. Nothing here is linked to the deck app's counts.
+
 ## Seeing it for yourself
 
 ```sh

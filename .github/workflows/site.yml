@@ -68,6 +68,10 @@ jobs:
               [ -e "$target" ] || { echo "$page links to $ref, which is not there"; exit 1; }
             done
           done
+      - name: Count visits
+        # Every page gets the website's visit counter. What it counts is on
+        # /telemetry/; the app's own usage counts stay opt-in and separate.
+        run: python3 site/tools/analytics.py site
       - name: Leave out what is not part of the site
         run: rm -rf site/README.md site/tools
       - uses: actions/upload-pages-artifact@v3
