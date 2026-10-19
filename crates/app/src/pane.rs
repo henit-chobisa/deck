@@ -17,7 +17,8 @@
 //! screenful of work, and the reader can scroll to line 1 or to the end of the
 //! file like anywhere else.
 //!
-//! The highlighter is still the library's, driven directly.
+//! The highlighter is still the library's, driven through `deck_render::styled`
+//! so that every export colours code with the same call.
 
 use std::ops::Range;
 

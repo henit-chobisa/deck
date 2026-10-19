@@ -9,8 +9,10 @@
 //! asks [`Code::spans`], which runs the very same call and reads the colours
 //! back out exactly.
 //!
-//! The highlighter needs no window, no `App` and no GPU: it is a tree-sitter
-//! parse and a table lookup. That is what lets this crate exist.
+//! The highlighter needs no window, no `App` and no GPU when it runs: it is a
+//! tree-sitter parse and a table lookup. That is what lets this crate exist.
+//! It still links gpui, whose types the highlighter is written in, so it builds
+//! where the window builds and not in the jobs that leave the window out.
 
 #![forbid(unsafe_code)]
 
@@ -335,7 +337,12 @@ mod tests {
         }
     }
 
-    const FIXTURES: [&str; 6] = ["a.rs", "a.ts", "a.py", "a.json", "a.md", "a.go"];
+    // The last three are where a library bump moves tokens first: tags, and one
+    // language inside another — a script and a style in a page, a fenced block
+    // in Markdown.
+    const FIXTURES: [&str; 9] = [
+        "a.rs", "a.ts", "a.py", "a.json", "a.md", "a.go", "a.tsx", "a.html", "b.md",
+    ];
 
     fn fixture(name: &str) -> String {
         let at = Path::new(env!("CARGO_MANIFEST_DIR"))

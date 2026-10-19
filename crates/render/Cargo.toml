@@ -1,6 +1,6 @@
 [package]
 name = "deck-render"
-description = "How deck draws a deck, as data: highlighted code, shared by the window and every export. No window."
+description = "How deck draws a deck, as data: highlighted code, shared by the window and every export. Opens no window, though it links gpui."
 version.workspace = true
 edition.workspace = true
 license.workspace = true
