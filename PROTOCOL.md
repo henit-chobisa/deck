@@ -198,12 +198,39 @@ rather than in italics, which is what deck's own window does.
 Three bracketed directives may also appear in `say`, and a client that does not
 implement them must take them out rather than show them: `[pause]`, `[pause
 short]` and `[pause long]` are beats for a voice; `[point …]` says where to
-light while the words after it are read — file line numbers, `[point 106-110]`
-or `[point 140]`, the id of a diagram block, `[point checkout]`, or one of each
-to light a file and a picture together, `[point 106-110 checkout]`, or a name a
-page answers to, `[point hop]`; and `[a-name]` matching a ref's `name` is that
-pane, which a client may render as something the reader can press. A directive it cannot parse is prose and stays
-as written.
+light while the words after it are read (see "Points"); and `[a-name]` matching
+a ref's `name` is that pane, which a client may render as something the reader
+can press. A directive it cannot parse is prose and stays as written.
+
+### Points
+
+`[point …]` holds one or two parts, separated by a space or a comma, in either
+order:
+
+- **lines**: `106-110` or `106`, the file's own line numbers. `+106-110` means
+  the arriving half of a code ref with `after` or `before`: the code as it
+  would be, numbered as it will be. A bare range means the code as it is.
+- **a word**: letters, digits, `-` and `_`. It names a node of a diagram, by
+  the node's `id`, or a name a page answers to (see "A page ref").
+
+At most one of each, so `[point 106-110 checkout]` lights lines and a node
+together. Anything else — two ranges, a `+` on a word, three parts — is not a
+point, and stays in the prose as words.
+
+**A point finds its pane by what the pane is showing**, never by its place:
+
+- lines light the first code ref in the group whose `range` overlaps them, and
+  nothing at all when none does;
+- a word lights the first diagram with a node of that `id`, and the first page
+  that answers to it — both, when both do;
+- for a word, a pane brought in during a live walk is asked before the group's
+  own, so an answer's points land in the picture or page carried in to answer
+  it.
+
+A point holds from where it is written until the next point. A client with a
+voice moves the light as the words after it are spoken; a client without one
+lights a point when the reader is on its sentence, by stepping, scrolling or
+picking it. Either way, that moment is when the narration *reaches* the point.
 
 ---
 
@@ -212,7 +239,9 @@ as written.
 A ref is one pane of evidence. There are three kinds, and they are told apart by
 what they carry: an entry with a `file` is code, an entry with a `diagram` is a
 picture, and an entry with a `page` is markup the agent wrote. There is no
-`kind` field, and no entry is more than one.
+`kind` field. An entry should carry only one of the three; one that carries
+more is read as the first it has, in that order — `file`, then `diagram`, then
+`page`.
 
 ### A pane's name
 
@@ -345,7 +374,7 @@ kind of pane a sentence could not address.
 | field  | type   | required | meaning |
 | ------ | ------ | -------- | ------- |
 | `id`   | string | yes      | Identifies the ref within its deck. |
-| `page` | string | yes      | The whole document, as the agent wrote it: markup, style and script. |
+| `page` | string | yes      | The document as the agent wrote it, markup, style and script: a fragment or a whole HTML document. |
 | `note` | string | no       | A short label, as a code ref's is. |
 | `name` | string | no       | What the narration calls this pane, as a code ref's `name` is. |
 
@@ -353,34 +382,43 @@ A page is for the one thing in a deck that only makes sense moving: two workers
 racing on a timeline, a queue filling, a structure changing. It is not a
 document and not a diagram drawn in HTML: the prose carries the argument, and
 boxes and arrows are a diagram. A client writing a deck is expected to refuse a
-page that shows more than forty words, not counting numbers and measurements.
+page that shows more than forty words: the words of its text outside `<script>`
+and `<style>`, where a word is a run of characters between spaces whose first
+letter or digit is a letter — so `200ms`, `64` and `-12%` are not counted.
 
-**`page` is complete in itself.** Nothing is fetched to show it, and a client
-renders it with no network behind it: no remote scripts, styles, fonts or
-images, and no navigation away from the document.
+**`page` is complete in itself.** A page must not load anything: no remote
+scripts, styles, fonts or images, no requests, and no navigation away from the
+document. A client renders it as if there were no network, and may refuse any
+request a page makes. A client puts its own style and script in front of the
+document; a page does not rely on what comes before it.
 
 **A page answers to names, and a point moves it.** The names a page answers to
 are the `id`s of its elements, every name listed in
-`<meta name="deck-points" content="…">`, and every name in a `data-on`,
-`data-show` or `data-from` attribute. `[point read-b]` in `say` lands in the page
-that answers to `read-b`. A client that shows pages gives the document, before
-any of its own script runs:
+`<meta name="deck-points" content="…">` (written with `name` before `content`),
+and every name in a `data-on`, `data-show` or `data-from` attribute. A point can
+only reach a name made of letters, digits, `-` and `_`. `[point read-b]` in
+`say` lands in the page that answers to `read-b`. A client that shows pages
+gives the document, before any of its own script runs:
 
-- `window.deck.at`: the name the narration is on now, or `null`;
+- `window.deck.at`: the last of its names this page was told, or `null` before
+  the first;
 - a `deck:point` event on `window`, whose `detail` is that name, each time the
-  narration reaches one of the page's names, and once more when the document
-  has loaded, so a page opened halfway through a walk shows the step the
-  narration is on;
-- a `deck:remark` event whose `detail` is the text of a comment the reader
-  pressed, so a page can show what the comment is about;
+  narration reaches one of the page's names; and once more when the document
+  has loaded, if `window.deck.at` is not `null`, so a page opened halfway
+  through a walk shows the step the narration is on;
+- a `deck:remark` event whose `detail` is the text of a comment the reader has
+  just written about this page, so it can show what the comment is about;
 - the class `on` on an element while the point is one of its `data-on` names;
-  `data-show` elements visible only while the point is one of their names; and
-  `data-from` elements visible from their name onwards, in the order
-  `deck-points` lists.
+  `data-show` elements shown only while the point is one of their names; and a
+  `data-from` element shown from its first name onwards, in the order
+  `deck-points` lists — a `data-from` naming something `deck-points` does not
+  list is never shown.
 
 A page is only ever moved forward. When the narration leaves it, it is told
-nothing and keeps the moment it is showing; it starts at rest and never plays
-on a clock of its own.
+nothing, `window.deck.at` keeps its last name, and the page keeps the moment it
+is showing. It starts at rest and never plays on a clock of its own. A client
+may offer to play a page again from the start; that reloads it, with
+`window.deck.at` back to `null`.
 
 **A page wears the reader's colours.** A client provides these CSS custom
 properties, in the theme the rest of its window is in:
@@ -394,7 +432,7 @@ The page's background is transparent and its font is the client's monospace,
 so a page that uses only these looks like part of the window in any theme.
 
 A comment on a page carries `ref` and no `range`, as one on a diagram does, and
-its `quote` is the pane's label.
+its `quote` is the ref's `name`, or `page` when it has none.
 
 ---
 
