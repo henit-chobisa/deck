@@ -1,3 +1,6 @@
 # Golden files are compared byte for byte. A checkout that turned their line
 # endings into CRLF (Git on Windows does, by default) would fail every one.
 crates/*/tests/golden/** text eol=lf
+# Fixtures are read by byte offset, and CRLF would move every one. No Windows
+# job runs these tests today; this keeps it safe for the day one does.
+crates/*/tests/fixtures/** text eol=lf

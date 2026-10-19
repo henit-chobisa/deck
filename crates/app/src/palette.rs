@@ -14,7 +14,7 @@
 //! [`install`] there is one palette in the window, not two.
 
 use deck_core::theme::{Imported, Overrides, Palette, Paper, Rgb, Syntax, derive, tint};
-use gpui_kit::component::{Theme, ThemeMode, highlighter::HighlightTheme};
+use gpui_kit::component::{Theme, ThemeMode};
 use gpui_kit::{App, Hsla, Rgba, SharedString, px};
 
 /// What the reader asked for, read once.
@@ -248,7 +248,8 @@ pub fn install(palette: &Palette, dark: bool, cx: &mut App) {
     theme.shadow = true;
     theme.radius = px(5.);
 
-    theme.highlight_theme = highlight_theme(palette, dark);
+    // The same theme every export highlights with: see `deck_render`.
+    theme.highlight_theme = deck_render::theme(palette, dark, syntax());
 
     // The base layer keeps its own copy for the parts it paints itself, and
     // writing to the public fields does not reach it.
@@ -316,93 +317,6 @@ fn first_installed(names: &[&str], cx: &App) -> Option<SharedString> {
         .iter()
         .find(|name| installed.iter().any(|have| have == *name))
         .map(|name| SharedString::from((*name).to_string()))
-}
-
-/// The editor's own theme, built from the palette.
-///
-/// Assembled as JSON and parsed back rather than constructed field by field.
-/// `SyntaxColors` has some forty of them, most irrelevant here, and this is the
-/// same shape a real editor theme arrives in — so importing one later is this
-/// function with its middle replaced, not a rewrite.
-fn highlight_theme(palette: &Palette, dark: bool) -> std::sync::Arc<HighlightTheme> {
-    let hex = |c: Rgb| c.to_hex();
-
-    // Syntax stays quiet. A review surface is read for its *shape* — what is
-    // lit, what is washed back — and a rainbow underneath competes with the one
-    // thing the deck is pointing at.
-    let quiet = if dark {
-        ("#d3869b", "#b8bb26", "#fabd2f", "#d3869b", "#8ec07c")
-    } else {
-        ("#8f3f71", "#79740e", "#b57614", "#8f3f71", "#427b58")
-    };
-
-    // The editor's own, where it had them, and deck's quiet set where it did
-    // not. Mixed rather than all-or-nothing: a theme that names four of the
-    // five should give four, not none.
-    let imported = syntax();
-    let taken = |had: Option<Rgb>, quiet: &str| had.map_or_else(|| quiet.to_string(), Rgb::to_hex);
-    let keyword = taken(imported.keyword, quiet.0);
-    let string = taken(imported.string, quiet.1);
-    let function = taken(imported.function, quiet.2);
-    let literal = taken(imported.literal, quiet.3);
-    let type_ = taken(imported.type_, quiet.4);
-
-    let json = format!(
-        r#"{{
-          "name": "deck",
-          "appearance": "{mode}",
-          "style": {{
-            "editor.background": "{wash}",
-            "editor.foreground": "{fg}",
-            "editor.gutter.background": "{wash}",
-            "editor.line_number": "{gutter}",
-            "editor.active_line_number": "{muted}",
-            "editor.active_line.background": "{wash}",
-            "syntax": {{
-              "comment":       {{ "color": "{comment}", "font_style": "italic" }},
-              "comment.doc":   {{ "color": "{comment}", "font_style": "italic" }},
-              "keyword":       {{ "color": "{keyword}" }},
-              "string":        {{ "color": "{string}" }},
-              "string.special":{{ "color": "{string}" }},
-              "function":      {{ "color": "{function}" }},
-              "function.method": {{ "color": "{function}" }},
-              "constructor":   {{ "color": "{function}" }},
-              "type":          {{ "color": "{type_}" }},
-              "enum":          {{ "color": "{type_}" }},
-              "number":        {{ "color": "{literal}" }},
-              "boolean":       {{ "color": "{literal}" }},
-              "constant":      {{ "color": "{literal}" }},
-              "attribute":     {{ "color": "{muted}" }},
-              "operator":      {{ "color": "{muted}" }},
-              "punctuation":   {{ "color": "{muted}" }},
-              "variable":      {{ "color": "{fg}" }},
-              "property":      {{ "color": "{fg}" }}
-            }}
-          }}
-        }}"#,
-        mode = if dark { "dark" } else { "light" },
-        wash = hex(palette.wash),
-        fg = hex(palette.fg),
-        // The gutter recedes further than any label: line numbers are there to
-        // be referred to, not read.
-        gutter = hex(palette.fg.mix(palette.wash, 0.62)),
-        muted = hex(palette.muted),
-        comment = hex(palette.fg.mix(palette.wash, 0.42)),
-    );
-
-    serde_json::from_str(&json).map_or_else(
-        // A palette cannot make this JSON invalid, so a failure here is a typo
-        // in the literal above — and a deck rendered in the library's default
-        // colours is better than one that does not open.
-        |_| {
-            if dark {
-                HighlightTheme::default_dark()
-            } else {
-                HighlightTheme::default_light()
-            }
-        },
-        std::sync::Arc::new,
-    )
 }
 
 #[cfg(test)]
