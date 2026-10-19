@@ -197,7 +197,18 @@ pub fn styled(
     file: &Path,
     theme: &HighlightTheme,
 ) -> Vec<(Range<usize>, HighlightStyle)> {
-    let mut highlighter = SyntaxHighlighter::new(language_of(file));
+    styled_as(source, language_of(file), theme)
+}
+
+/// [`styled`], for code whose language is known by name rather than by a
+/// file: a fenced block in Markdown says `rust`, and has no extension.
+#[must_use]
+pub fn styled_as(
+    source: &str,
+    language: &str,
+    theme: &HighlightTheme,
+) -> Vec<(Range<usize>, HighlightStyle)> {
+    let mut highlighter = SyntaxHighlighter::new(language);
     highlighter.update(None, &Rope::from(source), None);
     highlighter.styles(&(0..source.len()), theme)
 }
@@ -219,6 +230,8 @@ pub struct Span {
 /// preview, a test.
 pub struct Code {
     theme: Arc<HighlightTheme>,
+    /// What a run with no colour of its own is written in.
+    text: Rgb,
     /// Each capture's colour as the theme holds it, beside the colour it came
     /// from, so a run's colour is read back exactly rather than converted.
     colours: Vec<(Hsla, Rgb)>,
@@ -236,7 +249,11 @@ impl Code {
                 Some((held, capture.colour))
             })
             .collect();
-        Self { theme, colours }
+        Self {
+            theme,
+            text: palette.fg,
+            colours,
+        }
     }
 
     /// The theme it highlights with — the one the window installs.
@@ -245,10 +262,23 @@ impl Code {
         &self.theme
     }
 
+    /// The colour of text no token claims: what a [`Span`] with no colour
+    /// is written in.
+    #[must_use]
+    pub fn text(&self) -> Rgb {
+        self.text
+    }
+
     /// `source` as runs of plain colour, exactly as the window paints it.
     #[must_use]
     pub fn spans(&self, source: &str, file: &Path) -> Vec<Span> {
-        styled(source, file, &self.theme)
+        self.spans_as(source, language_of(file))
+    }
+
+    /// [`Self::spans`], for code whose language is known by name.
+    #[must_use]
+    pub fn spans_as(&self, source: &str, language: &str) -> Vec<Span> {
+        styled_as(source, language, &self.theme)
             .into_iter()
             .map(|(range, style)| Span {
                 range,
@@ -318,6 +348,10 @@ mod tests {
             );
         }
 
+        // A name the highlighter knows is not enough: `.jsx` called
+        // `javascript` passes the check above and paints no tag.
+        assert_eq!(language_of(std::path::Path::new("a.jsx")), "tsx");
+
         // And the fallback still is what it says it is.
         assert_eq!(language_of(std::path::Path::new("a.unknown")), "text");
     }
@@ -340,8 +374,9 @@ mod tests {
     // The last three are where a library bump moves tokens first: tags, and one
     // language inside another — a script and a style in a page, a fenced block
     // in Markdown.
-    const FIXTURES: [&str; 9] = [
-        "a.rs", "a.ts", "a.py", "a.json", "a.md", "a.go", "a.tsx", "a.html", "b.md",
+    const FIXTURES: [&str; 20] = [
+        "a.rs", "a.ts", "a.py", "a.json", "a.md", "a.go", "a.tsx", "a.html", "b.md", "a.jsx",
+        "a.js", "a.rb", "a.lua", "a.yaml", "a.sh", "a.toml", "a.css", "a.c", "a.cpp", "a.java",
     ];
 
     fn fixture(name: &str) -> String {
@@ -438,9 +473,23 @@ mod tests {
             std::fs::read_to_string(&at).expect("the golden file exists; run with UPDATE_GOLDEN=1");
         // Line endings are not colours: a checkout may have made them CRLF.
         let was = was.replace("\r\n", "\n");
-        assert_eq!(
-            now, was,
-            "code is coloured differently; if that was meant, run with UPDATE_GOLDEN=1"
-        );
+        if now != was {
+            // The first lines that differ, rather than two whole files.
+            let (now, was): (Vec<&str>, Vec<&str>) = (now.lines().collect(), was.lines().collect());
+            let at = now
+                .iter()
+                .zip(&was)
+                .position(|(a, b)| a != b)
+                .unwrap_or(now.len().min(was.len()));
+            let near =
+                |lines: &[&str]| lines[at.saturating_sub(3)..(at + 4).min(lines.len())].join("\n");
+            panic!(
+                "code is coloured differently from line {}; if that was meant, run with \
+                 UPDATE_GOLDEN=1\n--- was\n{}\n--- now\n{}",
+                at + 1,
+                near(&was),
+                near(&now)
+            );
+        }
     }
 }
