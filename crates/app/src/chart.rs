@@ -26,6 +26,7 @@
 //! real hit area, which a painted shape is not.
 
 use deck_core::diagram::{Cluster, Diagram, Edge, Layout, Line, Role, Weight};
+use deck_core::drawing;
 use deck_core::geometry::{self, GAP_X};
 use deck_core::protocol::DiagramRef;
 use deck_core::theme::Palette;
@@ -37,11 +38,6 @@ use gpui_kit::*;
 use crate::palette::paint;
 use crate::sheet::Slot;
 use crate::view::DeckView;
-
-/// How thick an arrow is.
-const STROKE: f32 = 1.25;
-/// How far back an arrowhead reaches from its point, and how wide it is there.
-const HEAD: (f32, f32) = (9., 6.5);
 
 /// Where one node ended up, in pixels.
 pub struct Spot {
@@ -188,21 +184,8 @@ pub struct Playing {
     pub front: f32,
 }
 
-/// What a flow is doing to one node or one edge.
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum Lit {
-    /// Nothing is playing. The picture reads as it always does.
-    Resting,
-    /// On the path, and this far reached: zero as the front arrives, one once
-    /// it has passed. Everything between is the current going through.
-    ///
-    /// The colour is what the flow or the step asked for, and `None` means
-    /// the deck's own accent — which is the right answer for a picture with
-    /// one path through it.
-    On(f32, Option<deck_core::theme::Rgb>),
-    /// Not on the path, while a path is being shown.
-    Aside,
-}
+/// What a flow is doing to one node or one edge. See [`drawing::Lit`].
+pub use deck_core::drawing::Lit;
 
 impl Chart {
     /// Build a pane for `spec`.
@@ -538,23 +521,17 @@ impl Chart {
     }
 }
 
-/// How a box is filled and outlined.
-#[derive(Clone, Copy)]
-struct Skin {
-    fill: Hsla,
-    edge: Hsla,
-    width: f32,
-}
-
 /// Everything the canvas has to paint, as plain values it can own.
 ///
 /// The paint callback outlives this frame's borrow of the chart, so it cannot
-/// look anything up while painting. It is handed the finished drawing instead.
+/// look anything up while painting. It is handed the finished drawing instead,
+/// in the drawing's own coordinates; the shapes are built where the canvas
+/// landed, by the same functions every export draws with.
 struct Ink {
     frames: Vec<Bounds<Pixels>>,
-    frame_skin: Skin,
-    arrows: Vec<(Vec<Point<Pixels>>, bool, Hsla)>,
-    boxes: Vec<(Bounds<Pixels>, Role, Skin)>,
+    frame_skin: drawing::Skin,
+    arrows: Vec<(Vec<Point<Pixels>>, bool, deck_core::theme::Rgb)>,
+    boxes: Vec<(Bounds<Pixels>, Role, drawing::Skin)>,
 }
 
 impl Chart {
@@ -568,21 +545,30 @@ impl Chart {
                 // Everything in the plan is measured from the drawing's own
                 // top-left; the canvas knows where that landed on screen.
                 let at = bounds.origin;
+                let mut prims = Vec::new();
 
                 for frame in &ink.frames {
-                    shape(window, offset(*frame, at), Role::Step, ink.frame_skin);
+                    drawing::shape(
+                        &mut prims,
+                        rect(offset(*frame, at)),
+                        Role::Step,
+                        ink.frame_skin,
+                    );
                 }
                 for (points, dashed, colour) in &ink.arrows {
-                    let points: Vec<Point<Pixels>> = points.iter().map(|p| *p + at).collect();
-                    for pair in points.windows(2) {
-                        stroke(window, pair[0], pair[1], *colour, *dashed);
-                    }
-                    if let [.., before, last] = points.as_slice() {
-                        arrowhead(window, *before, *last, *colour);
-                    }
+                    let points: Vec<geometry::Pt> = points.iter().map(|p| pt(*p + at)).collect();
+                    drawing::arrow(&mut prims, &points, *colour, *dashed);
                 }
                 for (at_box, role, skin) in &ink.boxes {
-                    shape(window, offset(body(*at_box, *role), at), *role, *skin);
+                    drawing::shape(
+                        &mut prims,
+                        rect(offset(body(*at_box, *role), at)),
+                        *role,
+                        *skin,
+                    );
+                }
+                for prim in &prims {
+                    paint_prim(window, prim);
                 }
             },
         )
@@ -601,30 +587,11 @@ impl Chart {
                 (
                     route.points.iter().map(|at| self.zp(*at)).collect(),
                     edge.line == Line::Dashed,
-                    // A returning arrow is drawn in the accent, because it is
-                    // the one thing in a state machine a reader has to notice
-                    // — and because otherwise it reads as an arrow pointing
-                    // the wrong way by mistake.
-                    paint({
-                        let quiet = palette.fg.mix(palette.wash, 0.45);
-                        match self.travelled(&edge.from, &edge.to) {
-                            // Travelling is the thing being shown, so the
-                            // arrows carry it as much as the boxes do — and
-                            // they carry it first, since an arrow is the part
-                            // of the path that is only ever motion.
-                            Lit::On(much, tint) => quiet
-                                .mix(palette.bg, ASIDE)
-                                .mix(tint.unwrap_or(palette.accent), much),
-                            Lit::Aside => quiet.mix(palette.bg, ASIDE),
-                            Lit::Resting => {
-                                if route.back {
-                                    palette.accent
-                                } else {
-                                    quiet
-                                }
-                            }
-                        }
-                    }),
+                    drawing::arrow_colour(
+                        self.travelled(&edge.from, &edge.to),
+                        route.back,
+                        palette,
+                    ),
                 )
             })
             .collect();
@@ -640,7 +607,7 @@ impl Chart {
                 Some((
                     self.zb(spot.at),
                     node.role,
-                    skin(node.weight, picked, lit, palette),
+                    drawing::skin(node.weight, picked, lit, palette),
                 ))
             })
             .collect();
@@ -652,14 +619,7 @@ impl Chart {
                 .iter()
                 .map(|frame| self.zb(frame.at))
                 .collect(),
-            // A cluster is a ground, not an object: it sits under the boxes and
-            // is told apart from the pane by a shade, not by a border with any
-            // weight to it.
-            frame_skin: Skin {
-                fill: paint(palette.wash.mix(palette.ground, 0.22)),
-                edge: paint(palette.edge.mix(palette.wash, 0.35)),
-                width: 1.,
-            },
+            frame_skin: drawing::frame_skin(palette),
             arrows,
             boxes,
         }
@@ -702,7 +662,7 @@ impl Chart {
                         // The shape decides how much room the words have: a
                         // diamond's corners are empty, a pill's ends are round,
                         // and a label that ignores that spills over the edge.
-                        .px(px(inset(node.role)))
+                        .px(px(drawing::inset(node.role)))
                         // Below the lid, and above the foot.
                         .when(node.role == Role::Store, |this| this.pt(px(12.)).pb(px(6.)))
                         .text_align(TextAlign::Center)
@@ -1158,86 +1118,12 @@ impl Chart {
 /// palette already has — the same ones the code panes use for the same job. A
 /// picked node borrows the code pane's picked ground outright, because it is
 /// the same act.
-fn skin(weight: Weight, picked: bool, lit: Lit, palette: &Palette) -> Skin {
-    let (fill, edge, width) = match (picked, weight) {
-        (true, _) => (palette.focus.mix(palette.accent, 0.14), palette.accent, 1.5),
-        (false, Weight::Accent) => (palette.focus, palette.accent, 1.5),
-        (false, Weight::Normal) => (palette.bg, palette.edge, 1.),
-        (false, Weight::Muted) => (palette.wash, palette.edge.mix(palette.wash, 0.5), 1.),
-    };
-
-    // A flow does not recolour the picture, it changes what stands out of it.
-    // The nodes on the path keep their own skin and everything else recedes
-    // toward the page — so a reader who has learned what a shape means does
-    // not have to learn it again while a flow is playing.
-    let (fill, edge, width) = match lit {
-        Lit::Resting => (fill, edge, width),
-        Lit::Aside => (
-            fill.mix(palette.bg, ASIDE),
-            edge.mix(palette.bg, ASIDE),
-            width,
-        ),
-        // Mixed rather than switched. A box on the path is drawn between where
-        // it was and where the current will leave it, so the light arrives
-        // through it instead of landing on it.
-        Lit::On(much, tint) => {
-            let lit = tint.unwrap_or(palette.accent);
-            let from = fill.mix(palette.bg, ASIDE);
-            let was = edge.mix(palette.bg, ASIDE);
-            (
-                from.mix(fill.mix(lit, 0.16), much),
-                was.mix(lit, much),
-                width + (1.5_f32 - width).max(0.) * much,
-            )
-        }
-    };
-
-    Skin {
-        fill: paint(fill),
-        edge: paint(edge),
-        width,
-    }
-}
-
-/// How far a node that is not on the playing flow recedes toward the page.
-///
-/// Far enough to fall behind, near enough to still be read. A flow that hid
-/// the rest of the diagram would answer the question by deleting the context
-/// that makes it a question — and at 0.68 the boxes off the path had gone so
-/// far into the page that their edges were guesswork.
-const ASIDE: f32 = 0.46;
-
-/// How far a label has to stay inside a shape of this role.
-fn inset(role: Role) -> f32 {
-    match role {
-        Role::Step | Role::Store => 10.,
-        Role::Terminal => 18.,
-        Role::Actor => 22.,
-        Role::Decision => 16.,
-    }
-}
-
-/// How much bigger than its cell a shape of this role is drawn.
-///
-/// Only the diamond, and it is not decoration. A rhombus is at its full width
-/// on exactly one line and narrows to nothing at the points, so a label sized
-/// to the cell hangs out over the slanted sides — which is what a branch node
-/// looked like before this existed. It borrows from the gutter, and takes less
-/// than half of it, so the arrows that travel down the middle of one still
-/// have their lane.
-fn swell(role: Role) -> (f32, f32) {
-    match role {
-        Role::Decision => (8., 4.),
-        _ => (0., 0.),
-    }
-}
-
-/// The box a role's shape is actually drawn in.
+/// The box a role's shape is actually drawn in. See [`drawing::body`].
 fn body(at: Bounds<Pixels>, role: Role) -> Bounds<Pixels> {
-    let (x, y) = swell(role);
+    let drawn = drawing::body(rect(at), role);
     Bounds {
-        origin: point(at.origin.x - px(x), at.origin.y - px(y)),
-        size: size(at.size.width + px(x * 2.), at.size.height + px(y * 2.)),
+        origin: point(px(drawn.x), px(drawn.y)),
+        size: size(px(drawn.w), px(drawn.h)),
     }
 }
 
@@ -1249,224 +1135,69 @@ fn offset(at: Bounds<Pixels>, by: Point<Pixels>) -> Bounds<Pixels> {
     }
 }
 
-/// Paint one node's body.
+/// A window rectangle in the drawing's plain numbers.
+fn rect(at: Bounds<Pixels>) -> geometry::Rect {
+    geometry::Rect {
+        x: f32::from(at.origin.x),
+        y: f32::from(at.origin.y),
+        w: f32::from(at.size.width),
+        h: f32::from(at.size.height),
+    }
+}
+
+/// A window point in the drawing's plain numbers.
+fn pt(at: Point<Pixels>) -> geometry::Pt {
+    geometry::Pt {
+        x: f32::from(at.x),
+        y: f32::from(at.y),
+    }
+}
+
+/// Paint one primitive of a drawing.
 ///
-/// Role decides the outline, and only the outline. A diamond means a branch
-/// everywhere diagrams are drawn, and throwing that away to keep the drawing
-/// code simple would throw away information the reader already knows how to
-/// read.
-fn shape(window: &mut Window, at: Bounds<Pixels>, role: Role, skin: Skin) {
-    let mut round = |radius: f32| {
-        window.paint_quad(quad(
-            at,
-            gpui_kit::Corners::all(px(radius)),
-            skin.fill,
-            gpui_kit::Edges::all(px(skin.width)),
-            skin.edge,
+/// The whole of the window's part in drawing a diagram: every shape, arrow and
+/// frame is decided in [`drawing`], and this only hands each one to the GPU.
+fn paint_prim(window: &mut Window, prim: &drawing::Prim) {
+    let at = |p: geometry::Pt| point(px(p.x), px(p.y));
+    let bounds = |r: geometry::Rect| Bounds {
+        origin: point(px(r.x), px(r.y)),
+        size: size(px(r.w), px(r.h)),
+    };
+    match prim {
+        drawing::Prim::Quad {
+            at: r,
+            radius,
+            fill: colour,
+            border: Some((width, edge)),
+        } => window.paint_quad(quad(
+            bounds(*r),
+            gpui_kit::Corners::all(px(*radius)),
+            paint(*colour),
+            gpui_kit::Edges::all(px(*width)),
+            paint(*edge),
             BorderStyle::Solid,
-        ));
-    };
-
-    match role {
-        Role::Step => round(6.),
-        Role::Store => cylinder(window, at, skin),
-        Role::Terminal => round(f32::from(at.size.height) / 2.),
-        // A path is filled, not stroked, so the border is a second, larger
-        // shape painted underneath: the outline in the edge colour, then the
-        // same outline inset by the border's own width in the fill.
-        Role::Decision => {
-            window.paint_path(hexagon(at, 0.), skin.edge);
-            window.paint_path(hexagon(at, skin.width), skin.fill);
-        }
-        Role::Actor => {
-            window.paint_path(ellipse(at, 0.), skin.edge);
-            window.paint_path(ellipse(at, skin.width), skin.fill);
-        }
-    }
-}
-
-/// A hexagon filling `at`, pulled in by `inset` on every side.
-///
-/// A diamond was the obvious shape for a decision and the wrong one. Its widest
-/// point is a single line through the middle and everything above and below
-/// that is corner, so a question of more than three words either spilled over
-/// the edges or had to be shrunk until it could not be read — and a question is
-/// what a decision node holds.
-///
-/// A hexagon keeps what the diamond was saying: points to the left and right,
-/// where the two answers leave. But its middle is a flat band the full height
-/// of the box, so the words have somewhere to be.
-fn hexagon(at: Bounds<Pixels>, inset: f32) -> Path<Pixels> {
-    let (l, t) = (
-        f32::from(at.origin.x) + inset,
-        f32::from(at.origin.y) + inset,
-    );
-    let r = f32::from(at.origin.x + at.size.width) - inset;
-    let b = f32::from(at.origin.y + at.size.height) - inset;
-    let cy = (t + b) / 2.;
-
-    // How far in the points come. Half the height gives sides at 45 degrees,
-    // capped at a third of the width so a wide box does not become a bar with
-    // two barely visible nicks in the ends.
-    let cut = ((b - t) / 2.).min((r - l) / 3.);
-
-    let mut path = Path::new(point(px(l + cut), px(t)));
-    path.line_to(point(px(r - cut), px(t)));
-    path.line_to(point(px(r), px(cy)));
-    path.line_to(point(px(r - cut), px(b)));
-    path.line_to(point(px(l + cut), px(b)));
-    path.line_to(point(px(l), px(cy)));
-    path
-}
-
-/// An ellipse filling `at`, pulled in by `inset` on every side.
-///
-/// Four quadratic curves with their controls at the corners. Not the exact
-/// curve — the exact one needs cubics — but at this size the difference is
-/// under a pixel, and what the shape has to say is "not a rectangle".
-fn ellipse(at: Bounds<Pixels>, inset: f32) -> Path<Pixels> {
-    let (l, t) = (
-        f32::from(at.origin.x) + inset,
-        f32::from(at.origin.y) + inset,
-    );
-    let r = f32::from(at.origin.x + at.size.width) - inset;
-    let b = f32::from(at.origin.y + at.size.height) - inset;
-    let (cx, cy) = ((l + r) / 2., (t + b) / 2.);
-    let at = |x: f32, y: f32| point(px(x), px(y));
-
-    let mut path = Path::new(at(l, cy));
-    path.curve_to(at(cx, t), at(l, t));
-    path.curve_to(at(r, cy), at(r, t));
-    path.curve_to(at(cx, b), at(r, b));
-    path.curve_to(at(l, cy), at(l, b));
-    path
-}
-
-/// A store: a cylinder, drawn as a silhouette with a lid on it.
-///
-/// It was a rounded box with a rule across its head, and the rule read as a
-/// stray bar rather than as a lid — the first thing anyone asked about it was
-/// what it was. A rule is not a convention; a cylinder is, and a shape nobody
-/// recognises is carrying no information at all.
-///
-/// The reason it was a rule is worth keeping: a path is filled, not stroked, so
-/// a curved *line* has to be a closed sliver, and a sliver a pixel wide
-/// tessellates into something visibly heavier and rougher than a hairline.
-/// Filled curves are fine — the diamond and the actor are two of them. So the
-/// cylinder is built out of fills only: the whole outline in the border colour,
-/// the same shape inset by the border's width in the fill colour, and the lid
-/// is a third pass of the cap that leaves a ring of the border showing.
-fn cylinder(window: &mut Window, at: Bounds<Pixels>, skin: Skin) {
-    /// How tall the caps are. Enough to read as an ellipse at this width
-    /// without eating the room the label needs.
-    const CAP: f32 = 13.;
-
-    let (l, t) = (f32::from(at.origin.x), f32::from(at.origin.y));
-    let w = f32::from(at.size.width);
-    let h = f32::from(at.size.height);
-
-    // The three pieces, each pulled in by `inset` on every side. The body is
-    // the straight part between the two caps; the caps overhang it, which is
-    // what makes the join look curved rather than cut.
-    let silhouette = |window: &mut Window, inset: f32, colour: Hsla| {
-        let cap = Bounds {
-            origin: point(px(l + inset), px(t + inset)),
-            size: size(px(w - inset * 2.), px(CAP)),
-        };
-        let foot = Bounds {
-            origin: point(px(l + inset), px(t + h - CAP - inset)),
-            size: size(px(w - inset * 2.), px(CAP)),
-        };
-        let body = Bounds {
-            origin: point(px(l + inset), px(t + CAP / 2.)),
-            size: size(px(w - inset * 2.), px(h - CAP)),
-        };
-        window.paint_path(ellipse(foot, 0.), colour);
-        window.paint_quad(fill(body, colour));
-        window.paint_path(ellipse(cap, 0.), colour);
-    };
-
-    silhouette(window, 0., skin.edge);
-    silhouette(window, skin.width, skin.fill);
-
-    // The lid: the cap outlined again, so the top reads as an opening rather
-    // than as the flat end of a box.
-    let cap = Bounds {
-        origin: point(px(l + skin.width), px(t + skin.width)),
-        size: size(px(w - skin.width * 2.), px(CAP)),
-    };
-    window.paint_path(ellipse(cap, 0.), skin.edge);
-    window.paint_path(ellipse(cap, skin.width), skin.fill);
-}
-
-/// One straight run of an arrow.
-///
-/// Every run is horizontal or vertical by construction, so a segment is a thin
-/// rectangle and needs no path.
-fn stroke(window: &mut Window, from: Point<Pixels>, to: Point<Pixels>, colour: Hsla, dashed: bool) {
-    let (x0, y0) = (f32::from(from.x), f32::from(from.y));
-    let (x1, y1) = (f32::from(to.x), f32::from(to.y));
-    let flat = (y1 - y0).abs() < (x1 - x0).abs();
-
-    let span = |a: f32, b: f32| (a.min(b), (b - a).abs());
-    let (start, length) = if flat { span(x0, x1) } else { span(y0, y1) };
-    if length < 0.5 {
-        return;
-    }
-
-    let mut bar = |at: f32, run: f32| {
-        let bounds = if flat {
-            Bounds {
-                origin: point(px(at), px(y0 - STROKE / 2.)),
-                size: size(px(run), px(STROKE)),
+        )),
+        drawing::Prim::Quad {
+            at: r,
+            fill: colour,
+            border: None,
+            ..
+        } => window.paint_quad(fill(bounds(*r), paint(*colour))),
+        drawing::Prim::Path {
+            start,
+            cmds,
+            fill: colour,
+        } => {
+            let mut path = Path::new(at(*start));
+            for cmd in cmds {
+                match *cmd {
+                    drawing::Cmd::Line(to) => path.line_to(at(to)),
+                    drawing::Cmd::Curve { to, ctrl } => path.curve_to(at(to), at(ctrl)),
+                }
             }
-        } else {
-            Bounds {
-                origin: point(px(x0 - STROKE / 2.), px(at)),
-                size: size(px(STROKE), px(run)),
-            }
-        };
-        window.paint_quad(fill(bounds, colour));
-    };
-
-    if !dashed {
-        bar(start, length);
-        return;
+            window.paint_path(path, paint(*colour));
+        }
     }
-
-    // Dashes drawn one at a time: the border style that would do this for free
-    // belongs to a quad's outline, and this is a quad's body.
-    const DASH: f32 = 5.;
-    const GAP: f32 = 4.;
-    let mut walked = 0.;
-    while walked < length {
-        bar(start + walked, DASH.min(length - walked));
-        walked += DASH + GAP;
-    }
-}
-
-/// The head of an arrow, pointing the way the last run was going.
-fn arrowhead(window: &mut Window, from: Point<Pixels>, to: Point<Pixels>, colour: Hsla) {
-    let (dx, dy) = (
-        f32::from(to.x) - f32::from(from.x),
-        f32::from(to.y) - f32::from(from.y),
-    );
-    let length = dx.hypot(dy);
-    if length < 0.5 {
-        return;
-    }
-
-    let (ux, uy) = (dx / length, dy / length);
-    // The perpendicular, for the two corners at the back of the head.
-    let (px_, py) = (-uy, ux);
-    let (tip_x, tip_y) = (f32::from(to.x), f32::from(to.y));
-    let (base_x, base_y) = (tip_x - ux * HEAD.0, tip_y - uy * HEAD.0);
-    let wing = HEAD.1 / 2.;
-
-    let mut path = Path::new(point(px(tip_x), px(tip_y)));
-    path.line_to(point(px(base_x + px_ * wing), px(base_y + py * wing)));
-    path.line_to(point(px(base_x - px_ * wing), px(base_y - py * wing)));
-    window.paint_path(path, colour);
 }
 
 #[cfg(test)]
