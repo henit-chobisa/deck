@@ -2117,7 +2117,7 @@ mod tests {
             "`[webhook] example: the handler`",
             "an example never goes through `deck show`",
             "Put values on the lines when the answer is a value — whether or not anybody asked.",
-            "a number, an id, a name or a quoted string in a sentence is a value looking for its line",
+            "is a value looking for its line. Not when the claim is structure",
             "Most readers will never say *values*",
         ] {
             assert!(flat.contains(said), "the skill never says `{said}`");

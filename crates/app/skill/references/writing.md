@@ -483,11 +483,18 @@ can show them. Recognising the problem is your job. Values are the answer when:
   generic function, a reducer. One worked example makes it concrete — say it is
   an example, then put it on the lines.
 
-The tell is in your own draft: a number, an id, a name or a quoted string in a
-sentence is a value looking for its line. How is "Values on the line" in
-groups.md.
+The tell is in your own draft: a number, an id, a customer's or a record's name
+(not an identifier in the code), or a quoted string in a sentence is a value
+looking for its line. Not when the claim is structure — who calls whom, why a
+module exists — and not when the code already spells the value out. How is
+"Values on the line" in groups.md.
 
 **Make a page when something changes over time**, and only then:
+
+*A payload through its handlers* is values on the lines, each handler's line
+showing what it holds there — unless the reader has to watch its shape change
+from field to field; then it is a page, with the values beside it on the code.
+
 
 - **Two or more actors act in an order** — events, messages, retries, timeouts, races. A
   timeline.
