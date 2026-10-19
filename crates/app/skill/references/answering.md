@@ -106,7 +106,7 @@ are talking about, which is the half of an answer that prose cannot carry, and
 readers will never say *values*; they ask *why is it 81*, *what does this return
 for Acme*, *why did it take the else*, *what does the row look like after*.
 Those are questions about a value, and so are *what is it here?* and *show me
-with values* — answer with `deck show --values` on the pane showing the code,
+with values* — answer with `deck show --values` on the pane showing the code, when you have the values,
 or `deck values` when the walk crosses panes, and point at each value as you say it.
 Never with a sentence that lists them. A walk longer than four valued lines is
 several shows in a row, each with its own pointed sentence — or, for an
@@ -114,8 +114,9 @@ example, several `deck values --on <name>` calls, each followed by a `deck say`
 that points at what it just wrote. Read "Values on the
 line" in groups.md before your first one, if it is not in front of you.
 
-*Explain it with an example* and *walk me through it* over code that has not
-run, or that you have no run of, want an example, and an example never goes through `deck show`: it has to
+Any of these over code that has not run, or that you have no run of —
+*explain it with values*, *with an example*, *walk me through it*, *what would
+it hold* — wants an example, and an example never goes through `deck show`: it has to
 be marked on the line too, and `deck show` takes no note. So bring the file again as a pane of its own — `deck bring --ref
 'file:first-last [name] example: …'` — and put the example's values there with
 `deck values <path> --on <name> --values '[…]'` (`deck show` does not reach a
