@@ -114,11 +114,11 @@ example, several `deck values --on <name>` calls, each followed by a `deck say`
 that points at what it just wrote. Read "Values on the
 line" in groups.md before your first one, if it is not in front of you.
 
-Any of these over code that has not run, or that you have no run of —
+Any of these over code you have no run of, or for an input you chose —
 *explain it with values*, *with an example*, *walk me through it*, *what would
 it hold* — wants an example, and an example never goes through `deck show`: it has to
 be marked on the line too, and `deck show` takes no note. So bring the file again as a pane of its own — `deck bring --ref
 'file:first-last [name] example: …'` — and put the example's values there with
 `deck values <path> --on <name> --values '[…]'` (`deck show` does not reach a
-brought pane), never on a pane that already carries values that were observed. Say *example*
+brought pane), never on a pane already on screen. Say *example*
 in the sentence that points at the first of them.
