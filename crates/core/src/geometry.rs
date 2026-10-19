@@ -548,6 +548,8 @@ mod tests {
         }
         let was =
             std::fs::read_to_string(&at).expect("the golden file exists; run with UPDATE_GOLDEN=1");
+        // Line endings are not geometry: a checkout may have made them CRLF.
+        let was = was.replace("\r\n", "\n");
         assert_eq!(
             now, was,
             "the geometry moved; if that was meant, run with UPDATE_GOLDEN=1"
