@@ -378,7 +378,8 @@ line that produced it.
 - They ask you to explain it *with values*, *with an example*, or to *walk it
   through*. That is a request for values on the lines, every time — the answer
   is the values landing where they live, one point at a time, not a paragraph
-  that mentions them.
+  that mentions them Over code you have no run of, that is an example, on a
+  brought pane of its own (answering.md).
 - **Your own narration names a value.** If a sentence says the key is `42`, the
   name comes back as `Acme`, the row gets the id `opt-9`, that value belongs on
   the line that holds it. A value in prose is read once and then has to be
@@ -397,7 +398,8 @@ removed without losing anything is noise: remove it.
 
 **Only values you have, or an example you said is one.** From a test run, a
 log, a payload you read, a debugger, or arithmetic anyone can check from the
-code. A value on a line reads as observed, so a guess about what a real run
+code Arithmetic on an input you chose is still an example: the
+input was yours, so the values are too. A value on a line reads as observed, so a guess about what a real run
 held goes in the prose, said as a guess — *I expect orderId is undefined here*
 — and not on the line.
 
