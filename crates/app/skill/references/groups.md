@@ -401,7 +401,8 @@ held goes in the prose, said as a guess — *I expect orderId is undefined here*
 — and not on the line.
 
 **An example is the exception, and it is the commonest case in a plan.** For a
-design, a plan, or code that has not run, nothing was observed — so pick one
+design, a plan, or code that has not run — or that you have no run of —
+nothing was observed — so pick one
 concrete case and walk it through on the lines. Say it is an example first, in
 the prose: *say the Customer property is `p-7` and the CRM returns `42`,
 `Acme`*. Then put those values on every line they pass through, the same key

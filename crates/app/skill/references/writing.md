@@ -491,23 +491,22 @@ module exists — and not when the code already spells the value out. How is
 
 **Make a page when something changes over time**, and only then:
 
-*A payload through its handlers* is values on the lines, each handler's line
-showing what it holds there — unless the reader has to watch its shape change
-from field to field; then it is a page, with the values beside it on the code.
-
-
 - **Two or more actors act in an order** — events, messages, retries, timeouts, races. A
   timeline.
 - **A quantity changes** — a queue's depth, a buffer, a rate limit, latency. A level or a
   chart that moves.
-- **One record changes shape** across steps — a payload through its handlers. The same
-  record, fields filling in or dropping out.
+- **One record changes shape** across steps — a payload whose fields fill in or
+  drop out, the same record each time.
 - **A structure is mutated** — a list spliced, an entry evicted, a tree rebalanced.
 - **The bug lives in runtime state** — two names for one object, a mutation through a
   reference, ownership moving, what is on the stack and what is not. The variables and
   objects as boxes and arrows that change with each point. People cannot run this in
   their heads, and most misunderstandings live here.
 - **You would have to draw it twice**, before and after, and the meaning is the gap.
+
+*A payload through its handlers* is values on the lines, each handler's line
+showing what it holds there — unless the reader has to watch its shape change
+from field to field; then it is a page, with the values beside it on the code.
 
 Some of these have a shape that has already landed with readers: "A catalog of shapes
 that have worked" in §5.

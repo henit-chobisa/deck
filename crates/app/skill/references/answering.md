@@ -115,7 +115,7 @@ that points at what it just wrote. Read "Values on the
 line" in groups.md before your first one, if it is not in front of you.
 
 *Explain it with an example* and *walk me through it* over code that has not
-run want an example, and an example never goes through `deck show`: it has to
+run, or that you have no run of, want an example, and an example never goes through `deck show`: it has to
 be marked on the line too, and `deck show` takes no note. So bring the file again as a pane of its own — `deck bring --ref
 'file:first-last [name] example: …'` — and put the example's values there with
 `deck values <path> --on <name> --values '[…]'` (`deck show` does not reach a
