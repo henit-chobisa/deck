@@ -384,7 +384,10 @@ line that produced it.
   the line that holds it. A value in prose is read once and then has to be
   carried in the reader's head to the line it belongs to; a value on its line is
   read exactly where it matters. If you are about to write a value into a
-  sentence, put it on the line and point at it instead.
+  sentence, put it on the line and point at it as well: the sentence may still
+  say it, the line is where it lives. A value the code already spells out —
+  `const limit = 10` — needs nothing beside it; this is for values the code
+  does not show.
 
 **Leave it out when** the claim is about structure (who calls whom, why a module
 exists), when the value is plain from the code (`const limit = 10` needs no
@@ -406,7 +409,14 @@ the whole way, pointing at each as you go — `42` on the line that receives it,
 `42 → Acme` on the lookup, `opt-9` on the row it becomes. Keep the example true
 to the code: the arithmetic and the shape must be what this code would really
 do with that input. Never mix an example's values and observed ones in one
-group. **Never secrets:**
+group.
+
+An example has to be visible as one on the line too, because the line stays on
+screen after the sentence that announced it has scrolled away: the note of
+every ref carrying example values starts `example:`, and the group's `--why`
+says *worked example, not a run*. Choose the example's inputs before `deck new`
+and reuse exactly those values in every group — `p-7` in group two is `p-7` in
+group four. **Never secrets:**
 no keys, tokens, passwords, card numbers or personal emails. Redact them,
 `"sk_live_…"`, `"m***@…"`.
 
@@ -420,7 +430,11 @@ no keys, tokens, passwords, card numbers or personal emails. Redact them,
   write live come out at once, and bring out the rest of that pane's values with
   them. The reader can hide or show a pane's values with the eye in its header.
 - At most two values on a line, usually one. At most three or four lines with
-  values in a group; more is two groups.
+  values in a group; more is two groups — a walk that passes eight lines is two
+  or three groups in a row, or, live, two or three shows. A loop shows its first
+  two steps and where it ends, `100 → 90  90 → 81  … → 53 (5 times)`. An arrow
+  on one line is that line's history; a value that becomes another across lines
+  is a value on each line, not an arrow.
 - `"lit": true` on the one value the claim turns on, never more than one per
   sentence.
 

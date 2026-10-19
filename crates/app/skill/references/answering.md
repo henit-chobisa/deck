@@ -90,3 +90,11 @@ it replaces.
 And move their eyes while you answer. `deck show` puts the spotlight on what you
 are talking about, which is the half of an answer that prose cannot carry, and
 `[point …]` inside what you say walks your finger down it as you speak.
+
+**A question about what something holds is answered on the lines.** *What is it
+here?*, *show me with values*, *explain it with an example*, *walk me through
+it* — answer with `deck show --values` on the pane showing the code, or `deck
+values` when the walk crosses panes, and point at each value as you say it.
+Never with a sentence that lists them. A walk longer than four valued lines is
+several shows in a row, each with its own pointed sentence. Read "Values on the
+line" in groups.md before your first one, if it is not in front of you.

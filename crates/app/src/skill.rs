@@ -2111,6 +2111,9 @@ mod tests {
             "An example is the exception, and it is the commonest case in a plan.",
             "Never mix an example's values and observed ones in one group.",
             "When the answer is a value, put it on the line.",
+            "A question about what something holds is answered on the lines.",
+            "the note of every ref carrying example values starts `example:`",
+            "Choose the example's inputs before `deck new`",
         ] {
             assert!(flat.contains(said), "the skill never says `{said}`");
         }
