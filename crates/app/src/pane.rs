@@ -24,7 +24,6 @@ use std::ops::Range;
 use deck_core::line::LineRange;
 use deck_core::protocol::{RefSpec, Value};
 use deck_core::theme::{Palette, Rgb};
-use gpui_kit::component::highlighter::SyntaxHighlighter;
 use gpui_kit::component::scroll::Scrollbar;
 use gpui_kit::component::*;
 use gpui_kit::prelude::FluentBuilder as _;
@@ -2452,9 +2451,9 @@ fn highlight(source: &str, lines: &[&str], file: &std::path::Path, cx: &App) -> 
         })
         .collect();
 
-    let mut highlighter = SyntaxHighlighter::new(language_of(file));
-    highlighter.update(None, &Rope::from(source), None);
-    let styles = highlighter.styles(&(0..source.len()), &*cx.theme().highlight_theme);
+    // The one highlighter every export uses too, so code in a PDF is coloured
+    // exactly as it is here.
+    let styles = deck_render::styled(source, file, &cx.theme().highlight_theme);
 
     // Nothing to lay runs against. The highlighter answers for an empty
     // document with a run all the same, and every index below is into a line
@@ -3177,39 +3176,6 @@ fn first_key(preview: &str) -> SharedString {
     preview.to_string().into()
 }
 
-/// The highlighter's name for the language in `file`.
-///
-/// A file extension is not a language name — the highlighter wants `rust`, and
-/// the file is called `.rs`.
-fn language_of(file: &std::path::Path) -> &'static str {
-    match file.extension().and_then(|ext| ext.to_str()) {
-        Some("rs") => "rust",
-        Some("ts" | "mts" | "cts") => "typescript",
-        Some("tsx") => "tsx",
-        Some("js" | "mjs" | "cjs") => "javascript",
-        // Not "jsx", which is nobody's grammar. The highlighter answers for a
-        // name it does not know with `Plain` rather than an error, so every
-        // `.jsx` file came up as unpainted text and nothing anywhere said why.
-        // Tsx is the grammar that parses JSX tags; plain javascript does not.
-        Some("jsx") => "tsx",
-        Some("py") => "python",
-        Some("go") => "go",
-        Some("rb") => "ruby",
-        Some("lua") => "lua",
-        Some("md" | "markdown") => "markdown",
-        Some("yml" | "yaml") => "yaml",
-        Some("sh" | "bash" | "zsh") => "bash",
-        Some("json") => "json",
-        Some("toml") => "toml",
-        Some("html") => "html",
-        Some("css") => "css",
-        Some("c" | "h") => "c",
-        Some("cpp" | "cc" | "hpp") => "cpp",
-        Some("java") => "java",
-        _ => "text",
-    }
-}
-
 #[cfg(test)]
 mod tests {
     // Spelled out rather than `#[test]`: this module glob-imports GPUI, which
@@ -3370,57 +3336,6 @@ mod tests {
         assert_eq!(row(5), 4, "the last line of the range has not moved");
         assert_eq!(row(6), 7, "the line after it is past the two new ones");
         assert_eq!(row(7), 8);
-    }
-
-    #[test]
-    fn every_language_we_name_is_one_the_highlighter_knows() {
-        // The failure this catches is silent by construction: an unknown name
-        // comes back as `Plain`, so the file renders, reads fine, and is simply
-        // never painted. `.jsx` did that from the first release to this test.
-        use gpui_kit::component::highlighter::Language;
-
-        for file in [
-            "a.rs",
-            "a.ts",
-            "a.mts",
-            "a.cts",
-            "a.tsx",
-            "a.js",
-            "a.mjs",
-            "a.cjs",
-            "a.jsx",
-            "a.py",
-            "a.go",
-            "a.rb",
-            "a.lua",
-            "a.md",
-            "a.markdown",
-            "a.yml",
-            "a.yaml",
-            "a.sh",
-            "a.bash",
-            "a.zsh",
-            "a.json",
-            "a.toml",
-            "a.html",
-            "a.css",
-            "a.c",
-            "a.h",
-            "a.cpp",
-            "a.cc",
-            "a.hpp",
-            "a.java",
-        ] {
-            let named = language_of(std::path::Path::new(file));
-            assert_ne!(
-                Language::from_str(named),
-                Language::Plain,
-                "{file} is called `{named}`, which the highlighter does not know"
-            );
-        }
-
-        // And the fallback still is what it says it is.
-        assert_eq!(language_of(std::path::Path::new("a.unknown")), "text");
     }
 
     #[test]
