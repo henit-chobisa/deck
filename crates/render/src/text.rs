@@ -6,12 +6,13 @@
 //! PDF, so an export would break the same label somewhere else, and the
 //! picture in a document would differ from the one the reader saw.
 //!
-//! So deck breaks its own lines. This is GPUI's wrapper, character for
-//! character — the same candidates, the same greedy fill, the same truncation —
-//! measuring each character by its advance in the IBM Plex face deck embeds,
-//! read straight from the font. GPUI's wrapper measures one character at a
-//! time and never kerns, so nothing here needs a shaper to agree with it, and
-//! the answer is the same on every machine.
+//! So deck breaks its own lines, the way the window does. A label is plain
+//! text, and GPUI lays plain text out by shaping it — kerning included — and
+//! breaking it in `compute_wrap_boundaries`, which walks the shaped glyphs and
+//! their positions. This shapes the same face with rustybuzz and runs that same
+//! walk. A note is cut short by `truncate()`, which keeps the text whole when
+//! the shaped text fits and otherwise uses `LineWrapper::truncate_line`, which
+//! sums single characters without kerning; [`truncate`] does both.
 
 use std::sync::OnceLock;
 
@@ -47,32 +48,61 @@ fn face(weight: Weight) -> &'static Face {
     }
 }
 
-/// One cut of Plex, as advances.
+/// One cut of Plex, ready to shape and to measure.
 struct Face {
     units_per_em: f32,
     /// The parsed font. Owned by the static it lives in.
-    font: ttf_parser::Face<'static>,
+    font: rustybuzz::Face<'static>,
 }
 
 impl Face {
     fn load(ix: usize) -> Self {
-        let font = ttf_parser::Face::parse(PLEX[ix].0, 0).expect("the embedded Plex parses");
+        let font = rustybuzz::Face::from_slice(PLEX[ix].0, 0).expect("the embedded Plex parses");
         Self {
-            units_per_em: f32::from(font.units_per_em()),
+            #[allow(clippy::cast_precision_loss)]
+            units_per_em: font.units_per_em() as f32,
             font,
         }
     }
 
-    /// How far `c` moves the pen at `size`, as GPUI measures it: one character
-    /// on its own, so no kerning against its neighbours.
+    /// How far `c` moves the pen on its own, at `size`: what
+    /// `LineWrapper` measures, with no kerning against a neighbour.
     ///
     /// A character Plex has no glyph for falls back to another face in the
-    /// window, which this cannot see; it is measured as Plex's missing glyph,
-    /// which is the honest answer for the face deck ships.
+    /// window, which this cannot see; it is measured as Plex's missing glyph.
     fn advance(&self, c: char, size: f32) -> f32 {
-        let glyph = self.font.glyph_index(c).unwrap_or(ttf_parser::GlyphId(0));
+        let glyph = self
+            .font
+            .glyph_index(c)
+            .unwrap_or(rustybuzz::ttf_parser::GlyphId(0));
         let units = self.font.glyph_hor_advance(glyph).unwrap_or(0);
         f32::from(units) / self.units_per_em * size
+    }
+
+    /// `text` shaped as the window shapes it, kerning and all: each glyph's
+    /// byte offset into `text` and its pen position, and the line's width.
+    fn shape(&self, text: &str, size: f32) -> (Vec<(usize, f32)>, f32) {
+        let mut buffer = rustybuzz::UnicodeBuffer::new();
+        buffer.push_str(text);
+        buffer.guess_segment_properties();
+        let shaped = rustybuzz::shape(&self.font, &[], buffer);
+        // Positions are added up in f64 and each one rounded to f32 once, as
+        // CoreText lays a line out in doubles and GPUI keeps f32. Summing in
+        // f32 drifts by a few millionths over a line, and a break that falls
+        // exactly on the edge of the box then falls the other way.
+        let scale = f64::from(size) / f64::from(self.units_per_em);
+        let mut x = 0f64;
+        let mut glyphs = Vec::with_capacity(shaped.len());
+        for (info, at) in shaped.glyph_infos().iter().zip(shaped.glyph_positions()) {
+            #[allow(clippy::cast_possible_truncation)]
+            glyphs.push((
+                info.cluster as usize,
+                (x + f64::from(at.x_offset) * scale) as f32,
+            ));
+            x += f64::from(at.x_advance) * scale;
+        }
+        #[allow(clippy::cast_possible_truncation)]
+        (glyphs, x as f32)
     }
 }
 
@@ -80,13 +110,16 @@ impl Face {
 ///
 /// Where it does not — CJK, most emoji — the window draws those characters in
 /// a fallback face from the machine, which nothing here can measure, so a line
-/// holding them may break somewhere else. An export embeds Plex and will need
+/// holding them may break somewhere else. A tab, and an accent written as a
+/// separate combining mark, count as not covered too: the window measures
+/// both with widths of its own that the font does not hold. An export embeds Plex and will need
 /// a fallback face of its own for them.
 #[must_use]
 pub fn covers(text: &str) -> bool {
     let face = face(Weight::Regular);
-    text.chars()
-        .all(|c| c.is_whitespace() || face.font.glyph_index(c).is_some())
+    text.chars().all(|c| {
+        c == ' ' || (!c.is_control() && !is_combining(c) && face.font.glyph_index(c).is_some())
+    })
 }
 
 /// How wide `text` is, at `size` in `weight`, as a sum of single characters.
@@ -96,76 +129,61 @@ pub fn width(text: &str, size: f32, weight: Weight) -> f32 {
     text.chars().map(|c| face.advance(c, size)).sum()
 }
 
-/// The most indent a wrapped line keeps, as GPUI's wrapper has it.
-const MAX_INDENT: u32 = 256;
+/// How wide `text` is once shaped, kerning included: what the window draws.
+#[must_use]
+pub fn shaped_width(text: &str, size: f32, weight: Weight) -> f32 {
+    face(weight).shape(text, size).1
+}
 
 /// Where `line` breaks to fit `wrap_width`: the byte offset each new line
-/// starts at, and how many columns of indent it keeps.
+/// starts at.
 ///
-/// GPUI's `LineWrapper::wrap_line`, for plain text, step for step.
+/// GPUI's `LineLayout::compute_wrap_boundaries`, step for step, over the line
+/// shaped with kerning: a break is measured from the last one to the next
+/// glyph's position, and the previous character is recorded even on a break.
 #[must_use]
-pub fn boundaries(line: &str, size: f32, weight: Weight, wrap_width: f32) -> Vec<(usize, u32)> {
-    let face = face(weight);
+pub fn boundaries(line: &str, size: f32, weight: Weight, wrap_width: f32) -> Vec<usize> {
+    let (glyphs, line_width) = face(weight).shape(line, size);
     let mut out = Vec::new();
-    let mut width = 0.;
-    let mut first_non_whitespace_ix = None;
-    let mut indent: Option<u32> = None;
-    let mut last_candidate_ix = 0;
-    let mut last_candidate_width = 0.;
-    let mut last_wrap_ix = 0;
-    let mut prev_c = '\0';
-    let mut index = 0;
+    let mut first_non_whitespace = false;
+    let mut last_candidate: Option<usize> = None;
+    let mut last_candidate_x = 0.;
+    let mut last_boundary = 0;
+    let mut last_boundary_x = 0.;
+    let mut prev_ch = '\0';
 
-    for c in line.chars() {
-        let ix = index;
-        index += c.len_utf8();
-        if c == '\n' {
+    for (glyph_ix, &(byte_ix, x)) in glyphs.iter().enumerate() {
+        let Some(ch) = line[byte_ix..].chars().next() else {
+            continue;
+        };
+        if ch == '\n' {
             continue;
         }
-
-        if is_word_char(c) {
-            if prev_c == ' ' && c != ' ' && first_non_whitespace_ix.is_some() {
-                last_candidate_ix = ix;
-                last_candidate_width = width;
+        if is_word_char(ch) {
+            if prev_ch == ' ' && ch != ' ' && first_non_whitespace {
+                last_candidate = Some(glyph_ix);
+                last_candidate_x = x;
             }
-        } else if c != ' ' && first_non_whitespace_ix.is_some() {
-            // Text that is not separated by spaces, such as CJK, may break
-            // before any character.
-            last_candidate_ix = ix;
-            last_candidate_width = width;
+        } else if ch != ' ' && first_non_whitespace {
+            last_candidate = Some(glyph_ix);
+            last_candidate_x = x;
         }
-        if c != ' ' && first_non_whitespace_ix.is_none() {
-            first_non_whitespace_ix = Some(ix);
+        if ch != ' ' {
+            first_non_whitespace = true;
         }
 
-        let item_width = face.advance(c, size);
-        width += item_width;
-        if width > wrap_width && ix > last_wrap_ix {
-            if let (None, Some(first)) = (indent, first_non_whitespace_ix) {
-                indent =
-                    Some(MAX_INDENT.min(u32::try_from(first - last_wrap_ix).unwrap_or(MAX_INDENT)));
-            }
-            if last_candidate_ix > 0 {
-                last_wrap_ix = last_candidate_ix;
-                width -= last_candidate_width;
-                last_candidate_ix = 0;
+        let next_x = glyphs.get(glyph_ix + 1).map_or(line_width, |&(_, x)| x);
+        if next_x - last_boundary_x > wrap_width && glyph_ix > last_boundary {
+            if let Some(candidate) = last_candidate.take() {
+                last_boundary = candidate;
+                last_boundary_x = last_candidate_x;
             } else {
-                last_wrap_ix = ix;
-                width = item_width;
+                last_boundary = glyph_ix;
+                last_boundary_x = x;
             }
-            if let Some(indent) = indent {
-                #[allow(clippy::cast_precision_loss)]
-                {
-                    width += face.advance(' ', size) * indent as f32;
-                }
-            }
-            out.push((last_wrap_ix, indent.unwrap_or(0)));
-            // GPUI returns the boundary before it records this character as
-            // the previous one, so the next one is compared with the one
-            // before the break.
-            continue;
+            out.push(glyphs[last_boundary].0);
         }
-        prev_c = c;
+        prev_ch = ch;
     }
     out
 }
@@ -179,7 +197,7 @@ pub fn wrap(text: &str, size: f32, weight: Weight, wrap_width: f32) -> Vec<Strin
     let mut lines = Vec::new();
     for paragraph in text.split('\n') {
         let mut from = 0;
-        for (at, _) in boundaries(paragraph, size, weight, wrap_width) {
+        for at in boundaries(paragraph, size, weight, wrap_width) {
             lines.push(paragraph[from..at].trim_end().to_string());
             from = at;
         }
@@ -191,11 +209,16 @@ pub fn wrap(text: &str, size: f32, weight: Weight, wrap_width: f32) -> Vec<Strin
 /// `line` cut short with an ellipsis to fit `truncate_width`, as the window's
 /// `truncate()` does, or the line itself when it fits.
 ///
-/// GPUI's `truncate_line` from the end, step for step.
+/// As GPUI's text element does it: the line stays whole when, shaped, it
+/// fits; otherwise `LineWrapper::truncate_line` from the end, step for step,
+/// which sums single characters.
 #[must_use]
 pub fn truncate(line: &str, size: f32, weight: Weight, truncate_width: f32) -> String {
     const AFFIX: &str = "…";
     let face = face(weight);
+    if face.shape(line, size).1 <= truncate_width {
+        return line.to_string();
+    }
     let suffix_width: f32 = AFFIX.chars().map(|c| face.advance(c, size)).sum();
     let mut width = 0.;
     let mut truncate_ix = 0;
@@ -213,6 +236,11 @@ pub fn truncate(line: &str, size: f32, weight: Weight, truncate_width: f32) -> S
         }
     }
     line.to_string()
+}
+
+/// A combining mark, written after the letter it sits on.
+fn is_combining(c: char) -> bool {
+    matches!(c, '\u{0300}'..='\u{036F}' | '\u{1AB0}'..='\u{1AFF}' | '\u{1DC0}'..='\u{1DFF}' | '\u{20D0}'..='\u{20FF}' | '\u{FE20}'..='\u{FE2F}')
 }
 
 /// A character that belongs to the word around it, and so is no place to
@@ -272,11 +300,34 @@ pub const CORPUS: &[&str] = &[
     "数据库连接池满了",
     "  indented label that wraps",
     "a-b var_name I'm 100% 3.1415 Self::new",
+    "   three leading spaces then words",
+    "two  spaces  between  words here",
+    "Supercalifragilistic word after",
+    "e\u{301}cole cafe\u{301} re\u{301}sume\u{301} words",
+    "plz! wow!! see (this) now",
+    "AVAWAY To Ty Yo Wave Tower",
+    "a/b/c/d/e/f/g/h foo?bar=baz&q=1",
+    "tab\tseparated\tlabel words",
 ];
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_line_exactly_as_wide_as_its_box_stays_on_one_line() {
+        // The window breaks only when the line is wider than the room, not
+        // when it is exactly as wide.
+        for text in ["installed?", "JiraController", "upsert one option row"] {
+            let w = shaped_width(text, 12., Weight::Regular);
+            assert_eq!(
+                wrap(text, 12., Weight::Regular, w),
+                vec![text.to_string()],
+                "{text}"
+            );
+            assert_eq!(truncate(text, 12., Weight::Regular, w), text, "{text}");
+        }
+    }
 
     #[test]
     fn a_line_that_fits_is_one_line_and_a_long_one_is_cut() {

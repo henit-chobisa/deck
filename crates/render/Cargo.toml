@@ -9,9 +9,9 @@ repository.workspace = true
 [dependencies]
 deck-core = { path = "../core" }
 serde_json = { workspace = true }
-# Advance widths, read from the embedded faces, for breaking lines the way the
-# window does without a window. Already in the tree under gpui.
-ttf-parser = "0.25"
+# Shaping, kerning included, and advance widths, from the embedded faces, for
+# breaking lines the way the window does without a window. Already in the tree.
+rustybuzz = "0.20"
 gpui-kit = { version = "0.6", features = [
     # Syntax highlighting is not on by default, and a grammar is only compiled
     # in if it is named. Every language deck can highlight is listed here, and
