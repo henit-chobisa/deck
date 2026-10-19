@@ -1,6 +1,6 @@
 # Situations
 
-The kinds of question that are a deck, and the shape that works for each. Read it, whole, before the first group of every deck.
+The kinds of question that are a deck, and the shape that works for each. Read it, whole, before `deck new`.
 
 §1–§2 and §6–§8 are in [SKILL.md](../SKILL.md), §3 in [groups.md](groups.md), §4 in [pictures.md](pictures.md), §5 in [pages.md](pages.md). "Plan the context" and the other sections on how to tell it are in [writing.md](writing.md).
 

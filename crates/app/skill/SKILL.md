@@ -52,16 +52,17 @@ the skill, kept apart so each is read when it is needed. Read each one whole.
 | Read | When |
 | ---- | ---- |
 | [writing.md](references/writing.md) | before `deck new`: whether this is one deck or chapters, who is talking, how to present, what to draw and where, points and beats |
-| [situations.md](references/situations.md) | before the first group: which kind of deck this is, and its shape |
-| [groups.md](references/groups.md) | before the first group: §3, every `deck group` flag, highlights and diffs, values on a line, the checks, the pills |
+| [situations.md](references/situations.md) | before `deck new`: which kind of deck this is, how many, and its shape |
+| [groups.md](references/groups.md) | before `deck new`: the plan check that sets `--total`, then §3, every `deck group` flag, highlights and diffs, values on a line, the checks, the pills |
 | [pictures.md](references/pictures.md) | before a `--diagram`, §4: the first group of a deck about a whole system or a flow is one |
 | [pages.md](references/pages.md) | before a `--page`: §5 |
 | [answering.md](references/answering.md) | when `{"asked": …}` comes back, with "When one is pressed" and "After every answer" in groups.md |
 
-Every deck needs the first three. Read writing.md before `deck new`, since it
-decides how many decks this is; read the other two while the bar is up,
-before the first group. After your context is compacted, read all three again
-before your next group: a summary keeps this file and drops them.
+Every deck needs the first three, and they decide what `deck new` says: how
+many decks this is, its title, its `--total`. Read them in one go, before it —
+one call, since reading the skill is not the research the bar goes up before.
+After your context is compacted, read all three again before your next group:
+a summary keeps this file and drops them.
 
 ## The loop
 

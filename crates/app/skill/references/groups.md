@@ -1,6 +1,6 @@
 # Writing a group
 
-§3 of the deck skill: every `deck group` flag, highlights and diffs, values on a line, the checks to run on each group, and the pills under it. Read it, whole, before the first group of every deck.
+§3 of the deck skill: every `deck group` flag, highlights and diffs, values on a line, the checks to run on each group, and the pills under it. Read it, whole, before `deck new`.
 
 §1–§2 and §6–§8 are in [SKILL.md](../SKILL.md), §3 in [groups.md](groups.md), §4 in [pictures.md](pictures.md), §5 in [pages.md](pages.md). "Plan the context" and the other sections on how to tell it are in [writing.md](writing.md).
 

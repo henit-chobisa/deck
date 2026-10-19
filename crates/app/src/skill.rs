@@ -264,7 +264,9 @@ pub fn keep_up(home: &Path) -> Vec<PathBuf> {
 /// Whether a copy that is not this deck's words is still deck's to rewrite,
 /// going by what its stamp `said`.
 ///
-/// No stamp: written by `deck setup` before stamps existed, and deck's. A
+/// No stamp: written by `deck setup` before stamps existed, and deck's —
+/// unless something is in `references/` that this deck does not carry, since
+/// no deck that old wrote references. A newer deck's stamp: left to it. A
 /// stamp: deck's only while the words are still the ones it wrote, and only
 /// for a deck strictly newer than the one that wrote them. The same version
 /// with other words is a second build of it, and two builds that each took the
@@ -286,24 +288,56 @@ pub fn keep_up(home: &Path) -> Vec<PathBuf> {
 ///   `deck setup` that wrote its `SKILL.md` and left them there.
 fn decks(was: &OnDisk, said: Option<&str>) -> bool {
     let only_ours = was.references.iter().all(|(name, bytes)| {
-        REFERENCES
-            .iter()
-            .any(|(ours, text)| ours == name && text.as_bytes() == bytes.as_slice())
+        reference(name).is_some_and(|text| text.as_bytes() == bytes.as_slice())
     });
+    let Some(said) = said else {
+        // Decks from before stamps wrote no references, so any there are
+        // somebody's.
+        return only_ours;
+    };
+    let pending = pending(said);
+    let stamped = stamped(said);
+    // A newer deck's copy is left to it, whatever it looks like: one that
+    // dropped a reference would otherwise be given it back here, and take it
+    // away again on its own next run.
+    let by = pending
+        .as_ref()
+        .map(|it| &it.by)
+        .or(stamped.as_ref().map(|it| &it.0));
+    if by.is_some_and(|by| crate::upgrade::newer(by, RUNNING)) {
+        return false;
+    }
     if only_ours && was.skill == SKILL.as_bytes() {
         return true;
     }
-    let Some(said) = said else {
-        return true;
-    };
-    if let Some(by) = pending(said) {
-        return !crate::upgrade::newer(&by, RUNNING);
+    if let Some(pending) = pending {
+        // Every file is either what was there before the write began or what
+        // this deck writes. Anything else was changed since, by somebody.
+        let was_or_ours = |name: &str, bytes: &[u8], ours: Option<&str>| {
+            ours.is_some_and(|text| text.as_bytes() == bytes)
+                || pending
+                    .was
+                    .iter()
+                    .any(|(it, print)| it == name && *print == fnv(bytes))
+        };
+        return was_or_ours("SKILL.md", &was.skill, Some(SKILL))
+            && was.references.iter().all(|(name, bytes)| {
+                was_or_ours(&format!("{REFERENCES_DIR}/{name}"), bytes, reference(name))
+            });
     }
-    let Some((by, wrote)) = stamped(said) else {
+    let Some((by, wrote)) = stamped else {
         return false;
     };
     let unchanged = wrote == was.print() || (only_ours && wrote == fnv(&was.skill));
     unchanged && crate::upgrade::newer(RUNNING, &by)
+}
+
+/// The text of the reference this deck carries under `name`.
+fn reference(name: &str) -> Option<&'static str> {
+    REFERENCES
+        .iter()
+        .find(|(ours, _)| *ours == name)
+        .map(|(_, text)| *text)
 }
 
 /// Whether every agent deck has told reads the skill this deck carries.
@@ -413,14 +447,45 @@ fn stamp(at: &Path) -> Option<(String, u64)> {
     stamped(&std::fs::read_to_string(stamp_path(at)).ok()?)
 }
 
-/// The version of a deck whose write was cut off, if the stamp says one was.
+/// A write that has begun and not finished: which deck began it, and the
+/// fingerprint of each file as it was before.
 ///
 /// Written before the first file of a write goes down and replaced by the
-/// fingerprint once the last is down. A deck from before references cannot
-/// read it, and leaves the copy alone, as it does any stamp it cannot read.
-fn pending(said: &str) -> Option<String> {
-    let by = said.trim().strip_suffix(" pending")?;
-    Some(by.to_string())
+/// fingerprint once the last is down, as `0.1.7 pending SKILL.md=… references/
+/// writing.md=…`. A deck from before references cannot read it, and leaves the
+/// copy alone, as it does any stamp it cannot read.
+struct Pending {
+    by: String,
+    was: Vec<(String, u64)>,
+}
+
+/// The write a stamp says is in progress, if it says one is.
+fn pending(said: &str) -> Option<Pending> {
+    let mut words = said.split_whitespace();
+    let by = words.next()?.to_string();
+    if words.next()? != "pending" {
+        return None;
+    }
+    let was = words
+        .map(|word| {
+            let (name, print) = word.rsplit_once('=')?;
+            Some((name.to_string(), u64::from_str_radix(print, 16).ok()?))
+        })
+        .collect::<Option<_>>()?;
+    Some(Pending { by, was })
+}
+
+/// The stamp a write puts down before its first file: what `before` held.
+fn pending_stamp(before: Option<&OnDisk>) -> String {
+    let mut said = format!("{RUNNING} pending");
+    if let Some(before) = before {
+        said.push_str(&format!(" SKILL.md={:x}", fnv(&before.skill)));
+        for (name, bytes) in &before.references {
+            said.push_str(&format!(" {REFERENCES_DIR}/{name}={:x}", fnv(bytes)));
+        }
+    }
+    said.push('\n');
+    said
 }
 
 /// The version and fingerprint a stamp says.
@@ -531,14 +596,16 @@ fn write(at: &Path) -> anyhow::Result<()> {
 /// carry is taken away: whatever was in `references/` was deck's, or this copy
 /// would not be being written.
 ///
-/// The stamp says `pending` for as long as the write takes. A write cut off
-/// halfway leaves two decks' words mixed, which no fingerprint matches, and
-/// without it the copy would read as somebody's edit and never be finished.
+/// The stamp says `pending` for as long as the write takes, with what each file
+/// held before. A write cut off halfway leaves two decks' words mixed, which no
+/// fingerprint matches; with the files' old prints the next deck can tell that
+/// mix from an edit made since, and finish the one without losing the other.
 fn write_into(dir: &Path, at: &Path) -> anyhow::Result<()> {
     if let Some(parent) = at.parent() {
         std::fs::create_dir_all(parent)?;
     }
-    replace(&stamp_path(at), format!("{RUNNING} pending\n").as_bytes())?;
+    let before = on_disk(dir, at);
+    replace(&stamp_path(at), pending_stamp(before.as_ref()).as_bytes())?;
     let references = dir.join(REFERENCES_DIR);
     std::fs::create_dir_all(&references)?;
     for (name, text) in REFERENCES {
@@ -1870,18 +1937,97 @@ mod tests {
 
     #[test]
     fn a_write_cut_off_halfway_is_finished_next_time() {
-        // The stamp said the write had begun, one reference went down, then
-        // it stopped: two decks' words, matching no fingerprint.
+        // The stamp said the write had begun and what each file held, one
+        // reference went down, then it stopped: two decks' words, matching no
+        // fingerprint.
         let home = scratch("references-cut-off");
         std::fs::create_dir_all(home.join(".claude")).unwrap();
         install_all(&home).unwrap();
         let dir = home.join(".claude/skills/deck");
-        std::fs::write(dir.join("SKILL.md"), "older").unwrap();
-        std::fs::write(dir.join("references/writing.md"), "older").unwrap();
-        std::fs::write(stamp_path(&dir.join("SKILL.md")), "0.0.1 pending\n").unwrap();
+        let at = dir.join("SKILL.md");
+        std::fs::write(&at, "older").unwrap();
+        let old = fnv(b"older");
+        std::fs::write(
+            stamp_path(&at),
+            format!("0.0.1 pending SKILL.md={old:x} references/writing.md={old:x}\n"),
+        )
+        .unwrap();
 
         assert_eq!(keep_up(&home).len(), 1);
         assert!(current(&home));
+    }
+
+    #[test]
+    fn a_write_says_it_has_begun_before_its_first_file() {
+        // A references/ that cannot be made stops the write after the stamp:
+        // what is left must say a write began, and what was there before it.
+        let home = scratch("references-pending");
+        std::fs::create_dir_all(home.join(".claude")).unwrap();
+        install_all(&home).unwrap();
+        let dir = home.join(".claude/skills/deck");
+        let at = dir.join("SKILL.md");
+        an_older_deck_wrote(&at);
+        std::fs::write(dir.join("references"), "not a directory").unwrap();
+
+        assert!(keep_up(&home).is_empty(), "the write cannot finish");
+        let said = std::fs::read_to_string(stamp_path(&at)).unwrap();
+        let pending = pending(&said).expect("the stamp says a write began");
+        assert_eq!(pending.by, RUNNING);
+        assert_eq!(pending.was, vec![("SKILL.md".to_string(), fnv(b"older"))]);
+    }
+
+    #[test]
+    fn an_edit_made_after_a_write_was_cut_off_is_theirs() {
+        let home = scratch("references-pending-edited");
+        std::fs::create_dir_all(home.join(".claude")).unwrap();
+        install_all(&home).unwrap();
+        let at = home.join(".claude/skills/deck/SKILL.md");
+        std::fs::write(&at, "mine now").unwrap();
+        std::fs::write(
+            stamp_path(&at),
+            format!("0.0.1 pending SKILL.md={:x}\n", fnv(b"older")),
+        )
+        .unwrap();
+
+        assert!(keep_up(&home).is_empty());
+        assert_eq!(std::fs::read_to_string(&at).unwrap(), "mine now");
+    }
+
+    #[test]
+    fn a_newer_decks_write_is_left_to_it() {
+        // Cut off or finished: a newer deck's copy is not this deck's to
+        // finish or to take back, even one missing a reference this deck has.
+        let home = scratch("references-newer");
+        std::fs::create_dir_all(home.join(".claude")).unwrap();
+        install_all(&home).unwrap();
+        let dir = home.join(".claude/skills/deck");
+        let at = dir.join("SKILL.md");
+        std::fs::remove_file(dir.join("references/pages.md")).unwrap();
+        let was = on_disk(&dir, &at).unwrap();
+        for said in [
+            "99.0.0 pending\n".to_string(),
+            format!("99.0.0 {:x}\n", was.print()),
+        ] {
+            std::fs::write(stamp_path(&at), said).unwrap();
+            assert!(keep_up(&home).is_empty());
+            assert!(!dir.join("references/pages.md").exists());
+        }
+    }
+
+    #[test]
+    fn a_reference_added_beside_an_unstamped_skill_is_theirs() {
+        // Decks from before stamps wrote no references.
+        let home = scratch("references-unstamped");
+        std::fs::create_dir_all(home.join(".claude")).unwrap();
+        install_all(&home).unwrap();
+        let dir = home.join(".claude/skills/deck");
+        let at = dir.join("SKILL.md");
+        std::fs::write(&at, "older").unwrap();
+        std::fs::remove_file(stamp_path(&at)).unwrap();
+        std::fs::write(dir.join("references/mine.md"), "mine").unwrap();
+
+        assert!(keep_up(&home).is_empty());
+        assert!(dir.join("references/mine.md").exists());
     }
 
     #[test]

@@ -1,6 +1,6 @@
 # Writing the deck
 
-Who is talking, how to present, the hook, the voice, what to draw and where, points and beats, and explaining while you point. Read it, whole, before the first group of every deck.
+Who is talking, how to present, the hook, the voice, what to draw and where, points and beats, and explaining while you point. Read it, whole, before `deck new`.
 
 §1–§2 and §6–§8 are in [SKILL.md](../SKILL.md), §3 in [groups.md](groups.md), §4 in [pictures.md](pictures.md), §5 in [pages.md](pages.md). "Plan the context" and the other sections on how to tell it are in [writing.md](writing.md).
 
