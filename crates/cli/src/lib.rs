@@ -3,7 +3,8 @@
 //! An agent has a shell in every setup it runs in — a terminal, an editor's
 //! panel, a tool call. So one command reaches all of them, and these are the
 //! verbs behind it: start a deck, add a group, seal it, wait for the answer,
-//! and cross the acknowledged local mailbox of a live native session.
+//! cross the acknowledged local mailbox of a live native session, and pack a
+//! finished deck into one file that carries its own evidence.
 //!
 //! # Why this exists at all
 //!
@@ -30,6 +31,7 @@ use std::path::{Path, PathBuf};
 use deck_core::protocol::{DiagramRef, Group, Header, Ref, RefSpec, Review, VERSION};
 
 pub mod live;
+pub mod pack;
 pub mod refs;
 
 /// The file that says a deck is finished.

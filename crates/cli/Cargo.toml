@@ -1,6 +1,6 @@
 [package]
 name = "deck-cli"
-description = "Writing a deck from the command line: new, group, seal and wait."
+description = "Writing a deck from the command line: new, group, seal, wait, pack and unpack."
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -10,6 +10,9 @@ repository.workspace = true
 anyhow = "1.0.104"
 deck-core = { path = "../core" }
 fs2 = "0.4"
+# The secret scanner `deck pack` runs. Kept out of deck-core, which stays
+# free of anything it does not need to read the format.
+regex = "1"
 serde = { workspace = true }
 serde_json = { workspace = true }
 sha2 = "0.10"

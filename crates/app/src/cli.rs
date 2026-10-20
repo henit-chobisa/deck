@@ -395,6 +395,67 @@ enum What {
         deck: PathBuf,
     },
 
+    /// Make a finished deck into one `.deck` file anybody can open: the deck,
+    /// the code it points at frozen with a little context, and the review.
+    ///
+    /// Only the deck's own files go in — never a draft, a pill or a marker.
+    /// Paths become repo-relative and the repo is named by its remote and
+    /// commit; your home directory becomes `~`; questions offered as pills
+    /// are dropped. Everything is scanned for secrets first, and a hit
+    /// refuses the pack, naming each one by a fingerprint.
+    ///
+    /// `deck pack d-1.deck`, `deck pack d-1.deck --dry-run`,
+    /// `deck pack d-1.deck -o review.deck --allow 3f9a1c0b2d4e`.
+    Pack {
+        /// The `.deck` directory, or a directory `deck unpack` made, which is
+        /// packed back exactly as it is.
+        deck: PathBuf,
+        /// Where to write the file. Defaults to `YYYY-MM-DD-<title>.deck` in
+        /// the current directory; a directory here puts it in there.
+        #[arg(short = 'o', long = "out", value_name = "FILE")]
+        out: Option<PathBuf>,
+        /// Replace a file already at that path.
+        #[arg(long)]
+        force: bool,
+        /// Say what would be written — every entry and its size, every file
+        /// frozen and how it stands against the commit, every path cut to
+        /// its name, every secret found — and write nothing. Exits 1 when it
+        /// would refuse.
+        #[arg(long)]
+        dry_run: bool,
+        /// Lines kept either side of each range the deck points at.
+        #[arg(long, value_name = "N", default_value_t = deck_core::bundle::snap::CONTEXT)]
+        context: u32,
+        /// Keep every line of every file pointed at, not just the ranges.
+        ///
+        /// Every extra line is a line the secret scanner has to pass and a
+        /// line the reader was never shown, so it is off unless asked for.
+        #[arg(long, conflicts_with = "context")]
+        whole_files: bool,
+        /// Let one secret-scanner hit through, by the fingerprint the refusal
+        /// printed. Give it once per hit you have looked at and know is safe;
+        /// the manifest records that you did.
+        #[arg(long, value_name = "FINGERPRINT")]
+        allow: Vec<String>,
+        /// Pack even when a file the deck points at cannot be read. Its panes
+        /// will open to nothing.
+        #[arg(long)]
+        allow_missing: bool,
+    },
+
+    /// Write a `.deck` file out as a directory: every entry as it is, and
+    /// its manifest.
+    ///
+    /// The file is checked whole before anything is written. `deck pack` on
+    /// the directory gives back the same file, byte for byte.
+    Unpack {
+        /// The `.deck` file.
+        file: PathBuf,
+        /// Where to write it: a new or empty directory. Defaults to the file's
+        /// name with `.unpacked` in place of `.deck`, here.
+        dir: Option<PathBuf>,
+    },
+
     /// Choose whether a deck can walk you through itself, and in whose voice.
     ///
     /// Everything else works without this: the narration lands in the panel,
@@ -737,6 +798,61 @@ impl Cli {
                 }))
             }
             What::Seal { deck } => report(deck_cli::seal(&deck)),
+            What::Pack {
+                deck,
+                out,
+                force,
+                dry_run,
+                context,
+                whole_files,
+                allow,
+                allow_missing,
+            } => {
+                let options = deck_cli::pack::Options {
+                    context,
+                    whole_files,
+                    allow,
+                    allow_missing,
+                    force,
+                    ..deck_cli::pack::Options::default()
+                };
+                if dry_run {
+                    // A listing that ends in a refusal exits 1, so a script
+                    // can tell a dry run that would pack from one that would
+                    // not without reading it.
+                    let listed = deck_cli::pack::gather(&deck, &options)
+                        .and_then(|packing| Ok((packing.dry_run()?, packing.refusal().is_some())));
+                    return match listed {
+                        Ok((listing, refused)) => {
+                            println!("{listing}");
+                            Err(if refused {
+                                ExitCode::FAILURE
+                            } else {
+                                ExitCode::SUCCESS
+                            })
+                        }
+                        Err(err) => report(Err(err)),
+                    };
+                }
+                report(
+                    deck_cli::pack::pack(&deck, out.as_deref(), &options).map(|packed| {
+                        // Said before the path, because an agent that reads
+                        // one line of output reads the last one.
+                        for note in &packed.notes {
+                            eprintln!("deck: {note}");
+                        }
+                        println!("{}", packed.path.display());
+                    }),
+                )
+            }
+            What::Unpack { file, dir } => report(
+                deck_cli::pack::unpack(&file, dir.as_deref()).map(|unpacked| {
+                    for name in &unpacked.ignored {
+                        eprintln!("deck: {name} is from a newer deck, and was left out");
+                    }
+                    println!("{}", unpacked.dir.display());
+                }),
+            ),
             What::Next {
                 deck,
                 status,
@@ -1653,5 +1769,47 @@ mod tests {
         };
         assert_eq!(say, "One.\n\nTwo.");
         assert_eq!(after, [r#"print("a\n");"#]);
+    }
+
+    /// `pack` takes its options as written, and `--whole-files` cannot be
+    /// asked for alongside a context it would ignore.
+    #[test]
+    fn pack_reads_its_options() {
+        let cli = Cli::try_parse_from([
+            "deck",
+            "pack",
+            "d.deck",
+            "-o",
+            "out.deck",
+            "--allow",
+            "a1",
+            "--allow",
+            "b2",
+            "--context",
+            "3",
+            "--dry-run",
+        ])
+        .expect("parses");
+        let What::Pack {
+            out,
+            allow,
+            context,
+            dry_run,
+            force,
+            ..
+        } = cli.what
+        else {
+            panic!("a pack");
+        };
+        assert_eq!(out, Some(PathBuf::from("out.deck")));
+        assert_eq!(allow, ["a1", "b2"]);
+        assert_eq!(context, 3);
+        assert!(dry_run && !force);
+        assert!(
+            Cli::try_parse_from(["deck", "pack", "d.deck", "--whole-files", "--context", "3"])
+                .is_err()
+        );
+        let cli = Cli::try_parse_from(["deck", "unpack", "a.deck"]).expect("parses");
+        assert!(matches!(cli.what, What::Unpack { dir: None, .. }));
     }
 }
