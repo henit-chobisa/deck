@@ -32,6 +32,7 @@
 pub mod bundle;
 pub mod config;
 pub mod diagram;
+pub mod document;
 pub mod drawing;
 pub mod geometry;
 pub mod home;

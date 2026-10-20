@@ -1,0 +1,1749 @@
+{
+  "title": "Why the batch counter stalls at 63",
+  "repo": {
+    "remote": "https://github.com/acme/ingest",
+    "commit": "a1b2c3d"
+  },
+  "created": "2026-10-20T09:30:00Z",
+  "inks": {
+    "page": "#282828",
+    "band": "#242424",
+    "pane": "#262626",
+    "edge": "#4f4f4f",
+    "on_page": {
+      "text": "#ebdbb2",
+      "muted": "#999078",
+      "accent": "#fe8019"
+    },
+    "on_band": {
+      "text": "#ebdbb2",
+      "muted": "#999078",
+      "accent": "#fe8019"
+    },
+    "on_pane": {
+      "text": "#ebdbb2",
+      "muted": "#999078",
+      "accent": "#fe8019"
+    }
+  },
+  "contents": [
+    {
+      "n": 1,
+      "title": "The error path counts twice",
+      "confidence": {
+        "level": "medium",
+        "why": "read both paths; did not run it"
+      },
+      "panes": [
+        "batch",
+        "path",
+        "tail"
+      ],
+      "remarks": 1,
+      "answers": 1
+    },
+    {
+      "n": 2,
+      "title": "A long stretch, pointed once in the middle.",
+      "panes": [
+        "src/batch.ts"
+      ],
+      "remarks": 0,
+      "answers": 0
+    },
+    {
+      "n": 3,
+      "title": "Count once",
+      "panes": [
+        "fix"
+      ],
+      "remarks": 1,
+      "answers": 0
+    }
+  ],
+  "groups": [
+    {
+      "n": 1,
+      "id": "g1",
+      "title": "The error path counts twice",
+      "confidence": {
+        "level": "medium",
+        "why": "read both paths; did not run it"
+      },
+      "prose": [
+        [
+          {
+            "run": "text",
+            "text": "A write that fails lands in the catch in "
+          },
+          {
+            "run": "text",
+            "text": "batch ",
+            "mark": "pane",
+            "pane": "g1r2"
+          },
+          {
+            "run": "text",
+            "text": "and takes the counter down."
+          },
+          {
+            "run": "point",
+            "numeral": 1
+          },
+          {
+            "run": "text",
+            "text": " Nothing stops it there, so it goes on to the tail and takes it down again."
+          },
+          {
+            "run": "point",
+            "numeral": 2
+          }
+        ],
+        [
+          {
+            "run": "text",
+            "text": "Every failed write costs two. "
+          },
+          {
+            "run": "text",
+            "text": "path ",
+            "mark": "pane",
+            "pane": "g1d1"
+          },
+          {
+            "run": "text",
+            "text": "follows one row through both, and the first decrement is the one to remove."
+          },
+          {
+            "run": "point",
+            "numeral": 1
+          },
+          {
+            "run": "text",
+            "text": " The "
+          },
+          {
+            "run": "text",
+            "text": "check ",
+            "mark": "pane"
+          },
+          {
+            "run": "text",
+            "text": "box is the question."
+          },
+          {
+            "run": "point",
+            "numeral": 3
+          }
+        ]
+      ],
+      "panes": [
+        {
+          "pane": "code",
+          "id": "g1r2",
+          "name": "batch",
+          "file": "src/batch.ts",
+          "range": [
+            139,
+            146
+          ],
+          "lines": [
+            {
+              "row": "code",
+              "no": 131,
+              "kind": {
+                "kind": "context",
+                "distance": 8
+              },
+              "ground": "#262626",
+              "accent": "#fe8019",
+              "spans": [
+                {
+                  "text": "line 131",
+                  "ink": "#ebdbb2"
+                }
+              ]
+            },
+            {
+              "row": "code",
+              "no": 132,
+              "kind": {
+                "kind": "context",
+                "distance": 7
+              },
+              "ground": "#262626",
+              "accent": "#fe8019",
+              "spans": [
+                {
+                  "text": "line 132",
+                  "ink": "#ebdbb2"
+                }
+              ]
+            },
+            {
+              "row": "code",
+              "no": 133,
+              "kind": {
+                "kind": "context",
+                "distance": 6
+              },
+              "ground": "#262626",
+              "accent": "#fe8019",
+              "spans": [
+                {
+                  "text": "line 133",
+                  "ink": "#ebdbb2"
+                }
+              ]
+            },
+            {
+              "row": "code",
+              "no": 134,
+              "kind": {
+                "kind": "context",
+                "distance": 5
+              },
+              "ground": "#262626",
+              "accent": "#fe8019",
+              "spans": [
+                {
+                  "text": "line 134",
+                  "ink": "#ebdbb2"
+                }
+              ]
+            },
+            {
+              "row": "code",
+              "no": 135,
+              "kind": {
+                "kind": "context",
+                "distance": 4
+              },
+              "ground": "#262626",
+              "accent": "#fe8019",
+              "spans": [
+                {
+                  "text": "line 135",
+                  "ink": "#ebdbb2"
+                }
+              ]
+            },
+            {
+              "row": "code",
+              "no": 136,
+              "kind": {
+                "kind": "context",
+                "distance": 3
+              },
+              "ground": "#262626",
+              "accent": "#fe8019",
+              "spans": [
+                {
+                  "text": "line 136",
+                  "ink": "#ebdbb2"
+                }
+              ]
+            },
+            {
+              "row": "code",
+              "no": 137,
+              "kind": {
+                "kind": "context",
+                "distance": 2
+              },
+              "ground": "#262626",
+              "accent": "#fe8019",
+              "spans": [
+                {
+                  "text": "line 137",
+                  "ink": "#ebdbb2"
+                }
+              ]
+            },
+            {
+              "row": "code",
+              "no": 138,
+              "kind": {
+                "kind": "context",
+                "distance": 1
+              },
+              "ground": "#262626",
+              "accent": "#fe8019",
+              "spans": [
+                {
+                  "text": "line 138",
+                  "ink": "#ebdbb2"
+                }
+              ]
+            },
+            {
+              "row": "code",
+              "no": 139,
+              "kind": {
+                "kind": "spot"
+              },
+              "ground": "#483425",
+              "accent": "#fe8019",
+              "spans": [
+                {
+                  "text": "line 139",
+                  "ink": "#ebdbb2"
+                }
+              ]
+            },
+            {
+              "row": "code",
+              "no": 140,
+              "kind": {
+                "kind": "spot"
+              },
+              "ground": "#483425",
+              "accent": "#fe8019",
+              "spans": [
+                {
+                  "text": "line 140",
+                  "ink": "#ebdbb2"
+                }
+              ]
+            },
+            {
+              "row": "code",
+              "no": 141,
+              "kind": {
+                "kind": "spot"
+              },
+              "ground": "#483425",
+              "accent": "#fe8019",
+              "spans": [
+                {
+                  "text": "line 141",
+                  "ink": "#ebdbb2"
+                }
+              ]
+            },
+            {
+              "row": "code",
+              "no": 142,
+              "kind": {
+                "kind": "spot"
+              },
+              "ground": "#483425",
+              "accent": "#fe8019",
+              "spans": [
+                {
+                  "text": "line 142",
+                  "ink": "#ebdbb2"
+                }
+              ]
+            },
+            {
+              "row": "code",
+              "no": 143,
+              "kind": {
+                "kind": "spot"
+              },
+              "numerals": [
+                1
+              ],
+              "lit_by": [
+                1
+              ],
+              "ground": "#483425",
+              "accent": "#fe8019",
+              "spans": [
+                {
+                  "text": "    ",
+                  "ink": "#ebdbb2"
+                },
+                {
+                  "text": "let",
+                  "ink": "#b79c82"
+                },
+                {
+                  "text": " pending = pending - 1",
+                  "ink": "#ebdbb2"
+                }
+              ],
+              "values": [
+                {
+                  "line": 143,
+                  "at": "pending",
+                  "is": "63",
+                  "lit": true
+                }
+              ]
+            },
+            {
+              "row": "code",
+              "no": 144,
+              "kind": {
+                "kind": "spot"
+              },
+              "ground": "#483425",
+              "accent": "#fe8019",
+              "spans": [
+                {
+                  "text": "line 144",
+                  "ink": "#ebdbb2"
+                }
+              ]
+            },
+            {
+              "row": "code",
+              "no": 145,
+              "kind": {
+                "kind": "spot"
+              },
+              "ground": "#483425",
+              "accent": "#fe8019",
+              "spans": [
+                {
+                  "text": "line 145",
+                  "ink": "#ebdbb2"
+                }
+              ]
+            },
+            {
+              "row": "code",
+              "no": 146,
+              "kind": {
+                "kind": "spot"
+              },
+              "numerals": [
+                2
+              ],
+              "lit_by": [
+                2
+              ],
+              "ground": "#483425",
+              "accent": "#fe8019",
+              "spans": [
+                {
+                  "text": "    ",
+                  "ink": "#ebdbb2"
+                },
+                {
+                  "text": "let",
+                  "ink": "#b79c82"
+                },
+                {
+                  "text": " pending = pending - 1",
+                  "ink": "#ebdbb2"
+                }
+              ],
+              "values": [
+                {
+                  "line": 146,
+                  "at": "pending",
+                  "is": "62"
+                }
+              ]
+            },
+            {
+              "row": "code",
+              "no": 147,
+              "kind": {
+                "kind": "context",
+                "distance": 1
+              },
+              "ground": "#262626",
+              "accent": "#fe8019",
+              "spans": [
+                {
+                  "text": "line 147",
+                  "ink": "#ebdbb2"
+                }
+              ]
+            },
+            {
+              "row": "code",
+              "no": 148,
+              "kind": {
+                "kind": "context",
+                "distance": 2
+              },
+              "ground": "#262626",
+              "accent": "#fe8019",
+              "spans": [
+                {
+                  "text": "line 148",
+                  "ink": "#ebdbb2"
+                }
+              ]
+            },
+            {
+              "row": "code",
+              "no": 149,
+              "kind": {
+                "kind": "context",
+                "distance": 3
+              },
+              "ground": "#262626",
+              "accent": "#fe8019",
+              "spans": [
+                {
+                  "text": "line 149",
+                  "ink": "#ebdbb2"
+                }
+              ]
+            },
+            {
+              "row": "code",
+              "no": 150,
+              "kind": {
+                "kind": "context",
+                "distance": 4
+              },
+              "ground": "#262626",
+              "accent": "#fe8019",
+              "spans": [
+                {
+                  "text": "line 150",
+                  "ink": "#ebdbb2"
+                }
+              ]
+            },
+            {
+              "row": "code",
+              "no": 151,
+              "kind": {
+                "kind": "context",
+                "distance": 5
+              },
+              "ground": "#262626",
+              "accent": "#fe8019",
+              "spans": [
+                {
+                  "text": "line 151",
+                  "ink": "#ebdbb2"
+                }
+              ]
+            },
+            {
+              "row": "code",
+              "no": 152,
+              "kind": {
+                "kind": "context",
+                "distance": 6
+              },
+              "ground": "#262626",
+              "accent": "#fe8019",
+              "spans": [
+                {
+                  "text": "line 152",
+                  "ink": "#ebdbb2"
+                }
+              ]
+            },
+            {
+              "row": "code",
+              "no": 153,
+              "kind": {
+                "kind": "context",
+                "distance": 7
+              },
+              "ground": "#262626",
+              "accent": "#fe8019",
+              "spans": [
+                {
+                  "text": "line 153",
+                  "ink": "#ebdbb2"
+                }
+              ]
+            },
+            {
+              "row": "code",
+              "no": 154,
+              "kind": {
+                "kind": "context",
+                "distance": 8
+              },
+              "ground": "#262626",
+              "accent": "#fe8019",
+              "spans": [
+                {
+                  "text": "line 154",
+                  "ink": "#ebdbb2"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "pane": "diagram",
+          "id": "g1d1",
+          "name": "path",
+          "svg": "<svg nodes=\"2\"/>",
+          "marks": [
+            {
+              "block": "check",
+              "numeral": 3
+            }
+          ]
+        },
+        {
+          "pane": "code",
+          "id": "g1r1",
+          "name": "tail",
+          "file": "src/batch.ts",
+          "range": [
+            190,
+            192
+          ],
+          "lines": [
+            {
+              "row": "code",
+              "no": 182,
+              "kind": {
+                "kind": "context",
+                "distance": 8
+              },
+              "ground": "#262626",
+              "accent": "#fe8019",
+              "spans": [
+                {
+                  "text": "line 182",
+                  "ink": "#ebdbb2"
+                }
+              ]
+            },
+            {
+              "row": "code",
+              "no": 183,
+              "kind": {
+                "kind": "context",
+                "distance": 7
+              },
+              "ground": "#262626",
+              "accent": "#fe8019",
+              "spans": [
+                {
+                  "text": "line 183",
+                  "ink": "#ebdbb2"
+                }
+              ]
+            },
+            {
+              "row": "code",
+              "no": 184,
+              "kind": {
+                "kind": "context",
+                "distance": 6
+              },
+              "ground": "#262626",
+              "accent": "#fe8019",
+              "spans": [
+                {
+                  "text": "line 184",
+                  "ink": "#ebdbb2"
+                }
+              ]
+            },
+            {
+              "row": "code",
+              "no": 185,
+              "kind": {
+                "kind": "context",
+                "distance": 5
+              },
+              "ground": "#262626",
+              "accent": "#fe8019",
+              "spans": [
+                {
+                  "text": "line 185",
+                  "ink": "#ebdbb2"
+                }
+              ]
+            },
+            {
+              "row": "code",
+              "no": 186,
+              "kind": {
+                "kind": "context",
+                "distance": 4
+              },
+              "ground": "#262626",
+              "accent": "#fe8019",
+              "spans": [
+                {
+                  "text": "line 186",
+                  "ink": "#ebdbb2"
+                }
+              ]
+            },
+            {
+              "row": "code",
+              "no": 187,
+              "kind": {
+                "kind": "context",
+                "distance": 3
+              },
+              "ground": "#262626",
+              "accent": "#fe8019",
+              "spans": [
+                {
+                  "text": "line 187",
+                  "ink": "#ebdbb2"
+                }
+              ]
+            },
+            {
+              "row": "code",
+              "no": 188,
+              "kind": {
+                "kind": "context",
+                "distance": 2
+              },
+              "ground": "#262626",
+              "accent": "#fe8019",
+              "spans": [
+                {
+                  "text": "line 188",
+                  "ink": "#ebdbb2"
+                }
+              ]
+            },
+            {
+              "row": "code",
+              "no": 189,
+              "kind": {
+                "kind": "context",
+                "distance": 1
+              },
+              "ground": "#262626",
+              "accent": "#fe8019",
+              "spans": [
+                {
+                  "text": "line 189",
+                  "ink": "#ebdbb2"
+                }
+              ]
+            },
+            {
+              "row": "code",
+              "no": 190,
+              "kind": {
+                "kind": "spot"
+              },
+              "ground": "#483425",
+              "accent": "#fe8019",
+              "spans": [
+                {
+                  "text": "line 190",
+                  "ink": "#ebdbb2"
+                }
+              ]
+            },
+            {
+              "row": "code",
+              "no": 191,
+              "kind": {
+                "kind": "spot"
+              },
+              "ground": "#483425",
+              "accent": "#fe8019",
+              "spans": [
+                {
+                  "text": "line 191",
+                  "ink": "#ebdbb2"
+                }
+              ]
+            },
+            {
+              "row": "code",
+              "no": 192,
+              "kind": {
+                "kind": "spot"
+              },
+              "ground": "#483425",
+              "accent": "#fe8019",
+              "spans": [
+                {
+                  "text": "line 192",
+                  "ink": "#ebdbb2"
+                }
+              ]
+            },
+            {
+              "row": "code",
+              "no": 193,
+              "kind": {
+                "kind": "context",
+                "distance": 1
+              },
+              "ground": "#262626",
+              "accent": "#fe8019",
+              "spans": [
+                {
+                  "text": "line 193",
+                  "ink": "#ebdbb2"
+                }
+              ]
+            },
+            {
+              "row": "code",
+              "no": 194,
+              "kind": {
+                "kind": "context",
+                "distance": 2
+              },
+              "ground": "#262626",
+              "accent": "#fe8019",
+              "spans": [
+                {
+                  "text": "line 194",
+                  "ink": "#ebdbb2"
+                }
+              ]
+            },
+            {
+              "row": "code",
+              "no": 195,
+              "kind": {
+                "kind": "context",
+                "distance": 3
+              },
+              "ground": "#262626",
+              "accent": "#fe8019",
+              "spans": [
+                {
+                  "text": "line 195",
+                  "ink": "#ebdbb2"
+                }
+              ]
+            },
+            {
+              "row": "code",
+              "no": 196,
+              "kind": {
+                "kind": "context",
+                "distance": 4
+              },
+              "ground": "#262626",
+              "accent": "#fe8019",
+              "spans": [
+                {
+                  "text": "line 196",
+                  "ink": "#ebdbb2"
+                }
+              ]
+            },
+            {
+              "row": "code",
+              "no": 197,
+              "kind": {
+                "kind": "context",
+                "distance": 5
+              },
+              "ground": "#262626",
+              "accent": "#fe8019",
+              "spans": [
+                {
+                  "text": "line 197",
+                  "ink": "#ebdbb2"
+                }
+              ]
+            },
+            {
+              "row": "code",
+              "no": 198,
+              "kind": {
+                "kind": "context",
+                "distance": 6
+              },
+              "ground": "#262626",
+              "accent": "#fe8019",
+              "spans": [
+                {
+                  "text": "line 198",
+                  "ink": "#ebdbb2"
+                }
+              ]
+            },
+            {
+              "row": "code",
+              "no": 199,
+              "kind": {
+                "kind": "context",
+                "distance": 7
+              },
+              "ground": "#262626",
+              "accent": "#fe8019",
+              "spans": [
+                {
+                  "text": "line 199",
+                  "ink": "#ebdbb2"
+                }
+              ]
+            },
+            {
+              "row": "code",
+              "no": 200,
+              "kind": {
+                "kind": "context",
+                "distance": 8
+              },
+              "ground": "#262626",
+              "accent": "#fe8019",
+              "spans": [
+                {
+                  "text": "line 200",
+                  "ink": "#ebdbb2"
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "ledger": [
+        {
+          "pane": "batch",
+          "line": 143,
+          "numeral": 1,
+          "at": "pending",
+          "is": "63",
+          "lit": true
+        },
+        {
+          "pane": "batch",
+          "line": 146,
+          "numeral": 2,
+          "at": "pending",
+          "is": "62"
+        }
+      ],
+      "argument": [
+        {
+          "author": "reader",
+          "ref": "g1r2",
+          "pane": "batch",
+          "range": [
+            143,
+            143
+          ],
+          "quote": "pending - 1",
+          "kind": "question",
+          "text": "Why not decrement once, in a finally?",
+          "at_ms": 5000
+        },
+        {
+          "author": "agent",
+          "text": "A finally also runs on the retry branch. Group three counts once.",
+          "at_ms": 9000
+        }
+      ]
+    },
+    {
+      "n": 2,
+      "id": "g2",
+      "title": "A long stretch, pointed once in the middle.",
+      "prose": [
+        [
+          {
+            "run": "text",
+            "text": "A long stretch, pointed once in the middle."
+          },
+          {
+            "run": "point",
+            "numeral": 1
+          }
+        ]
+      ],
+      "panes": [
+        {
+          "pane": "code",
+          "id": "g2r1",
+          "file": "src/batch.ts",
+          "range": [
+            10,
+            40
+          ],
+          "lines": [
+            {
+              "row": "code",
+              "no": 2,
+              "kind": {
+                "kind": "context",
+                "distance": 8
+              },
+              "ground": "#262626",
+              "accent": "#fe8019",
+              "spans": [
+                {
+                  "text": "line 2",
+                  "ink": "#ebdbb2"
+                }
+              ]
+            },
+            {
+              "row": "code",
+              "no": 3,
+              "kind": {
+                "kind": "context",
+                "distance": 7
+              },
+              "ground": "#262626",
+              "accent": "#fe8019",
+              "spans": [
+                {
+                  "text": "line 3",
+                  "ink": "#ebdbb2"
+                }
+              ]
+            },
+            {
+              "row": "code",
+              "no": 4,
+              "kind": {
+                "kind": "context",
+                "distance": 6
+              },
+              "ground": "#262626",
+              "accent": "#fe8019",
+              "spans": [
+                {
+                  "text": "line 4",
+                  "ink": "#ebdbb2"
+                }
+              ]
+            },
+            {
+              "row": "code",
+              "no": 5,
+              "kind": {
+                "kind": "context",
+                "distance": 5
+              },
+              "ground": "#262626",
+              "accent": "#fe8019",
+              "spans": [
+                {
+                  "text": "line 5",
+                  "ink": "#ebdbb2"
+                }
+              ]
+            },
+            {
+              "row": "code",
+              "no": 6,
+              "kind": {
+                "kind": "context",
+                "distance": 4
+              },
+              "ground": "#262626",
+              "accent": "#fe8019",
+              "spans": [
+                {
+                  "text": "line 6",
+                  "ink": "#ebdbb2"
+                }
+              ]
+            },
+            {
+              "row": "code",
+              "no": 7,
+              "kind": {
+                "kind": "context",
+                "distance": 3
+              },
+              "ground": "#262626",
+              "accent": "#fe8019",
+              "spans": [
+                {
+                  "text": "line 7",
+                  "ink": "#ebdbb2"
+                }
+              ]
+            },
+            {
+              "row": "code",
+              "no": 8,
+              "kind": {
+                "kind": "context",
+                "distance": 2
+              },
+              "ground": "#262626",
+              "accent": "#fe8019",
+              "spans": [
+                {
+                  "text": "line 8",
+                  "ink": "#ebdbb2"
+                }
+              ]
+            },
+            {
+              "row": "code",
+              "no": 9,
+              "kind": {
+                "kind": "context",
+                "distance": 1
+              },
+              "ground": "#262626",
+              "accent": "#fe8019",
+              "spans": [
+                {
+                  "text": "line 9",
+                  "ink": "#ebdbb2"
+                }
+              ]
+            },
+            {
+              "row": "code",
+              "no": 10,
+              "kind": {
+                "kind": "spot"
+              },
+              "ground": "#483425",
+              "accent": "#fe8019",
+              "spans": [
+                {
+                  "text": "line 10",
+                  "ink": "#ebdbb2"
+                }
+              ]
+            },
+            {
+              "row": "code",
+              "no": 11,
+              "kind": {
+                "kind": "spot"
+              },
+              "ground": "#483425",
+              "accent": "#fe8019",
+              "spans": [
+                {
+                  "text": "line 11",
+                  "ink": "#ebdbb2"
+                }
+              ]
+            },
+            {
+              "row": "gap",
+              "lines": 11
+            },
+            {
+              "row": "code",
+              "no": 23,
+              "kind": {
+                "kind": "spot"
+              },
+              "ground": "#483425",
+              "accent": "#fe8019",
+              "spans": [
+                {
+                  "text": "line 23",
+                  "ink": "#ebdbb2"
+                }
+              ]
+            },
+            {
+              "row": "code",
+              "no": 24,
+              "kind": {
+                "kind": "spot"
+              },
+              "ground": "#483425",
+              "accent": "#fe8019",
+              "spans": [
+                {
+                  "text": "line 24",
+                  "ink": "#ebdbb2"
+                }
+              ]
+            },
+            {
+              "row": "code",
+              "no": 25,
+              "kind": {
+                "kind": "spot"
+              },
+              "numerals": [
+                1
+              ],
+              "lit_by": [
+                1
+              ],
+              "ground": "#483425",
+              "accent": "#fe8019",
+              "spans": [
+                {
+                  "text": "line 25",
+                  "ink": "#ebdbb2"
+                }
+              ]
+            },
+            {
+              "row": "code",
+              "no": 26,
+              "kind": {
+                "kind": "spot"
+              },
+              "ground": "#483425",
+              "accent": "#fe8019",
+              "spans": [
+                {
+                  "text": "line 26",
+                  "ink": "#ebdbb2"
+                }
+              ]
+            },
+            {
+              "row": "code",
+              "no": 27,
+              "kind": {
+                "kind": "spot"
+              },
+              "ground": "#483425",
+              "accent": "#fe8019",
+              "spans": [
+                {
+                  "text": "line 27",
+                  "ink": "#ebdbb2"
+                }
+              ]
+            },
+            {
+              "row": "gap",
+              "lines": 11
+            },
+            {
+              "row": "code",
+              "no": 39,
+              "kind": {
+                "kind": "spot"
+              },
+              "ground": "#483425",
+              "accent": "#fe8019",
+              "spans": [
+                {
+                  "text": "line 39",
+                  "ink": "#ebdbb2"
+                }
+              ]
+            },
+            {
+              "row": "code",
+              "no": 40,
+              "kind": {
+                "kind": "spot"
+              },
+              "ground": "#483425",
+              "accent": "#fe8019",
+              "spans": [
+                {
+                  "text": "line 40",
+                  "ink": "#ebdbb2"
+                }
+              ]
+            },
+            {
+              "row": "code",
+              "no": 41,
+              "kind": {
+                "kind": "context",
+                "distance": 1
+              },
+              "ground": "#262626",
+              "accent": "#fe8019",
+              "spans": [
+                {
+                  "text": "line 41",
+                  "ink": "#ebdbb2"
+                }
+              ]
+            },
+            {
+              "row": "code",
+              "no": 42,
+              "kind": {
+                "kind": "context",
+                "distance": 2
+              },
+              "ground": "#262626",
+              "accent": "#fe8019",
+              "spans": [
+                {
+                  "text": "line 42",
+                  "ink": "#ebdbb2"
+                }
+              ]
+            },
+            {
+              "row": "code",
+              "no": 43,
+              "kind": {
+                "kind": "context",
+                "distance": 3
+              },
+              "ground": "#262626",
+              "accent": "#fe8019",
+              "spans": [
+                {
+                  "text": "line 43",
+                  "ink": "#ebdbb2"
+                }
+              ]
+            },
+            {
+              "row": "code",
+              "no": 44,
+              "kind": {
+                "kind": "context",
+                "distance": 4
+              },
+              "ground": "#262626",
+              "accent": "#fe8019",
+              "spans": [
+                {
+                  "text": "line 44",
+                  "ink": "#ebdbb2"
+                }
+              ]
+            },
+            {
+              "row": "code",
+              "no": 45,
+              "kind": {
+                "kind": "context",
+                "distance": 5
+              },
+              "ground": "#262626",
+              "accent": "#fe8019",
+              "spans": [
+                {
+                  "text": "line 45",
+                  "ink": "#ebdbb2"
+                }
+              ]
+            },
+            {
+              "row": "code",
+              "no": 46,
+              "kind": {
+                "kind": "context",
+                "distance": 6
+              },
+              "ground": "#262626",
+              "accent": "#fe8019",
+              "spans": [
+                {
+                  "text": "line 46",
+                  "ink": "#ebdbb2"
+                }
+              ]
+            },
+            {
+              "row": "code",
+              "no": 47,
+              "kind": {
+                "kind": "context",
+                "distance": 7
+              },
+              "ground": "#262626",
+              "accent": "#fe8019",
+              "spans": [
+                {
+                  "text": "line 47",
+                  "ink": "#ebdbb2"
+                }
+              ]
+            },
+            {
+              "row": "code",
+              "no": 48,
+              "kind": {
+                "kind": "context",
+                "distance": 8
+              },
+              "ground": "#262626",
+              "accent": "#fe8019",
+              "spans": [
+                {
+                  "text": "line 48",
+                  "ink": "#ebdbb2"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "n": 3,
+      "id": "g3",
+      "title": "Count once",
+      "prose": [
+        [
+          {
+            "run": "text",
+            "text": "Count once, where the write settles."
+          },
+          {
+            "run": "point",
+            "numeral": 1
+          }
+        ]
+      ],
+      "panes": [
+        {
+          "pane": "code",
+          "id": "g3r1",
+          "name": "fix",
+          "file": "src/batch.ts",
+          "range": [
+            143,
+            143
+          ],
+          "change": "proposed",
+          "lines": [
+            {
+              "row": "code",
+              "no": 135,
+              "kind": {
+                "kind": "context",
+                "distance": 8
+              },
+              "ground": "#262626",
+              "accent": "#fe8019",
+              "spans": [
+                {
+                  "text": "line 135",
+                  "ink": "#ebdbb2"
+                }
+              ]
+            },
+            {
+              "row": "code",
+              "no": 136,
+              "kind": {
+                "kind": "context",
+                "distance": 7
+              },
+              "ground": "#262626",
+              "accent": "#fe8019",
+              "spans": [
+                {
+                  "text": "line 136",
+                  "ink": "#ebdbb2"
+                }
+              ]
+            },
+            {
+              "row": "code",
+              "no": 137,
+              "kind": {
+                "kind": "context",
+                "distance": 6
+              },
+              "ground": "#262626",
+              "accent": "#fe8019",
+              "spans": [
+                {
+                  "text": "line 137",
+                  "ink": "#ebdbb2"
+                }
+              ]
+            },
+            {
+              "row": "code",
+              "no": 138,
+              "kind": {
+                "kind": "context",
+                "distance": 5
+              },
+              "ground": "#262626",
+              "accent": "#fe8019",
+              "spans": [
+                {
+                  "text": "line 138",
+                  "ink": "#ebdbb2"
+                }
+              ]
+            },
+            {
+              "row": "code",
+              "no": 139,
+              "kind": {
+                "kind": "context",
+                "distance": 4
+              },
+              "ground": "#262626",
+              "accent": "#fe8019",
+              "spans": [
+                {
+                  "text": "line 139",
+                  "ink": "#ebdbb2"
+                }
+              ]
+            },
+            {
+              "row": "code",
+              "no": 140,
+              "kind": {
+                "kind": "context",
+                "distance": 3
+              },
+              "ground": "#262626",
+              "accent": "#fe8019",
+              "spans": [
+                {
+                  "text": "line 140",
+                  "ink": "#ebdbb2"
+                }
+              ]
+            },
+            {
+              "row": "code",
+              "no": 141,
+              "kind": {
+                "kind": "context",
+                "distance": 2
+              },
+              "ground": "#262626",
+              "accent": "#fe8019",
+              "spans": [
+                {
+                  "text": "line 141",
+                  "ink": "#ebdbb2"
+                }
+              ]
+            },
+            {
+              "row": "code",
+              "no": 142,
+              "kind": {
+                "kind": "context",
+                "distance": 1
+              },
+              "ground": "#262626",
+              "accent": "#fe8019",
+              "spans": [
+                {
+                  "text": "line 142",
+                  "ink": "#ebdbb2"
+                }
+              ]
+            },
+            {
+              "row": "code",
+              "no": 143,
+              "kind": {
+                "kind": "going"
+              },
+              "ground": "#3f2b28",
+              "accent": "#fe8019",
+              "spans": [
+                {
+                  "text": "    ",
+                  "ink": "#ebdbb2"
+                },
+                {
+                  "text": "let",
+                  "ink": "#af9275"
+                },
+                {
+                  "text": " pending = pending - 1",
+                  "ink": "#ebdbb2"
+                }
+              ]
+            },
+            {
+              "row": "code",
+              "no": 143,
+              "kind": {
+                "kind": "arriving"
+              },
+              "numerals": [
+                1
+              ],
+              "lit_by": [
+                1
+              ],
+              "ground": "#373727",
+              "accent": "#fe8019",
+              "spans": [
+                {
+                  "text": "    } finally {",
+                  "ink": "#ebdbb2"
+                }
+              ]
+            },
+            {
+              "row": "code",
+              "no": 144,
+              "kind": {
+                "kind": "arriving"
+              },
+              "ground": "#373727",
+              "accent": "#fe8019",
+              "spans": [
+                {
+                  "text": "        ",
+                  "ink": "#ebdbb2"
+                },
+                {
+                  "text": "let",
+                  "ink": "#b5997e"
+                },
+                {
+                  "text": " pending = pending - 1",
+                  "ink": "#ebdbb2"
+                }
+              ]
+            },
+            {
+              "row": "code",
+              "no": 144,
+              "kind": {
+                "kind": "context",
+                "distance": 1
+              },
+              "ground": "#262626",
+              "accent": "#fe8019",
+              "spans": [
+                {
+                  "text": "line 144",
+                  "ink": "#ebdbb2"
+                }
+              ]
+            },
+            {
+              "row": "code",
+              "no": 145,
+              "kind": {
+                "kind": "context",
+                "distance": 2
+              },
+              "ground": "#262626",
+              "accent": "#fe8019",
+              "spans": [
+                {
+                  "text": "line 145",
+                  "ink": "#ebdbb2"
+                }
+              ]
+            },
+            {
+              "row": "code",
+              "no": 146,
+              "kind": {
+                "kind": "context",
+                "distance": 3
+              },
+              "ground": "#262626",
+              "accent": "#fe8019",
+              "spans": [
+                {
+                  "text": "    ",
+                  "ink": "#ebdbb2"
+                },
+                {
+                  "text": "let",
+                  "ink": "#a78666"
+                },
+                {
+                  "text": " pending = pending - 1",
+                  "ink": "#ebdbb2"
+                }
+              ]
+            },
+            {
+              "row": "code",
+              "no": 147,
+              "kind": {
+                "kind": "context",
+                "distance": 4
+              },
+              "ground": "#262626",
+              "accent": "#fe8019",
+              "spans": [
+                {
+                  "text": "line 147",
+                  "ink": "#ebdbb2"
+                }
+              ]
+            },
+            {
+              "row": "code",
+              "no": 148,
+              "kind": {
+                "kind": "context",
+                "distance": 5
+              },
+              "ground": "#262626",
+              "accent": "#fe8019",
+              "spans": [
+                {
+                  "text": "line 148",
+                  "ink": "#ebdbb2"
+                }
+              ]
+            },
+            {
+              "row": "code",
+              "no": 149,
+              "kind": {
+                "kind": "context",
+                "distance": 6
+              },
+              "ground": "#262626",
+              "accent": "#fe8019",
+              "spans": [
+                {
+                  "text": "line 149",
+                  "ink": "#ebdbb2"
+                }
+              ]
+            },
+            {
+              "row": "code",
+              "no": 150,
+              "kind": {
+                "kind": "context",
+                "distance": 7
+              },
+              "ground": "#262626",
+              "accent": "#fe8019",
+              "spans": [
+                {
+                  "text": "line 150",
+                  "ink": "#ebdbb2"
+                }
+              ]
+            },
+            {
+              "row": "code",
+              "no": 151,
+              "kind": {
+                "kind": "context",
+                "distance": 8
+              },
+              "ground": "#262626",
+              "accent": "#fe8019",
+              "spans": [
+                {
+                  "text": "line 151",
+                  "ink": "#ebdbb2"
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "argument": [
+        {
+          "author": "reader",
+          "kind": "nit",
+          "text": "Name the test after the bug."
+        }
+      ]
+    }
+  ],
+  "general": [
+    {
+      "author": "agent",
+      "text": "That is everything I had.",
+      "at_ms": 12000
+    }
+  ]
+}

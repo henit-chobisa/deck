@@ -278,7 +278,7 @@ pub enum Side {
 /// prose, and prose is left exactly as it was rather than swallowed by a
 /// directive it never meant to give — so a word that is not a block id, or a
 /// second file range, leaves the whole thing on the page as words.
-fn spot(text: &str) -> Option<Spot> {
+pub(crate) fn spot(text: &str) -> Option<Spot> {
     let mut found = Spot {
         lines: None,
         side: Side::Going,
@@ -615,6 +615,29 @@ fn wordish(ch: Option<char>) -> bool {
     ch.is_some_and(|ch| ch.is_alphanumeric() || ch == '_')
 }
 
+/// Whether the parser should see straight through `ch`, as if it were not
+/// there: the supplementary private-use planes, which no narration writes.
+///
+/// A reader that has to hold a place in the text while it parses — the
+/// document model keeps each point's place this way — writes its markers
+/// from here, and the marks around them read exactly as they would with the
+/// markers gone: `_emphasis_` before one still closes, and `_snake_` before
+/// one is still inside its word.
+#[must_use]
+pub fn transparent(ch: char) -> bool {
+    ('\u{F0000}'..='\u{10FFFD}').contains(&ch)
+}
+
+/// The first character of `text` the parser sees.
+fn first_seen(text: &str) -> Option<char> {
+    text.chars().find(|&ch| !transparent(ch))
+}
+
+/// The last character of `text` the parser sees.
+fn last_seen(text: &str) -> Option<char> {
+    text.chars().rev().find(|&ch| !transparent(ch))
+}
+
 /// Where the mark opened at the start of `after_open` closes, if it does.
 ///
 /// Every marker but `_` closes at the first repeat. `_` is the one that turns up
@@ -640,7 +663,7 @@ fn closes(after_open: &str, marker: &str, before: Option<char>) -> Option<usize>
     let mut from = 0;
     while let Some(offset) = after_open[from..].find('_') {
         let at = from + offset;
-        if !wordish(after_open[at + 1..].chars().next()) {
+        if !wordish(first_seen(&after_open[at + 1..])) {
             return Some(at);
         }
         from = at + 1;
@@ -740,7 +763,7 @@ fn paragraph(para: &str, keep_beats: bool, said: &mut usize, at: &mut usize) -> 
             let Some(after_open) = rest.strip_prefix(marker) else {
                 continue;
             };
-            let Some(len) = closes(after_open, marker, plain.chars().last()) else {
+            let Some(len) = closes(after_open, marker, last_seen(&plain)) else {
                 continue; // an opener with no closer is just text
             };
 
