@@ -81,6 +81,20 @@ impl Chart {
             .collect()
     }
 
+    /// Drop every broken line unless they were broken at this zoom and scale.
+    ///
+    /// A pinch zooms by a new factor on every frame, and each one is a new
+    /// size and a new room for every label, so kept forever the cache grew
+    /// by a diagram's worth of lines a frame.
+    fn forget_unless(&self, scale: f32) {
+        let at = (self.zoom.to_bits(), scale.to_bits());
+        let mut lines = self.lines.borrow_mut();
+        if lines.at != at {
+            lines.by.clear();
+            lines.at = at;
+        }
+    }
+
     /// `text` broken to `room`, or cut to one line when `cut`, from
     /// [`Self::lines`] when it has been done before.
     fn remember(
@@ -91,24 +105,21 @@ impl Chart {
         weight: words::Weight,
         room: f32,
     ) -> Vec<String> {
-        let key = (
-            text.to_string(),
-            cut,
-            size.to_bits(),
-            weight as u8,
-            room.to_bits(),
-        );
-        self.lines
-            .borrow_mut()
-            .entry(key)
-            .or_insert_with(|| {
-                if cut {
-                    vec![words::truncate(text, size, weight, room)]
-                } else {
-                    words::wrap(text, size, weight, room)
-                }
-            })
-            .clone()
+        let mut lines = self.lines.borrow_mut();
+        let by = lines
+            .by
+            .entry((cut, size.to_bits(), weight as u8, room.to_bits()))
+            .or_default();
+        if let Some(done) = by.get(text) {
+            return done.clone();
+        }
+        let done = if cut {
+            vec![words::truncate(text, size, weight, room)]
+        } else {
+            words::wrap(text, size, weight, room)
+        };
+        by.insert(text.to_string(), done.clone());
+        done
     }
 }
 
@@ -241,18 +252,28 @@ pub struct Chart {
     /// `None` while nothing is playing, which is every diagram's resting
     /// state — a picture with a path through it is still a picture first.
     pub playing: Option<Playing>,
-    /// Lines already broken, by what was broken and how.
+    /// Lines already broken, by how they were broken and then by the text.
     ///
     /// Shaping is not free, and the picture is redrawn on every frame of a
     /// drag, a zoom or a flow playing. The window's own text cache did this
-    /// for it before deck broke its own lines.
-    lines: std::cell::RefCell<std::collections::HashMap<Broken, Vec<String>>>,
+    /// for it before deck broke its own lines. Only one zoom's worth is kept:
+    /// see [`Self::forget_unless`].
+    lines: std::cell::RefCell<Lines>,
 }
 
-/// What a set of lines was broken from: the text, whether it was cut to one
-/// line rather than wrapped, its size and weight, and the room it had. Sizes
-/// are kept as bits, so the key can be hashed.
-type Broken = (String, bool, u32, u8, u32);
+/// Broken lines, keyed by how — whether cut to one line rather than wrapped,
+/// the size, the weight and the room, sizes as bits so they hash — and then
+/// by the text, so a lookup needs no owned key.
+#[derive(Default)]
+struct Lines {
+    /// The zoom and scale they were broken at, as bits.
+    at: (u32, u32),
+    by: std::collections::HashMap<How, std::collections::HashMap<String, Vec<String>>>,
+}
+
+/// How a set of lines was broken: cut to one line or wrapped, then the size,
+/// the weight and the room.
+type How = (bool, u32, u8, u32);
 
 /// A flow part-way through.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -477,6 +498,7 @@ impl Chart {
         view: &WeakEntity<DeckView>,
         scale: f32,
     ) -> impl IntoElement {
+        self.forget_unless(scale);
         let sheet = div()
             .id(("chart", pane_ix))
             .size_full()
