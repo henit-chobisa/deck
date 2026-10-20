@@ -1660,8 +1660,10 @@ dependencies = [
 name = "deck-core"
 version = "0.1.7-rc.1"
 dependencies = [
+ "crc32fast",
  "serde",
  "serde_json",
+ "sha2 0.10.9",
  "similar",
 ]
 

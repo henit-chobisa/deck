@@ -26,6 +26,7 @@
 
 #![forbid(unsafe_code)]
 
+pub mod bundle;
 pub mod config;
 pub mod diagram;
 pub mod drawing;
