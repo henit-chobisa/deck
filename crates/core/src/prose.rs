@@ -278,7 +278,7 @@ pub enum Side {
 /// prose, and prose is left exactly as it was rather than swallowed by a
 /// directive it never meant to give — so a word that is not a block id, or a
 /// second file range, leaves the whole thing on the page as words.
-fn spot(text: &str) -> Option<Spot> {
+pub(crate) fn spot(text: &str) -> Option<Spot> {
     let mut found = Spot {
         lines: None,
         side: Side::Going,

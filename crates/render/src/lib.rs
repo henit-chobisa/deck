@@ -16,6 +16,7 @@
 
 #![forbid(unsafe_code)]
 
+pub mod document;
 pub mod svg;
 pub mod text;
 
