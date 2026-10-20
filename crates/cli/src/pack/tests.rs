@@ -641,6 +641,16 @@ fn true_positives() -> Vec<(&'static str, String)> {
             "generic-secret",
             format!("password = \"{}\"", "correct-horse-battery"),
         ),
+        // A secret with a scheme in front, as Spring and LDAP store them.
+        (
+            "generic-secret",
+            format!("password: \"{}\"", "{noop}hunter2hunter2"),
+        ),
+        // A secret that happens to start with a dollar sign.
+        (
+            "generic-secret",
+            format!("password = \"{}\"", "$x7Kq9!mZpL2"),
+        ),
     ]
 }
 
@@ -696,6 +706,13 @@ fn ordinary_code_is_not_a_secret() {
         r#"secret = "<your secret here>""#,
         r#"api_key = "{{ api_key }}""#,
         "token_count = 12345678",
+        r#"tokenizer = "bert-base-uncased""#,
+        r#"token_type: "access_token""#,
+        r#"password = "$DB_PASSWORD""#,
+        "task_live_SubscriptionHandlerRegistry",
+        "subtask-ant-scheduler-0123456789abcdefghijklmnopqrstuv",
+        "myxoxb-1234567890-abcdefghij",
+        "blobglpat-0123456789abcdefghij",
         "password_hash = hash(input)",
         "-----BEGIN PUBLIC KEY-----",
         "-----BEGIN CERTIFICATE-----",
@@ -1223,9 +1240,12 @@ fn a_repack_takes_only_what_a_deck_file_holds() {
     let mut stray = vec![".DS_Store", "deck/notes.txt", "mimetype"];
     #[cfg(unix)]
     {
-        std::os::unix::fs::symlink(project.join("a.rs"), into.join("deck").join("g9.json"))
-            .expect("a link");
-        stray.push("deck/g9.json");
+        std::os::unix::fs::symlink(
+            project.join("a.rs"),
+            into.join("deck").join("elsewhere.json"),
+        )
+        .expect("a link");
+        stray.push("deck/elsewhere.json");
     }
     let packing = gather(&into, &options(dir.path())).expect("gathers");
     let mut left: Vec<&str> = packing.left.iter().map(String::as_str).collect();
@@ -1241,5 +1261,92 @@ fn a_repack_takes_only_what_a_deck_file_holds() {
     assert_eq!(
         std::fs::read(&again.path).unwrap(),
         std::fs::read(&packed.path).unwrap()
+    );
+}
+
+/// A link where the deck needs a file would pack a deck short a group or a
+/// snapshot without a word; it is refused, by name.
+#[cfg(unix)]
+#[test]
+fn a_link_at_a_name_the_deck_needs_refuses_the_repack() {
+    let dir = tempfile::tempdir().expect("a temp dir");
+    let project = dir.path().join("project");
+    write(&project, &[("a.rs", &lines(10))]);
+    let root = deck(
+        dir.path(),
+        Some(&project),
+        &[
+            pointing(&[(Path::new("a.rs"), 2, 2)]),
+            json!({ "id": "g2", "say": "two" }),
+        ],
+    );
+    let packed = pack(
+        &root,
+        Some(&dir.path().join("a.deck")),
+        &options(dir.path()),
+    )
+    .expect("packs");
+    for name in ["deck/g2.json", "snap/1.txt"] {
+        let into = dir
+            .path()
+            .join(format!("{}.unpacked", name.replace('/', "-")));
+        unpack(&packed.path, Some(&into)).expect("unpacks");
+        let at = name
+            .split('/')
+            .fold(into.clone(), |path, part| path.join(part));
+        let kept = dir.path().join("kept");
+        std::fs::rename(&at, &kept).unwrap();
+        std::os::unix::fs::symlink(&kept, &at).expect("a link");
+        let err = gather(&into, &options(dir.path()))
+            .expect_err("refused")
+            .to_string();
+        assert!(err.contains("is a link") && err.contains(name), "{err}");
+    }
+}
+
+/// A repack ships an entry's bytes as they are, so a token in a JSON key is
+/// as much a secret as one in a value.
+#[test]
+fn a_secret_in_a_json_key_is_found() {
+    let github = format!("ghp{}{}", "_", filler(36));
+    let bytes = serde_json::to_vec(&json!({ "refs": [{ github.clone(): { "x": "y" } }] })).unwrap();
+    let hits = scan("deck/g1.json", &bytes);
+    assert_eq!(hits.len(), 1, "{hits:?}");
+    assert_eq!(hits[0].rule, "github-pat");
+    assert_eq!(hits[0].at, "deck/g1.json refs[0] key");
+    assert!(!hits[0].at.contains(&github));
+
+    // And it stops the repack of a folder somebody edited.
+    let dir = tempfile::tempdir().expect("a temp dir");
+    let project = dir.path().join("project");
+    write(&project, &[("a.rs", &lines(4))]);
+    let root = deck(
+        dir.path(),
+        Some(&project),
+        &[pointing(&[(Path::new("a.rs"), 1, 1)])],
+    );
+    let packed = pack(
+        &root,
+        Some(&dir.path().join("a.deck")),
+        &options(dir.path()),
+    )
+    .expect("packs");
+    let into = dir.path().join("a.unpacked");
+    unpack(&packed.path, Some(&into)).expect("unpacks");
+    let group = into.join("deck").join("g1.json");
+    let mut edited: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(&group).unwrap()).unwrap();
+    edited[github.as_str()] = json!(true);
+    std::fs::write(&group, serde_json::to_vec_pretty(&edited).unwrap()).unwrap();
+    let packing = gather(&into, &options(dir.path())).expect("gathers");
+    assert_eq!(packing.hits.len(), 1, "{:?}", packing.hits);
+    assert_eq!(packing.hits[0].at, "deck/g1.json key");
+    assert!(
+        pack(
+            &into,
+            Some(&dir.path().join("b.deck")),
+            &options(dir.path())
+        )
+        .is_err()
     );
 }

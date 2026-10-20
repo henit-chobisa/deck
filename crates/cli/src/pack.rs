@@ -442,11 +442,20 @@ fn walk(
         let named = format!("{prefix}{name}");
         // The entry's own type: a link is a link, wherever it points.
         let kind = entry.file_type()?;
+        let holds = named == "manifest.json" || (bundle::known(&named) && named != "mimetype");
+        // A link at a name the deck needs is not something to leave behind
+        // quietly: the deck would pack without that group or snapshot, and
+        // nobody would be told. Nor is it followed, since it could point
+        // anywhere.
+        anyhow::ensure!(
+            !(kind.is_symlink() && holds),
+            "{} is a link, and an unpacked deck holds its own files, not links to \
+             them: put the file itself there, or take {named} out",
+            path.display()
+        );
         if kind.is_dir() {
             walk(&path, &format!("{named}/"), files, left)?;
-        } else if kind.is_file()
-            && (named == "manifest.json" || (bundle::known(&named) && named != "mimetype"))
-        {
+        } else if kind.is_file() && holds {
             let bytes =
                 std::fs::read(&path).with_context(|| format!("cannot read {}", path.display()))?;
             files.insert(named, bytes);
@@ -1415,10 +1424,13 @@ struct Rule {
 ///
 /// Curated from gitleaks' rules: each is a prefix a provider puts on its keys
 /// so that scanners like this one can find them, or a block that is nothing
-/// but a key. The distinctive prefixes need nothing in front of them, so a
-/// key glued to a word or an escape is still found; `sk-`, AWS ids and JWTs
-/// are too short to stand alone and must start a word. Where two overlap on a
-/// line — `sk-ant-` is also `sk-` — the first one listed is the one reported.
+/// but a key. GitHub's prefixes — `ghp_`, `github_pat_` and the rest — end in
+/// an underscore no word does, so they are found even glued to one or to an
+/// escape. Every other prefix could end an ordinary identifier
+/// (`task_live_…`, `myxoxb-…`), so it must start a word: nothing before it
+/// but the start of the line or a character that is not part of a name. Where
+/// two overlap on a line — `sk-ant-` is also `sk-` — the first one listed is
+/// the one reported.
 static RULES: LazyLock<Vec<Rule>> = LazyLock::new(|| {
     [
         (
@@ -1430,15 +1442,18 @@ static RULES: LazyLock<Vec<Rule>> = LazyLock::new(|| {
         ("github-app-token", r"(?:ghu|ghs)_[A-Za-z0-9]{36}\b"),
         ("github-refresh-token", r"ghr_[A-Za-z0-9]{36}\b"),
         ("github-fine-grained-pat", r"github_pat_[A-Za-z0-9_]{82}\b"),
-        ("gitlab-pat", r"glpat-[A-Za-z0-9_-]{20,}"),
-        ("slack-token", r"xox[baprs]-[A-Za-z0-9-]{10,}"),
+        ("gitlab-pat", r"(?:^|[^A-Za-z0-9_])(glpat-[A-Za-z0-9_-]{20,})"),
+        ("slack-token", r"(?:^|[^A-Za-z0-9_])(xox[baprs]-[A-Za-z0-9-]{10,})"),
         (
             "slack-webhook",
             r"hooks\.slack\.com/(?:services|workflows|triggers)/[A-Za-z0-9+/]{43,56}",
         ),
-        ("stripe-key", r"(?:sk|rk)_live_[A-Za-z0-9]{24,}"),
-        ("google-api-key", r"AIza[0-9A-Za-z_-]{35}"),
-        ("anthropic-key", r"sk-ant-[A-Za-z0-9_-]{32,}"),
+        (
+            "stripe-key",
+            r"(?:^|[^A-Za-z0-9_])((?:sk|rk)_live_[A-Za-z0-9]{24,})",
+        ),
+        ("google-api-key", r"(?:^|[^A-Za-z0-9_-])(AIza[0-9A-Za-z_-]{35})"),
+        ("anthropic-key", r"(?:^|[^A-Za-z0-9_-])(sk-ant-[A-Za-z0-9_-]{32,})"),
         (
             "openai-key",
             r"\bsk-(?:proj-|svcacct-|admin-)?[A-Za-z0-9_-]{32,}",
@@ -1451,13 +1466,15 @@ static RULES: LazyLock<Vec<Rule>> = LazyLock::new(|| {
             "jwt",
             r"\beyJ[A-Za-z0-9_-]{8,}\.eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}",
         ),
-        // Any name with one of these words in it — `client_secret`,
-        // `AWS_SECRET_ACCESS_KEY`, `DB_PASSWORD` — given a quoted value of
-        // eight characters or more with no space in it. A value opening with
-        // `$`, `<` or `{` is a placeholder, not a secret.
+        // A name that ends in one of these words — `client_secret`,
+        // `AWS_SECRET_ACCESS_KEY`, `DB_PASSWORD`, `access_token` — given a
+        // quoted value of eight characters or more with no space in it.
+        // Ending in it, so `tokenizer` and `token_type` are not secrets.
+        // A value that is nothing but a placeholder is let go; see
+        // `PLACEHOLDER`.
         (
             "generic-secret",
-            r#"(?i)(?:password|passwd|secret|api_?key|token)[a-z0-9_]*["']?\s*[:=]\s*["']([^"'\s$<{][^"'\s]{7,})["']"#,
+            r#"(?i)[a-z0-9_]*(?:password|passwd|secret(?:_access)?(?:_key)?|api_?key|token)s?["']?\s*[:=]\s*["']([^"'\s]{8,})["']"#,
         ),
     ]
     .into_iter()
@@ -1466,6 +1483,15 @@ static RULES: LazyLock<Vec<Rule>> = LazyLock::new(|| {
         pattern: Regex::new(pattern).expect("every rule is a valid pattern"),
     })
     .collect()
+});
+
+/// A generic secret's value that only stands for one: `${DB_PASSWORD}`,
+/// `$DB_PASSWORD`, `<password>`, `{{ password }}` — the whole value, and
+/// nothing else. `{noop}hunter2hunter2` and `$x7Kq9!mZpL2` are secrets with a
+/// prefix, and are still found.
+static PLACEHOLDER: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"^(?:\$\{[^}]*\}|\$[A-Z_][A-Z0-9_]*|<[^>]*>|\{\{.*\}\})$")
+        .expect("the placeholder pattern is valid")
 });
 
 /// The names of the scanner's rules, in the order they are tried.
@@ -1493,6 +1519,10 @@ fn find(text: &str) -> Vec<Found> {
                 let Some(whole) = caught.get(0) else {
                     continue;
                 };
+                let value = caught.get(1).unwrap_or(whole).as_str();
+                if rule.id == "generic-secret" && PLACEHOLDER.is_match(value) {
+                    continue;
+                }
                 let span = whole.range();
                 if taken
                     .iter()
@@ -1504,7 +1534,7 @@ fn find(text: &str) -> Vec<Found> {
                 found.push(Found {
                     line: at + 1,
                     rule: rule.id,
-                    value: caught.get(1).unwrap_or(whole).as_str().to_string(),
+                    value: value.to_string(),
                 });
             }
         }
@@ -1560,7 +1590,12 @@ fn scan_lines(entry: &str, bytes: &[u8], at: impl Fn(usize) -> String) -> Vec<Hi
         .collect()
 }
 
-/// Every string in `value`, with where it is: `refs[0].note`.
+/// Every string in `value`, object keys included, with where it is:
+/// `refs[0].note`, or `refs[0] key` for a key.
+///
+/// A key is scanned like any value, because a repack ships the bytes as they
+/// are and a key can hold a token as well as a value can. A key that looks
+/// like a secret is not written into the paths of what is under it.
 fn strings(value: &serde_json::Value, path: &str, each: &mut dyn FnMut(&str, &str)) {
     match value {
         serde_json::Value::String(text) => each(path, text),
@@ -1570,11 +1605,22 @@ fn strings(value: &serde_json::Value, path: &str, each: &mut dyn FnMut(&str, &st
             }
         }
         serde_json::Value::Object(fields) => {
+            let key = if path.is_empty() {
+                "key".to_string()
+            } else {
+                format!("{path} key")
+            };
             for (name, field) in fields {
-                let path = if path.is_empty() {
-                    name.clone()
+                each(&key, name);
+                let shown = if find(name).is_empty() {
+                    name.as_str()
                 } else {
-                    format!("{path}.{name}")
+                    "[secret]"
+                };
+                let path = if path.is_empty() {
+                    shown.to_string()
+                } else {
+                    format!("{path}.{shown}")
                 };
                 strings(field, &path, each);
             }
