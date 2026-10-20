@@ -68,7 +68,11 @@ pub fn chip_widest() -> f32 {
 
 /// The line height text gets when nothing sets one: the golden ratio of its
 /// size, rounded to a whole pixel, as GPUI's default text style has it.
+///
+/// The literal is GPUI's own `phi()`, digit for digit, rather than the
+/// standard library's golden ratio: what matters is the window's number.
 #[must_use]
+#[allow(clippy::approx_constant)]
 pub fn default_line(size: f32) -> f32 {
     (size * 1.618_034).round()
 }
