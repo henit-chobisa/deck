@@ -577,10 +577,10 @@ fn read(
                 if continues && spaced && at == 0 {
                     token.text.insert(0, ' ');
                 }
-                if token.mark == Some(Mark::Pane) {
-                    if let Some(ix) = named(token.text.trim()) {
-                        reached.push(ix);
-                    }
+                if token.mark == Some(Mark::Pane)
+                    && let Some(ix) = named(token.text.trim())
+                {
+                    reached.push(ix);
                 }
                 // Words marked alike run together: a format sets a run,
                 // not a word at a time.
