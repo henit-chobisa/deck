@@ -63,6 +63,9 @@ pub struct Slot<'a> {
     /// borrowed, and it aborts — in a mouse handler, which cannot unwind, so
     /// it takes the process with it.
     pub pace: crate::view::Pace,
+    /// Device pixels to a logical pixel, so a diagram can measure its labels
+    /// against the widths layout will really give them. See `chart::snap`.
+    pub scale: f32,
 }
 
 /// One pane of a group.

@@ -8344,6 +8344,7 @@ impl Render for DeckView {
             .collect();
 
         let across = columns_across(window);
+        let scale = window.scale_factor();
         let panes_across = u32::try_from(count).unwrap_or(1);
         let settled = if drawings.is_empty() {
             self.grid
@@ -8477,6 +8478,7 @@ impl Render for DeckView {
                 },
                 palette: &self.palette,
                 view: &me,
+                scale,
             };
             if slot.fold > 0. {
                 // A folded pane leaves the grid and becomes a spine at the
