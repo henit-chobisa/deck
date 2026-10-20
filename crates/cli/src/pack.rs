@@ -21,6 +21,17 @@
 //! know is dropped rather than carried blind, since nothing here can say what
 //! it holds.
 //!
+//! # What code is read
+//!
+//! Only code inside the repo — or, with no repo, inside the deck's `cwd`. A
+//! ref is a path an agent wrote, and `../secrets/creds`, an absolute path
+//! anywhere on the disk, or a link in the repo that points out of it would
+//! otherwise each freeze somebody's private file into a document made to be
+//! sent away. So every file is resolved first, links followed, and only a
+//! resolved path under the resolved root is ever opened. Anything else gets
+//! no snapshot, exactly like a file that is not there, and stops the pack
+//! unless the author says `--allow-missing`.
+//!
 //! # Scrubbing
 //!
 //! A deck is written on one machine and is full of it:
@@ -31,33 +42,41 @@
 //!   the reader happened to open it from. The repo it came from is said once,
 //!   in the manifest, as the remote and the commit.
 //! - **Paths** in refs, comments and moments become repo-relative, with
-//!   forward slashes. A file outside the repo keeps its name alone, and is
-//!   named to the author so they can see what was cut.
-//! - **Free text** — the narration, titles, notes, the code in `before` and
-//!   `after`, values, diagram labels, pages, and what the reader wrote — loses
-//!   the repo's absolute path, and the home directory becomes `~`.
+//!   forward slashes. A file outside the repo keeps its name alone, is not
+//!   read, and is named to the author so they can see what was cut.
+//! - **Free text** — the narration, titles, notes, pane names, the code in
+//!   `before` and `after`, values, diagram labels and ids, pages, and what the
+//!   reader wrote — loses the repo's absolute path in every spelling it might
+//!   have been written in, and the home directory becomes `~`.
 //! - **Questions** offered as pills are dropped. They were for the reader who
 //!   was there.
-//! - **The remote** loses any credentials in its URL, and a remote that is a
-//!   path on this machine is not a remote anybody else can reach, so it goes.
+//! - **The remote** loses any credentials, query or fragment, and a remote
+//!   that is a path on this machine is not a remote anybody else can reach,
+//!   so it goes.
 //!
 //! # Secrets
 //!
 //! Every entry is scanned after scrubbing — what would ship, not what was on
 //! disk — against a short list of rules for credentials with a recognisable
-//! shape ([`scan`]). There are no entropy checks: a hash or a UUID is the
-//! ordinary content of a code review, and a scanner that cried at every one
-//! would be switched off. A hit refuses the pack and names itself by a
-//! fingerprint, and `--allow` with that fingerprint is how an author says they
-//! looked and it is fine. The fingerprints let through are written into the
-//! manifest, so the reader can see somebody chose to.
+//! shape ([`scan`]). The protocol files are scanned as the strings they hold,
+//! decoded, so a key right after a `\n` in the narration is not hidden by the
+//! escape. A hit in a snapshot is reported at its line in the source file.
+//!
+//! There are no entropy checks: a hash or a UUID is the ordinary content of a
+//! code review, and a scanner that cried at every one would be switched off.
+//! A hit refuses the pack and names itself by a fingerprint of the secret's
+//! value alone, so one secret is one fingerprint wherever it turns up, and
+//! one `--allow` with it is how an author says they looked and it is fine.
+//! The fingerprints let through are written into the manifest, so the reader
+//! can see somebody chose to.
 //!
 //! # Unpacking
 //!
 //! `deck unpack` writes a file's entries out as they are, with its manifest.
-//! The folder that makes is already a bundle, so packing it again takes every
-//! byte as it is — no second scrub, no fresh snapshots — and gives back the
-//! file it came from.
+//! The folder that makes is already a bundle, so packing it again takes its
+//! entries as they are — no second scrub, no fresh snapshots — and gives back
+//! the file it came from. Only names a `.deck` file holds are taken from it,
+//! and never through a link.
 
 use std::collections::BTreeMap;
 use std::path::{Component, Path, PathBuf};
@@ -71,7 +90,7 @@ use serde::de::DeserializeOwned;
 
 use deck_core::LineRange;
 use deck_core::bundle::{self, Bundle, CONTAINER, Manifest, Repo, snap};
-use deck_core::diagram::Diagram;
+use deck_core::diagram::{Diagram, Step};
 use deck_core::protocol::{Group, Header, Ref, Review};
 
 /// How a `.deck` file is to be made.
@@ -83,7 +102,8 @@ pub struct Options {
     pub whole_files: bool,
     /// Scanner fingerprints the author has looked at and lets through.
     pub allow: Vec<String>,
-    /// Pack even when a file the deck points at cannot be read.
+    /// Pack even when a file the deck points at cannot be read, or is outside
+    /// the repo and so is not read.
     pub allow_missing: bool,
     /// Replace a file already at the output path.
     pub force: bool,
@@ -92,6 +112,10 @@ pub struct Options {
     pub created: Option<String>,
     /// The home directory to write as `~`.
     pub home: Option<PathBuf>,
+    /// A directory git is not to look above for a repo, so a deck in a
+    /// directory that happens to sit inside some other repo is not taken for
+    /// part of it. `None` looks as git always does.
+    pub ceiling: Option<PathBuf>,
 }
 
 impl Default for Options {
@@ -104,6 +128,7 @@ impl Default for Options {
             force: false,
             created: None,
             home: deck_core::home::home(),
+            ceiling: None,
         }
     }
 }
@@ -122,9 +147,9 @@ pub struct Packing {
     /// Every source file frozen, in the order they were first pointed at.
     pub snapped: Vec<snap::File>,
     /// Files the deck points at outside the repo, as they are on this
-    /// machine. Each is in the file by its name alone.
+    /// machine. Each is in the file by its name alone, and none was read.
     pub outside: Vec<PathBuf>,
-    /// Files the deck points at that could not be read, and why.
+    /// Files the deck points at that were not frozen, and why.
     pub missing: Vec<(PathBuf, String)>,
     /// Scanner hits nobody has let through.
     pub hits: Vec<Hit>,
@@ -144,14 +169,15 @@ pub struct Packing {
 pub struct Hit {
     /// The entry it is in, as `deck/g2.json`.
     pub entry: String,
-    /// The line, counting from one.
-    pub line: usize,
+    /// Where, for a person: `src/batch.ts:101` for a snapshot's line, the
+    /// field as `deck/g2.json refs[0].note` in a protocol file.
+    pub at: String,
     /// Which rule matched, as `github-pat`.
     pub rule: &'static str,
-    /// The first four characters of the match, and `****`.
+    /// The first four characters of the secret, and `****`.
     pub redacted: String,
     /// What `--allow` takes to let this one through: the first twelve hex
-    /// digits of sha256 over the rule, a NUL and the match.
+    /// digits of sha256 over the rule, a NUL and the secret's value.
     pub fingerprint: String,
 }
 
@@ -159,8 +185,8 @@ impl std::fmt::Display for Hit {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "{}:{}  {}  {}  {}",
-            self.entry, self.line, self.rule, self.redacted, self.fingerprint
+            "{}  {}  {}  {}",
+            self.at, self.rule, self.redacted, self.fingerprint
         )
     }
 }
@@ -216,7 +242,7 @@ pub fn gather(deck: &Path, options: &Options) -> anyhow::Result<Packing> {
             .and_then(|deck| deck.parent().map(Path::to_path_buf))
             .unwrap_or_else(|| PathBuf::from("."))
     });
-    let git = Git::find(&base);
+    let git = Git::find(&base, options.ceiling.as_deref());
     let place = Place::new(&base, git.as_ref());
     let scrub = Scrub::new(&place, options.home.as_deref());
     let mut points = Points::new(&base, &place);
@@ -266,7 +292,17 @@ pub fn gather(deck: &Path, options: &Options) -> anyhow::Result<Packing> {
     let mut snapped = Vec::new();
     let mut missing = Vec::new();
     for pointed in points.files.iter().filter(|p| !p.ranges.is_empty()) {
-        let source = match std::fs::read(&pointed.abs) {
+        // Only ever the resolved path, and only when it is under the root.
+        let Some(resolved) = &pointed.readable else {
+            let why = if pointed.outside {
+                "it is outside the repo, and nothing outside it is read"
+            } else {
+                "it is not there"
+            };
+            missing.push((pointed.abs.clone(), why.to_string()));
+            continue;
+        };
+        let source = match std::fs::read(resolved) {
             Ok(bytes) => match String::from_utf8(bytes) {
                 Ok(source) => source,
                 Err(_) => {
@@ -285,16 +321,15 @@ pub fn gather(deck: &Path, options: &Options) -> anyhow::Result<Packing> {
             snap::keep(&source, &pointed.ranges, options.context)
         };
         let entry = format!("snap/{}.txt", snapped.len() + 1);
-        let (state, commit) = match (&git, pointed.inside) {
-            (Some(git), true) => (git.state(&pointed.rel), commit.clone()),
-            _ => (snap::State::Untracked, None),
-        };
+        let state = git
+            .as_ref()
+            .map_or(snap::State::Untracked, |git| git.state(&pointed.rel));
         files.insert(entry.clone(), text.into_bytes());
         snapped.push(snap::File {
             path: pointed.rel.clone(),
             entry,
             sha256: bundle::sha256(source.as_bytes()),
-            commit,
+            commit: commit.clone(),
             state,
             kept,
         });
@@ -350,10 +385,15 @@ pub fn gather(deck: &Path, options: &Options) -> anyhow::Result<Packing> {
 /// doing it twice would give a different file from the one it came from. It
 /// is still scanned, since anybody may have edited it since, and a secret
 /// put into an unpacked folder is still a secret.
+///
+/// Only names a `.deck` file holds are taken, and links are never followed:
+/// whatever else turns up in the folder — a `.DS_Store`, somebody's notes —
+/// is left behind and said, rather than packed or refused.
 fn regather(dir: &Path, options: &Options) -> anyhow::Result<Packing> {
     let manifest: Manifest = read_json(&dir.join("manifest.json"))?;
     let mut files = BTreeMap::new();
-    walk(dir, "", &mut files)?;
+    let mut left = Vec::new();
+    walk(dir, "", &mut files, &mut left)?;
     files.remove("manifest.json");
     let bundle = Bundle { manifest, files };
     let header = bundle
@@ -375,7 +415,7 @@ fn regather(dir: &Path, options: &Options) -> anyhow::Result<Packing> {
         hits: Vec::new(),
         allowed: Vec::new(),
         unused: Vec::new(),
-        left: Vec::new(),
+        left,
         repacked: true,
         allow_missing: options.allow_missing,
     };
@@ -383,21 +423,35 @@ fn regather(dir: &Path, options: &Options) -> anyhow::Result<Packing> {
     Ok(packing)
 }
 
-/// Every file under `dir`, by its name inside it with forward slashes.
-fn walk(dir: &Path, prefix: &str, files: &mut BTreeMap<String, Vec<u8>>) -> anyhow::Result<()> {
+/// Every file under `dir` that a `.deck` file holds, by its name inside it
+/// with forward slashes; the names of everything else, and of every link,
+/// go in `left`.
+fn walk(
+    dir: &Path,
+    prefix: &str,
+    files: &mut BTreeMap<String, Vec<u8>>,
+    left: &mut Vec<String>,
+) -> anyhow::Result<()> {
     let entries =
         std::fs::read_dir(dir).with_context(|| format!("cannot read {}", dir.display()))?;
+    let mut entries: Vec<std::fs::DirEntry> = entries.collect::<Result<_, _>>()?;
+    entries.sort_by_key(std::fs::DirEntry::file_name);
     for entry in entries {
-        let entry = entry?;
         let name = entry.file_name().to_string_lossy().into_owned();
         let path = entry.path();
         let named = format!("{prefix}{name}");
-        if entry.file_type()?.is_dir() {
-            walk(&path, &format!("{named}/"), files)?;
-        } else {
+        // The entry's own type: a link is a link, wherever it points.
+        let kind = entry.file_type()?;
+        if kind.is_dir() {
+            walk(&path, &format!("{named}/"), files, left)?;
+        } else if kind.is_file()
+            && (named == "manifest.json" || (bundle::known(&named) && named != "mimetype"))
+        {
             let bytes =
                 std::fs::read(&path).with_context(|| format!("cannot read {}", path.display()))?;
             files.insert(named, bytes);
+        } else {
+            left.push(named);
         }
     }
     Ok(())
@@ -446,12 +500,7 @@ impl Packing {
     /// Scan every entry, and sort the hits into those let through and those
     /// not.
     fn screen(&mut self, allow: &[String]) {
-        let found: Vec<Hit> = self
-            .bundle
-            .files
-            .iter()
-            .flat_map(|(entry, bytes)| scan(entry, bytes))
-            .collect();
+        let found = scan_bundle(&self.bundle.files);
         let already = &self.bundle.manifest.allowed;
         let (allowed, hits): (Vec<Hit>, Vec<Hit>) = found.into_iter().partition(|hit| {
             allow.contains(&hit.fingerprint) || already.contains(&hit.fingerprint)
@@ -471,21 +520,22 @@ impl Packing {
     }
 
     /// Why this cannot be packed, if it cannot: a secret nobody let through,
-    /// or a file the deck points at that is not there.
+    /// or a file the deck points at that is not there or is outside the repo.
     #[must_use]
     pub fn refusal(&self) -> Option<String> {
         let mut why = Vec::new();
         if !self.missing.is_empty() && !self.allow_missing {
             let mut said = format!(
-                "{} the deck points at cannot be read, so its code cannot travel with it:\n",
+                "{} the deck points at cannot travel with it:\n",
                 files(self.missing.len())
             );
             for (path, err) in &self.missing {
                 said.push_str(&format!("\n  {}: {err}", path.display()));
             }
             said.push_str(
-                "\n\nPack it where those files are, or pass --allow-missing to pack \
-                 the deck without them: their panes will open to nothing.",
+                "\n\nPoint at files inside the repo and pack it where they are, or \
+                 pass --allow-missing to pack the deck without them: their panes \
+                 will open to nothing.",
             );
             why.push(said);
         }
@@ -510,11 +560,12 @@ impl Packing {
             for hit in &self.hits {
                 said.push_str(&format!("\n  {hit}"));
             }
-            let flags: Vec<String> = self
+            let mut flags: Vec<String> = self
                 .hits
                 .iter()
                 .map(|hit| format!("--allow {}", hit.fingerprint))
                 .collect();
+            flags.dedup();
             said.push_str(&format!(
                 "\n\nTake it out of the deck and pack again. Or, for each one you \
                  have looked at and know is safe, pass its fingerprint — {} — and \
@@ -532,7 +583,8 @@ impl Packing {
         let mut notes = Vec::new();
         for path in &self.outside {
             notes.push(format!(
-                "{} is outside the repo, so it is in the deck by its name alone",
+                "{} is outside the repo, so it is in the deck by its name alone \
+                 and its code is not",
                 path.display()
             ));
         }
@@ -600,7 +652,7 @@ impl Packing {
             }
         }
         if !self.outside.is_empty() {
-            out.push_str("\n\nOutside the repo, so in it by name alone:\n");
+            out.push_str("\n\nOutside the repo, so in it by name alone and never read:\n");
             for path in &self.outside {
                 out.push_str(&format!("\n  {}", path.display()));
             }
@@ -818,32 +870,52 @@ fn rfc3339(seconds: u64) -> String {
 
 /// A remote another machine can use, or `None` for one it cannot.
 ///
-/// Credentials in a URL — `https://user:token@host/…` — are taken out. A
-/// remote that is a path on this machine names nothing anywhere else, so it
-/// is dropped. An scp-style `git@host:owner/repo` is kept: `git` is not a
-/// secret.
+/// Credentials are taken out — `https://user:token@host/…` and
+/// `user:token@host:owner/repo` alike — and so are a URL's query and
+/// fragment, where a token can also ride. `git@` is kept: it is the user
+/// every forge's ssh remote names, and not a secret. A remote that is a path
+/// on this machine names nothing anywhere else, so it is dropped.
 #[must_use]
 pub fn clean_remote(remote: &str) -> Option<String> {
     let remote = remote.trim();
     if remote.is_empty() {
         return None;
     }
+    let user = |user: &str, rest: &str| {
+        if user == "git" {
+            format!("git@{rest}")
+        } else {
+            rest.to_string()
+        }
+    };
     if let Some((scheme, rest)) = remote.split_once("://") {
         if scheme.eq_ignore_ascii_case("file") {
             return None;
         }
+        let rest = rest.split(['?', '#']).next().unwrap_or_default();
         let (authority, path) = rest.split_at(rest.find('/').unwrap_or(rest.len()));
-        let host = authority
-            .rsplit_once('@')
-            .map_or(authority, |(_, host)| host);
+        let host = match authority.rsplit_once('@') {
+            Some((who, host)) => user(who, host),
+            None => authority.to_string(),
+        };
         return Some(format!("{scheme}://{host}{path}"));
     }
-    // `host:path`, where the host is more than a drive letter and the colon
-    // comes before any slash.
-    let scp = remote.find(':').is_some_and(|colon| {
-        colon > 1 && !remote[..colon].contains(['/', '\\']) && !remote.starts_with('.')
-    });
-    scp.then(|| remote.to_string())
+    if remote.starts_with(['.', '/', '\\', '~']) {
+        return None;
+    }
+    // `[user@]host:path`, where the host is more than a drive letter and the
+    // colon comes before any slash. The user is whatever is before the last
+    // `@` ahead of the first slash, so a `:` in it — a token — goes with it.
+    let head = &remote[..remote.find('/').unwrap_or(remote.len())];
+    let (who, rest) = match head.rfind('@') {
+        Some(at) => (Some(&remote[..at]), &remote[at + 1..]),
+        None => (None, remote),
+    };
+    let colon = rest.find(':')?;
+    if colon <= 1 || rest[..colon].contains(['/', '\\']) {
+        return None;
+    }
+    Some(who.map_or_else(|| rest.to_string(), |who| user(who, rest)))
 }
 
 /// What git says about the repo a deck was written in.
@@ -854,52 +926,100 @@ struct Git {
     commit: Option<String>,
     /// `origin`, as configured, credentials and all.
     remote: Option<String>,
+    /// See [`Options::ceiling`].
+    ceiling: Option<PathBuf>,
 }
 
 impl Git {
     /// The repo `dir` is in, or `None` when there is no git or no repo.
-    fn find(dir: &Path) -> Option<Self> {
-        let root = git(dir, &["rev-parse", "--show-toplevel"]).filter(|root| !root.is_empty())?;
+    fn find(dir: &Path, ceiling: Option<&Path>) -> Option<Self> {
+        let root =
+            git(dir, ceiling, &["rev-parse", "--show-toplevel"]).filter(|root| !root.is_empty())?;
         let at = Path::new(&root);
-        let commit = git(at, &["rev-parse", "--verify", "--quiet", "HEAD"])
+        let commit = git(at, ceiling, &["rev-parse", "--verify", "--quiet", "HEAD"])
             .filter(|commit| !commit.is_empty());
-        let remote = git(at, &["remote", "get-url", "origin"]).filter(|url| !url.is_empty());
+        let remote =
+            git(at, ceiling, &["remote", "get-url", "origin"]).filter(|url| !url.is_empty());
         Some(Self {
             root,
             commit,
             remote,
+            ceiling: ceiling.map(Path::to_path_buf),
         })
     }
 
     /// How the file at `path`, relative to the root, stands against `HEAD`.
     ///
+    /// The path is taken literally — `src/[id].tsx` is that file, not a
+    /// pattern matching `src/i.tsx` — and only a line naming it counts.
     /// Ignored files count as untracked: a reader at that commit does not
     /// have them either.
     fn state(&self, path: &str) -> snap::State {
-        match git(
+        let Some(out) = git(
             Path::new(&self.root),
-            &["status", "--porcelain", "--ignored", "--", path],
-        ) {
-            Some(out) if out.is_empty() && self.commit.is_some() => snap::State::Clean,
-            Some(out) if out.starts_with("??") || out.starts_with("!!") || out.is_empty() => {
-                snap::State::Untracked
+            self.ceiling.as_deref(),
+            &[
+                "status",
+                "--porcelain",
+                "-z",
+                "--ignored",
+                "--untracked-files=all",
+                "--",
+                path,
+            ],
+        ) else {
+            return snap::State::Untracked;
+        };
+        for line in out.split('\0') {
+            let (Some(code), Some(named)) = (line.get(..2), line.get(3..)) else {
+                continue;
+            };
+            if named == path || (named.ends_with('/') && path.starts_with(named)) {
+                return if code == "??" || code == "!!" {
+                    snap::State::Untracked
+                } else {
+                    snap::State::Modified
+                };
             }
-            Some(_) => snap::State::Modified,
-            None => snap::State::Untracked,
+        }
+        if self.commit.is_some() {
+            snap::State::Clean
+        } else {
+            snap::State::Untracked
         }
     }
 }
 
 /// What `git -C dir <args>` printed, or `None` when it could not say.
-fn git(dir: &Path, args: &[&str]) -> Option<String> {
-    let out = Command::new("git")
+///
+/// Pathspecs are literal, and the variables that would point git at some
+/// other repo than the one `dir` is in are not passed on.
+fn git(dir: &Path, ceiling: Option<&Path>, args: &[&str]) -> Option<String> {
+    let mut command = Command::new("git");
+    command
+        .arg("--literal-pathspecs")
         .arg("-C")
         .arg(dir)
         .args(args)
         .stdin(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .output()
-        .ok()?;
+        .stderr(std::process::Stdio::null());
+    for variable in [
+        "GIT_DIR",
+        "GIT_WORK_TREE",
+        "GIT_INDEX_FILE",
+        "GIT_COMMON_DIR",
+        "GIT_OBJECT_DIRECTORY",
+        "GIT_NAMESPACE",
+        "GIT_PREFIX",
+    ] {
+        command.env_remove(variable);
+    }
+    if let Some(ceiling) = ceiling {
+        // Without the `\\?\` a resolved Windows path carries, which git
+        // does not read as a path.
+        command.env("GIT_CEILING_DIRECTORIES", shown(ceiling));
+    }
+    let out = command.output().ok()?;
     out.status.success().then(|| {
         String::from_utf8_lossy(&out.stdout)
             .trim_end_matches(['\r', '\n'])
@@ -907,15 +1027,28 @@ fn git(dir: &Path, args: &[&str]) -> Option<String> {
     })
 }
 
-/// The directory paths are made relative to — the repo, or the deck's `cwd`
-/// when there is no repo — in every spelling it might be written in.
+/// The directory code may be read from and paths are made relative to — the
+/// repo, or the deck's `cwd` when there is no repo — in every spelling it
+/// might be written in.
 struct Place {
-    /// Resolved, so a file resolved the same way can be compared with it.
+    /// Resolved, links followed. The one thing inside and outside are
+    /// decided against.
     root: PathBuf,
-    /// As text, longest first: as git printed it, resolved, and as the deck
-    /// named it. A deck written by hand on macOS says `/tmp`, which is
-    /// `/private/tmp`, and either may turn up in its prose.
+    /// As text, longest first, for scrubbing prose: as git printed it,
+    /// resolved, and as the deck spells it. A deck written on macOS says
+    /// `/tmp`, which is `/private/tmp`, and either may turn up in its prose.
     spellings: Vec<String>,
+}
+
+/// Where a file the deck points at is, as far as packing goes.
+enum Located {
+    /// Under the root once resolved: its path there, and the resolved path,
+    /// which is the only one ever read.
+    Inside { rel: String, resolved: PathBuf },
+    /// Not there to resolve, so never read; this is where it would be.
+    Absent(String),
+    /// Outside the root, or resolving to somewhere that is.
+    Outside,
 }
 
 impl Place {
@@ -923,54 +1056,132 @@ impl Place {
         let given = git.map_or_else(|| base.to_path_buf(), |git| PathBuf::from(&git.root));
         let root = std::fs::canonicalize(&given).unwrap_or_else(|_| given.clone());
         let mut spellings = vec![shown(&given), shown(&root)];
-        if std::fs::canonicalize(base).is_ok_and(|base| base == root) {
-            spellings.push(shown(base));
+        // The root as the deck spells it: the cwd as written, less however
+        // far below the root it resolves to. A cwd of `/tmp/repo/sub` is
+        // `/private/tmp/repo/sub`, one below `/private/tmp/repo`, so the deck
+        // calls the root `/tmp/repo`.
+        let plain = base
+            .components()
+            .all(|part| !matches!(part, Component::CurDir | Component::ParentDir));
+        if plain
+            && let Ok(resolved) = std::fs::canonicalize(base)
+            && let Ok(below) = resolved.strip_prefix(&root)
+        {
+            let mut spelled = base.to_path_buf();
+            if below.components().all(|_| spelled.pop()) {
+                spellings.push(shown(&spelled));
+            }
         }
         if let Some(git) = git {
             spellings.push(git.root.clone());
-            spellings.push(git.root.replace('/', "\\"));
         }
-        // A root of `/` or `C:\` would strip the start of every path there is.
-        spellings.retain(|spelling| spelling.trim_end_matches(['/', '\\']).len() > 3);
-        spellings.sort_by_key(|spelling| std::cmp::Reverse(spelling.len()));
-        spellings.dedup();
-        Self { root, spellings }
+        Self {
+            root,
+            spellings: variants(spellings),
+        }
     }
 
-    /// `path` relative to the root with forward slashes, or `None` when it is
-    /// not under it.
-    fn relative(&self, path: &Path) -> Option<String> {
-        let resolved = std::fs::canonicalize(path).ok().or_else(|| {
-            let parent = std::fs::canonicalize(path.parent()?).ok()?;
-            Some(parent.join(path.file_name()?))
-        });
-        let under = resolved
+    /// Where `path` is: under the root once every link in it is followed, or
+    /// not.
+    ///
+    /// The resolved path alone decides. A path that is spelled under the
+    /// root but resolves out of it — a link in the repo to `../priv` — is
+    /// outside, and is never read.
+    fn locate(&self, path: &Path) -> Located {
+        if let Ok(resolved) = std::fs::canonicalize(path) {
+            return match resolved.strip_prefix(&self.root).ok().and_then(parts) {
+                Some(rel) => Located::Inside { rel, resolved },
+                None => Located::Outside,
+            };
+        }
+        // Not there, so nothing is read and only its name is at stake.
+        let lexical = lexical(path);
+        let named = path
+            .parent()
+            .and_then(|parent| std::fs::canonicalize(parent).ok())
+            .zip(path.file_name())
+            .map(|(parent, name)| parent.join(name));
+        let rel = named
             .as_deref()
-            .and_then(|resolved| resolved.strip_prefix(&self.root).ok())
-            .map(Path::to_path_buf)
+            .and_then(|named| named.strip_prefix(&self.root).ok())
+            .and_then(parts)
             .or_else(|| {
                 self.spellings
                     .iter()
-                    .find_map(|spelling| path.strip_prefix(spelling).ok())
-                    .map(Path::to_path_buf)
-            })?;
-        let parts: Option<Vec<String>> = under
-            .components()
-            .map(|part| match part {
-                Component::Normal(part) => Some(part.to_string_lossy().into_owned()),
-                _ => None,
-            })
-            .collect();
-        parts
-            .filter(|parts| !parts.is_empty())
-            .map(|parts| parts.join("/"))
+                    .find_map(|spelling| lexical.strip_prefix(spelling).ok())
+                    .and_then(parts)
+            });
+        rel.map_or(Located::Outside, Located::Absent)
     }
+}
+
+/// `under` as a repo path with forward slashes, or `None` when it is empty
+/// or has anything in it but names.
+fn parts(under: &Path) -> Option<String> {
+    let parts: Option<Vec<String>> = under
+        .components()
+        .map(|part| match part {
+            Component::Normal(part) => Some(part.to_string_lossy().into_owned()),
+            _ => None,
+        })
+        .collect();
+    parts
+        .filter(|parts| !parts.is_empty())
+        .map(|parts| parts.join("/"))
+}
+
+/// `path` with `.` and `..` worked out on the text alone.
+fn lexical(path: &Path) -> PathBuf {
+    let mut out = PathBuf::new();
+    for part in path.components() {
+        match part {
+            Component::CurDir => {}
+            Component::ParentDir => {
+                out.pop();
+            }
+            other => out.push(other),
+        }
+    }
+    out
 }
 
 /// A path as text, without the `\\?\` Windows puts on a resolved one.
 fn shown(path: &Path) -> String {
     let text = path.to_string_lossy();
     text.strip_prefix(r"\\?\").unwrap_or(&text).to_string()
+}
+
+/// Every way the paths in `spellings` might be written, longest first.
+///
+/// Trailing separators are trimmed. A Windows path is also written with its
+/// slashes the other way, and in lower case — `C:\Users\ada`, `C:/Users/ada`,
+/// `c:\users\ada` — since Windows does not care and neither do the people
+/// pasting them. A spelling of three characters or fewer is dropped: a root
+/// of `/` or `C:\` would strip the start of every path there is.
+fn variants(spellings: Vec<String>) -> Vec<String> {
+    let mut out = Vec::new();
+    for spelling in spellings {
+        let spelling = spelling.trim_end_matches(['/', '\\']).to_string();
+        let windows = spelling.contains('\\')
+            || (spelling.as_bytes().get(1) == Some(&b':')
+                && spelling.as_bytes()[0].is_ascii_alphabetic());
+        if windows {
+            for one in [spelling.replace('/', "\\"), spelling.replace('\\', "/")] {
+                let mut drive = one.clone();
+                if let Some(first) = drive.get_mut(..1) {
+                    first.make_ascii_lowercase();
+                }
+                out.push(one.to_lowercase());
+                out.push(drive);
+                out.push(one);
+            }
+        }
+        out.push(spelling);
+    }
+    out.retain(|spelling| spelling.len() > 3);
+    out.sort_by(|a, b| b.len().cmp(&a.len()).then_with(|| a.cmp(b)));
+    out.dedup();
+    out
 }
 
 /// Every source file the deck points at, in the order it first did.
@@ -983,12 +1194,14 @@ struct Points<'a> {
 
 /// One source file the deck points at.
 struct Pointed {
-    /// Where it is on this machine.
+    /// Where the deck said it is, made absolute.
     abs: PathBuf,
     /// What the deck will call it.
     rel: String,
-    /// Whether it is under the root.
-    inside: bool,
+    /// The resolved path to read, only for a file under the root.
+    readable: Option<PathBuf>,
+    /// Whether it is outside the root.
+    outside: bool,
     /// Every range pointed at in it.
     ranges: Vec<LineRange>,
 }
@@ -1013,20 +1226,22 @@ impl<'a> Points<'a> {
         let at = match self.files.iter().position(|pointed| pointed.abs == abs) {
             Some(at) => at,
             None => {
-                let (rel, inside) = match self.place.relative(&abs) {
-                    Some(rel) => (rel, true),
-                    None => {
+                let (rel, readable, outside) = match self.place.locate(&abs) {
+                    Located::Inside { rel, resolved } => (rel, Some(resolved), false),
+                    Located::Absent(rel) => (rel, None, false),
+                    Located::Outside => {
                         self.outside.push(abs.clone());
                         let name = abs
                             .file_name()
                             .map_or_else(|| "file".to_string(), |n| n.to_string_lossy().into());
-                        (name, false)
+                        (name, None, true)
                     }
                 };
                 self.files.push(Pointed {
                     abs,
                     rel,
-                    inside,
+                    readable,
+                    outside,
                     ranges: Vec::new(),
                 });
                 self.files.len() - 1
@@ -1043,17 +1258,22 @@ impl<'a> Points<'a> {
 struct Scrub {
     /// The root's spellings, longest first. Gone, with the separator after.
     roots: Vec<String>,
-    /// Written as `~`.
-    home: Option<String>,
+    /// The home directory's spellings, longest first. Written as `~`.
+    homes: Vec<String>,
 }
 
 impl Scrub {
     fn new(place: &Place, home: Option<&Path>) -> Self {
+        let homes = home.map_or_else(Vec::new, |home| {
+            let mut spellings = vec![shown(home)];
+            if let Ok(resolved) = std::fs::canonicalize(home) {
+                spellings.push(shown(&resolved));
+            }
+            variants(spellings)
+        });
         Self {
             roots: place.spellings.clone(),
-            home: home
-                .map(shown)
-                .filter(|home| home.trim_end_matches(['/', '\\']).len() > 3),
+            homes,
         }
     }
 
@@ -1061,7 +1281,7 @@ impl Scrub {
         for root in &self.roots {
             *text = swap(text, root, "", ".");
         }
-        if let Some(home) = &self.home {
+        for home in &self.homes {
             *text = swap(text, home, "~/", "~");
         }
     }
@@ -1081,6 +1301,7 @@ impl Scrub {
         for one in &mut group.refs {
             match one {
                 Ref::Code(code) => {
+                    self.maybe(&mut code.name);
                     self.maybe(&mut code.note);
                     self.maybe(&mut code.before);
                     self.maybe(&mut code.after);
@@ -1095,10 +1316,12 @@ impl Scrub {
                     }
                 }
                 Ref::Diagram(drawn) => {
+                    self.maybe(&mut drawn.name);
                     self.maybe(&mut drawn.note);
                     self.diagram(&mut drawn.diagram);
                 }
                 Ref::Page(page) => {
+                    self.maybe(&mut page.name);
                     self.maybe(&mut page.note);
                     self.text(&mut page.page);
                 }
@@ -1106,20 +1329,34 @@ impl Scrub {
         }
     }
 
+    /// Every string in a picture. Node ids are scrubbed with the edges,
+    /// clusters and steps that name them, by the same rule, so a picture
+    /// still joins up afterwards.
     fn diagram(&self, diagram: &mut Diagram) {
         self.maybe(&mut diagram.title);
         for node in &mut diagram.nodes {
+            self.text(&mut node.id);
             self.text(&mut node.label);
             self.maybe(&mut node.note);
         }
         for edge in &mut diagram.edges {
+            self.text(&mut edge.from);
+            self.text(&mut edge.to);
             self.maybe(&mut edge.label);
         }
         for cluster in &mut diagram.clusters {
             self.text(&mut cluster.label);
+            for node in &mut cluster.nodes {
+                self.text(node);
+            }
         }
         for flow in &mut diagram.flows {
             self.text(&mut flow.name);
+            for step in &mut flow.steps {
+                match step {
+                    Step::Node(node) | Step::Lit { node, .. } => self.text(node),
+                }
+            }
         }
     }
 }
@@ -1169,6 +1406,8 @@ fn swap(text: &str, path: &str, joined: &str, alone: &str) -> String {
 /// One shape a credential has.
 struct Rule {
     id: &'static str,
+    /// The whole shape. Its first group, when it has one, is the secret
+    /// itself, which is what is fingerprinted and redacted.
     pattern: Regex,
 }
 
@@ -1176,28 +1415,30 @@ struct Rule {
 ///
 /// Curated from gitleaks' rules: each is a prefix a provider puts on its keys
 /// so that scanners like this one can find them, or a block that is nothing
-/// but a key. Where two overlap on a line — `sk-ant-` is also `sk-` — the
-/// first one listed is the one reported.
+/// but a key. The distinctive prefixes need nothing in front of them, so a
+/// key glued to a word or an escape is still found; `sk-`, AWS ids and JWTs
+/// are too short to stand alone and must start a word. Where two overlap on a
+/// line — `sk-ant-` is also `sk-` — the first one listed is the one reported.
 static RULES: LazyLock<Vec<Rule>> = LazyLock::new(|| {
     [
         (
             "aws-access-key-id",
-            r"\b(?:A3T[A-Z0-9]|AKIA|ASIA|ABIA|ACCA)[A-Z0-9]{16}\b",
+            r"\b((?:A3T[A-Z0-9]|AKIA|ASIA|ABIA|ACCA)[A-Z0-9]{16})\b",
         ),
-        ("github-pat", r"\bghp_[A-Za-z0-9]{36}\b"),
-        ("github-oauth", r"\bgho_[A-Za-z0-9]{36}\b"),
-        ("github-app-token", r"\b(?:ghu|ghs)_[A-Za-z0-9]{36}\b"),
-        ("github-refresh-token", r"\bghr_[A-Za-z0-9]{36}\b"),
-        ("github-fine-grained-pat", r"\bgithub_pat_[A-Za-z0-9_]{82}\b"),
-        ("gitlab-pat", r"\bglpat-[A-Za-z0-9_-]{20,}"),
-        ("slack-token", r"\bxox[baprs]-[A-Za-z0-9-]{10,}"),
+        ("github-pat", r"ghp_[A-Za-z0-9]{36}\b"),
+        ("github-oauth", r"gho_[A-Za-z0-9]{36}\b"),
+        ("github-app-token", r"(?:ghu|ghs)_[A-Za-z0-9]{36}\b"),
+        ("github-refresh-token", r"ghr_[A-Za-z0-9]{36}\b"),
+        ("github-fine-grained-pat", r"github_pat_[A-Za-z0-9_]{82}\b"),
+        ("gitlab-pat", r"glpat-[A-Za-z0-9_-]{20,}"),
+        ("slack-token", r"xox[baprs]-[A-Za-z0-9-]{10,}"),
         (
             "slack-webhook",
             r"hooks\.slack\.com/(?:services|workflows|triggers)/[A-Za-z0-9+/]{43,56}",
         ),
-        ("stripe-key", r"\b(?:sk|rk)_live_[A-Za-z0-9]{24,}\b"),
-        ("google-api-key", r"\bAIza[0-9A-Za-z_-]{35}"),
-        ("anthropic-key", r"\bsk-ant-[A-Za-z0-9_-]{32,}"),
+        ("stripe-key", r"(?:sk|rk)_live_[A-Za-z0-9]{24,}"),
+        ("google-api-key", r"AIza[0-9A-Za-z_-]{35}"),
+        ("anthropic-key", r"sk-ant-[A-Za-z0-9_-]{32,}"),
         (
             "openai-key",
             r"\bsk-(?:proj-|svcacct-|admin-)?[A-Za-z0-9_-]{32,}",
@@ -1210,9 +1451,13 @@ static RULES: LazyLock<Vec<Rule>> = LazyLock::new(|| {
             "jwt",
             r"\beyJ[A-Za-z0-9_-]{8,}\.eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}",
         ),
+        // Any name with one of these words in it — `client_secret`,
+        // `AWS_SECRET_ACCESS_KEY`, `DB_PASSWORD` — given a quoted value of
+        // eight characters or more with no space in it. A value opening with
+        // `$`, `<` or `{` is a placeholder, not a secret.
         (
             "generic-secret",
-            r#"(?i)\b(?:password|passwd|secret|api_key|apikey|token)\\?["']?\s*[:=]\s*\\?["'][^"'\\\r\n]{8,}\\?["']"#,
+            r#"(?i)(?:password|passwd|secret|api_?key|token)[a-z0-9_]*["']?\s*[:=]\s*["']([^"'\s$<{][^"'\s]{7,})["']"#,
         ),
     ]
     .into_iter()
@@ -1228,19 +1473,27 @@ pub fn rules() -> impl Iterator<Item = &'static str> {
     RULES.iter().map(|rule| rule.id)
 }
 
-/// Everything in `bytes`, the entry called `entry`, that looks like a secret.
-///
-/// Read as text, line by line, so a hit can say where it is. One match per
-/// place: where rules overlap, the first rule's.
-#[must_use]
-pub fn scan(entry: &str, bytes: &[u8]) -> Vec<Hit> {
-    let text = String::from_utf8_lossy(bytes);
-    let mut hits = Vec::new();
+/// What a rule found on one line of some text.
+struct Found {
+    /// The line, counting from one.
+    line: usize,
+    rule: &'static str,
+    /// The secret itself.
+    value: String,
+}
+
+/// Everything in `text` that looks like a secret, line by line. One match
+/// per place: where rules overlap, the first rule's.
+fn find(text: &str) -> Vec<Found> {
+    let mut found = Vec::new();
     for (at, line) in text.lines().enumerate() {
         let mut taken: Vec<std::ops::Range<usize>> = Vec::new();
         for rule in RULES.iter() {
-            for found in rule.pattern.find_iter(line) {
-                let span = found.range();
+            for caught in rule.pattern.captures_iter(line) {
+                let Some(whole) = caught.get(0) else {
+                    continue;
+                };
+                let span = whole.range();
                 if taken
                     .iter()
                     .any(|seen| seen.start < span.end && span.start < seen.end)
@@ -1248,25 +1501,134 @@ pub fn scan(entry: &str, bytes: &[u8]) -> Vec<Hit> {
                     continue;
                 }
                 taken.push(span);
-                let matched = found.as_str();
-                hits.push(Hit {
-                    entry: entry.to_string(),
+                found.push(Found {
                     line: at + 1,
                     rule: rule.id,
-                    redacted: format!("{}****", matched.chars().take(4).collect::<String>()),
-                    fingerprint: fingerprint(rule.id, matched),
+                    value: caught.get(1).unwrap_or(whole).as_str().to_string(),
                 });
             }
         }
     }
+    found
+}
+
+fn hit(entry: &str, at: String, found: &Found) -> Hit {
+    Hit {
+        entry: entry.to_string(),
+        at,
+        rule: found.rule,
+        redacted: format!("{}****", found.value.chars().take(4).collect::<String>()),
+        fingerprint: fingerprint(found.rule, &found.value),
+    }
+}
+
+/// Everything in `bytes`, the entry called `entry`, that looks like a secret.
+///
+/// A JSON entry is scanned as the strings it holds, decoded, and a hit names
+/// the field it is in. Anything else is scanned as text, and a hit names its
+/// line.
+#[must_use]
+pub fn scan(entry: &str, bytes: &[u8]) -> Vec<Hit> {
+    if entry.ends_with(".json")
+        && let Ok(value) = serde_json::from_slice::<serde_json::Value>(bytes)
+    {
+        let mut hits = Vec::new();
+        strings(&value, "", &mut |path, text| {
+            let several = text.lines().nth(1).is_some();
+            for found in find(text) {
+                let mut at = if path.is_empty() {
+                    entry.to_string()
+                } else {
+                    format!("{entry} {path}")
+                };
+                if several {
+                    at.push_str(&format!(" line {}", found.line));
+                }
+                hits.push(hit(entry, at, &found));
+            }
+        });
+        return hits;
+    }
+    scan_lines(entry, bytes, |line| format!("{entry}:{line}"))
+}
+
+/// `bytes` scanned as text, each hit placed by `at` from its line.
+fn scan_lines(entry: &str, bytes: &[u8], at: impl Fn(usize) -> String) -> Vec<Hit> {
+    find(&String::from_utf8_lossy(bytes))
+        .iter()
+        .map(|found| hit(entry, at(found.line), found))
+        .collect()
+}
+
+/// Every string in `value`, with where it is: `refs[0].note`.
+fn strings(value: &serde_json::Value, path: &str, each: &mut dyn FnMut(&str, &str)) {
+    match value {
+        serde_json::Value::String(text) => each(path, text),
+        serde_json::Value::Array(items) => {
+            for (n, item) in items.iter().enumerate() {
+                strings(item, &format!("{path}[{n}]"), each);
+            }
+        }
+        serde_json::Value::Object(fields) => {
+            for (name, field) in fields {
+                let path = if path.is_empty() {
+                    name.clone()
+                } else {
+                    format!("{path}.{name}")
+                };
+                strings(field, &path, each);
+            }
+        }
+        _ => {}
+    }
+}
+
+/// Every entry of a bundle scanned, a snapshot's hits placed at their line
+/// in the source file rather than in the entry.
+fn scan_bundle(files: &BTreeMap<String, Vec<u8>>) -> Vec<Hit> {
+    let index: Option<snap::Index> = files
+        .get("snap/index.json")
+        .and_then(|bytes| serde_json::from_slice(bytes).ok());
+    let mut hits = Vec::new();
+    for (entry, bytes) in files {
+        let frozen = index
+            .as_ref()
+            .and_then(|index| index.files.iter().find(|file| &file.entry == entry));
+        hits.extend(match frozen {
+            Some(file) => scan_lines(entry, bytes, |line| {
+                source_line(&file.kept, line).map_or_else(
+                    || format!("{entry}:{line}"),
+                    |source| format!("{}:{source}", file.path),
+                )
+            }),
+            None => scan(entry, bytes),
+        });
+    }
     hits
 }
 
-/// What `--allow` takes for a match: twelve hex digits of
-/// `sha256(rule + "\0" + match)`. The same secret under the same rule is the
-/// same fingerprint wherever it turns up, and the secret is not in it.
-fn fingerprint(rule: &str, matched: &str) -> String {
-    let mut hex = bundle::sha256(format!("{rule}\0{matched}").as_bytes());
+/// Line `n` of a snapshot's text, counting from one, as a line of the source
+/// file it froze.
+fn source_line(kept: &[LineRange], n: usize) -> Option<u32> {
+    let n = u64::try_from(n).ok()?;
+    let mut before = 0u64;
+    for span in kept {
+        let len = u64::from(span.len());
+        if n <= before + len {
+            return u32::try_from(u64::from(span.first) + (n - before) - 1).ok();
+        }
+        before += len;
+    }
+    None
+}
+
+/// What `--allow` takes for a secret: twelve hex digits of
+/// `sha256(rule + "\0" + value)`. The value alone, without the quotes or the
+/// name it was given, so the same secret under the same rule is the same
+/// fingerprint wherever it turns up — in the narration and in the code — and
+/// the secret is not in it.
+fn fingerprint(rule: &str, value: &str) -> String {
+    let mut hex = bundle::sha256(format!("{rule}\0{value}").as_bytes());
     hex.truncate(12);
     hex
 }

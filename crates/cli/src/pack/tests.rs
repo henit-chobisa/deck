@@ -19,10 +19,14 @@ const CREATED: &str = "2026-10-20T09:30:00Z";
 /// machine it runs on.
 const HOME: &str = "/home/ada";
 
-fn options() -> Options {
+/// Options for a test whose temporary directory is `dir`: a fixed time, a
+/// home that is nobody's, and git never looking above `dir` for a repo, so a
+/// temp directory that happens to sit inside one is not taken for part of it.
+fn options(dir: &Path) -> Options {
     Options {
         created: Some(CREATED.to_string()),
         home: Some(PathBuf::from(HOME)),
+        ceiling: Some(std::fs::canonicalize(dir).expect("the temp dir resolves")),
         ..Options::default()
     }
 }
@@ -34,9 +38,26 @@ fn has_git() -> bool {
         .is_ok_and(|out| out.status.success())
 }
 
-/// Run git in `dir`, as somebody with no settings of their own.
+/// Run git in `dir`, as somebody with no settings of their own: no global or
+/// system config, none of the caller's `GIT_*` variables, and no looking
+/// above the temporary directory `dir` is in for some other repo.
 fn run_git(dir: &Path, args: &[&str]) {
-    let out = Command::new("git")
+    let outer = dir.parent().expect("a temp dir above the repo");
+    let config = outer.join("empty.gitconfig");
+    std::fs::write(&config, "").expect("an empty config");
+    let mut command = Command::new("git");
+    for (name, _) in std::env::vars_os() {
+        if name.to_string_lossy().starts_with("GIT_") {
+            command.env_remove(name);
+        }
+    }
+    let out = command
+        .env("GIT_CONFIG_NOSYSTEM", "1")
+        .env("GIT_CONFIG_GLOBAL", &config)
+        .env(
+            "GIT_CEILING_DIRECTORIES",
+            shown(&std::fs::canonicalize(outer).expect("the temp dir resolves")),
+        )
         .arg("-C")
         .arg(dir)
         .args([
@@ -150,7 +171,7 @@ fn only_a_decks_own_files_are_taken() {
     std::fs::create_dir(root.join("cache")).expect("a stray folder");
     std::fs::write(root.join("done"), "anything").expect("sealed");
 
-    let packing = gather(&root, &options()).expect("gathers");
+    let packing = gather(&root, &options(dir.path())).expect("gathers");
     let names: Vec<&str> = packing.bundle.files.keys().map(String::as_str).collect();
     assert_eq!(
         names,
@@ -193,18 +214,18 @@ fn every_free_text_field_loses_this_machines_paths() {
         "id": "g1", "title": said, "say": said,
         "confidence": { "level": "medium", "why": said },
         "refs": [
-            { "id": "g1r1", "file": "src/a.rs", "range": [2, 3], "note": said,
+            { "id": "g1r1", "file": "src/a.rs", "range": [2, 3], "note": said, "name": said,
               "after": said,
               "values": [{ "line": 2, "at": said, "is": said,
                            "keys": [{ "key": "k", "is": said, "why": said }] }] },
             { "id": "g1r2", "file": "src/a.rs", "range": [5, 5], "before": said },
-            { "id": "g1d1", "note": said, "diagram": {
+            { "id": "g1d1", "note": said, "name": said, "diagram": {
                 "title": said,
-                "nodes": [{ "id": "a", "label": said, "note": said }, { "id": "b", "label": "b" }],
-                "edges": [{ "from": "a", "to": "b", "label": said }],
-                "clusters": [{ "label": said, "nodes": ["a"] }],
-                "flows": [{ "name": said, "steps": ["a", "b"] }] } },
-            { "id": "g1p1", "page": format!("<p>{said}</p>"), "note": said }
+                "nodes": [{ "id": said, "label": said, "note": said }, { "id": "b", "label": "b" }],
+                "edges": [{ "from": said, "to": "b", "label": said }],
+                "clusters": [{ "label": said, "nodes": [said] }],
+                "flows": [{ "name": said, "steps": [said, { "node": said }, "b"] }] } },
+            { "id": "g1p1", "page": format!("<p>{said}</p>"), "note": said, "name": said }
         ]
     });
     let root = deck(dir.path(), Some(&project), &[group]);
@@ -218,7 +239,7 @@ fn every_free_text_field_loses_this_machines_paths() {
         "transcript": [{ "at_ms": 1, "what": "said", "text": said }] });
     std::fs::write(crate::review_path(&root), review.to_string()).unwrap();
 
-    let packing = gather(&root, &options()).expect("gathers");
+    let packing = gather(&root, &options(dir.path())).expect("gathers");
     let bundle = &packing.bundle;
     for (name, bytes) in &bundle.files {
         let raw = String::from_utf8_lossy(bytes);
@@ -270,6 +291,21 @@ fn every_free_text_field_loses_this_machines_paths() {
     for (n, field) in every.iter().enumerate() {
         assert_eq!(field.as_str(), wanted, "field {n}");
     }
+    // Pane names, and node ids with everything that names them, so the
+    // picture still joins up.
+    let named = [
+        code.name.as_deref().unwrap(),
+        drawn.name.as_deref().unwrap(),
+        page.name.as_deref().unwrap(),
+        picture.nodes[0].id.as_str(),
+        picture.edges[0].from.as_str(),
+        picture.clusters[0].nodes[0].as_str(),
+        picture.flows[0].steps[0].node(),
+        picture.flows[0].steps[1].node(),
+    ];
+    for (n, field) in named.iter().enumerate() {
+        assert_eq!(*field, wanted, "name {n}");
+    }
     assert_eq!(page.page, format!("<p>{wanted}</p>"));
     assert_eq!(
         review.comments[0].file.as_deref(),
@@ -317,7 +353,7 @@ fn paths_in_the_repo_become_relative_with_forward_slashes() {
         "transcript": [{ "at_ms": 3, "file": a, "range": [30, 30] }] });
     std::fs::write(crate::review_path(&root), review.to_string()).unwrap();
 
-    let packing = gather(&root, &options()).expect("gathers");
+    let packing = gather(&root, &options(dir.path())).expect("gathers");
     let group = &packing.bundle.groups().unwrap()[0];
     let files: Vec<PathBuf> = group
         .refs
@@ -353,7 +389,7 @@ fn paths_in_the_repo_become_relative_with_forward_slashes() {
 }
 
 #[test]
-fn a_file_outside_the_repo_is_kept_by_its_name_and_said() {
+fn a_file_outside_the_repo_is_named_but_never_read() {
     let dir = tempfile::tempdir().expect("a temp dir");
     let project = dir.path().join("project");
     write(&project, &[("a.rs", &lines(10))]);
@@ -362,17 +398,17 @@ fn a_file_outside_the_repo_is_kept_by_its_name_and_said() {
     std::fs::write(&stray, lines(10)).unwrap();
     let root = deck(dir.path(), Some(&project), &[pointing(&[(&stray, 2, 2)])]);
 
-    let packing = gather(&root, &options()).expect("gathers");
+    let packing = gather(&root, &options(dir.path())).expect("gathers");
     let Ref::Code(code) = &packing.bundle.groups().unwrap()[0].refs[0] else {
         panic!("code")
     };
     assert_eq!(code.file, PathBuf::from("stray.rs"));
     assert_eq!(packing.outside, std::slice::from_ref(&stray));
-    assert_eq!(packing.snapped[0].path, "stray.rs");
-    assert_eq!(packing.snapped[0].state, snap::State::Untracked);
-    assert!(packing.snapped[0].commit.is_none());
+    assert!(packing.snapped.is_empty());
     assert!(packing.notes()[0].contains("outside the repo"));
-    assert!(packing.dry_run().unwrap().contains("by name alone"));
+    assert!(packing.dry_run().unwrap().contains("never read"));
+    let why = packing.refusal().expect("refused");
+    assert!(why.contains("outside the repo"), "{why}");
 }
 
 #[test]
@@ -383,7 +419,23 @@ fn a_remote_loses_its_credentials_and_a_local_one_goes() {
     );
     assert_eq!(
         clean_remote("ssh://git@github.com/acme/ingest.git").as_deref(),
-        Some("ssh://github.com/acme/ingest.git")
+        Some("ssh://git@github.com/acme/ingest.git")
+    );
+    assert_eq!(
+        clean_remote("https://ada@github.com/acme/ingest.git?private_token=s3cr3t#top").as_deref(),
+        Some("https://github.com/acme/ingest.git")
+    );
+    assert_eq!(
+        clean_remote("ada:s3cr3t@corp.example:org/repo.git").as_deref(),
+        Some("corp.example:org/repo.git")
+    );
+    assert_eq!(
+        clean_remote("ada@corp.example:org/repo.git").as_deref(),
+        Some("corp.example:org/repo.git")
+    );
+    assert_eq!(
+        clean_remote("corp.example:org/repo.git").as_deref(),
+        Some("corp.example:org/repo.git")
     );
     assert_eq!(
         clean_remote("git@github.com:acme/ingest.git").as_deref(),
@@ -420,7 +472,7 @@ fn a_remote_loses_its_credentials_and_a_local_one_goes() {
         Some(&project),
         &[pointing(&[(Path::new("a.rs"), 1, 1)])],
     );
-    let packing = gather(&root, &options()).expect("gathers");
+    let packing = gather(&root, &options(dir.path())).expect("gathers");
     let repo = packing.bundle.manifest.repo.clone().expect("a repo");
     assert_eq!(
         repo.remote.as_deref(),
@@ -428,7 +480,7 @@ fn a_remote_loses_its_credentials_and_a_local_one_goes() {
     );
 
     run_git(&project, &["remote", "set-url", "origin", "../elsewhere"]);
-    let packing = gather(&root, &options()).expect("gathers");
+    let packing = gather(&root, &options(dir.path())).expect("gathers");
     let repo = packing.bundle.manifest.repo.clone().expect("a repo");
     assert!(repo.remote.is_none());
     assert!(repo.commit.is_some());
@@ -455,7 +507,7 @@ fn snapshots_merge_their_spans_and_say_how_each_file_stands() {
         ])],
     );
 
-    let packing = gather(&root, &options()).expect("gathers");
+    let packing = gather(&root, &options(dir.path())).expect("gathers");
     let [first, second, third] = &packing.snapped[..] else {
         panic!("three files: {:?}", packing.snapped)
     };
@@ -480,7 +532,7 @@ fn snapshots_merge_their_spans_and_say_how_each_file_stands() {
         &root,
         &Options {
             context: 0,
-            ..options()
+            ..options(dir.path())
         },
     )
     .expect("gathers");
@@ -492,7 +544,7 @@ fn snapshots_merge_their_spans_and_say_how_each_file_stands() {
         &root,
         &Options {
             whole_files: true,
-            ..options()
+            ..options(dir.path())
         },
     )
     .expect("gathers");
@@ -513,19 +565,19 @@ fn a_file_that_cannot_be_read_stops_the_pack_unless_allowed() {
             (Path::new("a.rs"), 1, 1),
         ])],
     );
-    let packing = gather(&root, &options()).expect("gathers");
+    let packing = gather(&root, &options(dir.path())).expect("gathers");
     let why = packing.refusal().expect("refused");
     assert!(
         why.contains("gone.rs") && why.contains("--allow-missing"),
         "{why}"
     );
     let out = dir.path().join("out.deck");
-    assert!(pack(&root, Some(&out), &options()).is_err());
+    assert!(pack(&root, Some(&out), &options(dir.path())).is_err());
     assert!(!out.exists());
 
     let allowing = Options {
         allow_missing: true,
-        ..options()
+        ..options(dir.path())
     };
     let packed = pack(&root, Some(&out), &allowing).expect("packs");
     assert!(packed.notes.iter().any(|note| note.contains("left out")));
@@ -606,7 +658,7 @@ fn every_rule_finds_its_secret_and_only_that_rule_does() {
         assert_eq!(hits.len(), 1, "{rule}: {hits:?}");
         let hit = &hits[0];
         assert_eq!(hit.rule, *rule);
-        assert_eq!(hit.line, 2);
+        assert_eq!(hit.at, "snap/1.txt:2");
         assert_eq!(hit.redacted.len(), 8);
         assert!(hit.redacted.ends_with("****"));
         assert_eq!(hit.fingerprint.len(), 12);
@@ -623,7 +675,9 @@ fn every_rule_finds_its_secret_and_only_that_rule_does() {
     // A secret inside a protocol file is found through its escaping.
     let escaped =
         serde_json::to_vec_pretty(&json!({ "say": format!("token: \"{}\"", filler(12)) })).unwrap();
-    assert_eq!(scan("deck/g1.json", &escaped)[0].rule, "generic-secret");
+    let hits = scan("deck/g1.json", &escaped);
+    assert_eq!(hits[0].rule, "generic-secret");
+    assert_eq!(hits[0].at, "deck/g1.json say");
 }
 
 #[test]
@@ -638,7 +692,10 @@ fn ordinary_code_is_not_a_secret() {
         r#"api_key = os.environ["API_KEY"]"#,
         "secret: process.env.SECRET",
         r#"token: "short""#,
-        r#"const tokens = "abcdefghijkl";"#,
+        r#"password: "${DB_PASSWORD}""#,
+        r#"secret = "<your secret here>""#,
+        r#"api_key = "{{ api_key }}""#,
+        "token_count = 12345678",
         "password_hash = hash(input)",
         "-----BEGIN PUBLIC KEY-----",
         "-----BEGIN CERTIFICATE-----",
@@ -673,10 +730,10 @@ fn a_secret_refuses_the_pack_until_it_is_allowed_by_fingerprint() {
     let root = deck(dir.path(), Some(&project), &[group]);
     let out = dir.path().join("out.deck");
 
-    let err = pack(&root, Some(&out), &options())
+    let err = pack(&root, Some(&out), &options(dir.path()))
         .expect_err("refused")
         .to_string();
-    let packing = gather(&root, &options()).unwrap();
+    let packing = gather(&root, &options(dir.path())).unwrap();
     assert_eq!(packing.hits.len(), 2, "{:?}", packing.hits);
     let in_snapshot = packing
         .hits
@@ -684,8 +741,8 @@ fn a_secret_refuses_the_pack_until_it_is_allowed_by_fingerprint() {
         .find(|hit| hit.entry == "snap/1.txt")
         .expect("found in the code");
     assert_eq!(
-        (in_snapshot.line, in_snapshot.rule),
-        (5, "aws-access-key-id")
+        (in_snapshot.at.as_str(), in_snapshot.rule),
+        ("a.rs:5", "aws-access-key-id")
     );
     assert_eq!(in_snapshot.redacted, "AKIA****");
     for hit in &packing.hits {
@@ -701,7 +758,7 @@ fn a_secret_refuses_the_pack_until_it_is_allowed_by_fingerprint() {
     // Letting one through is not letting both through.
     let one = Options {
         allow: vec![in_snapshot.fingerprint.clone()],
-        ..options()
+        ..options(dir.path())
     };
     assert!(pack(&root, Some(&out), &one).is_err());
 
@@ -709,7 +766,7 @@ fn a_secret_refuses_the_pack_until_it_is_allowed_by_fingerprint() {
     allow.push("000000000000".to_string());
     let both = Options {
         allow: allow.clone(),
-        ..options()
+        ..options(dir.path())
     };
     let packed = pack(&root, Some(&out), &both).expect("packs");
     assert!(packed.notes.iter().any(|n| n.contains("000000000000")));
@@ -732,7 +789,7 @@ fn the_same_deck_packs_to_the_same_bytes() {
     std::fs::write(root.join("done"), "").unwrap();
     let stamped = Options {
         created: Some(stamp(Some("1760952600")).unwrap()),
-        ..options()
+        ..options(dir.path())
     };
     let one = pack(&root, Some(&dir.path().join("one.deck")), &stamped).expect("packs");
     let two = pack(&root, Some(&dir.path().join("two.deck")), &stamped).expect("packs");
@@ -802,16 +859,23 @@ fn unpack_and_pack_are_inverses() {
         json!({ "v": 1, "deck": "d-1", "comments": [] }).to_string(),
     )
     .unwrap();
-    let packed = pack(&root, Some(&dir.path().join("a.deck")), &options()).expect("packs");
+    let packed = pack(
+        &root,
+        Some(&dir.path().join("a.deck")),
+        &options(dir.path()),
+    )
+    .expect("packs");
     let bytes = std::fs::read(&packed.path).unwrap();
 
     // unpack(pack(d)) is d, scrubbed: every entry as gathering made it.
     let into = dir.path().join("a.unpacked");
     let unpacked = unpack(&packed.path, Some(&into)).expect("unpacks");
     assert!(unpacked.ignored.is_empty());
-    let gathered = gather(&root, &options()).unwrap();
+    let gathered = gather(&root, &options(dir.path())).unwrap();
     let mut written = BTreeMap::new();
-    walk(&into, "", &mut written).unwrap();
+    let mut left = Vec::new();
+    walk(&into, "", &mut written, &mut left).unwrap();
+    assert!(left.is_empty(), "{left:?}");
     let manifest = written.remove("manifest.json").expect("the manifest");
     assert_eq!(written, gathered.bundle.files);
     assert!(written.contains_key("review.json"));
@@ -822,9 +886,14 @@ fn unpack_and_pack_are_inverses() {
     );
 
     // pack(unpack(f)) is f, byte for byte, and nothing is scrubbed twice.
-    let again = gather(&into, &options()).expect("gathers");
+    let again = gather(&into, &options(dir.path())).expect("gathers");
     assert!(again.repacked);
-    let repacked = pack(&into, Some(&dir.path().join("b.deck")), &options()).expect("packs");
+    let repacked = pack(
+        &into,
+        Some(&dir.path().join("b.deck")),
+        &options(dir.path()),
+    )
+    .expect("packs");
     assert_eq!(std::fs::read(&repacked.path).unwrap(), bytes);
 }
 
@@ -840,14 +909,14 @@ fn nothing_is_overwritten_without_being_asked() {
     );
     let out = dir.path().join("taken.deck");
     std::fs::write(&out, "mine").unwrap();
-    let err = pack(&root, Some(&out), &options())
+    let err = pack(&root, Some(&out), &options(dir.path()))
         .expect_err("refused")
         .to_string();
     assert!(err.contains("--force"), "{err}");
     assert_eq!(std::fs::read(&out).unwrap(), b"mine");
     let forced = Options {
         force: true,
-        ..options()
+        ..options(dir.path())
     };
     pack(&root, Some(&out), &forced).expect("replaces");
     assert!(Bundle::open(&std::fs::read(&out).unwrap()).is_ok());
@@ -867,7 +936,7 @@ fn nothing_is_overwritten_without_being_asked() {
 #[test]
 fn a_folder_that_is_not_a_deck_is_refused() {
     let dir = tempfile::tempdir().expect("a temp dir");
-    let err = gather(dir.path(), &options())
+    let err = gather(dir.path(), &options(dir.path()))
         .expect_err("refused")
         .to_string();
     assert!(err.contains("no deck.json"), "{err}");
@@ -878,8 +947,9 @@ fn a_folder_that_is_not_a_deck_is_refused() {
 
 #[test]
 fn a_deck_with_no_repo_still_packs() {
-    // No `git init` here: the temp directory is in no repo, and git may or
-    // may not be installed. Either way it packs, unscoped and untracked.
+    // No `git init` here, and git is told not to look above the temp
+    // directory, so this holds wherever TMPDIR is and whether or not git is
+    // installed: it packs, unscoped and untracked.
     let dir = tempfile::tempdir().expect("a temp dir");
     let project = dir.path().join("project");
     write(&project, &[("src/a.rs", &lines(4))]);
@@ -888,9 +958,288 @@ fn a_deck_with_no_repo_still_packs() {
         Some(&project),
         &[pointing(&[(&project.join("src").join("a.rs"), 1, 1)])],
     );
-    let packing = gather(&root, &options()).expect("gathers");
+    let packing = gather(&root, &options(dir.path())).expect("gathers");
     assert!(packing.bundle.manifest.repo.is_none());
     assert_eq!(packing.snapped[0].path, "src/a.rs");
     assert_eq!(packing.snapped[0].state, snap::State::Untracked);
     assert!(packing.outside.is_empty());
+}
+
+/// Nothing outside the root is ever read, however the deck spells its way
+/// there: up and out, an absolute path, or a link in the repo pointing out.
+#[test]
+fn a_ref_that_leaves_the_repo_is_never_read() {
+    let dir = tempfile::tempdir().expect("a temp dir");
+    let project = dir.path().join("project");
+    write(&project, &[("a.rs", &lines(4))]);
+    let private = "PRIVATE-CREDENTIALS-NOBODY-ELSE-SEES";
+    write(
+        dir.path(),
+        &[
+            ("secrets/up", &format!("{private}\n")),
+            ("secrets/absolute", &format!("{private}\n")),
+            ("secrets/linked", &format!("{private}\n")),
+        ],
+    );
+    let absolute = dir.path().join("secrets").join("absolute");
+    let mut refs: Vec<(PathBuf, u32, u32)> = vec![
+        (PathBuf::from("../secrets/up"), 1, 1),
+        (absolute, 1, 1),
+        (PathBuf::from("a.rs"), 1, 1),
+    ];
+    #[cfg(unix)]
+    {
+        std::os::unix::fs::symlink(
+            dir.path().join("secrets").join("linked"),
+            project.join("link.rs"),
+        )
+        .expect("a link out of the repo");
+        refs.push((PathBuf::from("link.rs"), 1, 1));
+    }
+    let pointed: Vec<(&Path, u32, u32)> =
+        refs.iter().map(|(p, a, b)| (p.as_path(), *a, *b)).collect();
+    let root = deck(dir.path(), Some(&project), &[pointing(&pointed)]);
+
+    let packing = gather(&root, &options(dir.path())).expect("gathers");
+    let snapped: Vec<&str> = packing.snapped.iter().map(|f| f.path.as_str()).collect();
+    assert_eq!(snapped, ["a.rs"]);
+    assert_eq!(packing.outside.len(), refs.len() - 1);
+    for bytes in packing.bundle.files.values() {
+        assert!(!String::from_utf8_lossy(bytes).contains(private));
+    }
+    let why = packing.refusal().expect("refused");
+    assert!(why.contains("outside the repo"), "{why}");
+    let out = dir.path().join("out.deck");
+    assert!(pack(&root, Some(&out), &options(dir.path())).is_err());
+
+    // Allowed to go without them, they go without them.
+    let allowing = Options {
+        allow_missing: true,
+        ..options(dir.path())
+    };
+    pack(&root, Some(&out), &allowing).expect("packs");
+    let bytes = std::fs::read(&out).unwrap();
+    assert!(!String::from_utf8_lossy(&bytes).contains(private));
+}
+
+#[test]
+fn a_token_right_after_an_escape_is_found() {
+    let github = format!("ghp{}{}", "_", filler(36));
+    let aws = format!("{}{}", "AKIA", "IOSFODNN7EXAMPLE");
+    let group = json!({ "id": "g1", "say": format!("first\n{github}"),
+                        "title": format!("tab\t{aws}") });
+    let bytes = serde_json::to_vec_pretty(&group).unwrap();
+    let hits = scan("deck/g1.json", &bytes);
+    let mut found: Vec<(&str, &str)> = hits.iter().map(|h| (h.rule, h.at.as_str())).collect();
+    found.sort_unstable();
+    assert_eq!(
+        found,
+        [
+            ("aws-access-key-id", "deck/g1.json title"),
+            ("github-pat", "deck/g1.json say line 2"),
+        ]
+    );
+    // Glued to a word in plain text, a distinctive prefix is still found.
+    assert_eq!(
+        scan("snap/1.txt", format!("x = \"\\n{github}\"").as_bytes())[0].rule,
+        "github-pat"
+    );
+}
+
+#[test]
+fn a_secret_under_a_longer_name_is_found() {
+    let value = "Zq8mVt4LpW2xRn7k";
+    for line in [
+        format!("client_secret = \"{value}\""),
+        format!("AWS_SECRET_ACCESS_KEY=\"{value}\""),
+        format!("DB_PASSWORD: '{value}'"),
+        format!("access_token = \"{value}\""),
+        format!("\"apiKey\": \"{value}\""),
+    ] {
+        let hits = scan("snap/1.txt", line.as_bytes());
+        assert_eq!(hits.len(), 1, "{line}: {hits:?}");
+        assert_eq!(hits[0].rule, "generic-secret");
+        assert_eq!(
+            hits[0].redacted, "Zq8m****",
+            "only the value, never the name"
+        );
+    }
+}
+
+/// The fingerprint is the value's, not the quotes' or the name's, so one
+/// `--allow` covers the same secret in the narration and in the code.
+#[test]
+fn one_secret_has_one_fingerprint_wherever_it_is() {
+    let dir = tempfile::tempdir().expect("a temp dir");
+    let project = dir.path().join("project");
+    let value = "Zq8mVt4LpW2xRn7k";
+    write(
+        &project,
+        &[(
+            "a.rs",
+            &format!("{}let db_password = '{value}';\n", lines(3)),
+        )],
+    );
+    let mut group = pointing(&[(Path::new("a.rs"), 4, 4)]);
+    group["say"] = json!(format!("it reads `secret: \"{value}\"`"));
+    let root = deck(dir.path(), Some(&project), &[group]);
+    let packing = gather(&root, &options(dir.path())).expect("gathers");
+    assert_eq!(packing.hits.len(), 2, "{:?}", packing.hits);
+    assert_eq!(packing.hits[0].fingerprint, packing.hits[1].fingerprint);
+    let allowing = Options {
+        allow: vec![packing.hits[0].fingerprint.clone()],
+        ..options(dir.path())
+    };
+    let let_through = gather(&root, &allowing).expect("gathers");
+    assert!(let_through.hits.is_empty());
+    assert_eq!(let_through.allowed.len(), 2);
+    assert_eq!(let_through.bundle.manifest.allowed.len(), 1);
+}
+
+#[test]
+fn a_hit_in_a_snapshot_names_the_source_line() {
+    let dir = tempfile::tempdir().expect("a temp dir");
+    let project = dir.path().join("project");
+    let mut source = lines(120);
+    source = source.replacen(
+        "line 101\n",
+        &format!("aws = {}{}\n", "AKIA", "IOSFODNN7EXAMPLE"),
+        1,
+    );
+    write(&project, &[("src/a.rs", &source)]);
+    let root = deck(
+        dir.path(),
+        Some(&project),
+        &[pointing(&[
+            (Path::new("src/a.rs"), 10, 10),
+            (Path::new("src/a.rs"), 100, 102),
+        ])],
+    );
+    let packing = gather(&root, &options(dir.path())).expect("gathers");
+    assert_eq!(packing.hits.len(), 1);
+    assert_eq!(packing.hits[0].entry, "snap/1.txt");
+    assert_eq!(packing.hits[0].at, "src/a.rs:101");
+    assert!(packing.refusal().unwrap().contains("src/a.rs:101"));
+}
+
+/// A deck written against `/tmp/repo/sub` names its root `/tmp/repo`, though
+/// git and the disk both call it `/private/tmp/repo`. Every spelling goes.
+#[cfg(unix)]
+#[test]
+fn the_root_as_the_deck_spells_it_is_scrubbed() {
+    let dir = tempfile::tempdir().expect("a temp dir");
+    let real = dir.path().join("real");
+    if !repo(&real, &[("src/a.rs", &lines(4)), ("sub/b.rs", &lines(4))]) {
+        return;
+    }
+    let link = dir.path().join("link");
+    std::os::unix::fs::symlink(&real, &link).expect("a link to the repo");
+    let cwd = link.join("sub");
+    let mut group = pointing(&[(Path::new("../src/a.rs"), 1, 1)]);
+    group["say"] = json!(format!("see {}/src/a.rs", link.display()));
+    let root = deck(dir.path(), Some(&cwd), &[group]);
+    let packing = gather(&root, &options(dir.path())).expect("gathers");
+    let group = &packing.bundle.groups().unwrap()[0];
+    assert_eq!(group.say, "see src/a.rs");
+    assert_eq!(packing.snapped[0].path, "src/a.rs");
+}
+
+#[test]
+fn the_home_directory_goes_in_every_spelling() {
+    let scrub = Scrub {
+        roots: Vec::new(),
+        homes: variants(vec![r"C:\Users\ada\".to_string()]),
+    };
+    for written in [
+        r"C:\Users\ada\x",
+        "C:/Users/ada/x",
+        r"c:\users\ada\x",
+        "c:/Users/ada/x",
+    ] {
+        let mut text = written.to_string();
+        scrub.text(&mut text);
+        assert_eq!(text, "~/x", "{written}");
+    }
+    let scrub = Scrub {
+        roots: Vec::new(),
+        homes: variants(vec!["/home/ada/".to_string()]),
+    };
+    let mut text = "/home/ada/x and /home/ada".to_string();
+    scrub.text(&mut text);
+    assert_eq!(text, "~/x and ~");
+}
+
+/// `src/[id].tsx` is that file, not a pattern that matches `src/i.tsx`.
+#[test]
+fn a_path_with_glob_characters_is_taken_literally() {
+    let dir = tempfile::tempdir().expect("a temp dir");
+    let project = dir.path().join("project");
+    if !repo(
+        &project,
+        &[("src/i.tsx", &lines(4)), ("src/[id].tsx", &lines(4))],
+    ) {
+        return;
+    }
+    std::fs::write(project.join("src").join("i.tsx"), lines(5)).unwrap();
+    let root = deck(
+        dir.path(),
+        Some(&project),
+        &[pointing(&[(Path::new("src/[id].tsx"), 1, 1)])],
+    );
+    let packing = gather(&root, &options(dir.path())).expect("gathers");
+    assert_eq!(packing.snapped[0].path, "src/[id].tsx");
+    assert_eq!(packing.snapped[0].state, snap::State::Clean);
+}
+
+/// A repack takes the names a `.deck` file holds and nothing else: a Finder
+/// `.DS_Store`, a note, or a link is left behind and said, never packed and
+/// never a reason to fail.
+#[test]
+fn a_repack_takes_only_what_a_deck_file_holds() {
+    let dir = tempfile::tempdir().expect("a temp dir");
+    let project = dir.path().join("project");
+    write(&project, &[("a.rs", &lines(10))]);
+    let root = deck(
+        dir.path(),
+        Some(&project),
+        &[pointing(&[(Path::new("a.rs"), 2, 2)])],
+    );
+    let packed = pack(
+        &root,
+        Some(&dir.path().join("a.deck")),
+        &options(dir.path()),
+    )
+    .expect("packs");
+    let into = dir.path().join("a.unpacked");
+    unpack(&packed.path, Some(&into)).expect("unpacks");
+    write(
+        &into,
+        &[
+            (".DS_Store", "finder"),
+            ("deck/notes.txt", "mine"),
+            ("mimetype", "x"),
+        ],
+    );
+    let mut stray = vec![".DS_Store", "deck/notes.txt", "mimetype"];
+    #[cfg(unix)]
+    {
+        std::os::unix::fs::symlink(project.join("a.rs"), into.join("deck").join("g9.json"))
+            .expect("a link");
+        stray.push("deck/g9.json");
+    }
+    let packing = gather(&into, &options(dir.path())).expect("gathers");
+    let mut left: Vec<&str> = packing.left.iter().map(String::as_str).collect();
+    left.sort_unstable();
+    stray.sort_unstable();
+    assert_eq!(left, stray);
+    let again = pack(
+        &into,
+        Some(&dir.path().join("b.deck")),
+        &options(dir.path()),
+    )
+    .expect("packs");
+    assert_eq!(
+        std::fs::read(&again.path).unwrap(),
+        std::fs::read(&packed.path).unwrap()
+    );
 }

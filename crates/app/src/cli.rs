@@ -419,7 +419,8 @@ enum What {
         force: bool,
         /// Say what would be written — every entry and its size, every file
         /// frozen and how it stands against the commit, every path cut to
-        /// its name, every secret found — and write nothing.
+        /// its name, every secret found — and write nothing. Exits 1 when it
+        /// would refuse.
         #[arg(long)]
         dry_run: bool,
         /// Lines kept either side of each range the deck points at.
@@ -816,11 +817,22 @@ impl Cli {
                     ..deck_cli::pack::Options::default()
                 };
                 if dry_run {
-                    return report(
-                        deck_cli::pack::gather(&deck, &options)
-                            .and_then(|packing| packing.dry_run())
-                            .map(|listing| println!("{listing}")),
-                    );
+                    // A listing that ends in a refusal exits 1, so a script
+                    // can tell a dry run that would pack from one that would
+                    // not without reading it.
+                    let listed = deck_cli::pack::gather(&deck, &options)
+                        .and_then(|packing| Ok((packing.dry_run()?, packing.refusal().is_some())));
+                    return match listed {
+                        Ok((listing, refused)) => {
+                            println!("{listing}");
+                            Err(if refused {
+                                ExitCode::FAILURE
+                            } else {
+                                ExitCode::SUCCESS
+                            })
+                        }
+                        Err(err) => report(Err(err)),
+                    };
                 }
                 report(
                     deck_cli::pack::pack(&deck, out.as_deref(), &options).map(|packed| {
