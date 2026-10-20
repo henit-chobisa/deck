@@ -130,6 +130,34 @@ impl Rgb {
         )
     }
 
+    /// Relative luminance, as WCAG defines it: each channel taken out of its
+    /// sRGB curve and weighted for the eye, from 0 for black to 1 for white.
+    ///
+    /// Not [`Self::lightness`], which weights the channels as they are stored
+    /// and is good for deciding which way is up. Contrast is measured in light,
+    /// and light is what this is.
+    #[must_use]
+    pub fn luminance(&self) -> f32 {
+        let linear = |channel: u8| {
+            let c = f32::from(channel) / 255.0;
+            if c <= 0.040_45 {
+                c / 12.92
+            } else {
+                ((c + 0.055) / 1.055).powf(2.4)
+            }
+        };
+        0.2126 * linear(self.r) + 0.7152 * linear(self.g) + 0.0722 * linear(self.b)
+    }
+
+    /// The contrast between this colour and `other`, as WCAG measures it:
+    /// from 1, for two colours that are the same, to 21, for black on white.
+    /// Body text wants at least 4.5.
+    #[must_use]
+    pub fn contrast(&self, other: Self) -> f32 {
+        let (a, b) = (self.luminance(), other.luminance());
+        (a.max(b) + 0.05) / (a.min(b) + 0.05)
+    }
+
     /// `#rrggbb`.
     #[must_use]
     pub fn to_hex(self) -> String {
@@ -583,6 +611,103 @@ pub fn tint(base: Rgb, accent: Rgb, amount: f32) -> Rgb {
     Rgb::new(channel(mixed.r), channel(mixed.g), channel(mixed.b))
 }
 
+/// The contrast body text needs on its ground: WCAG's AA for normal text.
+pub const LEGIBLE: f32 = 4.5;
+
+/// `ink` made to read on `ground` at `ratio` or better, changing only how
+/// light it is.
+///
+/// An export is printed and read by people who never chose its theme, and a
+/// theme drawn for a screen in a dark room often sets comments, numbers or a
+/// muted label a shade too close to the page. Swapping such a colour would
+/// lose the theme; this keeps its hue and its saturation and moves it away
+/// from the ground — up on a dark page, down on a light one — by the least
+/// that reaches `ratio`. A colour that already reads is returned as it is.
+///
+/// Every ground has a direction that gets there: the darkest page still
+/// reaches 4.5 against white and the lightest against black, and at the
+/// middle both do. When the way away from the ground runs out before the
+/// ratio is reached, the other way is tried, and failing both, whichever of
+/// black and white reads better.
+#[must_use]
+pub fn legible(ink: Rgb, ground: Rgb, ratio: f32) -> Rgb {
+    if ink.contrast(ground) >= ratio {
+        return ink;
+    }
+    let (hue, saturation, lightness) = hsl(ink);
+    let up = ground.luminance() < 0.18;
+    for upward in [up, !up] {
+        let end = if upward { 1.0 } else { 0.0 };
+        let at = |l: f32| from_hsl(hue, saturation, l);
+        if at(end).contrast(ground) < ratio {
+            continue;
+        }
+        // The least change that reads: halve the distance between a
+        // lightness that does not and one that does.
+        let (mut near, mut far) = (lightness, end);
+        for _ in 0..24 {
+            let mid = f32::midpoint(near, far);
+            if at(mid).contrast(ground) >= ratio {
+                far = mid;
+            } else {
+                near = mid;
+            }
+        }
+        let found = at(far);
+        if found.contrast(ground) >= ratio {
+            return found;
+        }
+    }
+    let (white, black) = (Rgb::new(255, 255, 255), Rgb::new(0, 0, 0));
+    if white.contrast(ground) >= black.contrast(ground) {
+        white
+    } else {
+        black
+    }
+}
+
+/// `colour` as hue (0 to 1), saturation and lightness, the way HSL has them.
+fn hsl(colour: Rgb) -> (f32, f32, f32) {
+    let [r, g, b] = [colour.r, colour.g, colour.b].map(|c| f32::from(c) / 255.0);
+    let high = r.max(g).max(b);
+    let low = r.min(g).min(b);
+    let lightness = f32::midpoint(high, low);
+    let span = high - low;
+    if span <= f32::EPSILON {
+        return (0.0, 0.0, lightness);
+    }
+    let saturation = span / (1.0 - (2.0 * lightness - 1.0).abs());
+    let hue = if (high - r).abs() <= f32::EPSILON {
+        ((g - b) / span).rem_euclid(6.0)
+    } else if (high - g).abs() <= f32::EPSILON {
+        (b - r) / span + 2.0
+    } else {
+        (r - g) / span + 4.0
+    };
+    (hue / 6.0, saturation.min(1.0), lightness)
+}
+
+/// A colour from hue (0 to 1), saturation and lightness.
+fn from_hsl(hue: f32, saturation: f32, lightness: f32) -> Rgb {
+    let chroma = (1.0 - (2.0 * lightness - 1.0).abs()) * saturation;
+    let h = hue * 6.0;
+    let x = chroma * (1.0 - (h.rem_euclid(2.0) - 1.0).abs());
+    let (r, g, b) = match h {
+        h if h < 1.0 => (chroma, x, 0.0),
+        h if h < 2.0 => (x, chroma, 0.0),
+        h if h < 3.0 => (0.0, chroma, x),
+        h if h < 4.0 => (0.0, x, chroma),
+        h if h < 5.0 => (x, 0.0, chroma),
+        _ => (chroma, 0.0, x),
+    };
+    let m = lightness - chroma / 2.0;
+    Rgb::new(
+        saturate((r + m) * 255.0),
+        saturate((g + m) * 255.0),
+        saturate((b + m) * 255.0),
+    )
+}
+
 /// A float rounded into a channel, with both ends pinned.
 ///
 /// `as u8` on its own is a silent trap here: it truncates rather than rounds,
@@ -647,6 +772,113 @@ mod tests {
             Rgb::from_hex("#ebdbb2").unwrap(),
             Rgb::from_hex("#fe8019").unwrap(),
         )
+    }
+
+    #[test]
+    fn contrast_is_measured_as_wcag_measures_it() {
+        let (white, black) = (Rgb::new(255, 255, 255), Rgb::new(0, 0, 0));
+        assert!((white.contrast(black) - 21.0).abs() < 0.01);
+        assert!((white.contrast(white) - 1.0).abs() < 1e-6);
+        // WCAG's own worked figure: #767676 on white is 4.54.
+        let grey = Rgb::from_hex("#767676").unwrap();
+        assert!((grey.contrast(white) - 4.54).abs() < 0.01);
+    }
+
+    #[test]
+    fn a_colour_that_reads_is_left_alone() {
+        let p = derive(dark());
+        assert_eq!(legible(p.fg, p.bg, LEGIBLE), p.fg);
+    }
+
+    #[test]
+    fn a_faint_colour_is_lifted_until_it_reads_and_keeps_its_hue() {
+        // A comment a theme set too close to its dark page.
+        let page = Rgb::from_hex("#282828").unwrap();
+        let faint = Rgb::from_hex("#5c6370").unwrap();
+        assert!(faint.contrast(page) < LEGIBLE);
+        let lifted = legible(faint, page, LEGIBLE);
+        assert!(lifted.contrast(page) >= LEGIBLE);
+        assert!(lifted.lightness() > faint.lightness(), "up, on a dark page");
+        let ((h0, s0, _), (h1, s1, _)) = (hsl(faint), hsl(lifted));
+        assert!(
+            (h0 - h1).abs() < 0.02 && (s0 - s1).abs() < 0.06,
+            "the same colour, lighter"
+        );
+        // The least that reaches it, not all the way to white.
+        assert!(lifted.contrast(page) < LEGIBLE + 0.3);
+
+        // And down, on a light page.
+        let paper = Rgb::from_hex("#dfdfdf").unwrap();
+        let pale = Rgb::from_hex("#b57614").unwrap();
+        let darkened = legible(pale, paper, LEGIBLE);
+        assert!(darkened.contrast(paper) >= LEGIBLE);
+        assert!(darkened.lightness() < pale.lightness());
+    }
+
+    #[test]
+    fn every_ink_reads_on_every_ground_once_it_is_made_legible() {
+        // A sweep of the colour cube: every ink, on every ground, comes back
+        // at 4.5 or better — the promise an export's contrast test leans on.
+        let steps = [0u8, 51, 102, 153, 204, 255];
+        for &r in &steps {
+            for &g in &steps {
+                for &b in &steps {
+                    let ink = Rgb::new(r, g, b);
+                    for &level in &[0u8, 24, 60, 110, 119, 128, 140, 200, 235, 255] {
+                        for ground in [
+                            Rgb::new(level, level, level),
+                            Rgb::new(level, level / 2, 255 - level),
+                        ] {
+                            let made = legible(ink, ground, LEGIBLE);
+                            assert!(
+                                made.contrast(ground) >= LEGIBLE,
+                                "{} on {} came to {}",
+                                ink.to_hex(),
+                                ground.to_hex(),
+                                made.contrast(ground)
+                            );
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn every_token_an_export_writes_reads_on_every_ground_it_sits_on() {
+        // Both of deck's palettes and two imported themes: text, muted text,
+        // the accent as text, and a comment at the window's own blend, on the
+        // page, the pane, the band and the lit range.
+        let themes = [
+            light(),
+            dark(),
+            Imported::plain(
+                Rgb::new(0x0d, 0x11, 0x17),
+                Rgb::new(0xe6, 0xed, 0xf3),
+                Rgb::new(0x2f, 0x81, 0xf7),
+            ),
+            Imported::plain(
+                Rgb::new(0xfd, 0xf6, 0xe3),
+                Rgb::new(0x65, 0x7b, 0x83),
+                Rgb::new(0xb5, 0x89, 0x00),
+            ),
+        ];
+        for theme in themes {
+            let p = derive(theme);
+            let inks = [
+                p.fg,
+                p.muted,
+                p.accent,
+                p.fg.mix(p.wash, 0.42),
+                p.add,
+                p.del,
+            ];
+            for ground in [p.bg, p.wash, p.band, p.focus] {
+                for ink in inks {
+                    assert!(legible(ink, ground, LEGIBLE).contrast(ground) >= LEGIBLE);
+                }
+            }
+        }
     }
 
     #[test]
