@@ -17,6 +17,8 @@
 //!   counting.
 //! - [`live`] — pure state transitions for an anchored live conversation.
 //! - [`protocol`] — the wire format, mirroring the JSON field for field.
+//! - [`prose`] — a group's narration read into words, sentences and points,
+//!   and where each point lands.
 //! - [`relocate`] — following a pinned line while the file moves under it.
 //! - [`layout`] — how many panes fit beside each other.
 //! - [`diagram`] — pictures of things that are not in any one file.
@@ -34,6 +36,7 @@ pub mod home;
 pub mod layout;
 pub mod line;
 pub mod live;
+pub mod prose;
 pub mod protocol;
 pub mod relocate;
 pub mod theme;
