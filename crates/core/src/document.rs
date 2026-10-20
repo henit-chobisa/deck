@@ -103,7 +103,8 @@ pub struct Document {
 ///
 /// Code carries its colours run by run. These are for everything else — the
 /// narration, the numerals, the labels — taken from the same palette and
-/// lifted to [`LEGIBLE`] on the ground each is printed on.
+/// lifted to [`LEGIBLE`] separately for each ground a format sets words on,
+/// because a colour that reads on the band can fail on the page.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub struct Inks {
     /// The page.
@@ -112,29 +113,49 @@ pub struct Inks {
     pub band: Rgb,
     /// A code pane at rest.
     pub pane: Rgb,
-    /// Words, on the band.
-    pub text: Rgb,
-    /// Quieter words — labels, a confidence's basis — on the band.
-    pub muted: Rgb,
-    /// The accent as words: numerals, chips, on the band.
-    pub accent: Rgb,
     /// Hairlines between things.
     pub edge: Rgb,
+    /// Words set on the page.
+    pub on_page: Words,
+    /// Words set on the band.
+    pub on_band: Words,
+    /// Words set on a pane: its label, its header.
+    pub on_pane: Words,
+}
+
+/// The three inks words come in, for one ground.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub struct Words {
+    /// Words.
+    pub text: Rgb,
+    /// Quieter words: labels, a confidence's basis.
+    pub muted: Rgb,
+    /// The accent as words: numerals, chips.
+    pub accent: Rgb,
+}
+
+impl Words {
+    fn on(palette: &Palette, ground: Rgb) -> Self {
+        Self {
+            text: legible(palette.fg, ground, LEGIBLE),
+            muted: legible(palette.muted, ground, LEGIBLE),
+            accent: legible(palette.accent, ground, LEGIBLE),
+        }
+    }
 }
 
 impl Inks {
-    /// The inks of `palette`, each made legible on the band it is set on.
+    /// The inks of `palette`, each made legible on the ground it is set on.
     #[must_use]
     pub fn of(palette: &Palette) -> Self {
-        let band = palette.band;
         Self {
             page: palette.bg,
-            band,
+            band: palette.band,
             pane: palette.wash,
-            text: legible(palette.fg, band, LEGIBLE),
-            muted: legible(palette.muted, band, LEGIBLE),
-            accent: legible(palette.accent, band, LEGIBLE),
             edge: palette.edge,
+            on_page: Words::on(palette, palette.bg),
+            on_band: Words::on(palette, palette.band),
+            on_pane: Words::on(palette, palette.wash),
         }
     }
 }
@@ -301,11 +322,13 @@ pub struct Row {
     /// margin once, on a point's first line, however many lines it lights.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub numerals: Vec<u32>,
-    /// Whether a point lights this line, first or not.
-    #[serde(skip_serializing_if = "std::ops::Not::not")]
-    pub pointed: bool,
+    /// The numerals of every point that lights this line, first or not.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub lit_by: Vec<u32>,
     /// The ground it is printed on.
     pub ground: Rgb,
+    /// The accent, legible on that ground: for its numerals and values.
+    pub accent: Rgb,
     /// Its text in coloured runs, every colour legible on `ground`.
     pub spans: Vec<Span>,
     /// What it held, as the deck recorded it.
@@ -620,11 +643,27 @@ fn path_of(spec: &RefSpec) -> String {
     spec.file.to_string_lossy().replace('\\', "/")
 }
 
-/// Where the placeholders for points start: the private-use area, which no
-/// narration writes and every parser treats as an ordinary letter.
-const HOLD: u32 = 0xE000;
-/// How many points a group can carry, the size of that area.
-const HOLDS: usize = 6400;
+/// Where the placeholders for points can come from, in order of preference,
+/// with how many each holds.
+///
+/// Yi syllables first: letters, so the parser treats a placeholder as part
+/// of the word it touches — `_snake_` followed by a point stays inside its
+/// word, as it does in the window, where the point is simply gone — and no
+/// narration about code is written in Yi. Failing that, the supplementary
+/// private-use planes, which nothing writes.
+const HOLDS: [(u32, usize); 3] = [(0xA000, 1165), (0xF_0000, 65_534), (0x10_0000, 65_534)];
+
+/// The first range of placeholders `say` does not already use, and how many
+/// it holds.
+fn holds_for(say: &str) -> (u32, usize) {
+    HOLDS
+        .into_iter()
+        .find(|&(base, size)| {
+            let end = base + u32::try_from(size).unwrap_or(0);
+            !say.chars().any(|ch| (base..end).contains(&(ch as u32)))
+        })
+        .unwrap_or(HOLDS[1])
+}
 
 /// The narration as paragraphs of runs, every point it makes with its
 /// numeral and its landing, and the order in which it reaches the refs.
@@ -651,6 +690,7 @@ fn read(
     };
 
     // Every point the window would light, swapped for a placeholder.
+    let (hold, holds) = holds_for(say);
     let mut spots: Vec<Spot> = Vec::new();
     let mut held = String::with_capacity(say.len());
     let mut rest = say;
@@ -662,8 +702,8 @@ fn read(
         match prose::spot(&after[..end]) {
             Some(spot) => {
                 held.push_str(&rest[..at]);
-                if spots.len() < HOLDS {
-                    let code = HOLD + u32::try_from(spots.len()).unwrap_or(0);
+                if spots.len() < holds {
+                    let code = hold + u32::try_from(spots.len()).unwrap_or(0);
                     held.extend(char::from_u32(code));
                     spots.push(spot);
                 }
@@ -716,8 +756,8 @@ fn read(
                 .flatten();
             let mut text = String::new();
             for ch in token.text.chars() {
-                let hold = (ch as u32).checked_sub(HOLD).map(|n| n as usize);
-                match hold.filter(|&n| n < spots.len()) {
+                let n = (ch as u32).checked_sub(hold).map(|n| n as usize);
+                match n.filter(|&n| n < spots.len()) {
                     Some(n) => {
                         push_text(&mut runs, std::mem::take(&mut text), mark, pane, refs);
                         if let Some(numeral) = numerals[n] {
@@ -756,6 +796,14 @@ fn push_text(
     if text.is_empty() {
         return;
     }
+    // A mark that holds nothing but the space around a point — `` ` [point
+    // 3] ` `` — is the empty mark the parser drops in the window, where the
+    // point is not there to fill it.
+    let mark = if text.trim().is_empty() && mark != Some(Marked::Pane) {
+        None
+    } else {
+        mark
+    };
     let joins = !matches!(mark, Some(Marked::Code | Marked::Pane));
     match runs.last_mut() {
         Some(Run::Text {
@@ -867,8 +915,12 @@ fn code_of(
             .map(|&(_, numeral)| numeral)
             .collect()
     };
-    let lit = |points: &[(LineRange, u32)], line: u32| {
-        points.iter().any(|(lines, _)| lines.contains(line))
+    let lit = |points: &[(LineRange, u32)], line: u32| -> Vec<u32> {
+        points
+            .iter()
+            .filter(|(lines, _)| lines.contains(line))
+            .map(|&(_, numeral)| numeral)
+            .collect()
     };
     let values_on = |line: u32, after: bool| -> Vec<Value> {
         spec.values
@@ -882,7 +934,7 @@ fn code_of(
     // comment that opens above the range is still one when it reaches it.
     let source = span_text(snapshot, span);
     let rows = colour(&source, &file, paint);
-    let row_of = |no: u32, kind: RowKind, numerals: Vec<u32>, pointed: bool, values| {
+    let row_of = |no: u32, kind: RowKind, numerals: Vec<u32>, lit_by: Vec<u32>, values| {
         let ground = ground_of(kind, palette);
         let at = usize::try_from(no - span.first).unwrap_or(usize::MAX);
         let spans = rows
@@ -893,8 +945,9 @@ fn code_of(
             no,
             kind,
             numerals,
-            pointed,
+            lit_by,
             ground,
+            accent: legible(palette.accent, ground, LEGIBLE),
             spans,
             values,
         })
@@ -902,23 +955,32 @@ fn code_of(
 
     let first = range.first.saturating_sub(CONTEXT).max(span.first);
     let last = range.last.saturating_add(CONTEXT).min(span.last);
+    let inside = match change {
+        Some(Change::Made) => RowKind::Arriving,
+        Some(Change::Proposed) => RowKind::Going,
+        None => RowKind::Spot,
+    };
+    // The points that light the file's own lines: the arriving half of a
+    // made change, the going half of anything else. A point that starts
+    // above the range starts where it starts, on a context line if that is
+    // where its first line is printed.
+    let own = if inside == RowKind::Arriving {
+        &arriving
+    } else {
+        &going
+    };
     for no in first..range.first {
         code.lines.push(row_of(
             no,
             RowKind::Context {
                 distance: range.first - no,
             },
-            Vec::new(),
-            false,
+            starts(own, no, first),
+            lit(own, no),
             Vec::new(),
         ));
     }
 
-    let inside = match change {
-        Some(Change::Made) => RowKind::Arriving,
-        Some(Change::Proposed) => RowKind::Going,
-        None => RowKind::Spot,
-    };
     if let (Some(Change::Made), Some(before)) = (change, &spec.before) {
         // What went, above what arrived. Its lines have no number in the
         // file any more; they are numbered as the range was.
@@ -936,14 +998,7 @@ fn code_of(
             &|_| Vec::new(),
         );
     }
-    // The points that light the range itself: the arriving half of a made
-    // change, the going half of anything else.
-    let own = if inside == RowKind::Arriving {
-        &arriving
-    } else {
-        &going
-    };
-    let marked = |no: u32| lit(own, no) || !values_on(no, false).is_empty();
+    let marked = |no: u32| !lit(own, no).is_empty() || !values_on(no, false).is_empty();
     let mut no = range.first;
     while no <= range.last {
         // A long stretch with nothing on it folds, keeping its edges.
@@ -960,7 +1015,7 @@ fn code_of(
                     });
                 }
                 code.lines
-                    .push(row_of(line, inside, Vec::new(), false, Vec::new()));
+                    .push(row_of(line, inside, Vec::new(), Vec::new(), Vec::new()));
             }
             no = end;
             continue;
@@ -968,7 +1023,7 @@ fn code_of(
         code.lines.push(row_of(
             no,
             inside,
-            starts(own, no, range.first),
+            starts(own, no, first),
             lit(own, no),
             values_on(no, false),
         ));
@@ -993,8 +1048,8 @@ fn code_of(
             RowKind::Context {
                 distance: no - range.last,
             },
-            Vec::new(),
-            false,
+            starts(own, no, first),
+            lit(own, no),
             Vec::new(),
         ));
     }
@@ -1012,7 +1067,7 @@ fn push_text_rows(
     file: &str,
     palette: &Palette,
     paint: &dyn Paint,
-    points_on: &dyn Fn(u32) -> (Vec<u32>, bool),
+    points_on: &dyn Fn(u32) -> (Vec<u32>, Vec<u32>),
     values_on: &dyn Fn(u32) -> Vec<Value>,
 ) {
     if text.is_empty() {
@@ -1023,13 +1078,14 @@ fn push_text_rows(
     let text = text.replace("\r\n", "\n");
     for (at, runs) in colour(&text, file, paint).iter().enumerate() {
         let no = first.saturating_add(u32::try_from(at).unwrap_or(u32::MAX));
-        let (numerals, pointed) = points_on(no);
+        let (numerals, lit_by) = points_on(no);
         out.push(Line::Code(Row {
             no,
             kind,
             numerals,
-            pointed,
+            lit_by,
             ground,
+            accent: legible(palette.accent, ground, LEGIBLE),
             spans: inked(runs, ground, palette),
             values: values_on(no),
         }));
@@ -1116,7 +1172,7 @@ fn ledger_of(pane: &Pane) -> Vec<Held> {
             row.values.iter().map(|value| Held {
                 pane: label.clone(),
                 line: row.no,
-                numeral: row.numerals.first().copied(),
+                numeral: row.lit_by.first().copied(),
                 at: value.at.clone(),
                 is: value.is.clone(),
                 lit: value.lit,
@@ -1721,7 +1777,8 @@ mod tests {
         let row = |no: u32| batch.iter().find(|r| r.no == no).unwrap();
         assert_eq!(row(143).numerals, [1]);
         assert_eq!(row(145).numerals, [2]);
-        assert!(row(144).pointed && row(146).pointed && row(145).pointed);
+        assert_eq!(row(145).lit_by, [1, 2]);
+        assert!(!row(144).lit_by.is_empty() && !row(146).lit_by.is_empty());
         assert!(row(144).numerals.is_empty());
     }
 
@@ -1791,8 +1848,90 @@ mod tests {
     #[test]
     fn the_pages_own_words_are_legible_too() {
         let inks = document().inks;
-        for ink in [inks.text, inks.muted, inks.accent] {
-            assert!(ink.contrast(inks.band) >= LEGIBLE);
+        for (words, ground) in [
+            (inks.on_page, inks.page),
+            (inks.on_band, inks.band),
+            (inks.on_pane, inks.pane),
+        ] {
+            for ink in [words.text, words.muted, words.accent] {
+                assert!(ink.contrast(ground) >= LEGIBLE);
+            }
+        }
+    }
+
+    #[test]
+    fn a_value_inside_a_long_point_keeps_that_points_numeral_in_the_ledger() {
+        // The fixture's value on 146 sits inside 143-146 once the first point
+        // spans them.
+        let doc = deck_saying("All of it.[point 143-146]", None);
+        let held: Vec<(u32, Option<u32>)> = doc.groups[0]
+            .ledger
+            .iter()
+            .map(|h| (h.line, h.numeral))
+            .collect();
+        assert_eq!(held, [(143, Some(1)), (146, Some(1))]);
+    }
+
+    #[test]
+    fn a_character_the_narration_already_uses_is_never_taken_for_a_point() {
+        // A Powerline glyph and a Yi syllable, both already in the text.
+        let (prose, _, _) = read_alone("Icon \u{e0a0} and \u{a000} here.[point 143]");
+        assert_eq!(numerals_in(&prose[0]), [1]);
+        let text: String = prose[0]
+            .iter()
+            .filter_map(|run| match run {
+                Run::Text { text, .. } => Some(text.as_str()),
+                Run::Point { .. } => None,
+            })
+            .collect();
+        assert!(text.contains('\u{e0a0}') && text.contains('\u{a000}'));
+    }
+
+    #[test]
+    fn a_mark_around_nothing_but_a_point_is_no_mark() {
+        let (prose, _, _) = read_alone("C ` [point 144] ` d and A *[point 143]* b.");
+        assert!(prose[0].iter().all(|run| match run {
+            Run::Text { text, mark, .. } => !(text.trim().is_empty() && mark.is_some()),
+            Run::Point { .. } => true,
+        }));
+    }
+
+    #[test]
+    fn an_underscore_beside_a_point_stays_inside_its_word() {
+        // The window drops the point and reads `x_word_` and `_snake_tail`,
+        // neither of them emphasis.
+        let (prose, _, _) = read_alone("x[point 143]_word_ and _snake_[point 144]tail.");
+        assert!(prose[0].iter().all(|run| !matches!(
+            run,
+            Run::Text {
+                mark: Some(Marked::Emphasis),
+                ..
+            }
+        )));
+    }
+
+    #[test]
+    fn a_point_that_starts_above_the_range_starts_where_it_starts() {
+        let doc = deck_saying("From above.[point 136-141]", None);
+        let batch = rows(&doc.groups[0].panes[0]);
+        let row = |no: u32| batch.iter().find(|r| r.no == no).unwrap();
+        assert_eq!(row(136).numerals, [1]);
+        assert!(matches!(row(136).kind, RowKind::Context { .. }));
+        assert_eq!(row(138).lit_by, [1]);
+        assert!(row(139).numerals.is_empty() && row(141).lit_by == [1]);
+        assert!(row(142).lit_by.is_empty());
+    }
+
+    #[test]
+    fn every_row_carries_an_accent_legible_on_its_ground() {
+        for group in &document().groups {
+            for pane in &group.panes {
+                if let Pane::Code(_) = pane {
+                    for row in rows(pane) {
+                        assert!(row.accent.contrast(row.ground) >= LEGIBLE);
+                    }
+                }
+            }
         }
     }
 
