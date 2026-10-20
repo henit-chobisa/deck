@@ -48,6 +48,20 @@ pub fn diagram(diagram: &Diagram, palette: &Palette, fonts: Fonts) -> String {
         right = right.max(frame.at.right());
         bottom = bottom.max(frame.at.bottom());
     }
+    // And the margin a frame keeps everywhere else, on any side it passed.
+    let margin = geometry::CLUSTER_PAD;
+    if left < 0. {
+        left -= margin;
+    }
+    if top < 0. {
+        top -= margin;
+    }
+    if right > plan.width {
+        right += margin;
+    }
+    if bottom > plan.height {
+        bottom += margin;
+    }
     let (w, h) = (right - left, bottom - top);
     let title = diagram.title.as_deref().unwrap_or("diagram");
     let mut out = String::new();
