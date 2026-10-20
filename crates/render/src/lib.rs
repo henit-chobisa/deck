@@ -65,6 +65,37 @@ pub fn language_of(file: &Path) -> &'static str {
     }
 }
 
+/// Where a value for `name` goes on `text`: right after the first time the
+/// name appears as a whole word, or at the line's end if it never does.
+///
+/// A whole word, because a plain search for `id` found it inside `markPaid`
+/// and hung the value on the function's name.
+#[must_use]
+pub fn after_name(text: &str, name: &str) -> usize {
+    whole_word(text, name).unwrap_or(text.len())
+}
+
+/// Where `name` first ends in `text` as a whole word, if it does at all.
+#[must_use]
+pub fn whole_word(text: &str, name: &str) -> Option<usize> {
+    let word =
+        |ch: Option<char>| ch.is_some_and(|ch| ch.is_alphanumeric() || ch == '_' || ch == '$');
+    let mut from = 0;
+    while let Some(found) = text[from..].find(name) {
+        let start = from + found;
+        let end = start + name.len();
+        let before = text[..start].chars().next_back();
+        let after = text[end..].chars().next();
+        let starts_word = !word(name.chars().next()) || !word(before);
+        let ends_word = !word(name.chars().next_back()) || !word(after);
+        if starts_word && ends_word {
+            return Some(end);
+        }
+        from = start + name.len().max(1);
+    }
+    None
+}
+
 /// One kind of token, and how it is painted.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Capture {

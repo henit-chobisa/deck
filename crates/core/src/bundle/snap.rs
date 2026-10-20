@@ -40,6 +40,12 @@ pub struct File {
     /// The entry its kept lines are in, as `snap/1.txt`.
     pub entry: String,
     /// The sha256 of the whole file as it was read, in hex.
+    ///
+    /// Empty, and left out of the index, where the deck holds only part of
+    /// what it was packed with — an export of some of its groups — since the
+    /// hash of a whole file a reader holds a piece of lets them check a
+    /// guess at the rest.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
     pub sha256: String,
     /// The commit it was read at, when it was in a git repo.
     #[serde(default, skip_serializing_if = "Option::is_none")]

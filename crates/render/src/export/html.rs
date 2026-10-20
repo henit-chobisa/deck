@@ -34,10 +34,10 @@ use deck_core::theme::{LEGIBLE, Rgb, legible};
 
 use super::{Options, face};
 use crate::metrics::{
-    BAND_BOTTOM, BAND_GAP, BAND_SIDE, BAND_TOP, CHIP_SIZE, CONFIDENCE_SIZE, DECK_TITLE_SIZE,
-    LINE_HEIGHT, MONO_SIZE, NUMBER_SIZE, NUMBER_SIZE_TENS, PROSE_LEADING, PROSE_SIZE,
-    PROSE_SPACING, RAIL, RAIL_LEADING, RAIL_SIZE, SANS_SIZE, STEM, STEM_GAP, STRIP_GAP, STRIP_ROW,
-    STRIP_SIDE, STRIP_SIZE, TITLE_SIZE,
+    BAND_BOTTOM, BAND_GAP, BAND_LEAST, BAND_MOST, BAND_SIDE, BAND_TOP, CHIP_SIZE, CONFIDENCE_SIZE,
+    DECK_TITLE_SIZE, LINE_HEIGHT, MONO_SIZE, NUMBER_SIZE, NUMBER_SIZE_TENS, PROSE_LEADING,
+    PROSE_SIZE, PROSE_SPACING, RAIL, RAIL_LEADING, RAIL_SIZE, SANS_SIZE, STEM, STEM_GAP, STRIP_GAP,
+    STRIP_ROW, STRIP_SIDE, STRIP_SIZE, TITLE_SIZE,
 };
 use crate::svg::base64;
 use crate::text::{MONO, PLEX};
@@ -46,13 +46,6 @@ use crate::text::{MONO, PLEX};
 /// the window opens a pane two lines above it, and a page has the room for
 /// one more.
 const CONTEXT_SHOWN: u32 = 3;
-
-/// The shortest the band is, as the window sets it when nobody has dragged
-/// it: room for a short narration to breathe.
-const BAND_LEAST: f32 = 231.;
-
-/// The tallest it grows before its prose scrolls.
-const BAND_MOST: f32 = 300.;
 
 /// How far a context line's ink is taken toward its ground: back a step from
 /// the range, never so far it stops being legible.
@@ -297,7 +290,7 @@ h2{{margin:0;font-size:{TITLE_SIZE}px;font-weight:600;color:var(--band-text);whi
 .row .no{{text-align:right;padding-right:12px;color:var(--pane-muted);font-variant-numeric:tabular-nums}}
 .row .t{{white-space:pre-wrap;overflow-wrap:anywhere}}
 .row .it{{font-style:italic}}
-.val{{margin-left:14px;font-size:11px;white-space:nowrap}}
+.val{{margin:0 6px 0 8px;font-size:11px;white-space:nowrap}}
 .val.lit{{font-weight:400;text-decoration:underline;text-underline-offset:3px}}
 .gap{{padding:1px 0 1px 78px;font-size:11px;color:var(--pane-muted)}}
 .missing{{padding:12px 16px;font-size:12px;color:var(--pane-muted)}}
@@ -505,7 +498,7 @@ impl Writer<'_> {
         self.out.push_str("</div>\n");
     }
 
-    fn header(&mut self, id: &str, name: Option<&str>, what: &str, note: Option<&str>) {
+    fn header(&mut self, name: Option<&str>, what: &str, note: Option<&str>) {
         let _ = write!(
             self.out,
             "<div class=\"ph\">{}<span class=\"file\">{}</span></div>",
@@ -516,7 +509,6 @@ impl Writer<'_> {
         if let Some(note) = note {
             let _ = write!(self.out, "<div class=\"note\">{}</div>", esc(note));
         }
-        let _ = id;
     }
 
     fn code(&mut self, code: &Code) {
@@ -535,7 +527,7 @@ impl Writer<'_> {
             Some(Change::Made) => format!("{range} · changed"),
             None => range,
         };
-        self.header(&code.id, code.name.as_deref(), &what, code.note.as_deref());
+        self.header(code.name.as_deref(), &what, code.note.as_deref());
         if code.missing {
             let _ = writeln!(
                 self.out,
@@ -555,8 +547,11 @@ impl Writer<'_> {
                     );
                 }
                 Line::Code(row) => {
-                    if matches!(row.kind, RowKind::Context { distance } if distance > CONTEXT_SHOWN)
-                    {
+                    // Far context goes, but never a row a point lights or
+                    // starts on: a point can start well above its range, and
+                    // its numeral and its lit lines are the point.
+                    let far = matches!(row.kind, RowKind::Context { distance } if distance > CONTEXT_SHOWN);
+                    if far && row.numerals.is_empty() && row.lit_by.is_empty() {
                         continue;
                     }
                     self.row(row, true);
@@ -614,6 +609,19 @@ impl Writer<'_> {
             row.no
         );
         let context = matches!(row.kind, RowKind::Context { .. });
+        // A single value goes inline, right after the first time its name
+        // is on the line, or at the line's end when it is not, as the window
+        // places it; a value with keys gets a row of its own under the line.
+        let text: String = row.spans.iter().map(|span| span.text.as_str()).collect();
+        let mut inlays: Vec<(usize, &deck_core::protocol::Value)> = row
+            .values
+            .iter()
+            .filter(|value| value.keys.is_empty())
+            .map(|value| (crate::after_name(&text, &value.at), value))
+            .collect();
+        inlays.sort_by_key(|(at, _)| *at);
+        let mut inlays = inlays.into_iter().peekable();
+        let mut at = 0;
         for span in &row.spans {
             // Context a step back from the range, as the window washes it,
             // and never past legible.
@@ -624,22 +632,64 @@ impl Writer<'_> {
             };
             let class = self.ink(ink);
             let italic = if span.italic { " it" } else { "" };
-            let _ = write!(
-                self.out,
-                "<span class=\"{class}{italic}\">{}</span>",
-                esc(&span.text)
-            );
+            let end = at + span.text.len();
+            let mut from = at;
+            // A value lands inside a run wherever its name ends there; the
+            // run is cut around it and goes on after.
+            while let Some(&(place, value)) = inlays.peek()
+                && place < end
+            {
+                let cut = place.max(from) - at;
+                if cut > from - at {
+                    let _ = write!(
+                        self.out,
+                        "<span class=\"{class}{italic}\">{}</span>",
+                        esc(&span.text[from - at..cut])
+                    );
+                }
+                self.value(value, &accent);
+                from = at + cut;
+                inlays.next();
+            }
+            if from < end {
+                let _ = write!(
+                    self.out,
+                    "<span class=\"{class}{italic}\">{}</span>",
+                    esc(&span.text[from - at..])
+                );
+            }
+            at = end;
         }
-        for value in &row.values {
-            let lit = if value.lit { " lit" } else { "" };
+        for (_, value) in inlays {
+            self.value(value, &accent);
+        }
+        self.out.push_str("</span></div>");
+        let indent = text.len() - text.trim_start().len();
+        for value in row.values.iter().filter(|value| !value.keys.is_empty()) {
             let _ = write!(
                 self.out,
-                "<span class=\"val{lit} {accent}\">{} = {}</span>",
+                "<div class=\"row preview {ground}\">{}<span class=\"no\"></span>\
+                 <span class=\"t\">{}<span class=\"{accent}\">↳ {} ▸ {}</span></span></div>",
+                if margin {
+                    "<span class=\"at\"></span><span class=\"bar\"></span>"
+                } else {
+                    ""
+                },
+                " ".repeat(indent),
                 esc(&value.at),
                 esc(&value.is)
             );
         }
-        self.out.push_str("</span></div>");
+    }
+
+    /// One value, inline on its line, in the row's accent.
+    fn value(&mut self, value: &deck_core::protocol::Value, accent: &str) {
+        let lit = if value.lit { " lit" } else { "" };
+        let _ = write!(
+            self.out,
+            "<span class=\"val{lit} {accent}\">{}</span>",
+            esc(&value.is)
+        );
     }
 
     fn picture(&mut self, picture: &Picture) {
@@ -649,7 +699,6 @@ impl Writer<'_> {
             anchor(&picture.id)
         );
         self.header(
-            &picture.id,
             picture.name.as_deref(),
             picture.note.as_deref().unwrap_or("diagram"),
             None,
@@ -688,7 +737,7 @@ impl Writer<'_> {
             anchor(&page.id)
         );
         let label = page.note.as_deref().unwrap_or("page");
-        self.header(&page.id, page.name.as_deref(), label, None);
+        self.header(page.name.as_deref(), label, None);
         let _ = writeln!(
             self.out,
             "<iframe class=\"page\" sandbox=\"\" referrerpolicy=\"no-referrer\" title=\"{}\" \
@@ -775,12 +824,21 @@ impl Writer<'_> {
                     Pane::Code(code) if &code.id == id => Some(code),
                     _ => None,
                 })
-                .flat_map(|code| code.lines.iter())
-                .filter_map(|line| match line {
-                    Line::Code(row) if range.contains(row.no) && row.kind != RowKind::Arriving => {
-                        Some(row.clone())
-                    }
-                    _ => None,
+                .flat_map(|code| {
+                    // The remark is about the lines in the file, as the window
+                    // takes it: for a change already made those are what
+                    // arrived, and for anything else what is there now.
+                    let other = if code.change == Some(Change::Made) {
+                        RowKind::Going
+                    } else {
+                        RowKind::Arriving
+                    };
+                    code.lines.iter().filter_map(move |line| match line {
+                        Line::Code(row) if range.contains(row.no) && row.kind != other => {
+                            Some(row.clone())
+                        }
+                        _ => None,
+                    })
                 })
                 .take(3)
                 .collect(),

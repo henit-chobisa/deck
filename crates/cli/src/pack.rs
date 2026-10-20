@@ -423,6 +423,45 @@ fn regather(dir: &Path, options: &Options) -> anyhow::Result<Packing> {
     Ok(packing)
 }
 
+/// A `.deck` file someone already made, opened and taken as the bundle it is,
+/// then scanned as anything about to leave the machine is.
+///
+/// Opening checked that nothing in it changed since it was packed, not that
+/// nothing in it is a secret: a file from somebody else, or one packed by a
+/// build with fewer rules, is passed on by whatever exports it. The scan is
+/// pack's, and so is what lets a hit through — a fingerprint the manifest
+/// already records, or one in `options.allow`. Nothing in it can be
+/// missing, so `allow_missing` has nothing to apply to.
+///
+/// # Errors
+///
+/// When its header does not parse.
+pub fn opened(bundle: Bundle, options: &Options) -> anyhow::Result<Packing> {
+    let header = bundle.header().map_err(|err| anyhow::anyhow!("{err}"))?;
+    let snapped = bundle
+        .snapshots()
+        .map_err(|err| anyhow::anyhow!("{err}"))?
+        .into_iter()
+        .map(|snapshot| snapshot.file)
+        .collect();
+    let name = default_name(&header.title, &bundle.manifest.created);
+    let mut packing = Packing {
+        bundle,
+        name,
+        snapped,
+        outside: Vec::new(),
+        missing: Vec::new(),
+        hits: Vec::new(),
+        allowed: Vec::new(),
+        unused: Vec::new(),
+        left: Vec::new(),
+        repacked: true,
+        allow_missing: options.allow_missing,
+    };
+    packing.screen(&options.allow);
+    Ok(packing)
+}
+
 /// Every file under `dir` that a `.deck` file holds, by its name inside it
 /// with forward slashes; the names of everything else, and of every link,
 /// go in `left`.
@@ -1638,7 +1677,8 @@ fn strings(value: &serde_json::Value, path: &str, each: &mut dyn FnMut(&str, &st
 
 /// Every entry of a bundle scanned, a snapshot's hits placed at their line
 /// in the source file rather than in the entry.
-fn scan_bundle(files: &BTreeMap<String, Vec<u8>>) -> Vec<Hit> {
+#[must_use]
+pub fn scan_bundle(files: &BTreeMap<String, Vec<u8>>) -> Vec<Hit> {
     let index: Option<snap::Index> = files
         .get("snap/index.json")
         .and_then(|bytes| serde_json::from_slice(bytes).ok());

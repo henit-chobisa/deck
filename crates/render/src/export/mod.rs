@@ -89,13 +89,23 @@ pub fn deck(
 /// `bundle` holding only the groups numbered in `chosen`, or all of it when
 /// `chosen` is empty or names every group.
 ///
-/// The chosen groups keep their files and their names. The code that goes
-/// with them is what they still need — the spans of a frozen file their
-/// refs, their remarks and their moments land in — and every other span,
-/// and every file none of them needs, is left out, because a span kept
-/// for another group's range is that group's code. The review keeps the
-/// chosen groups' remarks and moments; what was said about the deck as a
-/// whole goes only with the whole deck, since it may be about any of it.
+/// - **The groups**, renumbered `g1.json` on in the deck's order. The
+///   protocol reads nothing from a group's file name but that it is one
+///   (`g*.json`), so the names can close up. The ids inside — `g2`, `g2r1` —
+///   stay as they are: the review's remarks and moments, and every ref, are
+///   tied to them, and they say only where a group stood, never what the
+///   others said.
+/// - **The code**, kept again from nothing: each range a chosen group still
+///   needs — its refs, its remarks', its moments' — with
+///   [`snap::CONTEXT`] lines either side, merged, and cut to what the deck
+///   holds. Not the spans the deck was packed with, which were merged across
+///   every group, so a span kept around one group's range held the next
+///   group's code too. A file none of them needs is left out, and every
+///   file's whole-file hash with it: the hash of a file the recipient holds
+///   only part of lets them check a guess at the rest.
+/// - **The review**, holding only the chosen groups' remarks and moments.
+///   What was said about the deck as a whole may be about any of it, so it
+///   goes only with the whole deck.
 ///
 /// # Errors
 ///
@@ -109,7 +119,15 @@ pub fn only(bundle: &Bundle, chosen: &[u32]) -> Result<Bundle, String> {
 
     let malformed = |err: deck_core::bundle::Unreadable| err.to_string();
     let groups = bundle.groups().map_err(malformed)?;
-    // The group files in the order `groups` reads them: by their number.
+    let kept: Vec<bool> = (1..=groups.len())
+        .map(|n| u32::try_from(n).is_ok_and(|n| chosen.is_empty() || chosen.contains(&n)))
+        .collect();
+    if kept.iter().all(|&keep| keep) {
+        return Ok(bundle.clone());
+    }
+
+    // The group files in the order `groups` reads them, by their number, so
+    // each is carried as the bytes it was packed as.
     let mut names: Vec<(u32, &String)> = bundle
         .files
         .keys()
@@ -119,21 +137,21 @@ pub fn only(bundle: &Bundle, chosen: &[u32]) -> Result<Bundle, String> {
         })
         .collect();
     names.sort();
-    let kept: Vec<bool> = (1..=groups.len())
-        .map(|n| u32::try_from(n).is_ok_and(|n| chosen.is_empty() || chosen.contains(&n)))
-        .collect();
-    if kept.iter().all(|&keep| keep) {
-        return Ok(bundle.clone());
-    }
-
     let mut out = bundle.clone();
+    out.files
+        .retain(|name, _| !name.starts_with("deck/g") && !name.starts_with("snap/"));
     let mut ids = Vec::new();
-    for ((group, (_, name)), &keep) in groups.iter().zip(&names).zip(&kept) {
-        if keep {
-            ids.push(group.id.clone());
-        } else {
-            out.files.remove(*name);
-        }
+    for ((group, (_, name)), _) in groups
+        .iter()
+        .zip(&names)
+        .zip(&kept)
+        .filter(|(_, keep)| **keep)
+    {
+        ids.push(group.id.clone());
+        out.files.insert(
+            format!("deck/g{}.json", ids.len()),
+            bundle.files[*name].clone(),
+        );
     }
     let path = |file: &std::path::Path| file.to_string_lossy().replace('\\', "/");
 
@@ -169,25 +187,23 @@ pub fn only(bundle: &Bundle, chosen: &[u32]) -> Result<Bundle, String> {
         );
     }
 
-    // The frozen code, cut to the spans those ranges land in, renumbered.
-    let snapshots = bundle.snapshots().map_err(malformed)?;
-    out.files.retain(|name, _| !name.starts_with("snap/"));
     let mut index = snap::Index::default();
-    for snapshot in snapshots {
+    for snapshot in bundle.snapshots().map_err(malformed)? {
         let Some(ranges) = needed.get(&snapshot.file.path) else {
             continue;
         };
-        let spans: Vec<LineRange> = snapshot
-            .file
-            .kept
-            .iter()
-            .copied()
-            .filter(|span| {
-                ranges
-                    .iter()
-                    .any(|range| range.first <= span.last && span.first <= range.last)
-            })
-            .collect();
+        // Kept as `deck pack` keeps, from these ranges alone, then cut to
+        // the lines the deck has: a line it never held cannot be given.
+        let wanted = merged(ranges, snap::CONTEXT);
+        let mut spans: Vec<LineRange> = Vec::new();
+        for want in &wanted {
+            for held in &snapshot.file.kept {
+                let (first, last) = (want.first.max(held.first), want.last.min(held.last));
+                if first <= last {
+                    spans.push(LineRange::new(first, last));
+                }
+            }
+        }
         if spans.is_empty() {
             continue;
         }
@@ -201,6 +217,7 @@ pub fn only(bundle: &Bundle, chosen: &[u32]) -> Result<Bundle, String> {
         index.files.push(snap::File {
             entry,
             kept: spans,
+            sha256: String::new(),
             ..snapshot.file
         });
     }
@@ -211,6 +228,33 @@ pub fn only(bundle: &Bundle, chosen: &[u32]) -> Result<Bundle, String> {
         );
     }
     Ok(out)
+}
+
+/// `ranges`, each widened by `context` lines (never above line one), sorted
+/// and merged wherever two touch: what [`snap::keep`] keeps, without the
+/// file.
+fn merged(ranges: &[deck_core::line::LineRange], context: u32) -> Vec<deck_core::line::LineRange> {
+    use deck_core::line::LineRange;
+    let mut wide: Vec<LineRange> = ranges
+        .iter()
+        .map(|range| {
+            LineRange::new(
+                range.first.saturating_sub(context).max(1),
+                range.last.saturating_add(context),
+            )
+        })
+        .collect();
+    wide.sort_by_key(|range| range.first);
+    let mut out: Vec<LineRange> = Vec::new();
+    for range in wide {
+        match out.last_mut() {
+            Some(last) if range.first <= last.last.saturating_add(1) => {
+                last.last = last.last.max(range.last);
+            }
+            _ => out.push(range),
+        }
+    }
+    out
 }
 
 /// The groups `--groups` names: numbers and ranges, joined by commas, as

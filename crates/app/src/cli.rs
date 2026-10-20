@@ -499,12 +499,14 @@ enum What {
         /// Replace a file already at that path.
         #[arg(long)]
         force: bool,
-        /// Let one secret-scanner hit through when a directory is packed, by
-        /// the fingerprint the refusal printed. As `deck pack --allow`.
+        /// Let one secret-scanner hit through, by the fingerprint the refusal
+        /// printed, as `deck pack --allow`. A `.deck` file is scanned again
+        /// too, and what its manifest already let through stays let through.
         #[arg(long, value_name = "FINGERPRINT")]
         allow: Vec<String>,
-        /// Export even when a file the deck points at cannot be read, as
-        /// `deck pack --allow-missing`. Its panes say so.
+        /// Export a deck directory even when a file it points at cannot be
+        /// read, as `deck pack --allow-missing`; its panes say so. A `.deck`
+        /// file has nothing missing for this to apply to.
         #[arg(long)]
         allow_missing: bool,
     },
@@ -994,9 +996,21 @@ fn export(asked: &Exporting) -> anyhow::Result<PathBuf> {
         None => Vec::new(),
     };
 
-    // A file is opened; a directory is packed first, exactly as `deck pack`
-    // packs it, so what goes into the page is what would go into a `.deck`.
-    let (bundle, name) = if asked.deck.is_file() {
+    // A file is opened and scanned; a directory is packed first, exactly as
+    // `deck pack` packs it. Either way what goes into the page is what would
+    // go into a `.deck`, and it is refused in pack's words.
+    let options = deck_cli::pack::Options {
+        allow: asked.allow.clone(),
+        allow_missing: asked.allow_missing,
+        ..deck_cli::pack::Options::default()
+    };
+    let packing = if asked.deck.is_file() {
+        if asked.allow_missing {
+            eprintln!(
+                "deck: --allow-missing is for a deck directory: a .deck file holds \
+                 whatever it was packed with, and nothing in it can be missing"
+            );
+        }
         let bytes = std::fs::read(asked.deck)
             .map_err(|err| anyhow::anyhow!("cannot read {}: {err}", asked.deck.display()))?;
         let (bundle, ignored) = deck_core::bundle::Bundle::open(&bytes)
@@ -1004,26 +1018,26 @@ fn export(asked: &Exporting) -> anyhow::Result<PathBuf> {
         for name in &ignored {
             eprintln!("deck: {name} is from a newer deck, and was left out");
         }
-        let header = bundle
-            .header()
-            .map_err(|err| anyhow::anyhow!("{}: {err}", asked.deck.display()))?;
-        let name = deck_cli::pack::default_name(&header.title, &bundle.manifest.created);
-        (bundle, name)
+        deck_cli::pack::opened(bundle, &options)
+            .map_err(|err| anyhow::anyhow!("{}: {err}", asked.deck.display()))?
     } else {
-        let options = deck_cli::pack::Options {
-            allow: asked.allow.clone(),
-            allow_missing: asked.allow_missing,
-            ..deck_cli::pack::Options::default()
-        };
-        let packing = deck_cli::pack::gather(asked.deck, &options)?;
-        if let Some(why) = packing.refusal() {
-            anyhow::bail!(why);
-        }
-        for note in packing.notes() {
-            eprintln!("deck: {note}");
-        }
-        (packing.bundle, packing.name)
+        deck_cli::pack::gather(asked.deck, &options)?
     };
+    if let Some(why) = packing.refusal() {
+        anyhow::bail!(why);
+    }
+    for note in packing.notes() {
+        eprintln!("deck: {note}");
+    }
+    let (bundle, name) = (packing.bundle, packing.name);
+    // A group that is not there is a typo, not a request for nothing.
+    let count = bundle.groups().map_err(anyhow::Error::msg)?.len();
+    if let Some(n) = groups
+        .iter()
+        .find(|&&n| usize::try_from(n).is_ok_and(|n| n > count))
+    {
+        anyhow::bail!("`{n}` is not a group: this deck has {count}");
+    }
     let name = format!("{}.html", name.trim_end_matches(".deck"));
 
     let (palette, dark, syntax) = export_theme(asked.theme)?;
@@ -2103,6 +2117,93 @@ mod tests {
                 ..
             }
         ));
+    }
+
+    /// A `.deck` file written by hand, holding `say` as its one group's
+    /// narration, in `dir`.
+    fn hand_built(dir: &std::path::Path, say: &str) -> PathBuf {
+        let group = serde_json::json!({ "id": "g1", "say": say }).to_string();
+        let mut files = std::collections::BTreeMap::new();
+        files.insert(
+            "deck/deck.json".to_string(),
+            br#"{"v":1,"id":"d-1","title":"A deck from somebody else"}"#.to_vec(),
+        );
+        files.insert("deck/g1.json".to_string(), group.into_bytes());
+        let bundle = deck_core::bundle::Bundle {
+            manifest: deck_core::bundle::Manifest {
+                container: deck_core::bundle::CONTAINER,
+                protocol: 1,
+                created: "2026-10-20T09:30:00Z".to_string(),
+                generator: "deck test".to_string(),
+                repo: None,
+                entries: std::collections::BTreeMap::new(),
+                allowed: Vec::new(),
+            },
+            files,
+        };
+        let path = dir.join("hand.deck");
+        std::fs::write(&path, bundle.pack().expect("packs")).expect("writes");
+        path
+    }
+
+    fn exporting<'a>(deck: &'a std::path::Path, out: &'a std::path::Path) -> Exporting<'a> {
+        Exporting {
+            deck,
+            format: None,
+            theme: "dark",
+            groups: None,
+            comments: true,
+            out: Some(out),
+            force: false,
+            allow: Vec::new(),
+            allow_missing: false,
+        }
+    }
+
+    /// A `.deck` file is scanned again before it is exported: opening it
+    /// proved nobody changed it, not that nothing in it is a secret. A hit
+    /// is refused in pack's words, and its fingerprint lets it through.
+    #[test]
+    fn a_deck_file_is_scanned_before_it_is_exported() {
+        let dir = tempfile::tempdir().expect("a temp dir");
+        // Put together here, so no whole token is ever in the source.
+        let token = format!("ghp_{}", "a1B2".repeat(9));
+        let deck = hand_built(dir.path(), &format!("The token is {token} in the config."));
+        let out = dir.path().join("out.html");
+        let err = export(&exporting(&deck, &out)).expect_err("refused");
+        let said = err.to_string();
+        assert!(said.contains("refusing to pack"), "{said}");
+        assert!(!out.exists());
+        let fingerprint = said
+            .split("--allow ")
+            .nth(1)
+            .and_then(|rest| rest.split_whitespace().next())
+            .expect("a fingerprint to pass")
+            .to_string();
+        let path = export(&Exporting {
+            allow: vec![fingerprint],
+            ..exporting(&deck, &out)
+        })
+        .expect("let through");
+        assert!(
+            std::fs::read_to_string(path)
+                .unwrap()
+                .contains("Powered by Deck")
+        );
+    }
+
+    /// A group that is not in the deck is a typo, and said as one.
+    #[test]
+    fn a_group_the_deck_does_not_have_is_refused() {
+        let dir = tempfile::tempdir().expect("a temp dir");
+        let deck = hand_built(dir.path(), "Nothing secret here.");
+        let out = dir.path().join("out.html");
+        let err = export(&Exporting {
+            groups: Some("1,9"),
+            ..exporting(&deck, &out)
+        })
+        .expect_err("refused");
+        assert_eq!(err.to_string(), "`9` is not a group: this deck has 1");
     }
 
     /// A PDF is asked for in either of the two ways, and either way it is

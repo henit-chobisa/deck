@@ -261,20 +261,13 @@ impl Divide {
 /// lines of prose, which is what most groups carry.
 const BAND_NATURAL: f32 = 168.;
 
-/// The shortest the band is on its own: room for a short narration to
-/// breathe, and for the review column beside it to show a handful of rows.
-const BAND_LEAST: f32 = 231.;
-
-/// The tallest the band grows on its own before its prose scrolls.
-const BAND_MOST: f32 = 300.;
-
 // The group's number and the line that hangs from it, the band's padding and
 // its type, the rail and the strip: measured once, in `deck_render::metrics`,
 // so a page an export prints is the band this draws.
 use deck_render::metrics::{
-    BAND_BOTTOM, BAND_GAP, BAND_SIDE, BAND_TOP, CONFIDENCE_SIZE, DECK_TITLE_SIZE, NUMBER_SIZE,
-    NUMBER_SIZE_TENS, RAIL, SANS_SIZE, STEM, STEM_GAP, STRIP_GAP, STRIP_ROW, STRIP_SIDE,
-    STRIP_SIZE, TITLE_SIZE,
+    BAND_BOTTOM, BAND_GAP, BAND_LEAST, BAND_MOST, BAND_SIDE, BAND_TOP, CONFIDENCE_SIZE,
+    DECK_TITLE_SIZE, NUMBER_SIZE, NUMBER_SIZE_TENS, RAIL, SANS_SIZE, STEM, STEM_GAP, STRIP_GAP,
+    STRIP_ROW, STRIP_SIDE, STRIP_SIZE, TITLE_SIZE,
 };
 
 /// What a remark is about.

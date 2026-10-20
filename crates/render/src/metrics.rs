@@ -30,6 +30,13 @@ pub const STEM: f32 = 30.;
 /// prose under them keeps too, so the three share one left edge.
 pub const STEM_GAP: f32 = 14.;
 
+/// The shortest the band is on its own: room for a short narration to
+/// breathe, and for the review column beside it to show a handful of rows.
+pub const BAND_LEAST: f32 = 231.;
+
+/// The tallest the band grows on its own before its prose scrolls.
+pub const BAND_MOST: f32 = 300.;
+
 /// The band's padding above the group's number and titles.
 pub const BAND_TOP: f32 = 15.;
 
@@ -111,6 +118,8 @@ mod tests {
             (SANS_SIZE, 13.2),
             (STEM, 30.),
             (STEM_GAP, 14.),
+            (BAND_LEAST, 231.),
+            (BAND_MOST, 300.),
             (BAND_TOP, 15.),
             (BAND_SIDE, 18.),
             (BAND_GAP, 9.),
