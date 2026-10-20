@@ -20,6 +20,7 @@
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
+use deck_core::LineRange;
 use deck_core::protocol::{Group, Header, VERSION};
 
 /// The file the agent writes when the deck is finished.
@@ -47,6 +48,146 @@ pub struct Deck {
     /// When each group's questions were last renewed, as the file says: a
     /// renewal is noticed by its time changing, not by reading it every poll.
     renewed: HashMap<String, (std::time::SystemTime, u64)>,
+    /// What came with the deck when it was opened from a `.deck` file, and
+    /// `None` for a deck folder an agent wrote here.
+    pub packed: Option<Packed>,
+}
+
+/// A deck opened from a `.deck` file: the code it carries, where it came
+/// from, and whether the reader is looking at its copy or their own.
+#[derive(Clone)]
+pub struct Packed {
+    /// Which file, and where its review goes.
+    pub origin: deck_cli::opened::Origin,
+    /// Every source file the deck carries, by the path its refs name.
+    snapshots: HashMap<String, std::sync::Arc<deck_core::bundle::snap::Snapshot>>,
+    /// How the repo the reader is in stands against the deck's.
+    pub repo: deck_cli::opened::Match,
+    /// Whether the panes show the reader's working copy rather than the
+    /// deck's. Off until they ask: the deck's copy is what they were sent,
+    /// and the code the claims were written about.
+    pub live: bool,
+}
+
+impl Packed {
+    /// What `deck open` found when it opened the deck folder at `root`, or
+    /// `None` for a folder that did not come from a file.
+    ///
+    /// The repo is asked about the directory the reader is in, once, here: a
+    /// reader does not change repo under an open window, and asking git on
+    /// every pane would be a process per file for an answer that does not
+    /// change.
+    #[must_use]
+    pub fn of(root: &Path) -> Option<Self> {
+        let origin = deck_cli::opened::origin(root)?;
+        let manifest = deck_cli::opened::manifest(root);
+        let repo = std::env::current_dir().map_or(deck_cli::opened::Match::Elsewhere, |cwd| {
+            deck_cli::opened::matching(
+                &cwd,
+                manifest
+                    .as_ref()
+                    .and_then(|manifest| manifest.repo.as_ref()),
+                None,
+            )
+        });
+        let snapshots = deck_cli::opened::snapshots(root)
+            .into_iter()
+            .map(|snapshot| (snapshot.file.path.clone(), std::sync::Arc::new(snapshot)))
+            .collect();
+        Some(Self {
+            origin,
+            snapshots,
+            repo,
+            live: false,
+        })
+    }
+
+    /// The top of the reader's checkout, when it is the repo the deck came
+    /// from — at any commit — and so has the deck's files to offer.
+    #[must_use]
+    pub fn checkout(&self) -> Option<&Path> {
+        match &self.repo {
+            deck_cli::opened::Match::Same { root, .. }
+            | deck_cli::opened::Match::Moved { root, .. } => Some(root),
+            deck_cli::opened::Match::Elsewhere => None,
+        }
+    }
+
+    /// The deck's own copy of `file`, whichever side the panes are showing.
+    #[must_use]
+    pub fn frozen(&self, file: &Path) -> Option<Source> {
+        self.snapshots
+            .get(&file.to_string_lossy().replace('\\', "/"))
+            .map(|snapshot| Source::frozen(snapshot))
+    }
+
+    /// The file's name, as the strip shows it.
+    #[must_use]
+    pub fn name(&self) -> String {
+        self.origin
+            .file
+            .file_name()
+            .map_or_else(String::new, |name| name.to_string_lossy().into_owned())
+    }
+}
+
+/// Where a pane's code comes from, and what can honestly be shown of it.
+///
+/// It used to be a string, and when a file could not be read the string was
+/// the error — so the reason a file was missing was drawn as if it were the
+/// file, numbered, highlighted and selectable. A pane has three different
+/// things to draw, and each is its own case here.
+#[derive(Clone)]
+pub enum Source {
+    /// The deck's own copy, from a `.deck` file: only the spans it kept.
+    Snapshot {
+        /// The file numbered as it was whole, up to the last line kept, with
+        /// the lines it did not keep left empty — so line `n` is still line
+        /// `n`, and everything that counts lines counts the real ones.
+        text: std::sync::Arc<str>,
+        /// The spans kept, in order and apart.
+        kept: std::sync::Arc<[LineRange]>,
+        /// How many lines the whole file had, when the deck says.
+        lines: Option<u32>,
+    },
+    /// The file as it is on disk now.
+    Live(std::sync::Arc<str>),
+    /// Nothing to show.
+    Missing {
+        /// The file, as the ref names it.
+        file: PathBuf,
+        /// The rest of the sentence after its name: ` is not in this deck.`
+        said: std::sync::Arc<str>,
+        /// Whether the reader's checkout has the file to offer instead.
+        live: bool,
+    },
+}
+
+impl Source {
+    /// The text a pane is built from: empty for a file that is missing.
+    #[must_use]
+    pub fn text(&self) -> &str {
+        match self {
+            Self::Snapshot { text, .. } | Self::Live(text) => text,
+            Self::Missing { .. } => "",
+        }
+    }
+
+    /// The deck's copy of `snapshot`, numbered as the whole file was.
+    #[must_use]
+    pub fn frozen(snapshot: &deck_core::bundle::snap::Snapshot) -> Self {
+        let last = snapshot.file.kept.last().map_or(0, |span| span.last);
+        let mut text = String::new();
+        for n in 1..=last {
+            text.push_str(snapshot.line(n).unwrap_or_default());
+            text.push('\n');
+        }
+        Self::Snapshot {
+            text: text.into(),
+            kept: snapshot.file.kept.clone().into(),
+            lines: snapshot.file.lines,
+        }
+    }
 }
 
 impl Deck {
@@ -86,6 +227,7 @@ impl Deck {
             seen: HashSet::new(),
             sealed: false,
             renewed: HashMap::new(),
+            packed: Packed::of(path),
         };
         deck.refresh();
         Ok(deck)
@@ -228,20 +370,65 @@ fn readable(sorted: &[Group]) -> usize {
         .count()
 }
 
+impl Deck {
+    /// The code a ref names, from wherever this deck reads it.
+    ///
+    /// A deck folder reads the file on disk. A deck from a `.deck` file reads
+    /// its own copy first — what the reader was sent, and the code the claims
+    /// are about — and the reader's checkout only once they have asked for
+    /// it. A file it does not carry is said to be missing rather than looked
+    /// for anywhere else: the same path in some other directory is somebody
+    /// else's file.
+    #[must_use]
+    pub fn read_source(&self, file: &Path) -> Source {
+        let Some(packed) = &self.packed else {
+            return read_source(&self.base(), file);
+        };
+        let checkout = packed.checkout();
+        if packed.live
+            && let Some(checkout) = checkout
+        {
+            return match read_source(checkout, file) {
+                Source::Missing { file, .. } => Source::Missing {
+                    file,
+                    said: " is not in your checkout.".into(),
+                    live: false,
+                },
+                found => found,
+            };
+        }
+        let named = file.to_string_lossy().replace('\\', "/");
+        match packed.snapshots.get(&named) {
+            Some(snapshot) => Source::frozen(snapshot),
+            None => Source::Missing {
+                file: file.to_path_buf(),
+                said: " is not in this deck.".into(),
+                live: checkout.is_some(),
+            },
+        }
+    }
+}
+
 /// The text of a code ref, and whether it could be read.
 ///
 /// A missing file is shown as a pane saying so. A deck that silently drops the
 /// evidence for its own claim is worse than one that admits the file has moved.
 #[must_use]
-pub fn read_source(base: &Path, file: &Path) -> String {
+pub fn read_source(base: &Path, file: &Path) -> Source {
     let full = if file.is_absolute() {
         file.to_path_buf()
     } else {
         base.join(file)
     };
 
-    std::fs::read_to_string(&full)
-        .unwrap_or_else(|err| format!("could not read {}\n\n{err}", full.display()))
+    match std::fs::read_to_string(&full) {
+        Ok(text) => Source::Live(text.into()),
+        Err(err) => Source::Missing {
+            file: file.to_path_buf(),
+            said: format!(" could not be read: {err}.").into(),
+            live: false,
+        },
+    }
 }
 
 /// A title as it is shown: capitalised at the front, as [`Deck::title`] says.
@@ -257,6 +444,129 @@ pub fn heading(title: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    use deck_core::bundle::snap;
+
+    /// The deck's copy of a 60-line file, kept around lines 30–31.
+    fn frozen() -> snap::Snapshot {
+        let source: String = (1..=60).map(|n| format!("line {n}\n")).collect();
+        let (kept, text) = snap::keep(&source, &[LineRange::new(30, 31)], 5);
+        snap::Snapshot {
+            file: snap::File {
+                path: "src/batch.ts".to_string(),
+                entry: "snap/1.txt".to_string(),
+                sha256: String::new(),
+                commit: None,
+                state: snap::State::Untracked,
+                kept,
+                lines: Some(60),
+            },
+            text,
+        }
+    }
+
+    /// A deck from a file carrying [`frozen`], read from `cwd`'s point of view.
+    fn packed(checkout: Option<&Path>, live: bool) -> Deck {
+        let snapshot = frozen();
+        let repo = checkout.map_or(deck_cli::opened::Match::Elsewhere, |root| {
+            deck_cli::opened::Match::Moved {
+                packed: "a1b2c3d".to_string(),
+                head: "9f8e7d6".to_string(),
+                root: root.to_path_buf(),
+            }
+        });
+        Deck {
+            root: PathBuf::from("/nowhere/deck"),
+            header: serde_json::from_str(r#"{"v":1,"id":"d-1","title":"t"}"#).expect("a header"),
+            arrived: Vec::new(),
+            ready: 0,
+            seen: HashSet::new(),
+            sealed: true,
+            renewed: HashMap::new(),
+            packed: Some(Packed {
+                origin: deck_cli::opened::Origin {
+                    file: PathBuf::from("/shelf/batch.deck"),
+                    review: PathBuf::from("/shelf/batch.review"),
+                },
+                snapshots: [(snapshot.file.path.clone(), std::sync::Arc::new(snapshot))]
+                    .into_iter()
+                    .collect(),
+                repo,
+                live,
+            }),
+        }
+    }
+
+    #[test]
+    fn a_packed_deck_serves_its_own_copy_first() {
+        let dir = tempfile::tempdir().expect("a temp dir");
+        std::fs::create_dir_all(dir.path().join("src")).expect("a folder");
+        std::fs::write(dir.path().join("src/batch.ts"), "the checkout\n").expect("a file");
+        // Inside the repo, and the checkout has the file — and still the
+        // deck's copy is what comes back until the reader asks.
+        let deck = packed(Some(dir.path()), false);
+
+        let Source::Snapshot { text, kept, lines } = deck.read_source(Path::new("src/batch.ts"))
+        else {
+            panic!("the deck's copy");
+        };
+        assert_eq!(&*kept, &[LineRange::new(25, 36)]);
+        assert_eq!(lines, Some(60));
+        let numbered: Vec<&str> = text.lines().collect();
+        assert_eq!(numbered.len(), 36, "numbered up to the last line kept");
+        assert_eq!(numbered[29], "line 30", "line 30 is line 30");
+        assert_eq!(numbered[0], "", "a line it did not keep is empty");
+    }
+
+    #[test]
+    fn shown_live_it_reads_the_checkout() {
+        let dir = tempfile::tempdir().expect("a temp dir");
+        std::fs::create_dir_all(dir.path().join("src")).expect("a folder");
+        std::fs::write(dir.path().join("src/batch.ts"), "the checkout\n").expect("a file");
+        let deck = packed(Some(dir.path()), true);
+
+        let Source::Live(text) = deck.read_source(Path::new("src/batch.ts")) else {
+            panic!("the checkout");
+        };
+        assert_eq!(&*text, "the checkout\n");
+    }
+
+    #[test]
+    fn a_file_the_deck_does_not_carry_is_missing_and_offered_only_inside_the_repo() {
+        let outside = packed(None, false);
+        let Source::Missing { file, said, live } = outside.read_source(Path::new("src/flush.ts"))
+        else {
+            panic!("missing");
+        };
+        assert_eq!(file, Path::new("src/flush.ts"));
+        assert_eq!(&*said, " is not in this deck.");
+        assert!(!live, "no checkout, nothing to offer");
+
+        let dir = tempfile::tempdir().expect("a temp dir");
+        let inside = packed(Some(dir.path()), false);
+        assert!(matches!(
+            inside.read_source(Path::new("src/flush.ts")),
+            Source::Missing { live: true, .. }
+        ));
+        assert_eq!(inside.read_source(Path::new("src/flush.ts")).text(), "");
+    }
+
+    #[test]
+    fn a_deck_folder_reads_the_disk_and_says_when_it_cannot() {
+        let dir = tempfile::tempdir().expect("a temp dir");
+        std::fs::write(dir.path().join("a.rs"), "fn a() {}\n").expect("a file");
+        assert!(matches!(
+            read_source(dir.path(), Path::new("a.rs")),
+            Source::Live(text) if &*text == "fn a() {}\n"
+        ));
+        // Said, not shown as if it were the file.
+        let Source::Missing { said, live, .. } = read_source(dir.path(), Path::new("gone.rs"))
+        else {
+            panic!("missing");
+        };
+        assert!(said.starts_with(" could not be read"), "{said}");
+        assert!(!live);
+    }
     use deck_core::protocol::Group;
 
     fn group(ord: Option<u32>) -> Group {

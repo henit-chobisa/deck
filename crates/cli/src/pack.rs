@@ -332,6 +332,7 @@ pub fn gather(deck: &Path, options: &Options) -> anyhow::Result<Packing> {
             commit: commit.clone(),
             state,
             kept,
+            lines: u32::try_from(source.split_terminator('\n').count()).ok(),
         });
     }
     if !snapped.is_empty() {
@@ -928,20 +929,20 @@ pub fn clean_remote(remote: &str) -> Option<String> {
 }
 
 /// What git says about the repo a deck was written in.
-struct Git {
+pub(crate) struct Git {
     /// The top of the working tree, as git printed it.
-    root: String,
+    pub(crate) root: String,
     /// `HEAD`, when there is one.
-    commit: Option<String>,
+    pub(crate) commit: Option<String>,
     /// `origin`, as configured, credentials and all.
-    remote: Option<String>,
+    pub(crate) remote: Option<String>,
     /// See [`Options::ceiling`].
     ceiling: Option<PathBuf>,
 }
 
 impl Git {
     /// The repo `dir` is in, or `None` when there is no git or no repo.
-    fn find(dir: &Path, ceiling: Option<&Path>) -> Option<Self> {
+    pub(crate) fn find(dir: &Path, ceiling: Option<&Path>) -> Option<Self> {
         let root =
             git(dir, ceiling, &["rev-parse", "--show-toplevel"]).filter(|root| !root.is_empty())?;
         let at = Path::new(&root);

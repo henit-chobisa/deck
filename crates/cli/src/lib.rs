@@ -31,6 +31,7 @@ use std::path::{Path, PathBuf};
 use deck_core::protocol::{DiagramRef, Group, Header, Ref, RefSpec, Review, VERSION};
 
 pub mod live;
+pub mod opened;
 pub mod pack;
 pub mod refs;
 
@@ -1024,8 +1025,15 @@ pub fn reopened(root: &Path) {
 }
 
 /// Where the review for the deck at `root` will appear.
+///
+/// Beside the deck folder, as `<id>.review` — or, for a deck opened from a
+/// `.deck` file, wherever [`opened::review_to`] chose when it was opened:
+/// beside the file, so the answer sits next to the question it answers.
 #[must_use]
 pub fn review_path(root: &Path) -> PathBuf {
+    if let Some(origin) = opened::origin(root) {
+        return origin.review;
+    }
     let name = root
         .file_stem()
         .and_then(|name| name.to_str())

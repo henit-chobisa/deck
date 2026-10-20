@@ -483,6 +483,7 @@ mod tests {
                 commit: Some("a1b2c3d".to_string()),
                 state: snap::State::Clean,
                 kept,
+                lines: None,
             }],
         };
         let mut files = BTreeMap::new();

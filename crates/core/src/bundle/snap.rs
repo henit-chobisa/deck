@@ -48,6 +48,14 @@ pub struct File {
     pub state: State,
     /// The spans kept, in order, apart, and within the file.
     pub kept: Vec<LineRange>,
+    /// How many lines the whole file had, so a reader can say how much of it
+    /// lies past the last span kept — `lines 167–212 not in this deck` rather
+    /// than a row that cannot say where the file ends.
+    ///
+    /// Absent from a file packed before it was written down, and a reader
+    /// then says only that the lines go on.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lines: Option<u32>,
 }
 
 /// How a file stood against the commit a deck was packed at.
@@ -124,6 +132,9 @@ impl Snapshot {
             last = span.last;
             lines += u64::from(span.len());
         }
+        if self.file.lines.is_some_and(|lines| last > lines) {
+            return Err(format!("{path}: it keeps lines past the end of the file"));
+        }
         if !self.text.is_empty() && !self.text.ends_with('\n') {
             return Err(format!("{path}: its last kept line has no newline"));
         }
@@ -196,6 +207,7 @@ mod tests {
                 commit: None,
                 state: State::Clean,
                 kept,
+                lines: None,
             },
             text,
         }

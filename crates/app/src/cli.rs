@@ -32,11 +32,15 @@ enum What {
     /// they are ready to give a review, which is not the same moment as the
     /// agent being ready to ask for one.
     Open {
-        /// The `.deck` directories to show.
+        /// The `.deck` directories to show, or `.deck` files somebody sent.
         ///
         /// More than one is a queue: the bar says how many are waiting and the
         /// reader walks them. Five worktrees finishing at once is the case this
         /// is for.
+        ///
+        /// A file is opened into `~/.deck/opened/`, read-only, and shows the
+        /// code it carries. Its review is written beside it, as
+        /// `<name>.review`.
         #[arg(required = true)]
         deck: Vec<PathBuf>,
         /// Hand the window to a process of its own and return straight away.
@@ -555,6 +559,25 @@ fn prose(text: &str) -> Result<String, std::convert::Infallible> {
     Ok(deck_cli::real_breaks(text))
 }
 
+/// `deck open`'s paths, with every `.deck` file opened into the cache and
+/// replaced by the deck folder there. A directory is left as it is.
+///
+/// Opening is idempotent, so the process that is handed the window, which is
+/// given the same arguments, finds what this one wrote and uses it.
+fn unpacked(paths: Vec<PathBuf>) -> anyhow::Result<Vec<PathBuf>> {
+    paths
+        .into_iter()
+        .map(|path| {
+            if !path.is_file() {
+                return Ok(path);
+            }
+            let cache = deck_cli::opened::cache()
+                .ok_or_else(|| anyhow::anyhow!("there is no home directory to open it into"))?;
+            Ok(deck_cli::opened::open(&path, &cache)?.deck)
+        })
+        .collect()
+}
+
 /// Where decks go when nobody says otherwise.
 fn decks() -> PathBuf {
     deck_core::home::deck().unwrap_or_default().join("decks")
@@ -574,6 +597,17 @@ impl Cli {
                 mode,
                 theme,
             } => {
+                // A file is a packed deck, and the window reads folders: it is
+                // opened into the cache, checked, and the folder there is what
+                // is shown from here on. Before anything else, so every path
+                // below — the listener as much as the window — has the folder.
+                let deck = match unpacked(deck) {
+                    Ok(deck) => deck,
+                    Err(err) => {
+                        eprintln!("deck: {err:#}");
+                        return Err(ExitCode::FAILURE);
+                    }
+                };
                 // The file, then the flag over it. A flag is somebody trying
                 // something on; the file is what they decided.
                 let config = match crate::config::read() {
