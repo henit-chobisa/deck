@@ -19,7 +19,9 @@
 //! A diamond is not a rectangle and neither is an arrowhead, so the shapes and
 //! the arrows are painted through [`canvas`]. Everything with words in it —
 //! node labels, edge labels, cluster names — is an ordinary element laid over
-//! the top, so it wraps, takes the deck's face, and can be clicked.
+//! the top, so it takes the deck's face and can be clicked. Its lines are
+//! broken by [`deck_render::text`], not by the platform, so an export of the
+//! same diagram breaks them in the same places.
 //!
 //! The split is not incidental. A node is selectable, and a selected node is
 //! what a remark about a diagram is pinned to; that needs a real element with a
@@ -30,6 +32,7 @@ use deck_core::drawing;
 use deck_core::geometry::{self, GAP_X};
 use deck_core::protocol::DiagramRef;
 use deck_core::theme::Palette;
+use deck_render::text as words;
 use gpui_kit::component::scroll::Scrollbar;
 use gpui_kit::component::*;
 use gpui_kit::prelude::FluentBuilder as _;
@@ -38,6 +41,22 @@ use gpui_kit::*;
 use crate::palette::paint;
 use crate::sheet::Slot;
 use crate::view::DeckView;
+
+/// `text` as the lines deck breaks it into, one element each, so the window
+/// draws the breaks every export draws.
+///
+/// Text with characters Plex has no glyph for is left to the window to wrap:
+/// those are set in a fallback face from the machine, which deck cannot
+/// measure. See [`words::covers`].
+fn broken(text: &str, size: f32, weight: words::Weight, room: f32) -> Vec<AnyElement> {
+    if !words::covers(text) {
+        return vec![text.to_string().into_any_element()];
+    }
+    words::wrap(text, size, weight, room)
+        .into_iter()
+        .map(|line| div().whitespace_nowrap().child(line).into_any_element())
+        .collect()
+}
 
 /// Where one node ended up, in pixels.
 pub struct Spot {
@@ -646,6 +665,14 @@ impl Chart {
                 let view = view.clone();
 
                 let at = self.zb(body(spot.at, node.role));
+                // The room inside the shape. The inset is not zoomed: it is
+                // padding, and the window does not scale padding.
+                let room = f32::from(at.size.width) - 2. * drawing::inset(node.role);
+                let face = if node.weight == Weight::Accent {
+                    words::Weight::Semibold
+                } else {
+                    words::Weight::Regular
+                };
 
                 Some(
                     div()
@@ -678,8 +705,16 @@ impl Chart {
                         .line_height(self.z(px(15.)))
                         .text_color(paint(words))
                         .when(node.weight == Weight::Accent, |this| this.font_semibold())
-                        .child(node.label.clone())
+                        // One element for the label, so the gap below is
+                        // between the label and its note, never between lines.
+                        .child(div().children(broken(
+                            &node.label,
+                            f32::from(self.z(px(12.))),
+                            face,
+                            room,
+                        )))
                         .children(node.note.as_ref().map(|note| {
+                            let size = f32::from(self.z(px(10.5)));
                             div()
                                 // One line, cut short if it will not fit.
                                 //
@@ -692,12 +727,19 @@ impl Chart {
                                 // it is the name, and cutting a name short
                                 // loses the one thing the node is for.
                                 .w_full()
-                                .truncate()
                                 .text_center()
                                 .text_size(self.z(px(10.5)))
                                 .line_height(self.z(px(13.)))
                                 .text_color(paint(palette.muted))
-                                .child(note.clone())
+                                .map(|this| {
+                                    if words::covers(note) {
+                                        this.whitespace_nowrap()
+                                            .overflow_hidden()
+                                            .child(words::truncate(note, size, face, room))
+                                    } else {
+                                        this.truncate().child(note.clone())
+                                    }
+                                })
                         }))
                         .on_mouse_down(MouseButton::Left, {
                             move |_, _window, cx| {
@@ -738,6 +780,17 @@ impl Chart {
                 let flat = (f32::from(from.y) - f32::from(to.y)).abs()
                     < (f32::from(from.x) - f32::from(to.x)).abs();
 
+                // The widest the chip may be.
+                let widest = self.z(px(GAP_X + 16.));
+                let lines = broken(
+                    label,
+                    f32::from(self.z(px(10.))),
+                    words::Weight::Regular,
+                    f32::from(widest) - 8.,
+                );
+                // A label that wraps fills the chip, as wrapped text fills
+                // the width it was wrapped to; one line keeps to its words.
+                let wraps = lines.len() > 1;
                 let chip = div()
                     .px(px(4.))
                     .py(px(1.))
@@ -746,14 +799,15 @@ impl Chart {
                     // pixels. A label is meant to be a word or two — `writes`,
                     // `on submit` — and one that is not wraps rather than
                     // lying across the two nodes the arrow joins.
-                    .max_w(self.z(px(GAP_X + 16.)))
+                    .max_w(widest)
+                    .when(wraps, |this| this.w(widest))
                     .text_center()
                     // On the pane's own ground, so the line passes behind the
                     // words rather than through them.
                     .bg(paint(palette.wash))
                     .text_size(self.z(px(10.)))
                     .text_color(paint(palette.muted))
-                    .child(label.clone());
+                    .children(lines);
 
                 // Above the line when the run is horizontal, beside it when
                 // the run is vertical. Never *on* it.
