@@ -19,7 +19,10 @@
 //! A diamond is not a rectangle and neither is an arrowhead, so the shapes and
 //! the arrows are painted through [`canvas`]. Everything with words in it —
 //! node labels, edge labels, cluster names — is an ordinary element laid over
-//! the top, so it wraps, takes the deck's face, and can be clicked.
+//! the top, so it takes the deck's face and can be clicked. On a Mac, node
+//! labels, notes and edge labels are broken by [`deck_render::text`] rather
+//! than by the platform, so an export of the same diagram breaks them in the
+//! same places. Cluster names are one line and are left to the window.
 //!
 //! The split is not incidental. A node is selectable, and a selected node is
 //! what a remark about a diagram is pinned to; that needs a real element with a
@@ -30,6 +33,7 @@ use deck_core::drawing;
 use deck_core::geometry::{self, GAP_X};
 use deck_core::protocol::DiagramRef;
 use deck_core::theme::Palette;
+use deck_render::text as words;
 use gpui_kit::component::scroll::Scrollbar;
 use gpui_kit::component::*;
 use gpui_kit::prelude::FluentBuilder as _;
@@ -38,6 +42,86 @@ use gpui_kit::*;
 use crate::palette::paint;
 use crate::sheet::Slot;
 use crate::view::DeckView;
+
+/// Whether deck breaks `text` itself, or leaves it to the window.
+///
+/// Left to the window:
+///
+/// - **Off a Mac.** The agreement test checks deck's breaks against CoreText,
+///   and only on a Mac. DirectWrite and cosmic-text may shape the same words
+///   a little wider, and a line drawn unwrapped would then hang out of its
+///   box. Until a check runs there, they keep wrapping their own.
+/// - **Text Plex has no glyph for**, a newline and a tab included. It is set
+///   in a fallback face from the machine, which deck cannot measure. See
+///   [`words::covers`].
+fn ours(text: &str) -> bool {
+    cfg!(target_os = "macos") && words::covers(text)
+}
+
+/// A width as layout really gives it: rounded to the device pixel grid, half
+/// a pixel toward zero, as GPUI rounds every length before laying out.
+///
+/// Labels are broken against the room inside a box, and at a zoom that is
+/// not a whole number that room is fractional. Unrounded, a note that fits
+/// by a tenth of a pixel was cut by the box instead of with an ellipsis.
+fn snap(width: f32, scale: f32) -> f32 {
+    ((width * scale).abs() - 0.5).ceil().copysign(width) / scale
+}
+
+impl Chart {
+    /// `text` as the lines deck breaks it into, one element each, so the
+    /// window draws the breaks every export draws. See [`ours`].
+    fn broken(&self, text: &str, size: f32, weight: words::Weight, room: f32) -> Vec<AnyElement> {
+        if !ours(text) {
+            return vec![text.to_string().into_any_element()];
+        }
+        self.remember(text, false, size, weight, room)
+            .into_iter()
+            .map(|line| div().whitespace_nowrap().child(line).into_any_element())
+            .collect()
+    }
+
+    /// Drop every broken line unless they were broken at this zoom and scale.
+    ///
+    /// A pinch zooms by a new factor on every frame, and each one is a new
+    /// size and a new room for every label, so kept forever the cache grew
+    /// by a diagram's worth of lines a frame.
+    fn forget_unless(&self, scale: f32) {
+        let at = (self.zoom.to_bits(), scale.to_bits());
+        let mut lines = self.lines.borrow_mut();
+        if lines.at != at {
+            lines.by.clear();
+            lines.at = at;
+        }
+    }
+
+    /// `text` broken to `room`, or cut to one line when `cut`, from
+    /// [`Self::lines`] when it has been done before.
+    fn remember(
+        &self,
+        text: &str,
+        cut: bool,
+        size: f32,
+        weight: words::Weight,
+        room: f32,
+    ) -> Vec<String> {
+        let mut lines = self.lines.borrow_mut();
+        let by = lines
+            .by
+            .entry((cut, size.to_bits(), weight as u8, room.to_bits()))
+            .or_default();
+        if let Some(done) = by.get(text) {
+            return done.clone();
+        }
+        let done = if cut {
+            vec![words::truncate(text, size, weight, room)]
+        } else {
+            words::wrap(text, size, weight, room)
+        };
+        by.insert(text.to_string(), done.clone());
+        done
+    }
+}
 
 /// Where one node ended up, in pixels.
 pub struct Spot {
@@ -168,7 +252,28 @@ pub struct Chart {
     /// `None` while nothing is playing, which is every diagram's resting
     /// state — a picture with a path through it is still a picture first.
     pub playing: Option<Playing>,
+    /// Lines already broken, by how they were broken and then by the text.
+    ///
+    /// Shaping is not free, and the picture is redrawn on every frame of a
+    /// drag, a zoom or a flow playing. The window's own text cache did this
+    /// for it before deck broke its own lines. Only one zoom's worth is kept:
+    /// see [`Self::forget_unless`].
+    lines: std::cell::RefCell<Lines>,
 }
+
+/// Broken lines, keyed by how — whether cut to one line rather than wrapped,
+/// the size, the weight and the room, sizes as bits so they hash — and then
+/// by the text, so a lookup needs no owned key.
+#[derive(Default)]
+struct Lines {
+    /// The zoom and scale they were broken at, as bits.
+    at: (u32, u32),
+    by: std::collections::HashMap<How, std::collections::HashMap<String, Vec<String>>>,
+}
+
+/// How a set of lines was broken: cut to one line or wrapped, then the size,
+/// the weight and the room.
+type How = (bool, u32, u8, u32);
 
 /// A flow part-way through.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -213,6 +318,7 @@ impl Chart {
             zoom: 1.,
             nudge: point(px(0.), px(0.)),
             playing: None,
+            lines: std::cell::RefCell::default(),
         }
     }
 
@@ -295,7 +401,7 @@ impl Chart {
             // had no height to fill, so the picture went and the buttons went
             // with it.
             .relative()
-            .child(self.render_drawing(slot.ix, palette, slot.view))
+            .child(self.render_drawing(slot.ix, palette, slot.view, slot.scale))
             .children(self.render_flows(slot.ix, palette, slot.view))
             .children(self.render_pace(slot.ix, palette, slot.view, slot.pace))
             // The pane being talked about, outlined — as a code pane is. A
@@ -390,7 +496,9 @@ impl Chart {
         pane_ix: usize,
         palette: &Palette,
         view: &WeakEntity<DeckView>,
+        scale: f32,
     ) -> impl IntoElement {
+        self.forget_unless(scale);
         let sheet = div()
             .id(("chart", pane_ix))
             .size_full()
@@ -480,8 +588,8 @@ impl Chart {
                                     .h(self.z(self.plan.size.height))
                                     .child(self.paint(palette))
                                     .children(self.cluster_names(palette))
-                                    .children(self.edge_labels(palette))
-                                    .children(self.node_labels(pane_ix, palette, view)),
+                                    .children(self.edge_labels(palette, scale))
+                                    .children(self.node_labels(pane_ix, palette, view, scale)),
                             ),
                     ),
             );
@@ -631,6 +739,7 @@ impl Chart {
         pane_ix: usize,
         palette: &Palette,
         view: &WeakEntity<DeckView>,
+        scale: f32,
     ) -> Vec<AnyElement> {
         self.plan
             .spots
@@ -646,6 +755,15 @@ impl Chart {
                 let view = view.clone();
 
                 let at = self.zb(body(spot.at, node.role));
+                // The room inside the shape. The inset is not zoomed: it is
+                // padding, and the window does not scale padding.
+                let room = snap(f32::from(at.size.width), scale)
+                    - 2. * snap(drawing::inset(node.role), scale);
+                let face = if node.weight == Weight::Accent {
+                    words::Weight::Semibold
+                } else {
+                    words::Weight::Regular
+                };
 
                 Some(
                     div()
@@ -678,8 +796,16 @@ impl Chart {
                         .line_height(self.z(px(15.)))
                         .text_color(paint(words))
                         .when(node.weight == Weight::Accent, |this| this.font_semibold())
-                        .child(node.label.clone())
+                        // One element for the label, so the gap below is
+                        // between the label and its note, never between lines.
+                        .child(div().children(self.broken(
+                            &node.label,
+                            f32::from(self.z(px(12.))),
+                            face,
+                            room,
+                        )))
                         .children(node.note.as_ref().map(|note| {
+                            let size = f32::from(self.z(px(10.5)));
                             div()
                                 // One line, cut short if it will not fit.
                                 //
@@ -692,12 +818,18 @@ impl Chart {
                                 // it is the name, and cutting a name short
                                 // loses the one thing the node is for.
                                 .w_full()
-                                .truncate()
                                 .text_center()
                                 .text_size(self.z(px(10.5)))
                                 .line_height(self.z(px(13.)))
                                 .text_color(paint(palette.muted))
-                                .child(note.clone())
+                                .map(|this| {
+                                    if ours(note) {
+                                        let cut = self.remember(note, true, size, face, room);
+                                        this.whitespace_nowrap().overflow_hidden().children(cut)
+                                    } else {
+                                        this.truncate().child(note.clone())
+                                    }
+                                })
                         }))
                         .on_mouse_down(MouseButton::Left, {
                             move |_, _window, cx| {
@@ -713,7 +845,7 @@ impl Chart {
     }
 
     /// What each arrow is claiming, where it turns.
-    fn edge_labels(&self, palette: &Palette) -> Vec<AnyElement> {
+    fn edge_labels(&self, palette: &Palette, scale: f32) -> Vec<AnyElement> {
         self.plan
             .routes
             .iter()
@@ -738,6 +870,17 @@ impl Chart {
                 let flat = (f32::from(from.y) - f32::from(to.y)).abs()
                     < (f32::from(from.x) - f32::from(to.x)).abs();
 
+                // The widest the chip may be.
+                let widest = self.z(px(GAP_X + 16.));
+                let lines = self.broken(
+                    label,
+                    f32::from(self.z(px(10.))),
+                    words::Weight::Regular,
+                    snap(f32::from(widest), scale) - 2. * snap(4., scale),
+                );
+                // A label that wraps fills the chip, as wrapped text fills
+                // the width it was wrapped to; one line keeps to its words.
+                let wraps = lines.len() > 1;
                 let chip = div()
                     .px(px(4.))
                     .py(px(1.))
@@ -746,14 +889,15 @@ impl Chart {
                     // pixels. A label is meant to be a word or two — `writes`,
                     // `on submit` — and one that is not wraps rather than
                     // lying across the two nodes the arrow joins.
-                    .max_w(self.z(px(GAP_X + 16.)))
+                    .max_w(widest)
+                    .when(wraps, |this| this.w(widest))
                     .text_center()
                     // On the pane's own ground, so the line passes behind the
                     // words rather than through them.
                     .bg(paint(palette.wash))
                     .text_size(self.z(px(10.)))
                     .text_color(paint(palette.muted))
-                    .child(label.clone());
+                    .children(lines);
 
                 // Above the line when the run is horizontal, beside it when
                 // the run is vertical. Never *on* it.
@@ -1233,6 +1377,17 @@ mod tests {
 
     /// A chart over a bare diagram, for the things a chart does to a picture
     /// rather than the things the layout does to it.
+    #[test]
+    fn a_width_snaps_as_layout_rounds_it() {
+        // 171.6 at 2x is 343.2 device pixels, which layout makes 343.
+        assert!((snap(171.6, 2.) - 171.5).abs() < 1e-4);
+        // Half a device pixel goes toward zero, not up.
+        assert!((snap(10.25, 2.) - 10.).abs() < 1e-4);
+        assert!((snap(10.5, 1.) - 10.).abs() < 1e-4);
+        // A whole width is left alone.
+        assert!((snap(156., 2.) - 156.).abs() < 1e-4);
+    }
+
     fn charted(ids: &[&str], edges: &[(&str, &str)]) -> Chart {
         Chart::new(&deck_core::DiagramRef {
             id: "d1".to_string(),
