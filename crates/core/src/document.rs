@@ -88,6 +88,8 @@ pub struct Document {
     pub repo: Option<Repo>,
     /// When it was packed, as the manifest has it.
     pub created: String,
+    /// The colours the page itself is set in, each legible on its ground.
+    pub inks: Inks,
     /// One line per group, for a contents page.
     pub contents: Vec<Entry>,
     /// The groups, in order.
@@ -95,6 +97,46 @@ pub struct Document {
     /// What was said that belongs to no group, for a closing section.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub general: Vec<Message>,
+}
+
+/// The colours a document's own words are set in.
+///
+/// Code carries its colours run by run. These are for everything else — the
+/// narration, the numerals, the labels — taken from the same palette and
+/// lifted to [`LEGIBLE`] on the ground each is printed on.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub struct Inks {
+    /// The page.
+    pub page: Rgb,
+    /// The narration's band, and the contents' ground.
+    pub band: Rgb,
+    /// A code pane at rest.
+    pub pane: Rgb,
+    /// Words, on the band.
+    pub text: Rgb,
+    /// Quieter words — labels, a confidence's basis — on the band.
+    pub muted: Rgb,
+    /// The accent as words: numerals, chips, on the band.
+    pub accent: Rgb,
+    /// Hairlines between things.
+    pub edge: Rgb,
+}
+
+impl Inks {
+    /// The inks of `palette`, each made legible on the band it is set on.
+    #[must_use]
+    pub fn of(palette: &Palette) -> Self {
+        let band = palette.band;
+        Self {
+            page: palette.bg,
+            band,
+            pane: palette.wash,
+            text: legible(palette.fg, band, LEGIBLE),
+            muted: legible(palette.muted, band, LEGIBLE),
+            accent: legible(palette.accent, band, LEGIBLE),
+            edge: palette.edge,
+        }
+    }
 }
 
 /// A group, as a contents page lists it.
@@ -109,8 +151,10 @@ pub struct Entry {
     pub confidence: Option<Confidence>,
     /// Its panes' names, in the order the group shows them.
     pub panes: Vec<String>,
-    /// How many things were said about it.
+    /// How many remarks the reader made about it.
     pub remarks: usize,
+    /// How many answers the agent gave about it.
+    pub answers: usize,
 }
 
 /// One group, laid out.
@@ -148,6 +192,10 @@ pub enum Run {
         /// How they are marked.
         #[serde(skip_serializing_if = "Option::is_none")]
         mark: Option<Marked>,
+        /// The id of the pane a pane's name stands for, so a format can
+        /// link the word to it.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pane: Option<String>,
     },
     /// The numeral a point carries into the margin.
     Point {
@@ -213,7 +261,8 @@ pub struct Code {
     pub change: Option<Change>,
     /// The rows to print, in order.
     pub lines: Vec<Line>,
-    /// The file was not in the deck, so there are no lines to print.
+    /// The deck does not hold these lines — the file, or the part of it the
+    /// range names, was not frozen into it — so there is nothing to print.
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub missing: bool,
 }
@@ -248,9 +297,13 @@ pub struct Row {
     pub no: u32,
     /// What it is to the pane.
     pub kind: RowKind,
-    /// The numeral of the point that lands on it, if one does.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub numeral: Option<u32>,
+    /// The numerals of the points whose lines start here: printed in the
+    /// margin once, on a point's first line, however many lines it lights.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub numerals: Vec<u32>,
+    /// Whether a point lights this line, first or not.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub pointed: bool,
     /// The ground it is printed on.
     pub ground: Rgb,
     /// Its text in coloured runs, every colour legible on `ground`.
@@ -304,7 +357,16 @@ pub struct Picture {
     pub svg: String,
     /// The blocks points land on, with their numerals.
     #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub marks: Vec<(String, u32)>,
+    pub marks: Vec<Marker>,
+}
+
+/// A numeral on a picture's block or a page's name.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct Marker {
+    /// The block's id, or the name the page answers to.
+    pub block: String,
+    /// The point's numeral.
+    pub numeral: u32,
 }
 
 /// A page pane.
@@ -322,7 +384,7 @@ pub struct Page {
     pub html: String,
     /// The names points land on, with their numerals.
     #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub marks: Vec<(String, u32)>,
+    pub marks: Vec<Marker>,
 }
 
 /// One value a line held, for a group's ledger.
@@ -352,6 +414,9 @@ pub struct Message {
     /// The pane it was about, if one.
     #[serde(rename = "ref", skip_serializing_if = "Option::is_none")]
     pub ref_id: Option<String>,
+    /// What that pane is called on the page: its name, or what it shows.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pane: Option<String>,
     /// The lines it was about, if any.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub range: Option<LineRange>,
@@ -408,6 +473,30 @@ pub fn build(
         let argument = said.remove(&group.id).unwrap_or_default();
         built.push(group_of(n, group, argument, &by_file, palette, paint));
     }
+    // Each remark names the pane it was about as the page does.
+    let labels: BTreeMap<String, String> = built
+        .iter()
+        .flat_map(|group| group.panes.iter())
+        .map(|pane| {
+            let id = match pane {
+                Pane::Code(code) => code.id.clone(),
+                Pane::Diagram(picture) => picture.id.clone(),
+                Pane::Page(page) => page.id.clone(),
+            };
+            (id, pane_label(pane))
+        })
+        .collect();
+    let mut general = general;
+    for message in built
+        .iter_mut()
+        .flat_map(|group| group.argument.iter_mut())
+        .chain(general.iter_mut())
+    {
+        message.pane = message
+            .ref_id
+            .as_ref()
+            .and_then(|id| labels.get(id).cloned());
+    }
     let contents = built
         .iter()
         .map(|group| Entry {
@@ -415,13 +504,23 @@ pub fn build(
             title: group.title.clone(),
             confidence: group.confidence.clone(),
             panes: group.panes.iter().map(pane_label).collect(),
-            remarks: group.argument.len(),
+            remarks: group
+                .argument
+                .iter()
+                .filter(|m| m.author == Author::Reader)
+                .count(),
+            answers: group
+                .argument
+                .iter()
+                .filter(|m| m.author == Author::Agent)
+                .count(),
         })
         .collect();
     Ok(Document {
         title: header.title,
         repo: bundle.manifest.repo.clone(),
         created: bundle.manifest.created.clone(),
+        inks: Inks::of(palette),
         contents,
         groups: built,
         general,
@@ -499,6 +598,11 @@ fn group_of(
             .trim()
             .to_string()
     });
+    let title = if title.is_empty() {
+        format!("Group {n}")
+    } else {
+        title
+    };
     Group {
         n,
         id: group.id.clone(),
@@ -516,16 +620,25 @@ fn path_of(spec: &RefSpec) -> String {
     spec.file.to_string_lossy().replace('\\', "/")
 }
 
+/// Where the placeholders for points start: the private-use area, which no
+/// narration writes and every parser treats as an ordinary letter.
+const HOLD: u32 = 0xE000;
+/// How many points a group can carry, the size of that area.
+const HOLDS: usize = 6400;
+
 /// The narration as paragraphs of runs, every point it makes with its
 /// numeral and its landing, and the order in which it reaches the refs.
+///
+/// Read whole, as the window reads it, rather than cut at each point: a point
+/// can sit inside a chip or between two halves of a bold phrase, and cutting
+/// there would break the mark it sits in. So each point is swapped for one
+/// placeholder character first, the paragraphs are parsed with their marks
+/// intact, and the placeholder is swapped back for the numeral.
 fn read(
     say: &str,
     refs: &[Ref],
     line_count: &dyn Fn(&RefSpec) -> Option<u32>,
 ) -> (Vec<Vec<Run>>, Vec<Landed>, Vec<usize>) {
-    let mut paragraphs: Vec<Vec<Run>> = Vec::new();
-    let mut landed: Vec<Landed> = Vec::new();
-    let mut reached: Vec<usize> = Vec::new();
     let named = |name: &str| {
         refs.iter().position(|r| {
             let own = match r {
@@ -537,10 +650,10 @@ fn read(
         })
     };
 
-    // The narration in pieces, cut at each point, the points between them.
-    let mut pieces: Vec<(String, Option<Spot>)> = Vec::new();
+    // Every point the window would light, swapped for a placeholder.
+    let mut spots: Vec<Spot> = Vec::new();
+    let mut held = String::with_capacity(say.len());
     let mut rest = say;
-    let mut piece = String::new();
     while let Some(at) = rest.find(prose::POINT) {
         let after = &rest[at + prose::POINT.len()..];
         let Some(end) = after.find(']') else {
@@ -548,83 +661,114 @@ fn read(
         };
         match prose::spot(&after[..end]) {
             Some(spot) => {
-                piece.push_str(&rest[..at]);
-                pieces.push((std::mem::take(&mut piece), Some(spot)));
+                held.push_str(&rest[..at]);
+                if spots.len() < HOLDS {
+                    let code = HOLD + u32::try_from(spots.len()).unwrap_or(0);
+                    held.extend(char::from_u32(code));
+                    spots.push(spot);
+                }
                 rest = &after[end + 1..];
             }
             None => {
-                piece.push_str(&rest[..at + prose::POINT.len()]);
+                held.push_str(&rest[..at + prose::POINT.len()]);
                 rest = after;
             }
         }
     }
-    piece.push_str(rest);
-    pieces.push((piece, None));
+    held.push_str(rest);
 
-    for (text, spot) in pieces {
-        let fresh = text.trim_start_matches([' ', '\t']).starts_with("\n\n");
-        // The parse trims each piece, so the space between a point and the
-        // sentence after it has to be put back, or the margin numeral runs
-        // into the next word.
-        let spaced = !fresh && text.starts_with(char::is_whitespace);
-        for (ix, paragraph) in prose::parse(&text).into_iter().enumerate() {
-            let continues = ix == 0 && !fresh && !paragraphs.is_empty();
-            if !continues {
-                paragraphs.push(Vec::new());
+    let mut landed: Vec<Landed> = Vec::new();
+    let mut reached: Vec<usize> = Vec::new();
+    // The numeral each placeholder becomes, or none for a point that lands
+    // nowhere: the window lights nothing for it, and a numeral in the
+    // sentence with nothing beside the code would send the reader looking.
+    let numerals: Vec<Option<u32>> = spots
+        .iter()
+        .map(|spot| {
+            if let Some(before) = landed.iter().find(|l| &l.spot == spot) {
+                return Some(before.numeral);
             }
-            let current = paragraphs.last_mut().expect("pushed above");
-            for (at, mut token) in paragraph.tokens.into_iter().enumerate() {
-                if continues && spaced && at == 0 {
-                    token.text.insert(0, ' ');
-                }
-                if token.mark == Some(Mark::Pane)
-                    && let Some(ix) = named(token.text.trim())
-                {
-                    reached.push(ix);
-                }
-                // Words marked alike run together: a format sets a run,
-                // not a word at a time.
-                let mark = token.mark.map(Marked::from);
-                match current.last_mut() {
-                    Some(Run::Text { text, mark: was }) if *was == mark => {
-                        text.push_str(&token.text);
+            let landing = prose::resolve_refs(spot, refs, line_count);
+            let panes: Vec<usize> = [landing.reading, landing.drawing, landing.paging]
+                .into_iter()
+                .flatten()
+                .collect();
+            if panes.is_empty() {
+                return None;
+            }
+            let numeral = u32::try_from(landed.len() + 1).unwrap_or(u32::MAX);
+            landed.push(Landed {
+                numeral,
+                spot: spot.clone(),
+                panes,
+            });
+            Some(numeral)
+        })
+        .collect();
+
+    let mut paragraphs: Vec<Vec<Run>> = Vec::new();
+    for paragraph in prose::parse(&held) {
+        let mut runs: Vec<Run> = Vec::new();
+        for token in paragraph.tokens {
+            let mark = token.mark.map(Marked::from);
+            let pane = (token.mark == Some(Mark::Pane))
+                .then(|| named(token.text.trim()))
+                .flatten();
+            let mut text = String::new();
+            for ch in token.text.chars() {
+                let hold = (ch as u32).checked_sub(HOLD).map(|n| n as usize);
+                match hold.filter(|&n| n < spots.len()) {
+                    Some(n) => {
+                        push_text(&mut runs, std::mem::take(&mut text), mark, pane, refs);
+                        if let Some(numeral) = numerals[n] {
+                            for landing in landed.iter().filter(|l| l.numeral == numeral) {
+                                reached.extend(&landing.panes);
+                            }
+                            runs.push(Run::Point { numeral });
+                        }
                     }
-                    _ => current.push(Run::Text {
-                        text: token.text,
-                        mark,
-                    }),
+                    None => text.push(ch),
                 }
             }
-        }
-        let Some(spot) = spot else { continue };
-        let numeral = match landed.iter().find(|l| l.spot == spot) {
-            Some(before) => before.numeral,
-            None => {
-                let landing = prose::resolve_refs(&spot, refs, line_count);
-                let panes: Vec<usize> = [landing.reading, landing.drawing, landing.paging]
-                    .into_iter()
-                    .flatten()
-                    .collect();
-                reached.extend(&panes);
-                let numeral = u32::try_from(landed.len() + 1).unwrap_or(u32::MAX);
-                landed.push(Landed {
-                    numeral,
-                    spot,
-                    panes,
-                });
-                numeral
+            if let Some(ix) = pane {
+                reached.push(ix);
             }
-        };
-        if paragraphs.is_empty() {
-            paragraphs.push(Vec::new());
+            push_text(&mut runs, text, mark, pane, refs);
         }
-        paragraphs
-            .last_mut()
-            .expect("pushed above")
-            .push(Run::Point { numeral });
+        if !runs.is_empty() {
+            paragraphs.push(runs);
+        }
     }
-    paragraphs.retain(|paragraph| !paragraph.is_empty());
     (paragraphs, landed, reached)
+}
+
+/// `text` added to the end of `runs`, run together with the run before it
+/// when both are plain, strong or emphasised alike. Chips and pane names
+/// stay one word to a run, as the window draws them, so two chips side by
+/// side are still two.
+fn push_text(
+    runs: &mut Vec<Run>,
+    text: String,
+    mark: Option<Marked>,
+    pane: Option<usize>,
+    refs: &[Ref],
+) {
+    if text.is_empty() {
+        return;
+    }
+    let joins = !matches!(mark, Some(Marked::Code | Marked::Pane));
+    match runs.last_mut() {
+        Some(Run::Text {
+            text: was,
+            mark: was_mark,
+            ..
+        }) if joins && *was_mark == mark => was.push_str(&text),
+        _ => runs.push(Run::Text {
+            text,
+            mark,
+            pane: pane.map(|ix| refs[ix].id().to_string()),
+        }),
+    }
 }
 
 fn pane_of(
@@ -635,11 +779,16 @@ fn pane_of(
     palette: &Palette,
     paint: &dyn Paint,
 ) -> Pane {
-    let marks = || -> Vec<(String, u32)> {
+    let marks = || -> Vec<Marker> {
         landed
             .iter()
             .filter(|l| l.panes.contains(&ix))
-            .filter_map(|l| l.spot.block.clone().map(|block| (block, l.numeral)))
+            .filter_map(|l| {
+                l.spot.block.clone().map(|block| Marker {
+                    block,
+                    numeral: l.numeral,
+                })
+            })
             .collect()
     };
     match r {
@@ -701,13 +850,25 @@ fn code_of(
     };
     let range = LineRange::new(spec.range.first, spec.range.last.min(span.last));
 
-    // Numerals by line, for the lines points land on in this pane.
-    let numeral_on = |line: u32, side: Side| {
+    // The points that land in this pane on one half of a change, and where
+    // each starts: the first of its lines this pane prints.
+    let here = |side: Side| -> Vec<(LineRange, u32)> {
         landed
             .iter()
             .filter(|l| l.panes.contains(&ix) && l.spot.side == side)
-            .find(|l| l.spot.lines.is_some_and(|lines| lines.contains(line)))
-            .map(|l| l.numeral)
+            .filter_map(|l| l.spot.lines.map(|lines| (lines, l.numeral)))
+            .collect()
+    };
+    let (going, arriving) = (here(Side::Going), here(Side::Arriving));
+    let starts = |points: &[(LineRange, u32)], line: u32, from: u32| -> Vec<u32> {
+        points
+            .iter()
+            .filter(|(lines, _)| lines.first.max(from) == line && lines.contains(line))
+            .map(|&(_, numeral)| numeral)
+            .collect()
+    };
+    let lit = |points: &[(LineRange, u32)], line: u32| {
+        points.iter().any(|(lines, _)| lines.contains(line))
     };
     let values_on = |line: u32, after: bool| -> Vec<Value> {
         spec.values
@@ -721,7 +882,7 @@ fn code_of(
     // comment that opens above the range is still one when it reaches it.
     let source = span_text(snapshot, span);
     let rows = colour(&source, &file, paint);
-    let row_of = |no: u32, kind: RowKind, numeral, values| {
+    let row_of = |no: u32, kind: RowKind, numerals: Vec<u32>, pointed: bool, values| {
         let ground = ground_of(kind, palette);
         let at = usize::try_from(no - span.first).unwrap_or(usize::MAX);
         let spans = rows
@@ -731,7 +892,8 @@ fn code_of(
         Line::Code(Row {
             no,
             kind,
-            numeral,
+            numerals,
+            pointed,
             ground,
             spans,
             values,
@@ -746,7 +908,8 @@ fn code_of(
             RowKind::Context {
                 distance: range.first - no,
             },
-            None,
+            Vec::new(),
+            false,
             Vec::new(),
         ));
     }
@@ -767,18 +930,20 @@ fn code_of(
             &file,
             palette,
             paint,
-            &|_| None,
+            // A bare point at a made change lights what went, as the
+            // window lights the going rows.
+            &|line| (starts(&going, line, range.first), lit(&going, line)),
             &|_| Vec::new(),
         );
     }
-    let marked = |no: u32| {
-        let side = if inside == RowKind::Arriving {
-            Side::Arriving
-        } else {
-            Side::Going
-        };
-        numeral_on(no, side).is_some() || !values_on(no, false).is_empty()
+    // The points that light the range itself: the arriving half of a made
+    // change, the going half of anything else.
+    let own = if inside == RowKind::Arriving {
+        &arriving
+    } else {
+        &going
     };
+    let marked = |no: u32| lit(own, no) || !values_on(no, false).is_empty();
     let mut no = range.first;
     while no <= range.last {
         // A long stretch with nothing on it folds, keeping its edges.
@@ -794,20 +959,17 @@ fn code_of(
                         lines: quiet - 2 * FOLD_EDGE,
                     });
                 }
-                code.lines.push(row_of(line, inside, None, Vec::new()));
+                code.lines
+                    .push(row_of(line, inside, Vec::new(), false, Vec::new()));
             }
             no = end;
             continue;
         }
-        let side = if inside == RowKind::Arriving {
-            Side::Arriving
-        } else {
-            Side::Going
-        };
         code.lines.push(row_of(
             no,
             inside,
-            numeral_on(no, side),
+            starts(own, no, range.first),
+            lit(own, no),
             values_on(no, false),
         ));
         no += 1;
@@ -821,7 +983,7 @@ fn code_of(
             &file,
             palette,
             paint,
-            &|line| numeral_on(line, Side::Arriving),
+            &|line| (starts(&arriving, line, range.first), lit(&arriving, line)),
             &|line| values_on(line, true),
         );
     }
@@ -831,7 +993,8 @@ fn code_of(
             RowKind::Context {
                 distance: no - range.last,
             },
-            None,
+            Vec::new(),
+            false,
             Vec::new(),
         ));
     }
@@ -849,19 +1012,23 @@ fn push_text_rows(
     file: &str,
     palette: &Palette,
     paint: &dyn Paint,
-    numeral_on: &dyn Fn(u32) -> Option<u32>,
+    points_on: &dyn Fn(u32) -> (Vec<u32>, bool),
     values_on: &dyn Fn(u32) -> Vec<Value>,
 ) {
     if text.is_empty() {
         return;
     }
     let ground = ground_of(kind, palette);
-    for (at, runs) in colour(text, file, paint).iter().enumerate() {
-        let no = first + u32::try_from(at).unwrap_or(u32::MAX - first);
+    // A change the agent wrote on Windows still prints one line per line.
+    let text = text.replace("\r\n", "\n");
+    for (at, runs) in colour(&text, file, paint).iter().enumerate() {
+        let no = first.saturating_add(u32::try_from(at).unwrap_or(u32::MAX));
+        let (numerals, pointed) = points_on(no);
         out.push(Line::Code(Row {
             no,
             kind,
-            numeral: numeral_on(no),
+            numerals,
+            pointed,
             ground,
             spans: inked(runs, ground, palette),
             values: values_on(no),
@@ -949,7 +1116,7 @@ fn ledger_of(pane: &Pane) -> Vec<Held> {
             row.values.iter().map(|value| Held {
                 pane: label.clone(),
                 line: row.no,
-                numeral: row.numeral,
+                numeral: row.numerals.first().copied(),
                 at: value.at.clone(),
                 is: value.is.clone(),
                 lit: value.lit,
@@ -1000,6 +1167,7 @@ fn argument(
             Message {
                 author: Author::Reader,
                 ref_id: comment.ref_id.clone(),
+                pane: None,
                 range: comment.range,
                 quote: comment.quote.clone(),
                 kind: Some(comment.kind),
@@ -1008,10 +1176,12 @@ fn argument(
             },
         ));
     }
-    for (ix, moment) in review.transcript.iter().enumerate() {
+    for moment in &review.transcript {
+        // A written remark with no comment to match was taken back before
+        // the review went: the comments are what the reader kept.
         let author = match moment.what {
             What::Said => Author::Agent,
-            What::Wrote | What::Reacted if !used[ix] => Author::Reader,
+            What::Reacted => Author::Reader,
             _ => continue,
         };
         if moment.text.trim().is_empty() {
@@ -1022,6 +1192,7 @@ fn argument(
             Message {
                 author,
                 ref_id: moment.ref_id.clone(),
+                pane: None,
                 range: moment.range,
                 quote: String::new(),
                 kind: moment.kind,
@@ -1248,13 +1419,20 @@ mod tests {
             batch
                 .iter()
                 .find(|row| row.no == no)
-                .and_then(|row| row.numeral)
+                .map(|row| row.numerals.clone())
+                .unwrap_or_default()
         };
-        assert_eq!((on(143), on(146), on(144)), (Some(1), Some(2), None));
+        assert_eq!((on(143), on(146), on(144)), (vec![1], vec![2], vec![]));
         let Pane::Diagram(picture) = &group.panes[1] else {
             panic!()
         };
-        assert_eq!(picture.marks, [("check".to_string(), 3)]);
+        assert_eq!(
+            picture.marks,
+            [Marker {
+                block: "check".to_string(),
+                numeral: 3
+            }]
+        );
         assert_eq!(picture.svg, r#"<svg nodes="2"/>"#);
     }
 
@@ -1275,7 +1453,8 @@ mod tests {
         assert_eq!(prose.len(), 2);
         assert!(prose[0].iter().any(|run| matches!(
             run,
-            Run::Text { text, mark: Some(Marked::Pane) } if text.trim() == "batch"
+            Run::Text { text, mark: Some(Marked::Pane), pane: Some(id) }
+                if text.trim() == "batch" && id == "g1r2"
         )));
     }
 
@@ -1338,17 +1517,17 @@ mod tests {
         let doc = document();
         let group = &doc.groups[2];
         let fix = rows(&group.panes[0]);
-        let changed: Vec<(u32, RowKind, Option<u32>)> = fix
+        let changed: Vec<(u32, RowKind, Vec<u32>)> = fix
             .iter()
             .filter(|r| !matches!(r.kind, RowKind::Context { .. }))
-            .map(|r| (r.no, r.kind, r.numeral))
+            .map(|r| (r.no, r.kind, r.numerals.clone()))
             .collect();
         assert_eq!(
             changed,
             [
-                (143, RowKind::Going, None),
-                (143, RowKind::Arriving, Some(1)),
-                (144, RowKind::Arriving, None)
+                (143, RowKind::Going, vec![]),
+                (143, RowKind::Arriving, vec![1]),
+                (144, RowKind::Arriving, vec![])
             ]
         );
     }
@@ -1382,7 +1561,8 @@ mod tests {
             doc.groups[2].argument[0].text,
             "Name the test after the bug."
         );
-        assert_eq!(doc.contents[0].remarks, 2);
+        assert_eq!((doc.contents[0].remarks, doc.contents[0].answers), (1, 1));
+        assert_eq!(argument[0].pane.as_deref(), Some("batch"));
     }
 
     #[test]
@@ -1432,6 +1612,188 @@ mod tests {
             panic!()
         };
         assert!(code.missing && code.lines.is_empty());
+    }
+
+    /// One group read alone, as `read` sees it, with three refs: a code pane
+    /// called `batch` on 140-146, a second called `tail`, and a picture.
+    fn read_alone(say: &str) -> (Vec<Vec<Run>>, Vec<Landed>, Vec<usize>) {
+        let refs: Vec<Ref> = serde_json::from_str(
+            r#"[{"id":"r1","file":"a.ts","range":[140,146],"name":"batch"},
+                {"id":"r2","file":"a.ts","range":[180,182],"name":"tail"},
+                {"id":"d1","name":"path","diagram":{"nodes":[{"id":"check","label":"x"}]}}]"#,
+        )
+        .unwrap();
+        read(&prose::unchipped(say), &refs, &|_| None)
+    }
+
+    fn numerals_in(paragraph: &[Run]) -> Vec<u32> {
+        paragraph
+            .iter()
+            .filter_map(|run| match run {
+                Run::Point { numeral } => Some(*numeral),
+                Run::Text { .. } => None,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn a_point_that_opens_a_paragraph_stays_in_it() {
+        let (prose, _, _) = read_alone("First para.\n\n[point 143] Second para.");
+        assert_eq!(prose.len(), 2);
+        assert_eq!(numerals_in(&prose[0]), Vec::<u32>::new());
+        assert!(matches!(prose[1][0], Run::Point { numeral: 1 }));
+    }
+
+    #[test]
+    fn a_point_inside_a_mark_keeps_the_mark() {
+        let (prose, _, _) =
+            read_alone("Call `foo [point 143] bar` and **weight [point 144] here**.");
+        let marked: Vec<(String, Option<Marked>)> = prose[0]
+            .iter()
+            .filter_map(|run| match run {
+                Run::Text { text, mark, .. } => Some((text.trim().to_string(), *mark)),
+                Run::Point { .. } => None,
+            })
+            .filter(|(text, _)| !text.is_empty())
+            .collect();
+        assert!(marked.contains(&("foo".to_string(), Some(Marked::Code))));
+        assert!(marked.contains(&("bar".to_string(), Some(Marked::Code))));
+        assert!(
+            marked
+                .iter()
+                .any(|(t, m)| t.contains("weight") && *m == Some(Marked::Strong))
+        );
+        assert!(
+            !marked
+                .iter()
+                .any(|(t, _)| t.contains('`') || t.contains("**"))
+        );
+        assert_eq!(numerals_in(&prose[0]), [1, 2]);
+    }
+
+    #[test]
+    fn a_point_that_lands_nowhere_gets_no_numeral() {
+        let (prose, landed, _) =
+            read_alone("Somewhere else entirely.[point 5] Then here.[point 143]");
+        assert_eq!(numerals_in(&prose[0]), [1]);
+        assert_eq!(landed.len(), 1);
+    }
+
+    #[test]
+    fn two_pane_names_side_by_side_stay_two_and_say_which_pane() {
+        let (prose, _, reached) = read_alone("Compare [batch] [tail] now.");
+        let panes: Vec<Option<String>> = prose[0]
+            .iter()
+            .filter_map(|run| match run {
+                Run::Text {
+                    mark: Some(Marked::Pane),
+                    pane,
+                    ..
+                } => Some(pane.clone()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(panes, [Some("r1".to_string()), Some("r2".to_string())]);
+        assert_eq!(reached, [0, 1]);
+    }
+
+    /// `deck()` with group one's narration replaced.
+    fn deck_saying(say: &str, extra_ref: Option<&str>) -> Document {
+        let mut bundle = deck();
+        let mut group: serde_json::Value =
+            serde_json::from_slice(&bundle.files["deck/g1.json"]).unwrap();
+        group["say"] = serde_json::Value::String(say.to_string());
+        if let Some(extra) = extra_ref {
+            group["refs"] = serde_json::from_str(extra).unwrap();
+        }
+        bundle.files.insert(
+            "deck/g1.json".to_string(),
+            serde_json::to_vec(&group).unwrap(),
+        );
+        let palette = palette();
+        build(&bundle, &palette, &Faint(palette.fg)).expect("builds")
+    }
+
+    #[test]
+    fn overlapping_points_each_keep_their_numeral() {
+        let doc = deck_saying("All of it.[point 143-146] And this one.[point 145]", None);
+        let batch = rows(&doc.groups[0].panes[0]);
+        let row = |no: u32| batch.iter().find(|r| r.no == no).unwrap();
+        assert_eq!(row(143).numerals, [1]);
+        assert_eq!(row(145).numerals, [2]);
+        assert!(row(144).pointed && row(146).pointed && row(145).pointed);
+        assert!(row(144).numerals.is_empty());
+    }
+
+    #[test]
+    fn a_bare_point_at_a_made_change_lands_on_what_went() {
+        let doc = deck_saying(
+            "This went.[point 143] This arrived.[point +143]",
+            Some(
+                r#"[{"id":"m1","file":"src/batch.ts","range":[143,144],"name":"made",
+                     "before":"old one\r\nold two\r\n"}]"#,
+            ),
+        );
+        let made = rows(&doc.groups[0].panes[0]);
+        let going = made
+            .iter()
+            .find(|r| r.kind == RowKind::Going && r.no == 143)
+            .unwrap();
+        let arriving = made
+            .iter()
+            .find(|r| r.kind == RowKind::Arriving && r.no == 143)
+            .unwrap();
+        assert_eq!(
+            (going.numerals.clone(), arriving.numerals.clone()),
+            (vec![1], vec![2])
+        );
+        // The change's CRLF is not left on its lines.
+        assert!(going.spans.iter().all(|span| !span.text.contains('\r')));
+    }
+
+    #[test]
+    fn a_remark_taken_back_does_not_come_back() {
+        let mut bundle = deck();
+        let mut review: serde_json::Value =
+            serde_json::from_slice(&bundle.files["review.json"]).unwrap();
+        review["transcript"]
+            .as_array_mut()
+            .unwrap()
+            .push(serde_json::json!({"at_ms": 6000, "what": "wrote", "group": "g1", "text": "taken back"}));
+        bundle.files.insert(
+            "review.json".to_string(),
+            serde_json::to_vec(&review).unwrap(),
+        );
+        let palette = palette();
+        let doc = build(&bundle, &palette, &Faint(palette.fg)).expect("builds");
+        assert!(
+            doc.groups[0]
+                .argument
+                .iter()
+                .all(|m| m.text != "taken back")
+        );
+    }
+
+    #[test]
+    fn a_group_with_nothing_to_say_is_still_called_something() {
+        let doc = deck_saying("", None);
+        assert_eq!(doc.groups[0].title, "The error path counts twice");
+        let mut bundle = deck();
+        bundle.files.insert(
+            "deck/g2.json".to_string(),
+            br#"{"id":"g2","say":"","refs":[]}"#.to_vec(),
+        );
+        let palette = palette();
+        let doc = build(&bundle, &palette, &Faint(palette.fg)).expect("builds");
+        assert_eq!(doc.groups[1].title, "Group 2");
+    }
+
+    #[test]
+    fn the_pages_own_words_are_legible_too() {
+        let inks = document().inks;
+        for ink in [inks.text, inks.muted, inks.accent] {
+            assert!(ink.contrast(inks.band) >= LEGIBLE);
+        }
     }
 
     /// The whole model of the fixture deck, pinned.

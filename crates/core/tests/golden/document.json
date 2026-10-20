@@ -5,6 +5,15 @@
     "commit": "a1b2c3d"
   },
   "created": "2026-10-20T09:30:00Z",
+  "inks": {
+    "page": "#282828",
+    "band": "#242424",
+    "pane": "#262626",
+    "text": "#ebdbb2",
+    "muted": "#999078",
+    "accent": "#fe8019",
+    "edge": "#4f4f4f"
+  },
   "contents": [
     {
       "n": 1,
@@ -18,7 +27,8 @@
         "path",
         "tail"
       ],
-      "remarks": 2
+      "remarks": 1,
+      "answers": 1
     },
     {
       "n": 2,
@@ -26,7 +36,8 @@
       "panes": [
         "src/batch.ts"
       ],
-      "remarks": 0
+      "remarks": 0,
+      "answers": 0
     },
     {
       "n": 3,
@@ -34,7 +45,8 @@
       "panes": [
         "fix"
       ],
-      "remarks": 1
+      "remarks": 1,
+      "answers": 0
     }
   ],
   "groups": [
@@ -55,7 +67,8 @@
           {
             "run": "text",
             "text": "batch ",
-            "mark": "pane"
+            "mark": "pane",
+            "pane": "g1r2"
           },
           {
             "run": "text",
@@ -82,7 +95,8 @@
           {
             "run": "text",
             "text": "path ",
-            "mark": "pane"
+            "mark": "pane",
+            "pane": "g1d1"
           },
           {
             "run": "text",
@@ -304,7 +318,10 @@
               "kind": {
                 "kind": "spot"
               },
-              "numeral": 1,
+              "numerals": [
+                1
+              ],
+              "pointed": true,
               "ground": "#483425",
               "spans": [
                 {
@@ -363,7 +380,10 @@
               "kind": {
                 "kind": "spot"
               },
-              "numeral": 2,
+              "numerals": [
+                2
+              ],
+              "pointed": true,
               "ground": "#483425",
               "spans": [
                 {
@@ -515,10 +535,10 @@
           "name": "path",
           "svg": "<svg nodes=\"2\"/>",
           "marks": [
-            [
-              "check",
-              3
-            ]
+            {
+              "block": "check",
+              "numeral": 3
+            }
           ]
         },
         {
@@ -837,6 +857,7 @@
         {
           "author": "reader",
           "ref": "g1r2",
+          "pane": "batch",
           "range": [
             143,
             143
@@ -1065,7 +1086,10 @@
               "kind": {
                 "kind": "spot"
               },
-              "numeral": 1,
+              "numerals": [
+                1
+              ],
+              "pointed": true,
               "ground": "#483425",
               "spans": [
                 {
@@ -1434,7 +1458,10 @@
               "kind": {
                 "kind": "arriving"
               },
-              "numeral": 1,
+              "numerals": [
+                1
+              ],
+              "pointed": true,
               "ground": "#373727",
               "spans": [
                 {

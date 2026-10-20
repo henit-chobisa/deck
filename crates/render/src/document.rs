@@ -151,10 +151,7 @@ mod tests {
                 assert!(span.ink.contrast(row.ground) >= LEGIBLE);
             }
         }
-        assert_eq!(
-            rows.iter().find(|row| row.no == 3).unwrap().numeral,
-            Some(1)
-        );
+        assert_eq!(rows.iter().find(|row| row.no == 3).unwrap().numerals, [1]);
         let Pane::Diagram(picture) = &doc.groups[0].panes[1] else {
             panic!("the picture second")
         };
