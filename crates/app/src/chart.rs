@@ -30,7 +30,7 @@
 
 use deck_core::diagram::{Cluster, Diagram, Edge, Layout, Line, Role, Weight};
 use deck_core::drawing;
-use deck_core::geometry::{self, GAP_X};
+use deck_core::geometry;
 use deck_core::protocol::DiagramRef;
 use deck_core::theme::Palette;
 use deck_render::text as words;
@@ -776,36 +776,33 @@ impl Chart {
                         .v_flex()
                         .items_center()
                         .justify_center()
-                        .gap(px(1.))
+                        .gap(px(drawing::LABEL_GAP))
                         // The shape decides how much room the words have: a
                         // diamond's corners are empty, a pill's ends are round,
                         // and a label that ignores that spills over the edge.
                         .px(px(drawing::inset(node.role)))
                         // Below the lid, and above the foot.
-                        .when(node.role == Role::Store, |this| this.pt(px(12.)).pb(px(6.)))
+                        .when(node.role == Role::Store, |this| {
+                            this.pt(px(drawing::STORE_PAD.0))
+                                .pb(px(drawing::STORE_PAD.1))
+                        })
                         .text_align(TextAlign::Center)
-                        .text_size(self.z(px(12.)))
-                        // Leading spelled out rather than left to the face.
-                        //
-                        // A box is a fixed height and what goes in it has to be
-                        // known to fit. With the default leading a label and a
-                        // note came to more than the box, and the note was cut
-                        // through by the bottom border — worst on a store,
-                        // which gives up its head to the lid. A 15 and a 13
-                        // leave room inside 50 even when the label wraps.
-                        .line_height(self.z(px(15.)))
+                        .text_size(self.z(px(drawing::LABEL.0)))
+                        // Leading spelled out rather than left to the face:
+                        // see `drawing::LABEL`.
+                        .line_height(self.z(px(drawing::LABEL.1)))
                         .text_color(paint(words))
                         .when(node.weight == Weight::Accent, |this| this.font_semibold())
                         // One element for the label, so the gap below is
                         // between the label and its note, never between lines.
                         .child(div().children(self.broken(
                             &node.label,
-                            f32::from(self.z(px(12.))),
+                            f32::from(self.z(px(drawing::LABEL.0))),
                             face,
                             room,
                         )))
                         .children(node.note.as_ref().map(|note| {
-                            let size = f32::from(self.z(px(10.5)));
+                            let size = f32::from(self.z(px(drawing::NOTE.0)));
                             div()
                                 // One line, cut short if it will not fit.
                                 //
@@ -819,8 +816,8 @@ impl Chart {
                                 // loses the one thing the node is for.
                                 .w_full()
                                 .text_center()
-                                .text_size(self.z(px(10.5)))
-                                .line_height(self.z(px(13.)))
+                                .text_size(self.z(px(drawing::NOTE.0)))
+                                .line_height(self.z(px(drawing::NOTE.1)))
                                 .text_color(paint(palette.muted))
                                 .map(|this| {
                                     if ours(note) {
@@ -871,20 +868,20 @@ impl Chart {
                     < (f32::from(from.x) - f32::from(to.x)).abs();
 
                 // The widest the chip may be.
-                let widest = self.z(px(GAP_X + 16.));
+                let widest = self.z(px(drawing::chip_widest()));
                 let lines = self.broken(
                     label,
-                    f32::from(self.z(px(10.))),
+                    f32::from(self.z(px(drawing::EDGE_LABEL))),
                     words::Weight::Regular,
-                    snap(f32::from(widest), scale) - 2. * snap(4., scale),
+                    snap(f32::from(widest), scale) - 2. * snap(drawing::CHIP_PAD.0, scale),
                 );
                 // A label that wraps fills the chip, as wrapped text fills
                 // the width it was wrapped to; one line keeps to its words.
                 let wraps = lines.len() > 1;
                 let chip = div()
-                    .px(px(4.))
-                    .py(px(1.))
-                    .rounded(px(3.))
+                    .px(px(drawing::CHIP_PAD.0))
+                    .py(px(drawing::CHIP_PAD.1))
+                    .rounded(px(drawing::CHIP_RADIUS))
                     // Kept to the gutter it sits in, give or take a few
                     // pixels. A label is meant to be a word or two — `writes`,
                     // `on submit` — and one that is not wraps rather than
@@ -895,7 +892,7 @@ impl Chart {
                     // On the pane's own ground, so the line passes behind the
                     // words rather than through them.
                     .bg(paint(palette.wash))
-                    .text_size(self.z(px(10.)))
+                    .text_size(self.z(px(drawing::EDGE_LABEL)))
                     .text_color(paint(palette.muted))
                     .children(lines);
 
@@ -923,7 +920,7 @@ impl Chart {
                     div()
                         .absolute()
                         .left(px(x - ANCHOR / 2.))
-                        .top(px(y - 4. - HANG))
+                        .top(px(y - drawing::CHIP_ABOVE - HANG))
                         .w(px(ANCHOR))
                         .h(px(HANG))
                         .flex()
@@ -934,8 +931,8 @@ impl Chart {
                 } else {
                     div()
                         .absolute()
-                        .left(px(x + 7.))
-                        .top(px(y - 8.))
+                        .left(px(x + drawing::CHIP_BESIDE.0))
+                        .top(px(y + drawing::CHIP_BESIDE.1))
                         .child(chip)
                         .into_any_element()
                 })
@@ -953,9 +950,9 @@ impl Chart {
                 Some(
                     div()
                         .absolute()
-                        .left(self.z(frame.at.origin.x) + px(13.))
-                        .top(self.z(frame.at.origin.y) + px(5.))
-                        .text_size(self.z(px(10.)))
+                        .left(self.z(frame.at.origin.x) + px(drawing::CLUSTER_NAME_AT.0))
+                        .top(self.z(frame.at.origin.y) + px(drawing::CLUSTER_NAME_AT.1))
+                        .text_size(self.z(px(drawing::CLUSTER_NAME)))
                         .text_color(paint(palette.muted))
                         .child(cluster.label.clone())
                         .into_any_element(),

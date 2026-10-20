@@ -1,0 +1,10 @@
+{
+  "flow": "right",
+  "nodes": [
+    { "id": "a", "label": "enqueue" },
+    { "id": "b", "label": "worker", "role": "decision" },
+    { "id": "c", "label": "email", "role": "terminal" }
+  ],
+  "edges": [ { "from": "a", "to": "b" }, { "from": "b", "to": "c", "line": "dashed" }, { "from": "c", "to": "a" } ],
+  "clusters": [{ "label": "queue", "nodes": ["a", "b"] }]
+}

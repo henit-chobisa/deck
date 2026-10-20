@@ -1,0 +1,19 @@
+{
+  "title": "labels that wrap",
+  "flow": "down",
+  "nodes": [
+    { "id": "a", "label": "The importer reads every row of the uploaded sheet", "role": "terminal" },
+    { "id": "b", "label": "Each row is written to the ingest table", "note": "apps/ingest/src/batch.ts, flush" },
+    { "id": "c", "label": "Did every single write succeed?", "role": "decision", "weight": "accent" },
+    { "id": "d", "label": "Retry queue for failed rows", "role": "store", "note": "redis, ingest:retry" },
+    { "id": "e", "label": "Operations reviewer", "role": "actor" },
+    { "id": "f", "label": "Mark the whole batch finished and notify", "weight": "accent", "note": "a note far too long to fit on one line" }
+  ],
+  "edges": [
+    { "from": "a", "to": "b", "label": "for each row in the sheet" },
+    { "from": "b", "to": "c" },
+    { "from": "c", "to": "d", "label": "some writes failed" },
+    { "from": "c", "to": "f", "label": "all written" },
+    { "from": "d", "to": "e", "label": "escalate after three tries", "dashed": true }
+  ]
+}

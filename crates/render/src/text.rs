@@ -120,6 +120,23 @@ pub fn covers(text: &str) -> bool {
     })
 }
 
+/// How far the face rises above its baseline and falls below it, at `size`
+/// in `weight`: the window's ascent and descent, which place a line's
+/// baseline inside its line height.
+///
+/// From the `hhea` table, as CoreText reads it, at the size asked for rather
+/// than the shaping size: GPUI scales the font's metrics by the run's size.
+#[must_use]
+pub fn ascent_descent(size: f32, weight: Weight) -> (f32, f32) {
+    let face = face(weight);
+    let hhea = face.font.tables().hhea;
+    let scale = size / face.units_per_em;
+    (
+        f32::from(hhea.ascender) * scale,
+        -f32::from(hhea.descender) * scale,
+    )
+}
+
 /// How wide `text` is, at `size` in `weight`, as a sum of single characters.
 #[must_use]
 pub fn width(text: &str, size: f32, weight: Weight) -> f32 {
