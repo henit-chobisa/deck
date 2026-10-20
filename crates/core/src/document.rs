@@ -1091,8 +1091,9 @@ fn push_text_rows(
 
 /// The text of one kept span of a snapshot.
 fn span_text(snapshot: &Snapshot, span: LineRange) -> String {
+    let lines = snapshot.lines();
     (span.first..=span.last)
-        .filter_map(|no| snapshot.line(no))
+        .filter_map(|no| lines.get(no))
         .map(|line| format!("{}\n", line.strip_suffix('\r').unwrap_or(line)))
         .collect()
 }

@@ -25,6 +25,17 @@ use crate::line::LineRange;
 /// what was kept.
 pub const CONTEXT: u32 = 20;
 
+/// The furthest line a snapshot may keep, and the longest a file it describes
+/// may say it was.
+///
+/// A span is two numbers, and nothing about them says how much a reader will
+/// be asked to lay out: `[4000000000, 4000000000]` is one line of text that a
+/// reader numbering the file as it was would have to count up to. Ten
+/// million lines is more than any source file a deck will point at, and a
+/// bound every reader can rely on, so it is checked here, where every
+/// snapshot is opened, rather than by each reader in its own way.
+pub const MOST_LINES: u32 = 10_000_000;
+
 /// Every source file a deck froze.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Index {
@@ -80,20 +91,70 @@ pub struct Snapshot {
     pub text: String,
 }
 
-impl Snapshot {
+/// A snapshot's kept lines, indexed once, so a reader asking for line after
+/// line pays for the text once rather than once a line.
+#[derive(Debug, Clone)]
+pub struct Lines<'a> {
+    /// The spans kept, in order.
+    spans: &'a [LineRange],
+    /// How many kept lines come before each span.
+    before: Vec<usize>,
+    /// Every kept line, in order, without its newline.
+    text: Vec<&'a str>,
+}
+
+impl<'a> Lines<'a> {
     /// Line `n` of the source file, counted from one, without its newline
     /// (but with a `\r` the file had), or `None` when it was not kept.
     #[must_use]
-    pub fn line(&self, n: u32) -> Option<&str> {
-        let mut before = 0u64;
-        for span in &self.file.kept {
-            if span.contains(n) {
-                let at = usize::try_from(before + u64::from(n - span.first)).ok()?;
-                return self.text.split_terminator('\n').nth(at);
-            }
-            before += u64::from(span.len());
+    pub fn get(&self, n: u32) -> Option<&'a str> {
+        // The last span starting at or before `n`; it holds `n` or nothing
+        // does, since spans are in order and apart.
+        let ix = self
+            .spans
+            .partition_point(|span| span.first <= n)
+            .checked_sub(1)?;
+        let span = self.spans[ix];
+        if !span.contains(n) {
+            return None;
         }
-        None
+        self.text
+            .get(self.before[ix] + (n - span.first) as usize)
+            .copied()
+    }
+
+    /// The spans these lines were kept in.
+    #[must_use]
+    pub fn spans(&self) -> &'a [LineRange] {
+        self.spans
+    }
+}
+
+impl Snapshot {
+    /// Line `n` of the source file, counted from one, without its newline
+    /// (but with a `\r` the file had), or `None` when it was not kept.
+    ///
+    /// Reads the text each time. Asking for more than one line, ask
+    /// [`Self::lines`] once and then it.
+    #[must_use]
+    pub fn line(&self, n: u32) -> Option<&str> {
+        self.lines().get(n)
+    }
+
+    /// Every kept line, indexed by the line it was in the file.
+    #[must_use]
+    pub fn lines(&self) -> Lines<'_> {
+        let mut before = Vec::with_capacity(self.file.kept.len());
+        let mut count = 0usize;
+        for span in &self.file.kept {
+            before.push(count);
+            count += span.len() as usize;
+        }
+        Lines {
+            spans: &self.file.kept,
+            before,
+            text: self.text.split_terminator('\n').collect(),
+        }
     }
 
     /// Whether every line of `range` was kept.
@@ -134,6 +195,11 @@ impl Snapshot {
         }
         if self.file.lines.is_some_and(|lines| last > lines) {
             return Err(format!("{path}: it keeps lines past the end of the file"));
+        }
+        if last > MOST_LINES || self.file.lines.is_some_and(|lines| lines > MOST_LINES) {
+            return Err(format!(
+                "{path}: it describes a file longer than {MOST_LINES} lines"
+            ));
         }
         if !self.text.is_empty() && !self.text.ends_with('\n') {
             return Err(format!("{path}: its last kept line has no newline"));
@@ -303,5 +369,45 @@ mod tests {
         );
         snap.file.kept.reverse();
         assert!(snap.check().is_err());
+    }
+
+    #[test]
+    fn a_span_far_past_any_real_file_is_refused() {
+        let mut snap = snapshot("only\n", &[LineRange::new(1, 1)], 0);
+        snap.file.kept = vec![LineRange::new(4_000_000_000, 4_000_000_000)];
+        let err = snap.check().expect_err("refused");
+        assert!(err.contains("longer than"), "{err}");
+
+        // And a file that says it was that long, whatever it kept.
+        let mut snap = snapshot("only\n", &[LineRange::new(1, 1)], 0);
+        snap.file.lines = Some(MOST_LINES + 1);
+        assert!(snap.check().is_err());
+    }
+
+    #[test]
+    fn a_span_past_the_length_it_gives_is_refused() {
+        let mut snap = snapshot(&source(10), &[LineRange::new(9, 10)], 0);
+        snap.file.lines = Some(9);
+        assert!(snap.check().is_err());
+        snap.file.lines = Some(10);
+        assert!(snap.check().is_ok());
+    }
+
+    #[test]
+    fn the_index_finds_every_kept_line_and_nothing_else() {
+        let snap = snapshot(
+            &source(200),
+            &[LineRange::new(40, 41), LineRange::new(150, 150)],
+            2,
+        );
+        let lines = snap.lines();
+        for n in 1..=200 {
+            assert_eq!(lines.get(n), snap.line(n), "line {n}");
+        }
+        assert_eq!(lines.get(38), Some("line 38"));
+        assert_eq!(lines.get(37), None);
+        assert_eq!(lines.get(152), Some("line 152"));
+        assert_eq!(lines.get(153), None);
+        assert_eq!(lines.get(0), None);
     }
 }

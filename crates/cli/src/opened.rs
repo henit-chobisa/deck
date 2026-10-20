@@ -45,8 +45,9 @@ use anyhow::Context as _;
 use deck_core::bundle::{self, Bundle, Manifest, Repo};
 use serde::{Deserialize, Serialize};
 
-/// The record in a cache folder of which file it was opened from.
-pub const ORIGIN: &str = "opened.json";
+/// The folder in a cache folder holding one record per file it was opened
+/// from: `origins/<sha256 of the file's path>.json`, each an [`Origin`].
+pub const ORIGINS: &str = "origins";
 
 /// Where the cache for every opened file lives: `~/.deck/opened`.
 #[must_use]
@@ -54,19 +55,28 @@ pub fn cache() -> Option<PathBuf> {
     deck_core::home::deck().map(|deck| deck.join("opened"))
 }
 
-/// Which `.deck` file a cache folder was opened from, and where the reader's
-/// review of it is written.
+/// Which `.deck` file a deck was opened from, and where the reader's review
+/// of it is written.
 ///
-/// Kept in the cache rather than worked out again from the file, because
-/// everything that asks — the window when it submits, the process waiting to
-/// print the review, the window opened again tomorrow — has only the deck
-/// folder to go on.
+/// One per file, not one per cache folder. Two copies of the same bytes —
+/// `a/x.deck` and `b/y.deck` — share the read-only deck, since it is the same
+/// deck, but each has a review of its own beside it; so every process that
+/// needs to know where the review goes is handed the origin it was opened
+/// with, rather than asking the cache which file was opened last. The record
+/// under [`ORIGINS`] is for a reader looking in the cache, not for deck.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Origin {
     /// The file, as it was named when it was opened, made absolute.
     pub file: PathBuf,
+    /// The sha256 of the file, which names its cache folder and is written
+    /// into its review.
+    pub sha256: String,
     /// Where the review goes: see [`review_to`].
     pub review: PathBuf,
+    /// A review already where this one would have gone, of some other deck
+    /// or another copy of this one, and so left as it is. See [`review_to`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub beside: Option<PathBuf>,
 }
 
 /// A `.deck` file, opened and in the cache.
@@ -134,13 +144,21 @@ pub fn open(file: &Path, under: &Path) -> anyhow::Result<Opened> {
     }
 
     let file = std::path::absolute(file).unwrap_or_else(|_| file.to_path_buf());
+    let id = bundle.header().map(|header| header.id).unwrap_or_default();
+    let (review, beside) = review_to(&file, &dir, &id, &sha);
     let origin = Origin {
-        review: review_to(&file, &dir),
         file,
+        sha256: sha,
+        review,
+        beside,
     };
-    let json = serde_json::to_vec_pretty(&origin)?;
-    std::fs::write(dir.join(ORIGIN), json)
-        .with_context(|| format!("cannot write {}", dir.join(ORIGIN).display()))?;
+    let record = origin_record(&dir, &origin.file);
+    if let Some(parent) = record.parent() {
+        std::fs::create_dir_all(parent)
+            .with_context(|| format!("cannot make {}", parent.display()))?;
+    }
+    std::fs::write(&record, serde_json::to_vec_pretty(&origin)?)
+        .with_context(|| format!("cannot write {}", record.display()))?;
     Ok(Opened {
         deck: dir.join("deck"),
         dir,
@@ -150,17 +168,18 @@ pub fn open(file: &Path, under: &Path) -> anyhow::Result<Opened> {
     })
 }
 
-/// Which file the deck folder at `root` was opened from, when it came from
-/// one.
-///
-/// Only a folder named `deck` inside a cache folder that says so: an
-/// ordinary deck folder is `<id>.deck`, and has no record beside it.
+/// Where the record of `file` having been opened into the cache folder `dir`
+/// goes: keyed by the file's path, resolved, so each copy has its own.
+fn origin_record(dir: &Path, file: &Path) -> PathBuf {
+    let resolved = std::fs::canonicalize(file).unwrap_or_else(|_| file.to_path_buf());
+    let key = bundle::sha256(resolved.to_string_lossy().as_bytes());
+    dir.join(ORIGINS).join(format!("{key}.json"))
+}
+
+/// What was recorded when `file` was opened into the cache folder `dir`.
 #[must_use]
-pub fn origin(root: &Path) -> Option<Origin> {
-    if root.file_name()? != "deck" {
-        return None;
-    }
-    let text = std::fs::read_to_string(root.parent()?.join(ORIGIN)).ok()?;
+pub fn origin(dir: &Path, file: &Path) -> Option<Origin> {
+    let text = std::fs::read_to_string(origin_record(dir, file)).ok()?;
     serde_json::from_str(&text).ok()
 }
 
@@ -203,7 +222,9 @@ pub fn snapshots(root: &Path) -> Vec<bundle::snap::Snapshot> {
         .collect()
 }
 
-/// Where the review of the `.deck` file at `file` is written.
+/// Where the review of the `.deck` file at `file` — deck `id`, its bytes
+/// hashing to `sha` — is written, and the review already there that it was
+/// kept apart from, if there was one.
 ///
 /// Beside it, under the same name, as `<name>.review`: a file somebody was
 /// sent sits in a folder they chose, and the answer belongs next to the
@@ -211,21 +232,41 @@ pub fn snapshots(root: &Path) -> Vec<bundle::snap::Snapshot> {
 /// read-only share, somebody else's downloads — it goes in the cache folder
 /// `dir` instead, and the window says so, so the reader is never left
 /// believing a review went somewhere it did not.
+///
+/// A review already at that name is used only when it answers this very
+/// file: the same deck and the same bytes. Anything else — the review of an
+/// earlier copy the author has since packed again, or of another deck that
+/// happened to get the same name — is somebody's finished work, and is
+/// never written over. This one goes beside it as `<name>.<sha>.review`,
+/// short, and the window names both.
 #[must_use]
-pub fn review_to(file: &Path, dir: &Path) -> PathBuf {
+pub fn review_to(file: &Path, dir: &Path, id: &str, sha: &str) -> (PathBuf, Option<PathBuf>) {
     let stem = file
         .file_stem()
         .map_or_else(|| "deck".into(), |stem| stem.to_string_lossy());
-    let name = format!("{stem}.review");
     let folder = file
         .parent()
         .filter(|parent| !parent.as_os_str().is_empty())
         .unwrap_or_else(|| Path::new("."));
-    if writable(folder) {
-        folder.join(name)
-    } else {
-        dir.join(name)
+    let folder = if writable(folder) { folder } else { dir };
+    let plain = folder.join(format!("{stem}.review"));
+    if !plain.exists() || answers(&plain, id, sha) {
+        return (plain, None);
     }
+    (
+        folder.join(format!("{stem}.{}.review", short(sha))),
+        Some(plain),
+    )
+}
+
+/// Whether the review at `path` answers the `.deck` file of deck `id` whose
+/// bytes hash to `sha`. A review that will not parse answers nothing.
+#[must_use]
+pub fn answers(path: &Path, id: &str, sha: &str) -> bool {
+    std::fs::read_to_string(path)
+        .ok()
+        .and_then(|text| serde_json::from_str::<deck_core::protocol::Review>(&text).ok())
+        .is_some_and(|review| review.deck == id && review.deck_sha256.as_deref() == Some(sha))
 }
 
 /// Whether a file can be made in `folder`, found out by making one.
@@ -274,15 +315,27 @@ pub enum Match {
 /// Whether `cwd` is inside a checkout of the repo `repo` names, and at which
 /// commit.
 ///
-/// The same repo means the same `origin`, cleaned the way `deck pack`
-/// cleaned the deck's ([`crate::pack::clean_remote`]), compared whole. A
-/// deck with no remote, or a commit, is never matched: there is nothing to
-/// say it was this repo rather than any other with the same files in it.
-/// `ceiling` stops git looking above a directory, as
-/// `GIT_CEILING_DIRECTORIES` does; tests use it so a temporary directory
-/// inside some other repo is not taken for part of it.
+/// The same repo means the same `origin`, compared as [`remote_key`] spells
+/// it, so the ssh and https spellings of one repo are one repo. A deck with
+/// no remote, or no commit, is never matched: there is nothing to say it was
+/// this repo rather than any other with the same files in it. `ceiling`
+/// stops git looking above a directory, as `GIT_CEILING_DIRECTORIES` does;
+/// tests use it so a temporary directory inside some other repo is not taken
+/// for part of it.
 #[must_use]
 pub fn matching(cwd: &Path, repo: Option<&Repo>, ceiling: Option<&Path>) -> Match {
+    matching_with(cwd, repo, ceiling, None)
+}
+
+/// [`matching`], with git reading `config` as its global settings when it is
+/// given — an empty file in tests, so they pass whatever the machine's own
+/// settings say.
+fn matching_with(
+    cwd: &Path,
+    repo: Option<&Repo>,
+    ceiling: Option<&Path>,
+    config: Option<&Path>,
+) -> Match {
     let Some(Repo {
         remote: Some(remote),
         commit: Some(packed),
@@ -290,27 +343,114 @@ pub fn matching(cwd: &Path, repo: Option<&Repo>, ceiling: Option<&Path>) -> Matc
     else {
         return Match::Elsewhere;
     };
-    let Some(git) = crate::pack::Git::find(cwd, ceiling) else {
+    let git = |dir: &Path, args: &[&str]| local_git(dir, ceiling, config, args);
+    let Some(root) = git(cwd, &["rev-parse", "--show-toplevel"]).filter(|root| !root.is_empty())
+    else {
         return Match::Elsewhere;
     };
-    let here = git.remote.as_deref().and_then(crate::pack::clean_remote);
-    if here.as_deref() != Some(remote.as_str()) {
+    let root = PathBuf::from(root);
+    // The remote as it is written, not as `insteadOf` rewrites it: a rewrite
+    // is this machine's way of reaching the repo, and says nothing about which
+    // repo it is.
+    let here = git(&root, &["config", "--get", "remote.origin.url"]);
+    if here.as_deref().and_then(remote_key).is_none()
+        || here.as_deref().and_then(remote_key) != remote_key(remote)
+    {
         return Match::Elsewhere;
     }
-    match git.commit.clone() {
-        Some(head) if head == *packed => Match::Same {
-            commit: head,
-            root: PathBuf::from(git.root),
-        },
+    match git(&root, &["rev-parse", "--verify", "--quiet", "HEAD"]).filter(|head| !head.is_empty())
+    {
+        Some(head) if head == *packed => Match::Same { commit: head, root },
         Some(head) => Match::Moved {
             packed: packed.clone(),
             head,
-            root: PathBuf::from(git.root),
+            root,
         },
         // A repo with nothing committed yet is not at any commit a deck was
         // packed at.
         None => Match::Elsewhere,
     }
+}
+
+/// What `git -C dir <args>` printed, run with none of the caller's `GIT_*`
+/// variables — any of which can point git at some other repo, or rewrite
+/// what it says about this one — and without the system's settings. The
+/// reader's own settings stay unless `config` replaces them: they are where
+/// `safe.directory` lives, which a checkout owned by somebody else needs.
+fn local_git(
+    dir: &Path,
+    ceiling: Option<&Path>,
+    config: Option<&Path>,
+    args: &[&str],
+) -> Option<String> {
+    let mut command = std::process::Command::new("git");
+    for (name, _) in std::env::vars_os() {
+        if name.to_string_lossy().starts_with("GIT_") {
+            command.env_remove(name);
+        }
+    }
+    command
+        .env("GIT_CONFIG_NOSYSTEM", "1")
+        .arg("-C")
+        .arg(dir)
+        .args(args)
+        .stdin(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null());
+    if let Some(config) = config {
+        command.env("GIT_CONFIG_GLOBAL", config);
+    }
+    if let Some(ceiling) = ceiling {
+        command.env("GIT_CEILING_DIRECTORIES", ceiling);
+    }
+    let out = command.output().ok()?;
+    out.status.success().then(|| {
+        String::from_utf8_lossy(&out.stdout)
+            .trim_end_matches(['\r', '\n'])
+            .to_string()
+    })
+}
+
+/// A remote as `host/owner/repo`, for telling whether two remotes are the
+/// same repo — or `None` for one that names no repo anywhere else, such as a
+/// path on this machine.
+///
+/// `git@github.com:acme/ingest.git`, `ssh://git@github.com/acme/ingest`
+/// and `https://GitHub.com/acme/ingest/` are one repo, spelled three ways,
+/// and all three are `github.com/acme/ingest`: the scheme, the user, any
+/// credentials and a port go, the host is lowercased, and a trailing `/` or
+/// `.git` comes off the path. The path keeps its case, which some forges
+/// care about.
+#[must_use]
+pub fn remote_key(remote: &str) -> Option<String> {
+    let cleaned = crate::pack::clean_remote(remote)?;
+    let (host, path) = match cleaned.split_once("://") {
+        Some((_, rest)) => {
+            let (authority, path) = rest.split_at(rest.find('/').unwrap_or(rest.len()));
+            let host = authority
+                .rsplit_once('@')
+                .map_or(authority, |(_, host)| host);
+            // A port, but not the colon inside an IPv6 address's brackets.
+            let host = match host.rfind(':') {
+                Some(colon) if !host[colon..].contains(']') => &host[..colon],
+                _ => host,
+            };
+            (host.to_string(), path.to_string())
+        }
+        None => {
+            let (head, path) = cleaned.split_once(':')?;
+            let host = head.rsplit_once('@').map_or(head, |(_, host)| host);
+            (host.to_string(), path.to_string())
+        }
+    };
+    let path = path.trim_matches('/');
+    let path = path
+        .strip_suffix(".git")
+        .unwrap_or(path)
+        .trim_end_matches('/');
+    if host.is_empty() || path.is_empty() {
+        return None;
+    }
+    Some(format!("{}/{path}", host.to_ascii_lowercase()))
 }
 
 /// A commit as the window shows it: its first seven characters.
@@ -334,9 +474,17 @@ fn place(dir: &Path, name: &str) -> PathBuf {
 }
 
 /// Whether the cache folder `dir` holds exactly `bundle`, as it was written.
+///
+/// A link anywhere in it, to anywhere, and it does not: deck never writes
+/// one, and a cache that holds one could be pointing the window at a file
+/// nobody vouched for. Nothing here follows a link to find out.
 fn intact(dir: &Path, bundle: &Bundle, manifest: &[u8]) -> bool {
+    if has_link(dir) {
+        return false;
+    }
     let same = |path: &Path, content: &[u8]| {
-        std::fs::metadata(path).is_ok_and(|meta| meta.permissions().readonly())
+        std::fs::symlink_metadata(path)
+            .is_ok_and(|meta| meta.is_file() && meta.permissions().readonly())
             && std::fs::read(path).is_ok_and(|bytes| bytes == content)
     };
     if !same(&dir.join("manifest.json"), manifest) {
@@ -360,6 +508,22 @@ fn intact(dir: &Path, bundle: &Bundle, manifest: &[u8]) -> bool {
         let name = format!("deck/{}", entry.file_name().to_string_lossy());
         !bundle::known(&name) || bundle.files.contains_key(&name)
     })
+}
+
+/// Whether `dir`, or anything under it, is a link. Folders are walked as
+/// themselves, never through a link, so the walk cannot leave the cache.
+fn has_link(dir: &Path) -> bool {
+    let Ok(meta) = std::fs::symlink_metadata(dir) else {
+        return false;
+    };
+    if meta.file_type().is_symlink() {
+        return true;
+    }
+    if !meta.is_dir() {
+        return false;
+    }
+    std::fs::read_dir(dir)
+        .is_ok_and(|entries| entries.flatten().any(|entry| has_link(&entry.path())))
 }
 
 /// Write `bundle` out under `dir`, every file read-only.
@@ -396,9 +560,18 @@ fn unlock(dir: &Path) {
     };
     for entry in entries.flatten() {
         let path = entry.path();
-        if entry.file_type().is_ok_and(|kind| kind.is_dir()) {
+        // Asked of the entry itself: a link is neither followed nor changed,
+        // whatever it points at. Taking the folder away removes the link and
+        // leaves its target alone.
+        let Ok(meta) = std::fs::symlink_metadata(&path) else {
+            continue;
+        };
+        if meta.file_type().is_symlink() {
+            continue;
+        }
+        if meta.is_dir() {
             unlock(&path);
-        } else if let Ok(meta) = std::fs::metadata(&path) {
+        } else {
             let mut permissions = meta.permissions();
             if permissions.readonly() {
                 #[allow(clippy::permissions_set_readonly_false)]

@@ -519,7 +519,14 @@ pub struct Pane {
     ///
     /// Value rows go in under their lines, wherever those are, so a line's row
     /// can no longer be worked out from one splice. It is looked up instead.
-    line_row: Vec<usize>,
+    ///
+    /// As pairs of line and row, in line order, rather than a slot per line:
+    /// the deck's copy of a file may hold lines near its far end, and a table
+    /// as long as the file would be as long as the file.
+    line_row: Vec<(u32, usize)>,
+    /// The rows that stand for lines a deck's copy left out: the first line,
+    /// the last when it is known, and the row.
+    edges: Vec<(u32, Option<u32>, usize)>,
     /// The half of a change that is not on disk, whose numbers are not the
     /// file's: the arriving half of a proposal, the going half of a made one.
     unwritten: Option<Change>,
@@ -634,8 +641,9 @@ struct Missing {
     file: SharedString,
     /// The rest of the sentence.
     said: SharedString,
-    /// Whether to offer the reader's own copy of it.
-    live: bool,
+    /// What to offer instead: the reader's own copy, or the way back to the
+    /// deck's.
+    offer: Option<crate::load::Offer>,
 }
 
 /// The note a pane's header ends with when the deck came from a `.deck` file
@@ -654,11 +662,20 @@ pub enum Aside {
         /// The commit the deck was packed at, short.
         since: SharedString,
     },
+    /// Showing the deck's copy, and the checkout is at the same commit but
+    /// holds something else for this file — the deck was packed from changes
+    /// nobody committed, or the reader has their own:
+    /// `differs from the deck's copy · Show live`.
+    Differs,
     /// Showing the checkout: `● live, from 9f8e7d6 · Show the deck's copy`.
     Live {
         /// The commit the checkout is at, short.
         head: SharedString,
     },
+    /// Showing the checkout everywhere else, but this pane's lines could not
+    /// be followed into it, so the pane keeps the deck's copy:
+    /// `couldn't follow these lines into your checkout · Show the deck's copy`.
+    Lost,
 }
 
 impl Pane {
@@ -672,20 +689,62 @@ impl Pane {
     /// file.
     pub fn new(code: &RefSpec, source: &crate::load::Source, cx: &App) -> Self {
         let missing = match source {
-            crate::load::Source::Missing { file, said, live } => Some(Missing {
+            crate::load::Source::Missing { file, said, offer } => Some(Missing {
                 file: file.display().to_string().into(),
                 said: said.to_string().into(),
-                live: *live,
+                offer: *offer,
             }),
             _ => None,
         };
-        let source = source_kept(source);
-        let (text, kept) = (source.0, source.1);
-        let lines: Vec<&str> = text.lines().collect();
-        let total = u32::try_from(lines.len()).unwrap_or(u32::MAX).max(1);
+        let (mut rows, total, kept) = match source {
+            crate::load::Source::Live(text) => {
+                let lines: Vec<&str> = text.lines().collect();
+                let total = u32::try_from(lines.len()).unwrap_or(u32::MAX);
+                (highlight(text, &lines, &code.file, cx), total, None)
+            }
+            // Span by span, each highlighted on its own and numbered from
+            // where it sat in the file. Nothing is padded out to the file's
+            // length: a deck is a span's two numbers away from asking for any
+            // number of lines, and only the ones it holds are laid out.
+            crate::load::Source::Snapshot(snapshot) => {
+                let lines = snapshot.lines();
+                let mut rows = Vec::new();
+                for span in lines.spans() {
+                    let held: Vec<&str> = (span.first..=span.last)
+                        .filter_map(|n| lines.get(n))
+                        .map(|line| line.strip_suffix('\r').unwrap_or(line))
+                        .collect();
+                    let text: String = held.iter().map(|line| format!("{line}\n")).collect();
+                    let mut some = highlight(&text, &held, &code.file, cx);
+                    for (offset, row) in some.iter_mut().enumerate() {
+                        let at = span.first + u32::try_from(offset).unwrap_or(0);
+                        row.number = Some(at);
+                        row.pin = at;
+                        row.answers = LineRange::single(at);
+                    }
+                    rows.extend(some);
+                }
+                let last = lines.spans().last().map_or(0, |span| span.last);
+                (rows, last, Some((lines.spans(), snapshot.file.lines)))
+            }
+            crate::load::Source::Missing { .. } => (Vec::new(), 0, None),
+        };
+        let total = total.max(1);
         let authored = code.range.clamp_to(total);
-        let mut rows = highlight(text, &lines, &code.file, cx);
         let mut added = 0usize;
+        // Where the authored range is in the rows. The same as its lines in a
+        // whole file; in the deck's copy, wherever its span put it — and
+        // nowhere, when the copy does not hold it, which leaves nothing to
+        // mark.
+        let marked = rows
+            .iter()
+            .position(|row| row.number == Some(authored.first))
+            .zip(
+                rows.iter()
+                    .position(|row| row.number == Some(authored.last)),
+            )
+            .filter(|(first, last)| first <= last)
+            .map(|(first, last)| first..last + 1);
 
         // A proposed change, drawn in place: the range marked as going, and the
         // replacement spliced in under it. Every row below then sits one lower
@@ -694,9 +753,10 @@ impl Pane {
         let mut added_at = authored.last;
         // A missing file has no rows to mark, and the range would index into
         // nothing.
-        let drawn = missing.is_none();
+        let drawn = missing.is_none() && marked.is_some();
+        let marked = marked.unwrap_or(0..0);
         if let Some(after) = code.after.as_deref().filter(|_| drawn) {
-            for row in &mut rows[(authored.first as usize - 1)..(authored.last as usize)] {
+            for row in &mut rows[marked.clone()] {
                 row.change = Some(Change::Gone);
             }
 
@@ -718,7 +778,7 @@ impl Pane {
                 row.change = Some(Change::New);
             }
             added = fresh.len();
-            rows.splice((authored.last as usize)..(authored.last as usize), fresh);
+            rows.splice(marked.end..marked.end, fresh);
         } else if let Some(before) = code.before.as_deref().filter(|_| drawn) {
             // The other direction, and the one that reads oddly until you see
             // why: here the *range* is the new code. It is on disk, so it keeps
@@ -732,7 +792,7 @@ impl Pane {
             // an agent has to show — *here is what I added* — and the one a
             // highlight cannot say, because a highlight of new lines looks the
             // same as a highlight of lines that were always there.
-            for row in &mut rows[(authored.first as usize - 1)..(authored.last as usize)] {
+            for row in &mut rows[marked.clone()] {
                 row.change = Some(Change::New);
             }
 
@@ -758,14 +818,13 @@ impl Pane {
                 // Over the range, not under it: a diff reads downwards, and
                 // the half that is going goes first.
                 added_at = authored.first - 1;
-                let at = (authored.first as usize) - 1;
-                rows.splice(at..at, gone);
+                rows.splice(marked.start..marked.start, gone);
             }
         }
 
         // The deck's copy: only the spans it kept, and a row at each edge.
-        if let Some((kept, lines)) = &kept {
-            rows = trimmed(rows, kept, *lines);
+        if let Some((kept, lines)) = kept {
+            rows = trimmed(rows, kept, lines);
         }
 
         // Open on the range, a couple of lines above it so it does not start
@@ -802,6 +861,7 @@ impl Pane {
             prose: None,
             prose_open: std::collections::HashSet::new(),
             line_row: Vec::new(),
+            edges: Vec::new(),
             unwritten,
             spotlight: authored,
             source_lines: total,
@@ -991,31 +1051,28 @@ impl Pane {
                 }
             }
         }
-        let mut line_row = vec![usize::MAX; self.source_lines as usize];
+        let mut line_row: Vec<(u32, usize)> = Vec::new();
         for (ix, row) in rows.iter().enumerate() {
             let real =
                 row.extra.is_none() && (row.change.is_none() || row.change != self.unwritten);
-            if let Some(number) = row.number.filter(|_| real)
-                && let Some(slot) = line_row.get_mut((number.max(1) - 1) as usize)
-                && *slot == usize::MAX
-            {
-                *slot = ix;
+            if let Some(number) = row.number.filter(|_| real) {
+                line_row.push((number, ix));
             }
         }
+        // The first row a line is drawn on is its row.
+        line_row.sort_by_key(|(number, _)| *number);
+        line_row.dedup_by_key(|(number, _)| *number);
         // In the deck's copy, a line it did not keep is found at the row that
         // says so: a scroll to it, or a card placed by it, lands on the edge
         // rather than off the end of the list.
-        for (ix, row) in rows.iter().enumerate() {
-            if let Some(Extra::Absent { first, last }) = row.extra {
-                for n in first..=last.unwrap_or(self.source_lines).min(self.source_lines) {
-                    if let Some(slot) = line_row.get_mut((n.max(1) - 1) as usize)
-                        && *slot == usize::MAX
-                    {
-                        *slot = ix;
-                    }
-                }
-            }
-        }
+        self.edges = rows
+            .iter()
+            .enumerate()
+            .filter_map(|(ix, row)| match row.extra {
+                Some(Extra::Absent { first, last }) => Some((first, last, ix)),
+                _ => None,
+            })
+            .collect();
         self.line_row = line_row;
         // Wide enough for the longest thing drawn on a row, value included.
         self.widest = rows
@@ -1359,11 +1416,19 @@ impl Pane {
     /// have to come through here, or they land somewhere the reader did not
     /// point at.
     fn row_of(&self, number: u32) -> usize {
-        self.line_row
-            .get((number.max(1) - 1) as usize)
-            .copied()
-            .filter(|ix| *ix != usize::MAX)
-            .unwrap_or_else(|| row_of(number, self.added_at, self.added))
+        if let Ok(at) = self
+            .line_row
+            .binary_search_by_key(&number, |(line, _)| *line)
+        {
+            return self.line_row[at].1;
+        }
+        self.edges
+            .iter()
+            .find(|(first, last, _)| *first <= number && last.is_none_or(|last| number <= last))
+            .map_or_else(
+                || row_of(number, self.added_at, self.added),
+                |(_, _, ix)| *ix,
+            )
     }
 
     /// Take hold of the rows between `from` and `to`, whichever way round.
@@ -2217,13 +2282,19 @@ impl Pane {
                                 // pulled to the sentence being said without the page
                                 // gaining a third kind of highlight to learn.
                                 .bg(paint(ground))
-                                // A hairline between the edge and the code it borders, on
-                                // whichever side the code is.
+                                // A dashed hairline between the edge and the code it
+                                // borders, on whichever side the code is: dashed, as
+                                // a cut is drawn, and not the solid rule between
+                                // panes.
                                 .when(absent && ix > 0, |row| {
-                                    row.border_t_1().border_color(paint(palette.edge))
+                                    row.border_t_1()
+                                        .border_dashed()
+                                        .border_color(paint(palette.edge))
                                 })
                                 .when(absent && ix + 1 < rows.len(), |row| {
-                                    row.border_b_1().border_color(paint(palette.edge))
+                                    row.border_b_1()
+                                        .border_dashed()
+                                        .border_color(paint(palette.edge))
                                 })
                                 .child(
                                     div()
@@ -2693,6 +2764,14 @@ fn aside_note(aside: &Aside, slot: &Slot, cx: &App) -> AnyElement {
             .child(commit(since))
             .child("·")
             .child(switch(("show-live", slot.ix), "Show live", slot)),
+        Aside::Differs => note
+            .child("differs from the deck's copy")
+            .child("·")
+            .child(switch(("show-live", slot.ix), "Show live", slot)),
+        Aside::Lost => note
+            .child("couldn't follow these lines into your checkout")
+            .child("·")
+            .child(switch(("show-deck", slot.ix), "Show the deck's copy", slot)),
         // The dot says this is not the deck's copy any more, in the accent,
         // so a reader glancing at the header can tell which they are reading.
         Aside::Live { head } => note
@@ -2735,10 +2814,13 @@ fn missing_note(missing: &Missing, slot: &Slot, cx: &App) -> impl IntoElement {
                         .child(missing.file.clone()),
                 )
                 .child(missing.said.clone())
-                .when(missing.live, |this| {
+                .when_some(missing.offer, |this, offer| {
                     this.child(div().px(px(5.)).child("·")).child(switch(
-                        ("missing-live", slot.ix),
-                        "Show live",
+                        ("missing-switch", slot.ix),
+                        match offer {
+                            crate::load::Offer::Live => "Show live",
+                            crate::load::Offer::Deck => "Show the deck's copy",
+                        },
                         slot,
                     ))
                 }),
@@ -3097,19 +3179,6 @@ fn row_of(number: u32, added_at: u32, added: usize) -> usize {
     if number > added_at { ix + added } else { ix }
 }
 
-/// The spans a deck's copy kept, and how many lines the whole file had when
-/// the deck says.
-type Kept<'a> = (&'a [LineRange], Option<u32>);
-
-/// The text a pane is built from, and — for the deck's own copy — the spans
-/// it kept and how long the whole file was.
-fn source_kept(source: &crate::load::Source) -> (&str, Option<Kept<'_>>) {
-    match source {
-        crate::load::Source::Snapshot { text, kept, lines } => (text, Some((kept, *lines))),
-        other => (other.text(), None),
-    }
-}
-
 /// The stretches of a file a deck's copy leaves out, given the spans it kept
 /// and, when it is known, how many lines the file had.
 ///
@@ -3340,11 +3409,12 @@ fn row_content(
                 .into_any_element()
         }
         // Said quietly, in the prose face rather than the code's: it is a note
-        // about the code, not a line of it.
+        // about the code, not a line of it. Upright: the window embeds no
+        // italic of that face, and a slant the renderer has to fake reads as
+        // a mistake rather than a voice.
         Some(Extra::Absent { first, last }) => div()
             .flex_none()
             .whitespace_nowrap()
-            .italic()
             .font_family(sans.clone())
             .text_size(small)
             .text_color(paint(palette.muted))

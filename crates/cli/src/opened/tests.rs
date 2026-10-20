@@ -84,7 +84,8 @@ fn a_file_opens_into_a_folder_named_by_its_hash() {
     assert!(opened.deck.join("done").is_file());
     assert!(!opened.reused, "nothing was there to reuse");
     // The window finds its way back to the file from the folder alone.
-    assert_eq!(origin(&opened.deck), Some(opened.origin.clone()));
+    assert_eq!(origin(&opened.dir, &file), Some(opened.origin.clone()));
+    assert_eq!(opened.origin.sha256, sha);
     assert_eq!(snapshots(&opened.deck).len(), 1);
     assert_eq!(snapshots(&opened.deck)[0].line(30), Some("line 30"));
 }
@@ -192,8 +193,153 @@ fn the_review_goes_beside_the_file() {
 
     let beside = std::path::absolute(dir.path().join("2026-10-20-batch.review")).expect("abs");
     assert_eq!(opened.origin.review, beside);
-    // And everything that only has the deck folder finds the same place.
-    assert_eq!(crate::review_path(&opened.deck), beside);
+    assert_eq!(opened.origin.beside, None);
+}
+
+#[test]
+fn two_copies_of_the_same_bytes_each_keep_their_own_review() {
+    let dir = tempfile::tempdir().expect("a temp dir");
+    let (a, b) = (dir.path().join("a"), dir.path().join("b"));
+    std::fs::create_dir_all(&a).expect("a");
+    std::fs::create_dir_all(&b).expect("b");
+    let bytes = packed(None);
+    std::fs::write(a.join("x.deck"), &bytes).expect("x");
+    std::fs::write(b.join("y.deck"), &bytes).expect("y");
+    let cache = dir.path().join("opened");
+
+    let first = open(&a.join("x.deck"), &cache).expect("opens");
+    let second = open(&b.join("y.deck"), &cache).expect("opens");
+
+    // One deck, shared, read-only.
+    assert_eq!(first.deck, second.deck);
+    // Two answers, each beside its own file — and the first is not
+    // redirected by the second having been opened after it.
+    assert!(
+        first.origin.review.ends_with("a/x.review"),
+        "{:?}",
+        first.origin
+    );
+    assert!(
+        second.origin.review.ends_with("b/y.review"),
+        "{:?}",
+        second.origin
+    );
+    assert_eq!(origin(&first.dir, &a.join("x.deck")), Some(first.origin));
+    assert_eq!(origin(&second.dir, &b.join("y.deck")), Some(second.origin));
+}
+
+#[test]
+fn a_review_of_another_copy_is_kept_and_this_one_goes_beside_it() {
+    let dir = tempfile::tempdir().expect("a temp dir");
+    let file = file_in(dir.path());
+    let sha = bundle::sha256(&std::fs::read(&file).expect("read"));
+    // The review of an earlier copy of the same deck: same id, other bytes.
+    let earlier = dir.path().join("2026-10-20-batch.review");
+    let old = r#"{"v":1,"deck":"d-1","comments":[],"deck_sha256":"0000000"}"#;
+    std::fs::write(&earlier, old).expect("an old review");
+
+    let opened = open(&file, &dir.path().join("opened")).expect("opens");
+
+    let short = &sha[..7];
+    assert!(
+        opened
+            .origin
+            .review
+            .ends_with(format!("2026-10-20-batch.{short}.review")),
+        "{:?}",
+        opened.origin.review
+    );
+    assert_eq!(
+        opened
+            .origin
+            .beside
+            .as_deref()
+            .map(std::fs::canonicalize)
+            .transpose()
+            .ok()
+            .flatten(),
+        Some(std::fs::canonicalize(&earlier).expect("resolves"))
+    );
+    assert_eq!(
+        std::fs::read_to_string(&earlier).expect("there"),
+        old,
+        "untouched"
+    );
+}
+
+#[test]
+fn a_review_counts_as_this_files_only_with_its_id_and_its_hash() {
+    let dir = tempfile::tempdir().expect("a temp dir");
+    let at = dir.path().join("x.review");
+    let write = |json: &str| std::fs::write(&at, json).expect("written");
+
+    write(r#"{"v":1,"deck":"d-1","comments":[],"deck_sha256":"abc"}"#);
+    assert!(answers(&at, "d-1", "abc"));
+    assert!(!answers(&at, "d-2", "abc"), "another deck");
+    assert!(!answers(&at, "d-1", "abd"), "another copy");
+    write(r#"{"v":1,"deck":"d-1","comments":[]}"#);
+    assert!(
+        !answers(&at, "d-1", "abc"),
+        "written before files were named"
+    );
+    write("not json");
+    assert!(!answers(&at, "d-1", "abc"));
+}
+
+#[cfg(unix)]
+#[test]
+fn a_link_in_the_cache_is_never_followed_and_the_cache_is_rebuilt() {
+    let dir = tempfile::tempdir().expect("a temp dir");
+    let file = file_in(dir.path());
+    let cache = dir.path().join("opened");
+    let first = open(&file, &cache).expect("opens");
+
+    // Somewhere outside the cache, with a read-only file in it that must be
+    // left exactly as it is.
+    let outside = dir.path().join("outside");
+    std::fs::create_dir(&outside).expect("a folder");
+    let precious = outside.join("precious.txt");
+    std::fs::write(&precious, "keep").expect("written");
+    let mut permissions = std::fs::metadata(&precious).expect("there").permissions();
+    permissions.set_readonly(true);
+    std::fs::set_permissions(&precious, permissions).expect("locked");
+    std::os::unix::fs::symlink(&outside, first.dir.join("snap").join("away")).expect("a link");
+
+    let second = open(&file, &cache).expect("opens again");
+
+    assert!(!second.reused, "a cache with a link in it is not trusted");
+    assert!(!second.dir.join("snap").join("away").exists());
+    assert!(
+        std::fs::metadata(&precious)
+            .expect("still there")
+            .permissions()
+            .readonly(),
+        "the target was neither unlocked nor removed"
+    );
+}
+
+#[test]
+fn every_spelling_of_one_remote_is_one_repo() {
+    let key = Some("github.com/acme/ingest".to_string());
+    for spelling in [
+        "git@github.com:acme/ingest.git",
+        "git@github.com:acme/ingest",
+        "ssh://git@github.com/acme/ingest.git",
+        "ssh://git@github.com:22/acme/ingest",
+        "https://github.com/acme/ingest",
+        "https://github.com/acme/ingest.git",
+        "https://GitHub.com/acme/ingest/",
+        "https://ada:token@github.com/acme/ingest.git",
+    ] {
+        assert_eq!(remote_key(spelling), key, "{spelling}");
+    }
+    assert_ne!(remote_key("https://github.com/acme/other"), key);
+    assert_ne!(remote_key("https://gitlab.com/acme/ingest"), key);
+    assert_eq!(
+        remote_key("/srv/git/ingest.git"),
+        None,
+        "a path names no repo"
+    );
 }
 
 #[cfg(unix)]
@@ -224,11 +370,10 @@ fn a_folder_that_cannot_be_written_sends_the_review_to_the_cache() {
 }
 
 #[test]
-fn an_ordinary_deck_folder_has_no_origin() {
+fn an_ordinary_deck_folder_has_its_review_beside_it() {
     let dir = tempfile::tempdir().expect("a temp dir");
     let root = dir.path().join("d-1.deck");
     std::fs::create_dir(&root).expect("a deck folder");
-    assert_eq!(origin(&root), None);
     assert_eq!(crate::review_path(&root), dir.path().join("d-1.review"));
 }
 
@@ -306,6 +451,16 @@ fn repo(outer: &Path, remote: &str) -> Option<(PathBuf, String)> {
 
 const REMOTE: &str = "https://github.com/acme/ingest.git";
 
+/// [`matching`], with git reading an empty file as its global settings, so
+/// these pass whatever the machine running them has set.
+fn hermetic(cwd: &Path, repo: Option<&Repo>, ceiling: Option<&Path>) -> Match {
+    let config = ceiling
+        .expect("every test gives a ceiling")
+        .join("empty.gitconfig");
+    std::fs::write(&config, "").expect("an empty config");
+    matching_with(cwd, repo, ceiling, Some(&config))
+}
+
 #[test]
 fn the_same_repo_at_the_same_commit_matches() {
     let outer = tempfile::tempdir().expect("a temp dir");
@@ -319,7 +474,7 @@ fn the_same_repo_at_the_same_commit_matches() {
         commit: Some(head.clone()),
     };
 
-    let Match::Same { commit, root } = matching(&dir.join("src"), Some(&packed), Some(&ceiling))
+    let Match::Same { commit, root } = hermetic(&dir.join("src"), Some(&packed), Some(&ceiling))
     else {
         panic!("credentials in the reader's remote are cleaned off before comparing");
     };
@@ -350,7 +505,7 @@ fn the_same_repo_at_another_commit_has_moved() {
         packed: was,
         head: now,
         root,
-    } = matching(&dir, Some(&packed), Some(&ceiling))
+    } = hermetic(&dir, Some(&packed), Some(&ceiling))
     else {
         panic!("the code has moved");
     };
@@ -374,7 +529,7 @@ fn another_remote_or_none_never_matches() {
         commit: Some(head.clone()),
     };
     assert_eq!(
-        matching(&dir, Some(&packed), Some(&ceiling)),
+        hermetic(&dir, Some(&packed), Some(&ceiling)),
         Match::Elsewhere
     );
 
@@ -385,16 +540,33 @@ fn another_remote_or_none_never_matches() {
         commit: Some(head),
     };
     assert_eq!(
-        matching(&dir, Some(&silent), Some(&ceiling)),
+        hermetic(&dir, Some(&silent), Some(&ceiling)),
         Match::Elsewhere
     );
-    assert_eq!(matching(&dir, None, Some(&ceiling)), Match::Elsewhere);
+    assert_eq!(hermetic(&dir, None, Some(&ceiling)), Match::Elsewhere);
 
     // And outside any repo at all.
     let empty = outer.path().join("empty");
     std::fs::create_dir(&empty).expect("a folder");
     assert_eq!(
-        matching(&empty, Some(&packed), Some(&ceiling)),
+        hermetic(&empty, Some(&packed), Some(&ceiling)),
         Match::Elsewhere
     );
+}
+
+#[test]
+fn a_checkout_cloned_over_ssh_matches_a_deck_packed_over_https() {
+    let outer = tempfile::tempdir().expect("a temp dir");
+    let Some((dir, head)) = repo(outer.path(), "git@GitHub.com:acme/ingest.git") else {
+        return;
+    };
+    let ceiling = std::fs::canonicalize(outer.path()).expect("resolves");
+    let packed = Repo {
+        remote: Some("https://github.com/acme/ingest".to_string()),
+        commit: Some(head),
+    };
+    assert!(matches!(
+        hermetic(&dir, Some(&packed), Some(&ceiling)),
+        Match::Same { .. }
+    ));
 }

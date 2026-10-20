@@ -929,20 +929,20 @@ pub fn clean_remote(remote: &str) -> Option<String> {
 }
 
 /// What git says about the repo a deck was written in.
-pub(crate) struct Git {
+struct Git {
     /// The top of the working tree, as git printed it.
-    pub(crate) root: String,
+    root: String,
     /// `HEAD`, when there is one.
-    pub(crate) commit: Option<String>,
+    commit: Option<String>,
     /// `origin`, as configured, credentials and all.
-    pub(crate) remote: Option<String>,
+    remote: Option<String>,
     /// See [`Options::ceiling`].
     ceiling: Option<PathBuf>,
 }
 
 impl Git {
     /// The repo `dir` is in, or `None` when there is no git or no repo.
-    pub(crate) fn find(dir: &Path, ceiling: Option<&Path>) -> Option<Self> {
+    fn find(dir: &Path, ceiling: Option<&Path>) -> Option<Self> {
         let root =
             git(dir, ceiling, &["rev-parse", "--show-toplevel"]).filter(|root| !root.is_empty())?;
         let at = Path::new(&root);

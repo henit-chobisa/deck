@@ -70,16 +70,14 @@ pub struct Packed {
 }
 
 impl Packed {
-    /// What `deck open` found when it opened the deck folder at `root`, or
-    /// `None` for a folder that did not come from a file.
+    /// The deck folder at `root`, opened from the file `origin` names.
     ///
     /// The repo is asked about the directory the reader is in, once, here: a
     /// reader does not change repo under an open window, and asking git on
     /// every pane would be a process per file for an answer that does not
     /// change.
     #[must_use]
-    pub fn of(root: &Path) -> Option<Self> {
-        let origin = deck_cli::opened::origin(root)?;
+    pub fn of(root: &Path, origin: deck_cli::opened::Origin) -> Self {
         let manifest = deck_cli::opened::manifest(root);
         let repo = std::env::current_dir().map_or(deck_cli::opened::Match::Elsewhere, |cwd| {
             deck_cli::opened::matching(
@@ -94,12 +92,12 @@ impl Packed {
             .into_iter()
             .map(|snapshot| (snapshot.file.path.clone(), std::sync::Arc::new(snapshot)))
             .collect();
-        Some(Self {
+        Self {
             origin,
             snapshots,
             repo,
             live: false,
-        })
+        }
     }
 
     /// The top of the reader's checkout, when it is the repo the deck came
@@ -115,10 +113,36 @@ impl Packed {
 
     /// The deck's own copy of `file`, whichever side the panes are showing.
     #[must_use]
-    pub fn frozen(&self, file: &Path) -> Option<Source> {
-        self.snapshots
-            .get(&file.to_string_lossy().replace('\\', "/"))
-            .map(|snapshot| Source::frozen(snapshot))
+    pub fn frozen(
+        &self,
+        file: &Path,
+    ) -> Option<&std::sync::Arc<deck_core::bundle::snap::Snapshot>> {
+        self.snapshots.get(&named(file))
+    }
+
+    /// Whether the reader's checkout, at the very commit the deck was packed
+    /// at, still holds something other than the deck's copy of `file`.
+    ///
+    /// The commit alone does not say. A deck packed from a file with changes
+    /// nobody had committed — or one git was not tracking — shows code no
+    /// commit has, and a checkout can have edits of its own on top of the
+    /// same commit. So the deck's word on how the file stood is asked first,
+    /// and then the file's own hash against the one the deck recorded. A deck
+    /// that recorded no hash — an export that froze only part of a file
+    /// cannot vouch for the rest of it — leaves the hash out of it: unknown
+    /// is not the same as different.
+    #[must_use]
+    pub fn differs(&self, file: &Path) -> bool {
+        let deck_cli::opened::Match::Same { root, .. } = &self.repo else {
+            return false;
+        };
+        let Some(snapshot) = self.frozen(file) else {
+            return false;
+        };
+        differs(
+            &snapshot.file,
+            std::fs::read(root.join(file)).ok().as_deref(),
+        )
     }
 
     /// The file's name, as the strip shows it.
@@ -131,6 +155,36 @@ impl Packed {
     }
 }
 
+/// A ref's path as a snapshot names it: forward slashes, whatever the
+/// machine.
+fn named(file: &Path) -> String {
+    file.to_string_lossy().replace('\\', "/")
+}
+
+/// Whether the checkout's `bytes` for a file — `None` when it has none — are
+/// other than the deck's copy described by `file`. See [`Packed::differs`].
+#[must_use]
+pub fn differs(file: &deck_core::bundle::snap::File, bytes: Option<&[u8]>) -> bool {
+    use deck_core::bundle::snap::State;
+    if file.state != State::Clean {
+        return true;
+    }
+    if file.sha256.is_empty() {
+        return false;
+    }
+    bytes.is_none_or(|bytes| deck_core::bundle::sha256(bytes) != file.sha256)
+}
+
+/// What a pane with no code offers instead.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Offer {
+    /// The reader's checkout has the file: `· Show live`.
+    Live,
+    /// The panes are showing the checkout, and it lacks the file: `· Show the
+    /// deck's copy`, the way back.
+    Deck,
+}
+
 /// Where a pane's code comes from, and what can honestly be shown of it.
 ///
 /// It used to be a string, and when a file could not be read the string was
@@ -139,17 +193,10 @@ impl Packed {
 /// things to draw, and each is its own case here.
 #[derive(Clone)]
 pub enum Source {
-    /// The deck's own copy, from a `.deck` file: only the spans it kept.
-    Snapshot {
-        /// The file numbered as it was whole, up to the last line kept, with
-        /// the lines it did not keep left empty — so line `n` is still line
-        /// `n`, and everything that counts lines counts the real ones.
-        text: std::sync::Arc<str>,
-        /// The spans kept, in order and apart.
-        kept: std::sync::Arc<[LineRange]>,
-        /// How many lines the whole file had, when the deck says.
-        lines: Option<u32>,
-    },
+    /// The deck's own copy, from a `.deck` file: only the spans it kept, as
+    /// spans. Never padded out to the file it came from — a span is two
+    /// numbers, and a hostile one is a long way from line one.
+    Snapshot(std::sync::Arc<deck_core::bundle::snap::Snapshot>),
     /// The file as it is on disk now.
     Live(std::sync::Arc<str>),
     /// Nothing to show.
@@ -158,36 +205,58 @@ pub enum Source {
         file: PathBuf,
         /// The rest of the sentence after its name: ` is not in this deck.`
         said: std::sync::Arc<str>,
-        /// Whether the reader's checkout has the file to offer instead.
-        live: bool,
+        /// What the pane offers instead, if anything.
+        offer: Option<Offer>,
     },
 }
 
 impl Source {
-    /// The text a pane is built from: empty for a file that is missing.
+    /// The whole file, when this is one — the text everything that diffs or
+    /// quotes a file reads. The deck's copy is not a whole file, and a file
+    /// that is missing has no text.
     #[must_use]
-    pub fn text(&self) -> &str {
+    pub fn whole(&self) -> Option<&str> {
         match self {
-            Self::Snapshot { text, .. } | Self::Live(text) => text,
-            Self::Missing { .. } => "",
+            Self::Live(text) => Some(text),
+            Self::Snapshot(_) | Self::Missing { .. } => None,
         }
     }
+}
 
-    /// The deck's copy of `snapshot`, numbered as the whole file was.
-    #[must_use]
-    pub fn frozen(snapshot: &deck_core::bundle::snap::Snapshot) -> Self {
-        let last = snapshot.file.kept.last().map_or(0, |span| span.last);
-        let mut text = String::new();
-        for n in 1..=last {
-            text.push_str(snapshot.line(n).unwrap_or_default());
-            text.push('\n');
+/// Where the lines `range` of the deck's copy are in `current`, the checkout's
+/// file, or `None` when they cannot be followed there with confidence.
+///
+/// The copy's kept lines are compared with the checkout's whole file — the
+/// lines the deck left out are not anybody's to compare — so the range is
+/// taken into the copy's own count first and brought back out of the
+/// checkout's. A range it could not place at all — stale — comes back as
+/// `None`: lighting the old numbers on a file that has moved would light code
+/// the claim was never about.
+#[must_use]
+pub fn followed(
+    snapshot: &deck_core::bundle::snap::Snapshot,
+    current: &str,
+    range: LineRange,
+) -> Option<LineRange> {
+    let mut before = 0u32;
+    let mut inside = None;
+    for span in &snapshot.file.kept {
+        if span.first <= range.first && range.last <= span.last {
+            inside = Some(before + (range.first - span.first) + 1);
+            break;
         }
-        Self::Snapshot {
-            text: text.into(),
-            kept: snapshot.file.kept.clone().into(),
-            lines: snapshot.file.lines,
-        }
+        before += span.len();
     }
+    let first = inside?;
+    let moved = deck_core::relocate(
+        &snapshot.text,
+        current,
+        &[LineRange::new(first, first + range.len() - 1)],
+    );
+    moved
+        .first()
+        .filter(|moved| moved.source != deck_core::protocol::Source::Stale)
+        .map(|moved| moved.range)
 }
 
 impl Deck {
@@ -227,7 +296,8 @@ impl Deck {
             seen: HashSet::new(),
             sealed: false,
             renewed: HashMap::new(),
-            packed: Packed::of(path),
+            // Set by whoever opened it from a file: see `Packed::of`.
+            packed: None,
         };
         deck.refresh();
         Ok(deck)
@@ -392,18 +462,17 @@ impl Deck {
                 Source::Missing { file, .. } => Source::Missing {
                     file,
                     said: " is not in your checkout.".into(),
-                    live: false,
+                    offer: Some(Offer::Deck),
                 },
                 found => found,
             };
         }
-        let named = file.to_string_lossy().replace('\\', "/");
-        match packed.snapshots.get(&named) {
-            Some(snapshot) => Source::frozen(snapshot),
+        match packed.frozen(file) {
+            Some(snapshot) => Source::Snapshot(snapshot.clone()),
             None => Source::Missing {
                 file: file.to_path_buf(),
                 said: " is not in this deck.".into(),
-                live: checkout.is_some(),
+                offer: checkout.map(|_| Offer::Live),
             },
         }
     }
@@ -426,7 +495,7 @@ pub fn read_source(base: &Path, file: &Path) -> Source {
         Err(err) => Source::Missing {
             file: file.to_path_buf(),
             said: format!(" could not be read: {err}.").into(),
-            live: false,
+            offer: None,
         },
     }
 }
@@ -486,7 +555,9 @@ mod tests {
             packed: Some(Packed {
                 origin: deck_cli::opened::Origin {
                     file: PathBuf::from("/shelf/batch.deck"),
+                    sha256: "f".repeat(64),
                     review: PathBuf::from("/shelf/batch.review"),
+                    beside: None,
                 },
                 snapshots: [(snapshot.file.path.clone(), std::sync::Arc::new(snapshot))]
                     .into_iter()
@@ -506,16 +577,19 @@ mod tests {
         // deck's copy is what comes back until the reader asks.
         let deck = packed(Some(dir.path()), false);
 
-        let Source::Snapshot { text, kept, lines } = deck.read_source(Path::new("src/batch.ts"))
-        else {
+        let Source::Snapshot(snapshot) = deck.read_source(Path::new("src/batch.ts")) else {
             panic!("the deck's copy");
         };
-        assert_eq!(&*kept, &[LineRange::new(25, 36)]);
-        assert_eq!(lines, Some(60));
-        let numbered: Vec<&str> = text.lines().collect();
-        assert_eq!(numbered.len(), 36, "numbered up to the last line kept");
-        assert_eq!(numbered[29], "line 30", "line 30 is line 30");
-        assert_eq!(numbered[0], "", "a line it did not keep is empty");
+        assert_eq!(snapshot.file.kept, [LineRange::new(25, 36)]);
+        assert_eq!(snapshot.line(30), Some("line 30"), "line 30 is line 30");
+        assert_eq!(
+            snapshot.line(24),
+            None,
+            "a line it did not keep is not there"
+        );
+        // Spans, not a file padded out to its length: what is held is what
+        // was kept and nothing more.
+        assert_eq!(snapshot.text.lines().count(), 12);
     }
 
     #[test]
@@ -534,21 +608,89 @@ mod tests {
     #[test]
     fn a_file_the_deck_does_not_carry_is_missing_and_offered_only_inside_the_repo() {
         let outside = packed(None, false);
-        let Source::Missing { file, said, live } = outside.read_source(Path::new("src/flush.ts"))
+        let Source::Missing { file, said, offer } = outside.read_source(Path::new("src/flush.ts"))
         else {
             panic!("missing");
         };
         assert_eq!(file, Path::new("src/flush.ts"));
         assert_eq!(&*said, " is not in this deck.");
-        assert!(!live, "no checkout, nothing to offer");
+        assert_eq!(offer, None, "no checkout, nothing to offer");
 
         let dir = tempfile::tempdir().expect("a temp dir");
         let inside = packed(Some(dir.path()), false);
         assert!(matches!(
             inside.read_source(Path::new("src/flush.ts")),
-            Source::Missing { live: true, .. }
+            Source::Missing {
+                offer: Some(Offer::Live),
+                ..
+            }
         ));
-        assert_eq!(inside.read_source(Path::new("src/flush.ts")).text(), "");
+        assert!(
+            inside
+                .read_source(Path::new("src/flush.ts"))
+                .whole()
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn shown_live_a_file_the_checkout_lacks_offers_the_way_back() {
+        let dir = tempfile::tempdir().expect("a temp dir");
+        let deck = packed(Some(dir.path()), true);
+        let Source::Missing { said, offer, .. } = deck.read_source(Path::new("src/batch.ts"))
+        else {
+            panic!("missing from the checkout");
+        };
+        assert_eq!(&*said, " is not in your checkout.");
+        assert_eq!(offer, Some(Offer::Deck));
+    }
+
+    #[test]
+    fn lines_are_followed_into_the_checkout_or_not_lit_at_all() {
+        let snapshot = frozen();
+        // Twelve lines added above: the range moves down twelve.
+        let moved: String = (1..=12)
+            .map(|n| format!("added {n}\n"))
+            .chain((1..=60).map(|n| format!("line {n}\n")))
+            .collect();
+        assert_eq!(
+            followed(&snapshot, &moved, LineRange::new(30, 31)),
+            Some(LineRange::new(42, 43))
+        );
+        // Nothing of the copy left in the checkout: stale, and not lit.
+        let gone: String = (1..=60).map(|n| format!("other {n}\n")).collect();
+        assert_eq!(followed(&snapshot, &gone, LineRange::new(30, 31)), None);
+        // A range the copy does not hold cannot be followed from it.
+        assert_eq!(followed(&snapshot, &moved, LineRange::new(2, 3)), None);
+    }
+
+    #[test]
+    fn the_same_commit_can_still_hold_other_code() {
+        let mut file = frozen().file;
+        let bytes: &[u8] = b"line 1\n";
+        file.state = snap::State::Clean;
+        file.sha256 = deck_core::bundle::sha256(bytes);
+        assert!(!differs(&file, Some(bytes)), "the very file");
+        assert!(differs(&file, Some(b"edited\n")), "edited since");
+        assert!(differs(&file, None), "not in the checkout");
+        // Packed from changes nobody committed: the commit does not have them.
+        file.state = snap::State::Modified;
+        assert!(differs(&file, Some(bytes)));
+        file.state = snap::State::Untracked;
+        assert!(differs(&file, Some(bytes)));
+    }
+
+    #[test]
+    fn a_hash_the_deck_did_not_record_is_unknown_not_different() {
+        // An export that froze only part of the file leaves the hash empty:
+        // the state and the commit are all there is to go on.
+        let mut file = frozen().file;
+        file.sha256 = String::new();
+        file.state = snap::State::Clean;
+        assert!(!differs(&file, Some(b"anything at all\n")));
+        assert!(!differs(&file, None));
+        file.state = snap::State::Modified;
+        assert!(differs(&file, Some(b"anything at all\n")));
     }
 
     #[test]
@@ -560,12 +702,12 @@ mod tests {
             Source::Live(text) if &*text == "fn a() {}\n"
         ));
         // Said, not shown as if it were the file.
-        let Source::Missing { said, live, .. } = read_source(dir.path(), Path::new("gone.rs"))
+        let Source::Missing { said, offer, .. } = read_source(dir.path(), Path::new("gone.rs"))
         else {
             panic!("missing");
         };
         assert!(said.starts_with(" could not be read"), "{said}");
-        assert!(!live);
+        assert_eq!(offer, None);
     }
     use deck_core::protocol::Group;
 

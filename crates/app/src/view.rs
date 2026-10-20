@@ -1043,15 +1043,22 @@ impl DeckView {
 
         // A deck from a file that was reviewed before comes back with that
         // review in it, the way a draft does: the reader picks up where they
-        // stopped, and submitting again replaces it.
-        let saved = deck
-            .packed
-            .as_ref()
-            .map(|packed| packed.origin.review.clone())
-            .filter(|review| review.is_file());
+        // stopped, and submitting again replaces it. Only a review of this
+        // very file — this deck, these bytes. Opening put any other review
+        // somewhere this one will not touch.
+        let previous = deck.packed.as_ref().and_then(|packed| {
+            deck_cli::review_at(&packed.origin.review)
+                .ok()
+                .flatten()
+                .filter(|review| {
+                    review.deck == deck.header.id
+                        && review.deck_sha256.as_deref() == Some(packed.origin.sha256.as_str())
+                })
+                .map(|review| (packed.origin.review.clone(), review))
+        });
+        let saved = previous.as_ref().map(|(path, _)| path.clone());
         if remarks.is_empty()
-            && saved.is_some()
-            && let Ok(Some(review)) = deck_cli::review(&deck.root)
+            && let Some((_, review)) = previous
         {
             remarks = review
                 .comments
@@ -1802,7 +1809,8 @@ impl DeckView {
         let snapshot = self
             .snapshots
             .get(&code.file)
-            .map(|source| std::sync::Arc::<str>::from(source.text()))
+            .and_then(Source::whole)
+            .map(std::sync::Arc::<str>::from)
             .or_else(|| {
                 std::fs::read_to_string(&wanted)
                     .ok()
@@ -2114,7 +2122,7 @@ impl DeckView {
             .entry(file.clone())
             .or_insert_with(|| self.deck.read_source(&file))
             .clone();
-        if source.text().is_empty() {
+        if source.whole().is_none_or(str::is_empty) {
             return crate::live::ShowAnswer::refused(
                 deck_cli::live::ResponseStatus::NotFound,
                 "there is nothing at that path to bring in",
@@ -5152,11 +5160,16 @@ impl DeckView {
         let shown: std::collections::HashMap<std::path::PathBuf, std::sync::Arc<str>> = self
             .snapshots
             .iter()
-            .filter(|(_, source)| !matches!(source, Source::Missing { .. }))
-            .map(|(file, source)| (file.clone(), std::sync::Arc::from(source.text())))
+            .filter_map(|(file, source)| {
+                Some((file.clone(), std::sync::Arc::from(source.whole()?)))
+            })
             .collect();
         follow(&pins, &shown, |file| {
-            self.deck.read_source(file).text().to_string()
+            self.deck
+                .read_source(file)
+                .whole()
+                .unwrap_or_default()
+                .to_string()
         })
     }
 
@@ -5374,6 +5387,13 @@ impl DeckView {
             v: deck_core::VERSION,
             // A failed write must leave the conversation intact for retry.
             transcript: self.conversation.transcript.clone(),
+            // Which file this answers, so opening it again knows the review
+            // is its own and not an earlier copy's.
+            deck_sha256: self
+                .deck
+                .packed
+                .as_ref()
+                .map(|packed| packed.origin.sha256.clone()),
             deck: self.deck.header.id.clone(),
             comments,
         };
@@ -5424,10 +5444,11 @@ impl DeckView {
     /// What a pane's header says about where its code stands, for a deck
     /// from a `.deck` file opened inside the repo it came from.
     ///
-    /// Nothing at the same commit: the deck's copy and the checkout are the
-    /// same code, and a note saying so is a note about nothing. Nothing
+    /// Nothing at the same commit when the file is the deck's copy too: a
+    /// note saying so is a note about nothing. At the same commit with a file
+    /// that is not — see [`crate::load::Packed::differs`] — it says so. Nothing
     /// outside the repo either, where there is no other copy to offer.
-    fn aside(&self) -> Option<crate::pane::Aside> {
+    fn aside(&self, file: &std::path::Path) -> Option<crate::pane::Aside> {
         use deck_cli::opened::{Match, short};
         let packed = self.deck.packed.as_ref()?;
         match &packed.repo {
@@ -5439,6 +5460,7 @@ impl DeckView {
             Match::Moved { packed, .. } => Some(crate::pane::Aside::Moved {
                 since: short(packed).to_string().into(),
             }),
+            Match::Same { .. } if packed.differs(file) => Some(crate::pane::Aside::Differs),
             _ => None,
         }
     }
@@ -5526,36 +5548,52 @@ impl DeckView {
                     // The reader's checkout, for a deck from a file: the range
                     // the author lit is followed from the deck's copy to
                     // wherever those lines are now, the way a remark is
-                    // followed on its way back.
-                    let followed = self
+                    // followed on its way back. Lines that cannot be followed
+                    // are not lit at their old numbers on code that has moved:
+                    // the pane keeps the deck's copy, and says so.
+                    let frozen = self
                         .deck
                         .packed
                         .as_ref()
                         .filter(|packed| packed.live)
                         .and_then(|packed| packed.frozen(&code.file))
-                        .filter(|_| !matches!(source, Source::Missing { .. }))
-                        .and_then(|was| {
-                            deck_core::relocate(was.text(), source.text(), &[code.range])
-                                .first()
-                                .map(|moved| deck_core::protocol::RefSpec {
-                                    range: moved.range,
-                                    ..code.clone()
-                                })
-                        });
-                    Sheet::Code(Box::new(Pane::new(
-                        followed.as_ref().unwrap_or(code),
-                        &source,
-                        cx,
-                    )))
+                        .cloned();
+                    let (spec, source, lost) = match (frozen, source.whole()) {
+                        (Some(snapshot), Some(current)) => {
+                            match crate::load::followed(&snapshot, current, code.range) {
+                                Some(range) => (
+                                    deck_core::protocol::RefSpec {
+                                        range,
+                                        ..code.clone()
+                                    },
+                                    source,
+                                    false,
+                                ),
+                                None => (code.clone(), Source::Snapshot(snapshot), true),
+                            }
+                        }
+                        _ => (code.clone(), source, false),
+                    };
+                    let mut pane = Pane::new(&spec, &source, cx);
+                    pane.aside = lost.then_some(crate::pane::Aside::Lost);
+                    Sheet::Code(Box::new(pane))
                 }
                 Ref::Diagram(drawn) => Sheet::Drawn(Chart::new(drawn)),
                 Ref::Page(page) => Sheet::Page(crate::page::Paper::new(page)),
             })
             .collect();
-        let aside = self.aside();
-        for pane in &mut self.panes {
-            if let Sheet::Code(code) = pane {
-                code.aside.clone_from(&aside);
+        // Every other pane's note, now the panes are built and the deck can
+        // be asked about each file.
+        let asides: Vec<Option<crate::pane::Aside>> = self
+            .panes
+            .iter()
+            .map(|pane| pane.code().and_then(|code| self.aside(&code.file)))
+            .collect();
+        for (pane, aside) in self.panes.iter_mut().zip(asides) {
+            if let Sheet::Code(code) = pane
+                && code.aside.is_none()
+            {
+                code.aside = aside;
             }
         }
         // A pane the prose points into keeps its values away until a sentence
@@ -6174,44 +6212,74 @@ impl DeckView {
             review.display().to_string()
         };
         let saved = self.saved.clone();
+        // A review of another copy was already where this one would go, and
+        // is left alone: said, so the reader is not surprised by two files.
+        let kept = packed
+            .origin
+            .beside
+            .as_ref()
+            .and_then(|beside| beside.file_name())
+            .map(|name| name.to_string_lossy().into_owned());
         Some(
             div()
-                .h_flex()
-                .flex_wrap()
+                .v_flex()
                 .flex_none()
-                .gap(px(4.))
-                .pt(px(6.))
-                .text_size(px(10.5))
-                .line_height(px(15.))
-                .text_color(paint(palette.muted))
-                .child(if saved.is_some() {
-                    "Saved to"
-                } else {
-                    "Saves to"
-                })
-                .child(
+                .child(self.render_saves(named, saved, cx))
+                .children(kept.map(|kept| {
                     div()
-                        .min_w_0()
-                        .font_family(cx.theme().mono_font_family.clone())
-                        .text_color(paint(palette.fg.mix(palette.band, 0.15)))
-                        .child(named),
-                )
-                .children(saved.map(|path| {
-                    let mut line = paint(palette.accent);
-                    line.a = 0.4;
-                    div().h_flex().gap(px(4.)).child("·").child(
-                        div()
-                            .id("reveal-review")
-                            .cursor_pointer()
-                            .text_color(paint(palette.accent))
-                            .border_b_1()
-                            .border_color(line)
-                            .on_click(move |_, _window, cx| cx.reveal_path(&path))
-                            .child("Reveal"),
-                    )
+                        .text_size(px(10.5))
+                        .line_height(px(15.))
+                        .text_color(paint(palette.muted))
+                        .child(format!("{kept} is another copy's review, left as it was"))
                 }))
                 .into_any_element(),
         )
+    }
+
+    /// `Saves to <name>`, or `Saved to <name> · Reveal`.
+    fn render_saves(
+        &self,
+        named: String,
+        saved: Option<std::path::PathBuf>,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        let palette = &self.palette;
+        div()
+            .h_flex()
+            .flex_wrap()
+            .flex_none()
+            .gap(px(4.))
+            .pt(px(6.))
+            .text_size(px(10.5))
+            .line_height(px(15.))
+            .text_color(paint(palette.muted))
+            .child(if saved.is_some() {
+                "Saved to"
+            } else {
+                "Saves to"
+            })
+            .child(
+                div()
+                    .min_w_0()
+                    .font_family(cx.theme().mono_font_family.clone())
+                    .text_color(paint(palette.fg.mix(palette.band, 0.15)))
+                    .child(named),
+            )
+            .children(saved.map(|path| {
+                let mut line = paint(palette.accent);
+                line.a = 0.4;
+                div().h_flex().gap(px(4.)).child("·").child(
+                    div()
+                        .id("reveal-review")
+                        .cursor_pointer()
+                        .text_color(paint(palette.accent))
+                        .border_b_1()
+                        .border_color(line)
+                        .on_click(move |_, _window, cx| cx.reveal_path(&path))
+                        .child("Reveal"),
+                )
+            }))
+            .into_any_element()
     }
 
     /// Move the seam between the narration and the code.

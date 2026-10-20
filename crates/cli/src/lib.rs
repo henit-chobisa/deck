@@ -1026,14 +1026,11 @@ pub fn reopened(root: &Path) {
 
 /// Where the review for the deck at `root` will appear.
 ///
-/// Beside the deck folder, as `<id>.review` — or, for a deck opened from a
-/// `.deck` file, wherever [`opened::review_to`] chose when it was opened:
-/// beside the file, so the answer sits next to the question it answers.
+/// A deck opened from a `.deck` file has its review wherever
+/// [`opened::review_to`] chose, which only the [`opened::Origin`] it was
+/// opened with knows: see [`review_at`].
 #[must_use]
 pub fn review_path(root: &Path) -> PathBuf {
-    if let Some(origin) = opened::origin(root) {
-        return origin.review;
-    }
     let name = root
         .file_stem()
         .and_then(|name| name.to_str())
@@ -1047,8 +1044,16 @@ pub fn review_path(root: &Path) -> PathBuf {
 ///
 /// When the file exists but will not parse.
 pub fn review(root: &Path) -> anyhow::Result<Option<Review>> {
-    let path = review_path(root);
-    match std::fs::read_to_string(&path) {
+    review_at(&review_path(root))
+}
+
+/// Read the review at `path`, if one has been written there.
+///
+/// # Errors
+///
+/// When the file exists but will not parse.
+pub fn review_at(path: &Path) -> anyhow::Result<Option<Review>> {
+    match std::fs::read_to_string(path) {
         Ok(text) => Ok(Some(serde_json::from_str(&text)?)),
         Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(None),
         Err(err) => Err(err.into()),

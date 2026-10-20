@@ -79,9 +79,14 @@ fn main() -> ExitCode {
     // dropped one would leave an agent waiting for a review of a deck nobody
     // was ever shown.
     let mut decks = Vec::with_capacity(opening.deck.len());
-    for path in &opening.deck {
+    for (path, origin) in opening.deck.iter().zip(&opening.origins) {
         match Deck::read(path) {
-            Ok(deck) => decks.push(deck),
+            Ok(mut deck) => {
+                // Told which file, rather than left to work it out: two copies
+                // of the same bytes share the folder.
+                deck.packed = origin.clone().map(|origin| load::Packed::of(path, origin));
+                decks.push(deck);
+            }
             Err(err) => {
                 eprintln!("deck: cannot read {}: {err}", path.display());
                 return ExitCode::FAILURE;
@@ -102,7 +107,11 @@ fn main() -> ExitCode {
     // that opened five would be waiting on five answers and needs to ask for
     // them one at a time.
     let asked_about = &opening.deck[0];
-    match deck_cli::review(asked_about) {
+    let found = opening.origins[0].as_ref().map_or_else(
+        || deck_cli::review(asked_about),
+        |origin| deck_cli::review_at(&origin.review),
+    );
+    match found {
         Ok(Some(review)) => match serde_json::to_string_pretty(&review) {
             Ok(json) => {
                 println!("{json}");
