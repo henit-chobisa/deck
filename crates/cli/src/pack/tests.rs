@@ -999,6 +999,8 @@ fn a_ref_that_leaves_the_repo_is_never_read() {
         ],
     );
     let absolute = dir.path().join("secrets").join("absolute");
+    // Mutated only where symlinks can be made; elsewhere the `mut` is idle.
+    #[cfg_attr(not(unix), allow(unused_mut))]
     let mut refs: Vec<(PathBuf, u32, u32)> = vec![
         (PathBuf::from("../secrets/up"), 1, 1),
         (absolute, 1, 1),
