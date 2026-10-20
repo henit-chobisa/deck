@@ -107,7 +107,10 @@ pub fn html(document: &Document, bundle: &[u8], options: &Options) -> String {
             stops.push(Stop::Argument(group));
         }
     }
-    if options.comments && !document.general.is_empty() {
+    // What was said about the whole deck may be about any of it, so it goes
+    // only with the whole deck.
+    let every = document.groups.iter().all(|g| options.shows(g.n));
+    if options.comments && every && !document.general.is_empty() {
         stops.push(Stop::General(&document.general));
     }
 

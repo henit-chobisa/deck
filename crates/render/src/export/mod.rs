@@ -57,9 +57,11 @@ impl Options {
 /// `bundle` as one self-contained HTML file, painted in `palette` with the
 /// window's highlighter.
 ///
-/// The `.deck` the page carries is `bundle` packed again — without its
-/// review, when the comments are left out — and the page is written from that
-/// same packed deck, so what the page shows and what it carries are one deck.
+/// The `.deck` the page carries is `bundle` packed again: without its
+/// review when the comments are left out, and with only the groups asked for
+/// when some are ([`only`]). Choosing groups is choosing what to share, and a
+/// file whose page showed group two while its `.deck` held all three would
+/// hand the other two to anybody who unpacked it.
 ///
 /// # Errors
 ///
@@ -74,11 +76,141 @@ pub fn deck(
     if !options.comments {
         bundle.files.remove("review.json");
     }
-    let bytes = bundle.pack()?;
-    let (packed, _) = Bundle::open(&bytes).map_err(|err| err.to_string())?;
-    let document = crate::document::build(&packed, palette, options.dark, syntax)
+    let carried = only(&bundle, &options.groups)?;
+    let bytes = carried.pack()?;
+    // The page is written from the whole deck and shows only what was
+    // asked for, so its groups keep the numbers they have in the deck —
+    // `2 of 3`, not `1 of 1` — while the file it carries holds nothing else.
+    let document = crate::document::build(&bundle, palette, options.dark, syntax)
         .map_err(|err| err.to_string())?;
     Ok(html(&document, &bytes, options))
+}
+
+/// `bundle` holding only the groups numbered in `chosen`, or all of it when
+/// `chosen` is empty or names every group.
+///
+/// The chosen groups keep their files and their names. The code that goes
+/// with them is what they still need — the spans of a frozen file their
+/// refs, their remarks and their moments land in — and every other span,
+/// and every file none of them needs, is left out, because a span kept
+/// for another group's range is that group's code. The review keeps the
+/// chosen groups' remarks and moments; what was said about the deck as a
+/// whole goes only with the whole deck, since it may be about any of it.
+///
+/// # Errors
+///
+/// When a part of the bundle does not parse.
+pub fn only(bundle: &Bundle, chosen: &[u32]) -> Result<Bundle, String> {
+    use std::collections::BTreeMap;
+
+    use deck_core::bundle::snap;
+    use deck_core::line::LineRange;
+    use deck_core::protocol::Ref;
+
+    let malformed = |err: deck_core::bundle::Unreadable| err.to_string();
+    let groups = bundle.groups().map_err(malformed)?;
+    // The group files in the order `groups` reads them: by their number.
+    let mut names: Vec<(u32, &String)> = bundle
+        .files
+        .keys()
+        .filter_map(|name| {
+            let n = name.strip_prefix("deck/g")?.strip_suffix(".json")?;
+            Some((n.parse().ok()?, name))
+        })
+        .collect();
+    names.sort();
+    let kept: Vec<bool> = (1..=groups.len())
+        .map(|n| u32::try_from(n).is_ok_and(|n| chosen.is_empty() || chosen.contains(&n)))
+        .collect();
+    if kept.iter().all(|&keep| keep) {
+        return Ok(bundle.clone());
+    }
+
+    let mut out = bundle.clone();
+    let mut ids = Vec::new();
+    for ((group, (_, name)), &keep) in groups.iter().zip(&names).zip(&kept) {
+        if keep {
+            ids.push(group.id.clone());
+        } else {
+            out.files.remove(*name);
+        }
+    }
+    let path = |file: &std::path::Path| file.to_string_lossy().replace('\\', "/");
+
+    // Every range a chosen group still needs, by file.
+    let mut needed: BTreeMap<String, Vec<LineRange>> = BTreeMap::new();
+    for (group, _) in groups.iter().zip(&kept).filter(|(_, keep)| **keep) {
+        for one in &group.refs {
+            if let Ref::Code(code) = one {
+                needed.entry(path(&code.file)).or_default().push(code.range);
+            }
+        }
+    }
+    if let Some(mut review) = bundle.review().map_err(malformed)? {
+        review
+            .comments
+            .retain(|comment| ids.contains(&comment.group));
+        review
+            .transcript
+            .retain(|moment| moment.group.as_ref().is_some_and(|id| ids.contains(id)));
+        for (file, range) in review
+            .comments
+            .iter()
+            .map(|c| (&c.file, c.range))
+            .chain(review.transcript.iter().map(|m| (&m.file, m.range)))
+        {
+            if let (Some(file), Some(range)) = (file, range) {
+                needed.entry(path(file)).or_default().push(range);
+            }
+        }
+        out.files.insert(
+            "review.json".to_string(),
+            serde_json::to_vec_pretty(&review).map_err(|err| err.to_string())?,
+        );
+    }
+
+    // The frozen code, cut to the spans those ranges land in, renumbered.
+    let snapshots = bundle.snapshots().map_err(malformed)?;
+    out.files.retain(|name, _| !name.starts_with("snap/"));
+    let mut index = snap::Index::default();
+    for snapshot in snapshots {
+        let Some(ranges) = needed.get(&snapshot.file.path) else {
+            continue;
+        };
+        let spans: Vec<LineRange> = snapshot
+            .file
+            .kept
+            .iter()
+            .copied()
+            .filter(|span| {
+                ranges
+                    .iter()
+                    .any(|range| range.first <= span.last && span.first <= range.last)
+            })
+            .collect();
+        if spans.is_empty() {
+            continue;
+        }
+        let mut text = String::new();
+        for no in spans.iter().flat_map(|span| span.first..=span.last) {
+            text.push_str(snapshot.line(no).unwrap_or_default());
+            text.push('\n');
+        }
+        let entry = format!("snap/{}.txt", index.files.len() + 1);
+        out.files.insert(entry.clone(), text.into_bytes());
+        index.files.push(snap::File {
+            entry,
+            kept: spans,
+            ..snapshot.file
+        });
+    }
+    if !index.files.is_empty() {
+        out.files.insert(
+            "snap/index.json".to_string(),
+            serde_json::to_vec_pretty(&index).map_err(|err| err.to_string())?,
+        );
+    }
+    Ok(out)
 }
 
 /// The groups `--groups` names: numbers and ranges, joined by commas, as

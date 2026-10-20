@@ -482,8 +482,10 @@ enum What {
         /// rest try an editor's theme on, as `deck open --theme` does.
         #[arg(long, value_name = "THEME", default_value = "editor")]
         theme: String,
-        /// Only these groups, by number: `1,3-5`. The `.deck` inside still
-        /// carries the whole deck, so the reader can open all of it.
+        /// Only these groups, by number: `1,3-5`. The `.deck` inside holds
+        /// only them too — their code, and what was said about them — so
+        /// leaving a group out leaves it out of everything the file carries.
+        /// Remarks about the deck as a whole go only with every group.
         #[arg(long, value_name = "LIST")]
         groups: Option<String>,
         /// Leave out what the reader and the agent said: from the page, and

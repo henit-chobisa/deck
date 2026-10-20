@@ -30,6 +30,10 @@ export async function flush(rows: Row[]) {
 }
 ";
 
+/// A second file, which only the third group points into.
+const STORE: &str =
+    "export async function write(row: Row) {\n  await db.put(row.id, row.payload)\n}\n";
+
 fn palette() -> Palette {
     derive(Imported::plain(
         Rgb::from_hex("#282828").unwrap(),
@@ -43,15 +47,26 @@ fn palette() -> Palette {
 /// with a remark on a line, an answer, and a word for the whole deck.
 fn bundle() -> Bundle {
     let (kept, text) = snap::keep(BATCH, &[LineRange::new(6, 13)], snap::CONTEXT);
+    let (store_kept, store_text) = snap::keep(STORE, &[LineRange::new(2, 2)], snap::CONTEXT);
     let index = snap::Index {
-        files: vec![snap::File {
-            path: "src/batch.ts".to_string(),
-            entry: "snap/1.txt".to_string(),
-            sha256: sha256(BATCH.as_bytes()),
-            commit: Some("a1b2c3d4e5".to_string()),
-            state: snap::State::Clean,
-            kept,
-        }],
+        files: vec![
+            snap::File {
+                path: "src/batch.ts".to_string(),
+                entry: "snap/1.txt".to_string(),
+                sha256: sha256(BATCH.as_bytes()),
+                commit: Some("a1b2c3d4e5".to_string()),
+                state: snap::State::Clean,
+                kept,
+            },
+            snap::File {
+                path: "src/store.ts".to_string(),
+                entry: "snap/2.txt".to_string(),
+                sha256: sha256(STORE.as_bytes()),
+                commit: Some("a1b2c3d4e5".to_string()),
+                state: snap::State::Clean,
+                kept: store_kept,
+            },
+        ],
     };
     let g1 = r#"{
         "id": "g1",
@@ -75,7 +90,8 @@ fn bundle() -> Bundle {
                   "after": "      // counted at the tail\n"}]
     }"#;
     let g3 = r#"{"id": "g3", "title": "Nothing else moves", "say": "The rest stays as it is.[point 16]",
-        "refs": [{"id": "g3r1", "file": "src/batch.ts", "range": [15, 17]}]}"#;
+        "refs": [{"id": "g3r1", "file": "src/batch.ts", "range": [15, 17]},
+                 {"id": "g3r2", "file": "src/store.ts", "range": [2, 2], "name": "store"}]}"#;
     let review = r#"{
         "v": 1, "deck": "d-1",
         "comments": [
@@ -101,6 +117,7 @@ fn bundle() -> Bundle {
         serde_json::to_vec(&index).unwrap(),
     );
     files.insert("snap/1.txt".to_string(), text.into_bytes());
+    files.insert("snap/2.txt".to_string(), store_text.into_bytes());
     files.insert("review.json".to_string(), review.as_bytes().to_vec());
     let bundle = Bundle {
         manifest: Manifest {
@@ -279,12 +296,57 @@ fn only_the_groups_asked_for_are_shown() {
     assert!(!html.contains("id=\"g1-argument\""));
     assert!(html.contains("id=\"g2\"") && html.contains("id=\"g3\""));
     assert!(html.contains("group 2/3"));
-    assert!(html.contains("page 1 of 3"));
+    assert!(html.contains("page 1 of 2"));
     assert_eq!(groups("1,3-5").unwrap(), [1, 3, 4, 5]);
     assert_eq!(groups("3, 1,1").unwrap(), [1, 3]);
     for wrong in ["0", "a", "5-3", "1-", "1-99999999"] {
         assert!(groups(wrong).is_err(), "{wrong}");
     }
+}
+
+/// Choosing groups is choosing what to share: the `.deck` a page of group
+/// two carries holds group two and nothing anybody said or showed about the
+/// others.
+#[test]
+fn a_deck_of_some_groups_carries_nothing_of_the_others() {
+    let html = export(&Options {
+        groups: vec![2],
+        ..Options::default()
+    });
+    let carried = carried(&html);
+    let names: Vec<&str> = carried.files.keys().map(String::as_str).collect();
+    assert!(names.contains(&"deck/g2.json"), "{names:?}");
+    assert!(!names.contains(&"deck/g1.json") && !names.contains(&"deck/g3.json"));
+    let groups = carried.groups().unwrap();
+    assert_eq!(groups.len(), 1);
+    assert_eq!(groups[0].id, "g2");
+    // Only the file group two points into, and only the span it needs.
+    let snapshots = carried.snapshots().unwrap();
+    let paths: Vec<&str> = snapshots.iter().map(|s| s.file.path.as_str()).collect();
+    assert_eq!(paths, ["src/batch.ts"]);
+    assert_eq!(snapshots[0].file.entry, "snap/1.txt");
+    let review = carried.review().unwrap().expect("group two's review");
+    assert!(review.comments.is_empty() && review.transcript.is_empty());
+    let everything: String = carried
+        .files
+        .values()
+        .map(|bytes| String::from_utf8_lossy(bytes).into_owned())
+        .collect();
+    for trace in [
+        "The error path",
+        "takes the counter down",
+        "Nothing else moves",
+        "src/store.ts",
+        "db.put",
+        "finally",
+        "retry branch",
+        "everything I had",
+    ] {
+        assert!(!everything.contains(trace), "{trace}");
+    }
+    // Nor on the page, where the whole-deck remark has no group to follow.
+    assert!(!html.contains("everything I had"));
+    assert!(html.contains("group 2/3"));
 }
 
 #[test]
