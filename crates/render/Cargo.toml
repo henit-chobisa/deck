@@ -9,6 +9,9 @@ repository.workspace = true
 [dependencies]
 deck-core = { path = "../core" }
 serde_json = { workspace = true }
+# Shaping, kerning included, and advance widths, from the embedded faces, for
+# breaking lines the way the window does without a window. Already in the tree.
+rustybuzz = "0.20"
 gpui-kit = { version = "0.6", features = [
     # Syntax highlighting is not on by default, and a grammar is only compiled
     # in if it is named. Every language deck can highlight is listed here, and
@@ -34,6 +37,12 @@ gpui-kit = { version = "0.6", features = [
     "tree-sitter-cpp",
     "tree-sitter-java",
 ] }
+
+[[test]]
+# Its own main, so it runs on the main thread, where the Mac platform has to
+# be made. See the file.
+name = "agree"
+harness = false
 
 [lints]
 workspace = true

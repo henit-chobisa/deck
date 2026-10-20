@@ -1671,6 +1671,7 @@ version = "0.1.7-rc.1"
 dependencies = [
  "deck-core",
  "gpui-kit",
+ "rustybuzz",
  "serde_json",
 ]
 
