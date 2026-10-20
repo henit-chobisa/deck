@@ -1352,3 +1352,23 @@ fn a_secret_in_a_json_key_is_found() {
         .is_err()
     );
 }
+
+#[test]
+fn a_very_long_file_packs_without_its_length_and_only_far_spans_are_refused() {
+    let most = snap::MOST_LINES as usize;
+    assert_eq!(length(most), Some(snap::MOST_LINES));
+    assert_eq!(
+        length(most + 1),
+        None,
+        "past the bound, the length is left out"
+    );
+    assert!(!beyond(&[
+        LineRange::new(1, 40),
+        LineRange::new(9_000_000, 9_000_040)
+    ]));
+    assert!(beyond(&[LineRange::new(
+        snap::MOST_LINES,
+        snap::MOST_LINES + 1
+    )]));
+    assert!(!beyond(&[]));
+}

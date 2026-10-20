@@ -126,10 +126,10 @@ impl Packed {
     /// The commit alone does not say. A deck packed from a file with changes
     /// nobody had committed — or one git was not tracking — shows code no
     /// commit has, and a checkout can have edits of its own on top of the
-    /// same commit. So the deck's word on how the file stood is asked first,
-    /// and then the file's own hash against the one the deck recorded. A deck
-    /// that recorded no hash — an export that froze only part of a file
-    /// cannot vouch for the rest of it — leaves the hash out of it: unknown
+    /// same commit. So the file's own hash is compared with the one the deck
+    /// recorded, whenever it recorded one. Only a deck that recorded no hash
+    /// — an export that froze only part of a file cannot vouch for the rest
+    /// of it — falls back to the deck's word on how the file stood: unknown
     /// is not the same as different.
     #[must_use]
     pub fn differs(&self, file: &Path) -> bool {
@@ -166,13 +166,12 @@ fn named(file: &Path) -> String {
 #[must_use]
 pub fn differs(file: &deck_core::bundle::snap::File, bytes: Option<&[u8]>) -> bool {
     use deck_core::bundle::snap::State;
-    if file.state != State::Clean {
-        return true;
+    // The hash, whenever there is one, whatever the state: a file packed
+    // with changes the reader has since committed is the same file.
+    if !file.sha256.is_empty() {
+        return bytes.is_none_or(|bytes| deck_core::bundle::sha256(bytes) != file.sha256);
     }
-    if file.sha256.is_empty() {
-        return false;
-    }
-    bytes.is_none_or(|bytes| deck_core::bundle::sha256(bytes) != file.sha256)
+    file.state != State::Clean
 }
 
 /// What a pane with no code offers instead.
@@ -673,11 +672,12 @@ mod tests {
         assert!(!differs(&file, Some(bytes)), "the very file");
         assert!(differs(&file, Some(b"edited\n")), "edited since");
         assert!(differs(&file, None), "not in the checkout");
-        // Packed from changes nobody committed: the commit does not have them.
+        // Packed from changes nobody committed, which the reader now has
+        // byte for byte: the hash says it is the same file, whatever the
+        // state said.
         file.state = snap::State::Modified;
-        assert!(differs(&file, Some(bytes)));
-        file.state = snap::State::Untracked;
-        assert!(differs(&file, Some(bytes)));
+        assert!(!differs(&file, Some(bytes)));
+        assert!(differs(&file, Some(b"edited\n")));
     }
 
     #[test]

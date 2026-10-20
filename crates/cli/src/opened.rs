@@ -117,24 +117,16 @@ pub fn open(file: &Path, under: &Path) -> anyhow::Result<Opened> {
 
     let reused = intact(&dir, &bundle, &manifest);
     if !reused {
-        if dir.exists() {
-            unlock(&dir);
-            std::fs::remove_dir_all(&dir)
-                .with_context(|| format!("cannot clear {}", dir.display()))?;
-        }
+        clear(&dir).with_context(|| format!("cannot clear {}", dir.display()))?;
         // Written beside it and moved into place whole, so a window that
         // starts while another is still writing never reads half a deck.
         let part = under.join(format!("{sha}.{}.part", std::process::id()));
-        if part.exists() {
-            unlock(&part);
-            let _ = std::fs::remove_dir_all(&part);
-        }
+        let _ = clear(&part);
         write_out(&part, &bundle, &manifest)?;
         if let Err(err) = std::fs::rename(&part, &dir) {
             // Another `deck open` of the same file got there first. What it
             // wrote is the same bytes, so this copy is not needed.
-            unlock(&part);
-            let _ = std::fs::remove_dir_all(&part);
+            let _ = clear(&part);
             anyhow::ensure!(
                 intact(&dir, &bundle, &manifest),
                 "cannot put {} in place: {err}",
@@ -266,7 +258,22 @@ pub fn answers(path: &Path, id: &str, sha: &str) -> bool {
     std::fs::read_to_string(path)
         .ok()
         .and_then(|text| serde_json::from_str::<deck_core::protocol::Review>(&text).ok())
-        .is_some_and(|review| review.deck == id && review.deck_sha256.as_deref() == Some(sha))
+        .is_some_and(|review| is_ours(&review, id, sha))
+}
+
+/// Whether `review` answers the `.deck` file of deck `id` whose bytes hash to
+/// `sha`: the same deck, and no other file named.
+///
+/// A review that names no file was written before reviews named one, and is
+/// taken as this deck's rather than orphaned: only a review that names
+/// another file is somebody else's.
+#[must_use]
+pub fn is_ours(review: &deck_core::protocol::Review, id: &str, sha: &str) -> bool {
+    review.deck == id
+        && review
+            .deck_sha256
+            .as_deref()
+            .is_none_or(|named| named == sha)
 }
 
 /// Whether a file can be made in `folder`, found out by making one.
@@ -316,7 +323,8 @@ pub enum Match {
 /// commit.
 ///
 /// The same repo means the same `origin`, compared as [`remote_key`] spells
-/// it, so the ssh and https spellings of one repo are one repo. A deck with
+/// it, so the ssh and https spellings of one repo are one repo — read both as
+/// the reader wrote it and as their `insteadOf` settings rewrite it. A deck with
 /// no remote, or no commit, is never matched: there is nothing to say it was
 /// this repo rather than any other with the same files in it. `ceiling`
 /// stops git looking above a directory, as `GIT_CEILING_DIRECTORIES` does;
@@ -349,13 +357,20 @@ fn matching_with(
         return Match::Elsewhere;
     };
     let root = PathBuf::from(root);
-    // The remote as it is written, not as `insteadOf` rewrites it: a rewrite
-    // is this machine's way of reaching the repo, and says nothing about which
-    // repo it is.
-    let here = git(&root, &["config", "--get", "remote.origin.url"]);
-    if here.as_deref().and_then(remote_key).is_none()
-        || here.as_deref().and_then(remote_key) != remote_key(remote)
-    {
+    // Either spelling of the reader's remote will do: as it is written, and
+    // as `insteadOf` rewrites it. A rewrite is this machine's way of reaching
+    // the repo, and the deck may have been packed on either side of one.
+    let Some(wanted) = remote_key(remote) else {
+        return Match::Elsewhere;
+    };
+    let same = [
+        git(&root, &["config", "--get", "remote.origin.url"]),
+        git(&root, &["remote", "get-url", "origin"]),
+    ]
+    .iter()
+    .flatten()
+    .any(|here| remote_key(here).as_deref() == Some(wanted.as_str()));
+    if !same {
         return Match::Elsewhere;
     }
     match git(&root, &["rev-parse", "--verify", "--quiet", "HEAD"]).filter(|head| !head.is_empty())
@@ -417,9 +432,9 @@ fn local_git(
 /// `git@github.com:acme/ingest.git`, `ssh://git@github.com/acme/ingest`
 /// and `https://GitHub.com/acme/ingest/` are one repo, spelled three ways,
 /// and all three are `github.com/acme/ingest`: the scheme, the user, any
-/// credentials and a port go, the host is lowercased, and a trailing `/` or
-/// `.git` comes off the path. The path keeps its case, which some forges
-/// care about.
+/// credentials and a port go, a trailing `/` or `.git` comes off the path,
+/// and all of it is lowercased: the forges deck is used with read owner and
+/// repo names without regard to case.
 #[must_use]
 pub fn remote_key(remote: &str) -> Option<String> {
     let cleaned = crate::pack::clean_remote(remote)?;
@@ -450,7 +465,7 @@ pub fn remote_key(remote: &str) -> Option<String> {
     if host.is_empty() || path.is_empty() {
         return None;
     }
-    Some(format!("{}/{path}", host.to_ascii_lowercase()))
+    Some(format!("{host}/{path}").to_lowercase())
 }
 
 /// A commit as the window shows it: its first seven characters.
@@ -551,10 +566,35 @@ fn write_out(dir: &Path, bundle: &Bundle, manifest: &[u8]) -> anyhow::Result<()>
     Ok(())
 }
 
+/// Take away whatever is at `path`: a folder deck wrote, with everything in
+/// it — or, when it is a link or a file, that link or file and nothing it
+/// points at.
+///
+/// Asked of the path itself before anything else, because every other way
+/// of asking follows a link: a cache folder somebody replaced with a link to
+/// their own files would otherwise have those files unlocked and deleted.
+fn clear(path: &Path) -> std::io::Result<()> {
+    match std::fs::symlink_metadata(path) {
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(err) => Err(err),
+        Ok(meta) if meta.is_dir() => {
+            unlock(path);
+            std::fs::remove_dir_all(path)
+        }
+        // A link, or a file where a folder should be: only the entry goes.
+        Ok(_) => std::fs::remove_file(path),
+    }
+}
+
 /// Make everything under `dir` writable again, so it can be taken away.
 ///
 /// Windows will not delete a read-only file, whatever its folder allows.
+/// `dir` itself is asked first, without following it: a link is not a
+/// folder of deck's, and nothing it points at is unlocked.
 fn unlock(dir: &Path) {
+    if !std::fs::symlink_metadata(dir).is_ok_and(|meta| meta.is_dir()) {
+        return;
+    }
     let Ok(entries) = std::fs::read_dir(dir) else {
         return;
     };

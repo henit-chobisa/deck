@@ -1438,6 +1438,10 @@ impl Pane {
     /// three arriving lines and you see three lines held, and the comment lands
     /// on the range they replace — which is the only place it could land.
     pub fn select_rows(&mut self, from: usize, to: usize) {
+        // Never across an edge of the deck's copy: a selection that ran over
+        // `lines 153–212 not in this deck` would pin a comment, and quote,
+        // lines the reader was never shown.
+        let to = within_span(&self.rows, from, to);
         let (first, last) = (from.min(to), from.max(to));
         self.picked = Some((first, last));
         // A drag grows the range it started from, so the two always touch, and
@@ -3179,6 +3183,20 @@ fn row_of(number: u32, added_at: u32, added: usize) -> usize {
     if number > added_at { ix + added } else { ix }
 }
 
+/// Where a pick from row `from` towards row `to` stops: at `to`, or at the
+/// last row before an edge of the deck's copy, whichever comes first.
+fn within_span(rows: &[Row], from: usize, to: usize) -> usize {
+    let edge = |ix: &usize| {
+        rows.get(*ix)
+            .is_some_and(|row| matches!(row.extra, Some(Extra::Absent { .. })))
+    };
+    if to > from {
+        (from + 1..=to).find(edge).map_or(to, |ix| ix - 1)
+    } else {
+        (to..from).rev().find(edge).map_or(to, |ix| ix + 1)
+    }
+}
+
 /// The stretches of a file a deck's copy leaves out, given the spans it kept
 /// and, when it is known, how many lines the file had.
 ///
@@ -3672,6 +3690,20 @@ mod tests {
             "nothing past line 9 is in this deck"
         );
         assert_eq!(gaps(&[], None), [], "a copy that kept nothing has no edges");
+    }
+
+    #[test]
+    fn a_pick_stops_at_the_edge_of_the_copy() {
+        let rows = trimmed(
+            (1..=12).map(line).collect(),
+            &[LineRange::new(3, 4), LineRange::new(8, 9)],
+            Some(12),
+        );
+        // edge, 3, 4, edge, 8, 9, edge
+        assert_eq!(within_span(&rows, 1, 5), 2, "down: stops on line 4");
+        assert_eq!(within_span(&rows, 5, 0), 4, "up: stops on line 8");
+        assert_eq!(within_span(&rows, 4, 5), 5, "inside one span, as asked");
+        assert_eq!(within_span(&rows, 2, 1), 1);
     }
 
     #[test]

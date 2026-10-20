@@ -1051,8 +1051,7 @@ impl DeckView {
                 .ok()
                 .flatten()
                 .filter(|review| {
-                    review.deck == deck.header.id
-                        && review.deck_sha256.as_deref() == Some(packed.origin.sha256.as_str())
+                    deck_cli::opened::is_ours(review, &deck.header.id, &packed.origin.sha256)
                 })
                 .map(|review| (packed.origin.review.clone(), review))
         });

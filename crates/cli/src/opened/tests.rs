@@ -279,9 +279,10 @@ fn a_review_counts_as_this_files_only_with_its_id_and_its_hash() {
     assert!(!answers(&at, "d-1", "abd"), "another copy");
     write(r#"{"v":1,"deck":"d-1","comments":[]}"#);
     assert!(
-        !answers(&at, "d-1", "abc"),
-        "written before files were named"
+        answers(&at, "d-1", "abc"),
+        "written before reviews named a file"
     );
+    assert!(!answers(&at, "d-2", "abc"), "but still only this deck's");
     write("not json");
     assert!(!answers(&at, "d-1", "abc"));
 }
@@ -569,4 +570,96 @@ fn a_checkout_cloned_over_ssh_matches_a_deck_packed_over_https() {
         hermetic(&dir, Some(&packed), Some(&ceiling)),
         Match::Same { .. }
     ));
+}
+
+#[test]
+fn a_review_written_before_files_were_named_is_reused_not_orphaned() {
+    let dir = tempfile::tempdir().expect("a temp dir");
+    let file = file_in(dir.path());
+    let earlier = dir.path().join("2026-10-20-batch.review");
+    std::fs::write(&earlier, r#"{"v":1,"deck":"d-1","comments":[]}"#).expect("written");
+
+    let opened = open(&file, &dir.path().join("opened")).expect("opens");
+
+    assert_eq!(
+        std::fs::canonicalize(&opened.origin.review).expect("resolves"),
+        std::fs::canonicalize(&earlier).expect("resolves")
+    );
+    assert_eq!(opened.origin.beside, None);
+}
+
+#[cfg(unix)]
+#[test]
+fn a_cache_folder_that_is_a_link_is_removed_not_followed() {
+    use std::os::unix::fs::PermissionsExt as _;
+
+    let dir = tempfile::tempdir().expect("a temp dir");
+    let file = file_in(dir.path());
+    let cache = dir.path().join("opened");
+    std::fs::create_dir_all(&cache).expect("a cache");
+    let sha = bundle::sha256(&std::fs::read(&file).expect("read"));
+    // The victim: somebody's folder, a read-only file in it.
+    let victim = dir.path().join("victim");
+    std::fs::create_dir(&victim).expect("a folder");
+    let kept = victim.join("kept.txt");
+    std::fs::write(&kept, "mine").expect("written");
+    std::fs::set_permissions(&kept, std::fs::Permissions::from_mode(0o444)).expect("0444");
+    // Planted where the cache folder goes, and where this process writes
+    // its part.
+    std::os::unix::fs::symlink(&victim, cache.join(&sha)).expect("a link");
+    std::os::unix::fs::symlink(
+        &victim,
+        cache.join(format!("{sha}.{}.part", std::process::id())),
+    )
+    .expect("a link");
+
+    let opened = open(&file, &cache).expect("opens");
+
+    assert!(!opened.reused);
+    assert!(
+        !std::fs::symlink_metadata(&opened.dir)
+            .expect("there")
+            .file_type()
+            .is_symlink(),
+        "the link was replaced by a real folder"
+    );
+    let mode = std::fs::metadata(&kept)
+        .expect("still there")
+        .permissions()
+        .mode();
+    assert_eq!(mode & 0o777, 0o444, "the victim's file was not unlocked");
+    assert_eq!(std::fs::read_to_string(&kept).expect("there"), "mine");
+}
+
+#[test]
+fn owner_and_repo_are_compared_without_case() {
+    assert_eq!(
+        remote_key("https://github.com/Acme/Ingest.git"),
+        remote_key("git@github.com:acme/ingest")
+    );
+}
+
+#[test]
+fn a_checkout_whose_remote_is_rewritten_matches_either_spelling() {
+    let outer = tempfile::tempdir().expect("a temp dir");
+    let Some((dir, head)) = repo(outer.path(), "gh:acme/ingest") else {
+        return;
+    };
+    let ceiling = std::fs::canonicalize(outer.path()).expect("resolves");
+    // The reader's own settings say `gh:` means GitHub over ssh.
+    let config = ceiling.join("rewrite.gitconfig");
+    std::fs::write(&config, "[url \"git@github.com:\"]\n\tinsteadOf = gh:\n").expect("config");
+    let packed = Repo {
+        remote: Some("https://github.com/acme/ingest".to_string()),
+        commit: Some(head),
+    };
+    assert!(matches!(
+        matching_with(&dir, Some(&packed), Some(&ceiling), Some(&config)),
+        Match::Same { .. }
+    ));
+    // Without the rewrite, `gh:acme/ingest` is host `gh`: another repo.
+    assert_eq!(
+        hermetic(&dir, Some(&packed), Some(&ceiling)),
+        Match::Elsewhere
+    );
 }

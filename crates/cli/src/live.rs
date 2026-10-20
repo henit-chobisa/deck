@@ -631,6 +631,16 @@ impl Owner {
 
 impl Drop for Owner {
     fn drop(&mut self) {
+        let owner_file = self.root.join("owner.json");
+        if read_bounded::<OwnerMetadata>(&owner_file)
+            .is_ok_and(|metadata| metadata.generation == self.generation)
+        {
+            let _ = std::fs::remove_file(owner_file);
+        }
+        // Last, once this owner's file is dealt with: unlocked any earlier,
+        // a new owner could claim the deck and write its own file in the gap,
+        // and that file would be the one taken away.
+        //
         // Unlocked by hand, not left to the file closing. The lock belongs to
         // the open file, not to this descriptor, and a child process this one
         // is starting at the moment holds a copy of every descriptor until it
@@ -640,12 +650,6 @@ impl Drop for Owner {
         // away and opened again straight after was told it already had an
         // owner. Unlocking releases it for every copy at once.
         let _ = fs2::FileExt::unlock(&self.lock);
-        let owner_file = self.root.join("owner.json");
-        if read_bounded::<OwnerMetadata>(&owner_file)
-            .is_ok_and(|metadata| metadata.generation == self.generation)
-        {
-            let _ = std::fs::remove_file(owner_file);
-        }
     }
 }
 
