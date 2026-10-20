@@ -130,6 +130,33 @@ impl Rgb {
         )
     }
 
+    /// Relative luminance, as WCAG defines it: each channel taken out of its
+    /// sRGB curve and weighted for the eye, from 0 for black to 1 for white.
+    ///
+    /// Not [`Self::lightness`], which weights the channels as they are stored
+    /// and is good for deciding which way is up. Contrast is measured in light,
+    /// and light is what this is.
+    ///
+    /// Read from [`LINEAR`], a table worked out once, rather than from `powf`
+    /// at run time: each platform's maths library may round a power a hair
+    /// differently, and a colour that sits on the 4.5 line would then pass on
+    /// one machine and fail on another — the same export, in two colours.
+    #[must_use]
+    pub fn luminance(&self) -> f64 {
+        let linear = |channel: u8| LINEAR[usize::from(channel)];
+        // Plain multiplies and adds, never fused: each is rounded the same
+        // way on every machine.
+        0.2126 * linear(self.r) + 0.7152 * linear(self.g) + 0.0722 * linear(self.b)
+    }
+
+    /// The contrast between this colour and `other`, as WCAG measures it:
+    /// from 1, for two colours that are the same, to 21, for black on white.
+    /// Body text wants at least 4.5.
+    #[must_use]
+    pub fn contrast(&self, other: Self) -> f64 {
+        ratio(self.luminance(), other.luminance())
+    }
+
     /// `#rrggbb`.
     #[must_use]
     pub fn to_hex(self) -> String {
@@ -583,6 +610,377 @@ pub fn tint(base: Rgb, accent: Rgb, amount: f32) -> Rgb {
     Rgb::new(channel(mixed.r), channel(mixed.g), channel(mixed.b))
 }
 
+/// The contrast body text needs on its ground: WCAG's AA for normal text.
+pub const LEGIBLE: f64 = 4.5;
+
+/// Each sRGB channel value as linear light, worked out exactly once and kept:
+/// `c / 12.92` up to 0.04045, `((c + 0.055) / 1.055)^2.4` above it, for
+/// `c = value / 255`. See [`Rgb::luminance`] for why this is a table.
+#[allow(clippy::unreadable_literal, clippy::excessive_precision)]
+pub const LINEAR: [f64; 256] = [
+    0.0,
+    0.0003035269835488375,
+    0.000607053967097675,
+    0.0009105809506465125,
+    0.00121410793419535,
+    0.0015176349177441874,
+    0.001821161901293025,
+    0.0021246888848418626,
+    0.0024282158683907,
+    0.0027317428519395373,
+    0.003035269835488375,
+    0.0033465357638991586,
+    0.003676507324047435,
+    0.004024717018496304,
+    0.0043914420374102925,
+    0.0047769534806937275,
+    0.005181516702338385,
+    0.005605391624202721,
+    0.006048833022857052,
+    0.006512090792594472,
+    0.006995410187265385,
+    0.00749903204322617,
+    0.008023192985384993,
+    0.008568125618069302,
+    0.009134058702220785,
+    0.009721217320237844,
+    0.010329823029626936,
+    0.01096009400648824,
+    0.011612245179743881,
+    0.012286488356915867,
+    0.012983032342173007,
+    0.013702083047289683,
+    0.014443843596092541,
+    0.015208514422912706,
+    0.015996293365509628,
+    0.016807375752887377,
+    0.017641954488384078,
+    0.01850022012837969,
+    0.019382360956935723,
+    0.02028856305665239,
+    0.021219010376003555,
+    0.022173884793387375,
+    0.023153366178110403,
+    0.02415763244850475,
+    0.025186859627361623,
+    0.02624122189484989,
+    0.02732089163907489,
+    0.028426039504420787,
+    0.029556834437808797,
+    0.03071344373299362,
+    0.03189603307301152,
+    0.03310476657088505,
+    0.03433980680868216,
+    0.03560131487502032,
+    0.03688945040110002,
+    0.03820437159534648,
+    0.03954623527673283,
+    0.04091519690685317,
+    0.042311410620809654,
+    0.04373502925697345,
+    0.04518620438567554,
+    0.04666508633688008,
+    0.048171824226889405,
+    0.04970656598412722,
+    0.051269458374043224,
+    0.05286064702318025,
+    0.054480276442442355,
+    0.05612849004960008,
+    0.05780543019106721,
+    0.059511238162981185,
+    0.061246054231617594,
+    0.06301001765316766,
+    0.06480326669290576,
+    0.06662593864377288,
+    0.06847816984440015,
+    0.07036009569659588,
+    0.07227185068231748,
+    0.07421356838014961,
+    0.07618538148130781,
+    0.07818742180518633,
+    0.08021982031446831,
+    0.0822827071298148,
+    0.08437621154414877,
+    0.08650046203654974,
+    0.08865558628577294,
+    0.09084171118340768,
+    0.09305896284668742,
+    0.09530746663096466,
+    0.09758734714186242,
+    0.09989872824711389,
+    0.10224173308810128,
+    0.10461648409110416,
+    0.10702310297826759,
+    0.10946171077829933,
+    0.11193242783690557,
+    0.11443537382697372,
+    0.11697066775851081,
+    0.1195384279883456,
+    0.12213877222960184,
+    0.12477181756095046,
+    0.12743768043564743,
+    0.13013647669036427,
+    0.13286832155381792,
+    0.13563332965520564,
+    0.13843161503245183,
+    0.14126329114027164,
+    0.14412847085805772,
+    0.14702726649759498,
+    0.14995978981060853,
+    0.15292615199615014,
+    0.15592646370782734,
+    0.15896083506088035,
+    0.162029375639111,
+    0.1651321945016676,
+    0.1682694001896907,
+    0.17144110073282254,
+    0.17464740365558498,
+    0.17788841598362912,
+    0.18116424424986013,
+    0.1844749945004409,
+    0.18782077230067779,
+    0.19120168274079136,
+    0.1946178304415757,
+    0.1980693195599488,
+    0.20155625379439707,
+    0.2050787363903169,
+    0.20863687014525567,
+    0.2122307574140551,
+    0.21586050011389915,
+    0.21952619972926918,
+    0.22322795731680842,
+    0.22696587351009834,
+    0.23074004852434896,
+    0.23455058216100508,
+    0.23839757381227095,
+    0.24228112246555472,
+    0.2462013267078354,
+    0.2501582847299533,
+    0.2541520943308267,
+    0.25818285292159576,
+    0.262250657529696,
+    0.2663556048028623,
+    0.27049779101306576,
+    0.27467731206038454,
+    0.27889426347681034,
+    0.28314874042999194,
+    0.2874408377269174,
+    0.29177064981753587,
+    0.29613827079832095,
+    0.3005437944157764,
+    0.3049873140698861,
+    0.30946892281750843,
+    0.3139887133757175,
+    0.31854677812509175,
+    0.3231432091129507,
+    0.32777809805654207,
+    0.3324515363461792,
+    0.33716361504833026,
+    0.34191442490866075,
+    0.3467040563550295,
+    0.3515325995004392,
+    0.3564001441459434,
+    0.36130677978350945,
+    0.3662525955988394,
+    0.37123768047414896,
+    0.3762621229909062,
+    0.38132601143253,
+    0.3864294337870489,
+    0.3915724777497231,
+    0.3967552307256268,
+    0.4019777798321956,
+    0.40724021190173665,
+    0.4125426134839036,
+    0.41788507084813725,
+    0.4232676699860715,
+    0.42869049661390657,
+    0.4341536361747488,
+    0.43965717384091874,
+    0.44520119451622775,
+    0.45078578283822335,
+    0.4564110231804045,
+    0.46207699965440685,
+    0.4677837961121588,
+    0.4735314961480093,
+    0.47932018310082664,
+    0.4851499400560704,
+    0.49102084984783545,
+    0.49693299506087035,
+    0.5028864580325684,
+    0.5088813208549335,
+    0.5149176653765213,
+    0.5209955732043541,
+    0.527115125705813,
+    0.533276404010505,
+    0.539479489012107,
+    0.5457244613701866,
+    0.5520114015119999,
+    0.5583403896342677,
+    0.5647115057049289,
+    0.5711248294648729,
+    0.5775804404296505,
+    0.584078417891164,
+    0.5906188409193368,
+    0.5972017883637631,
+    0.6038273388553375,
+    0.6104955708078647,
+    0.6172065624196509,
+    0.6239603916750759,
+    0.6307571363461467,
+    0.6375968739940324,
+    0.644479681970582,
+    0.6514056374198239,
+    0.6583748172794482,
+    0.6653872982822719,
+    0.6724431569576873,
+    0.6795424696330937,
+    0.6866853124353132,
+    0.6938717612919898,
+    0.7011018919329731,
+    0.7083757798916867,
+    0.7156935005064805,
+    0.7230551289219689,
+    0.7304607400903533,
+    0.7379104087727307,
+    0.7454042095403872,
+    0.7529422167760778,
+    0.7605245046752922,
+    0.7681511472475069,
+    0.7758222183174234,
+    0.7835377915261932,
+    0.79129794033263,
+    0.7991027380144087,
+    0.8069522576692514,
+    0.8148465722161011,
+    0.8227857543962833,
+    0.8307698767746545,
+    0.8387990117407399,
+    0.8468732315098577,
+    0.8549926081242336,
+    0.863157213454102,
+    0.8713671191987971,
+    0.8796223968878317,
+    0.8879231178819664,
+    0.8962693533742666,
+    0.9046611743911491,
+    0.9130986517934189,
+    0.9215818562772945,
+    0.9301108583754234,
+    0.9386857284578878,
+    0.9473065367331996,
+    0.955973353249286,
+    0.9646862478944651,
+    0.9734452903984123,
+    0.982250550333117,
+    0.9911020971138297,
+    1.0,
+];
+
+/// WCAG's contrast ratio between two luminances.
+fn ratio(a: f64, b: f64) -> f64 {
+    (a.max(b) + 0.05) / (a.min(b) + 0.05)
+}
+
+/// `ink` made to read on `ground` at `ratio` or better, changing only how
+/// light it is.
+///
+/// An export is printed and read by people who never chose its theme, and a
+/// theme drawn for a screen in a dark room often sets comments, numbers or a
+/// muted label a shade too close to the page. Swapping such a colour would
+/// lose the theme; this keeps its hue and its saturation and changes its
+/// lightness by the least that reaches `ratio` — lighter or darker, whichever
+/// is the smaller step. A colour that already reads is returned as it is.
+///
+/// Every ground reaches 4.5 against white or against black, so at [`LEGIBLE`]
+/// there is always an answer. Above about 4.58 some grounds have none: then
+/// this returns whichever of black and white reads better, which is as close
+/// as any colour comes, and short of `ratio`.
+#[must_use]
+pub fn legible(ink: Rgb, ground: Rgb, ratio: f64) -> Rgb {
+    let floor = ground.luminance();
+    let reads = |colour: Rgb| self::ratio(colour.luminance(), floor) >= ratio;
+    if reads(ink) {
+        return ink;
+    }
+    let (hue, saturation, lightness) = hsl(ink);
+    let at = |l: f32| from_hsl(hue, saturation, l);
+    // Both ways, keeping the nearer: the side the ink is already on is
+    // usually the short way, but near a middling ground both reach and only
+    // measuring says which is closer.
+    let nearest = [1.0f32, 0.0]
+        .into_iter()
+        .filter(|&end| reads(at(end)))
+        .map(|end| {
+            // The least change that reads: halve the distance between a
+            // lightness that does not and one that does.
+            let (mut near, mut far) = (lightness, end);
+            for _ in 0..24 {
+                let mid = f32::midpoint(near, far);
+                if reads(at(mid)) {
+                    far = mid;
+                } else {
+                    near = mid;
+                }
+            }
+            far
+        })
+        .min_by(|a, b| (a - lightness).abs().total_cmp(&(b - lightness).abs()));
+    if let Some(found) = nearest {
+        return at(found);
+    }
+    let (white, black) = (Rgb::new(255, 255, 255), Rgb::new(0, 0, 0));
+    if white.contrast(ground) >= black.contrast(ground) {
+        white
+    } else {
+        black
+    }
+}
+
+/// `colour` as hue (0 to 1), saturation and lightness, the way HSL has them.
+fn hsl(colour: Rgb) -> (f32, f32, f32) {
+    let [r, g, b] = [colour.r, colour.g, colour.b].map(|c| f32::from(c) / 255.0);
+    let high = r.max(g).max(b);
+    let low = r.min(g).min(b);
+    let lightness = f32::midpoint(high, low);
+    let span = high - low;
+    // Two steps or less apart is grey. HSL calls a colour one step off grey
+    // near black or white fully saturated, and lifting `#000001` off a black
+    // page would otherwise come back vivid blue.
+    if span <= 2.0 / 255.0 + f32::EPSILON {
+        return (0.0, 0.0, lightness);
+    }
+    let saturation = span / (1.0 - (2.0 * lightness - 1.0).abs());
+    let hue = if (high - r).abs() <= f32::EPSILON {
+        ((g - b) / span).rem_euclid(6.0)
+    } else if (high - g).abs() <= f32::EPSILON {
+        (b - r) / span + 2.0
+    } else {
+        (r - g) / span + 4.0
+    };
+    (hue / 6.0, saturation.min(1.0), lightness)
+}
+
+/// A colour from hue (0 to 1), saturation and lightness.
+fn from_hsl(hue: f32, saturation: f32, lightness: f32) -> Rgb {
+    let chroma = (1.0 - (2.0 * lightness - 1.0).abs()) * saturation;
+    let h = hue * 6.0;
+    let x = chroma * (1.0 - (h.rem_euclid(2.0) - 1.0).abs());
+    let (r, g, b) = match h {
+        h if h < 1.0 => (chroma, x, 0.0),
+        h if h < 2.0 => (x, chroma, 0.0),
+        h if h < 3.0 => (0.0, chroma, x),
+        h if h < 4.0 => (0.0, x, chroma),
+        h if h < 5.0 => (x, 0.0, chroma),
+        _ => (chroma, 0.0, x),
+    };
+    let m = lightness - chroma / 2.0;
+    Rgb::new(
+        saturate((r + m) * 255.0),
+        saturate((g + m) * 255.0),
+        saturate((b + m) * 255.0),
+    )
+}
+
 /// A float rounded into a channel, with both ends pinned.
 ///
 /// `as u8` on its own is a silent trap here: it truncates rather than rounds,
@@ -647,6 +1045,174 @@ mod tests {
             Rgb::from_hex("#ebdbb2").unwrap(),
             Rgb::from_hex("#fe8019").unwrap(),
         )
+    }
+
+    #[test]
+    fn contrast_is_measured_as_wcag_measures_it() {
+        let (white, black) = (Rgb::new(255, 255, 255), Rgb::new(0, 0, 0));
+        assert!((white.contrast(black) - 21.0).abs() < 0.01);
+        assert!((white.contrast(white) - 1.0).abs() < 1e-6);
+        // WCAG's own worked figure: #767676 on white is 4.54.
+        let grey = Rgb::from_hex("#767676").unwrap();
+        assert!((grey.contrast(white) - 4.54).abs() < 0.01);
+    }
+
+    #[test]
+    fn a_colour_that_reads_is_left_alone() {
+        let p = derive(dark());
+        assert_eq!(legible(p.fg, p.bg, LEGIBLE), p.fg);
+    }
+
+    #[test]
+    fn a_faint_colour_is_lifted_until_it_reads_and_keeps_its_hue() {
+        // A comment a theme set too close to its dark page.
+        let page = Rgb::from_hex("#282828").unwrap();
+        let faint = Rgb::from_hex("#5c6370").unwrap();
+        assert!(faint.contrast(page) < LEGIBLE);
+        let lifted = legible(faint, page, LEGIBLE);
+        assert!(lifted.contrast(page) >= LEGIBLE);
+        assert!(lifted.lightness() > faint.lightness(), "up, on a dark page");
+        let ((h0, s0, _), (h1, s1, _)) = (hsl(faint), hsl(lifted));
+        assert!(
+            (h0 - h1).abs() < 0.02 && (s0 - s1).abs() < 0.06,
+            "the same colour, lighter"
+        );
+        // The least that reaches it, not all the way to white.
+        assert!(
+            lifted.contrast(page) < LEGIBLE + 0.3,
+            "the least that reaches it"
+        );
+
+        // And down, on a light page.
+        let paper = Rgb::from_hex("#dfdfdf").unwrap();
+        let pale = Rgb::from_hex("#b57614").unwrap();
+        let darkened = legible(pale, paper, LEGIBLE);
+        assert!(darkened.contrast(paper) >= LEGIBLE);
+        assert!(darkened.lightness() < pale.lightness());
+    }
+
+    /// The smallest change of lightness, in steps of 1/4096, that makes
+    /// `ink` read on `ground`, either way: what [`legible`] should find.
+    fn least(ink: Rgb, ground: Rgb) -> Option<f32> {
+        let (hue, saturation, lightness) = hsl(ink);
+        (0..=4096)
+            .map(|n| n as f32 / 4096.0)
+            .filter(|&l| from_hsl(hue, saturation, l).contrast(ground) >= LEGIBLE)
+            .map(|l| (l - lightness).abs())
+            .min_by(f32::total_cmp)
+    }
+
+    #[test]
+    fn legible_finds_the_least_change_either_way() {
+        // Against a brute-force search, on inks and grounds across the cube:
+        // never further than the search's own step from the least change.
+        let steps = [0u8, 40, 80, 117, 118, 119, 160, 200, 255];
+        for &r in &steps {
+            for &g in &steps {
+                for &b in &[0u8, 120, 255] {
+                    let ink = Rgb::new(r, g, b);
+                    for level in [0u8, 30, 100, 117, 118, 119, 120, 160, 230, 255] {
+                        let ground = Rgb::new(level, level, level);
+                        let made = legible(ink, ground, LEGIBLE);
+                        assert!(made.contrast(ground) >= LEGIBLE);
+                        if ink.contrast(ground) >= LEGIBLE {
+                            assert_eq!(made, ink);
+                            continue;
+                        }
+                        let Some(best) = least(ink, ground) else {
+                            continue;
+                        };
+                        let moved = (hsl(made).2 - hsl(ink).2).abs();
+                        assert!(
+                            // Half a channel step for rounding to 8 bits,
+                            // and one step of the search.
+                            moved <= best + 0.5 / 255.0 + 1.0 / 4096.0 + 1e-6,
+                            "{} on {}: moved {moved}, least {best}",
+                            ink.to_hex(),
+                            ground.to_hex()
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn near_black_on_a_middling_ground_goes_down_not_to_white() {
+        // #757575 reaches 4.5 both ways; the ink is already dark, so the short
+        // way is down.
+        let ground = Rgb::from_hex("#757575").unwrap();
+        let made = legible(Rgb::from_hex("#080808").unwrap(), ground, LEGIBLE);
+        assert!(made.lightness() < 0.1, "{}", made.to_hex());
+    }
+
+    #[test]
+    fn a_colour_a_step_off_grey_stays_grey() {
+        let white = Rgb::new(255, 255, 255);
+        let made = legible(Rgb::from_hex("#fffffe").unwrap(), white, LEGIBLE);
+        assert!(hsl(made).1 < 0.05, "{}", made.to_hex());
+        let black = Rgb::new(0, 0, 0);
+        let made = legible(Rgb::from_hex("#000001").unwrap(), black, LEGIBLE);
+        assert!(hsl(made).1 < 0.05, "{}", made.to_hex());
+    }
+
+    #[test]
+    fn the_table_is_the_curve() {
+        // The literals against the formula they were worked out from, to
+        // within what f64 rounding allows.
+        for (value, &kept) in LINEAR.iter().enumerate() {
+            let c = f64::from(u8::try_from(value).unwrap()) / 255.0;
+            let exact = if c <= 0.040_45 {
+                c / 12.92
+            } else {
+                ((c + 0.055) / 1.055).powf(2.4)
+            };
+            assert!((exact - kept).abs() < 1e-12, "{value}");
+        }
+    }
+
+    #[test]
+    fn a_ratio_out_of_reach_comes_back_as_close_as_it_can() {
+        let ground = Rgb::from_hex("#777777").unwrap();
+        let made = legible(Rgb::from_hex("#802020").unwrap(), ground, 7.0);
+        assert!(made == Rgb::new(0, 0, 0) || made == Rgb::new(255, 255, 255));
+    }
+
+    #[test]
+    fn every_token_an_export_writes_reads_on_every_ground_it_sits_on() {
+        // Both of deck's palettes and two imported themes: text, muted text,
+        // the accent as text, and a comment at the window's own blend, on the
+        // page, the pane, the band and the lit range.
+        let themes = [
+            light(),
+            dark(),
+            Imported::plain(
+                Rgb::new(0x0d, 0x11, 0x17),
+                Rgb::new(0xe6, 0xed, 0xf3),
+                Rgb::new(0x2f, 0x81, 0xf7),
+            ),
+            Imported::plain(
+                Rgb::new(0xfd, 0xf6, 0xe3),
+                Rgb::new(0x65, 0x7b, 0x83),
+                Rgb::new(0xb5, 0x89, 0x00),
+            ),
+        ];
+        for theme in themes {
+            let p = derive(theme);
+            let inks = [
+                p.fg,
+                p.muted,
+                p.accent,
+                p.fg.mix(p.wash, 0.42),
+                p.add,
+                p.del,
+            ];
+            for ground in [p.bg, p.wash, p.band, p.focus] {
+                for ink in inks {
+                    assert!(legible(ink, ground, LEGIBLE).contrast(ground) >= LEGIBLE);
+                }
+            }
+        }
     }
 
     #[test]
