@@ -1,0 +1,22 @@
+{
+  "title": "every shape",
+  "flow": "down",
+  "nodes": [
+    { "id": "user", "label": "Reader", "role": "actor" },
+    { "id": "click", "label": "Connect", "role": "terminal" },
+    { "id": "check", "label": "installed?", "role": "decision", "weight": "accent" },
+    { "id": "api", "label": "JiraController", "note": "apps/api" },
+    { "id": "store", "label": "credentials", "role": "store" },
+    { "id": "old", "label": "legacy path", "weight": "muted" }
+  ],
+  "edges": [
+    { "from": "user", "to": "click" },
+    { "from": "click", "to": "check", "label": "POST" },
+    { "from": "check", "to": "api", "label": "yes" },
+    { "from": "check", "to": "old", "label": "no", "line": "dashed" },
+    { "from": "api", "to": "store", "label": "upsert" },
+    { "from": "store", "to": "check", "label": "retry" }
+  ],
+  "clusters": [{ "label": "browser", "nodes": ["user", "click"] }],
+  "flows": [{ "name": "happy", "steps": ["user", "click", "check", "api", "store"] }]
+}

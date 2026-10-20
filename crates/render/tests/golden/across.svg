@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="129" viewBox="0 0 640 129" font-family="'IBM Plex Sans', sans-serif" font-kerning="normal">
+<rect width="640" height="129" fill="#1f1f1f"/>
+<rect x="15" y="-4" width="398" height="103" rx="6" fill="#1b1b1b"/>
+<rect x="15.5" y="-3.5" width="397" height="102" rx="5.5" fill="none" stroke="#312f2d" stroke-width="1"/>
+<rect x="186" y="56.38" width="28" height="1.25" rx="0" fill="#8f8670"/>
+<rect x="214" y="56.38" width="28" height="1.25" rx="0" fill="#8f8670"/>
+<path d="M242 57L233 60.25L233 53.75Z" fill="#8f8670"/>
+<rect x="398" y="56.38" width="5" height="1.25" rx="0" fill="#8f8670"/>
+<rect x="407" y="56.38" width="5" height="1.25" rx="0" fill="#8f8670"/>
+<rect x="416" y="56.38" width="5" height="1.25" rx="0" fill="#8f8670"/>
+<rect x="425" y="56.38" width="1" height="1.25" rx="0" fill="#8f8670"/>
+<rect x="426" y="56.38" width="5" height="1.25" rx="0" fill="#8f8670"/>
+<rect x="435" y="56.38" width="5" height="1.25" rx="0" fill="#8f8670"/>
+<rect x="444" y="56.38" width="5" height="1.25" rx="0" fill="#8f8670"/>
+<rect x="453" y="56.38" width="1" height="1.25" rx="0" fill="#8f8670"/>
+<path d="M454 57L445 60.25L445 53.75Z" fill="#8f8670"/>
+<rect x="531.38" y="84" width="1.25" height="21" rx="0" fill="#fe8019"/>
+<rect x="108" y="104.38" width="424" height="1.25" rx="0" fill="#fe8019"/>
+<rect x="107.38" y="84" width="1.25" height="21" rx="0" fill="#fe8019"/>
+<path d="M108 84L111.25 93L104.75 93Z" fill="#fe8019"/>
+<rect x="30" y="30" width="156" height="54" rx="6" fill="#282828"/>
+<rect x="30.5" y="30.5" width="155" height="53" rx="5.5" fill="none" stroke="#3a3735" stroke-width="1"/>
+<path d="M265 26L375 26L406 57L375 88L265 88L234 57Z" fill="#3a3735"/>
+<path d="M265 27L375 27L405 57L375 87L265 87L235 57Z" fill="#282828"/>
+<rect x="454" y="30" width="156" height="54" rx="27" fill="#282828"/>
+<rect x="454.5" y="30.5" width="155" height="53" rx="26.5" fill="none" stroke="#3a3735" stroke-width="1"/>
+<text x="28" y="12.75" font-size="10" font-weight="400" fill="#a89984" xml:space="preserve">queue</text>
+<text x="84.41" y="61.5" font-size="12" font-weight="400" fill="#ebdbb2" xml:space="preserve">enqueue</text>
+<text x="301.3" y="61.5" font-size="12" font-weight="400" fill="#ebdbb2" xml:space="preserve">worker</text>
+<text x="517.13" y="61.5" font-size="12" font-weight="400" fill="#ebdbb2" xml:space="preserve">email</text>
+</svg>

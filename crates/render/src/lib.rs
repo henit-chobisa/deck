@@ -16,6 +16,7 @@
 
 #![forbid(unsafe_code)]
 
+pub mod svg;
 pub mod text;
 
 use std::ops::Range;

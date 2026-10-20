@@ -1,0 +1,65 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="428" height="498" viewBox="0 0 428 498" font-family="'IBM Plex Sans', sans-serif" font-kerning="normal">
+<rect width="428" height="498" fill="#1f1f1f"/>
+<rect x="107.38" y="84" width="1.25" height="21" rx="0" fill="#8f8670"/>
+<rect x="107.38" y="105" width="1.25" height="21" rx="0" fill="#8f8670"/>
+<path d="M108 126L104.75 117L111.25 117Z" fill="#8f8670"/>
+<rect x="107.38" y="180" width="1.25" height="21" rx="0" fill="#8f8670"/>
+<rect x="107.38" y="201" width="1.25" height="21" rx="0" fill="#8f8670"/>
+<path d="M108 222L104.75 213L111.25 213Z" fill="#8f8670"/>
+<rect x="107.38" y="276" width="1.25" height="21" rx="0" fill="#8f8670"/>
+<rect x="107.38" y="297" width="1.25" height="21" rx="0" fill="#8f8670"/>
+<path d="M108 318L104.75 309L111.25 309Z" fill="#8f8670"/>
+<rect x="107.38" y="276" width="1.25" height="21" rx="0" fill="#8f8670"/>
+<rect x="108" y="296.38" width="212" height="1.25" rx="0" fill="#8f8670"/>
+<rect x="319.38" y="297" width="1.25" height="21" rx="0" fill="#8f8670"/>
+<path d="M320 318L316.75 309L323.25 309Z" fill="#8f8670"/>
+<rect x="107.38" y="372" width="1.25" height="21" rx="0" fill="#8f8670"/>
+<rect x="107.38" y="393" width="1.25" height="21" rx="0" fill="#8f8670"/>
+<path d="M108 414L104.75 405L111.25 405Z" fill="#8f8670"/>
+<rect x="30" y="30" width="156" height="54" rx="27" fill="#282828"/>
+<rect x="30.5" y="30.5" width="155" height="53" rx="26.5" fill="none" stroke="#3a3735" stroke-width="1"/>
+<rect x="30" y="126" width="156" height="54" rx="6" fill="#282828"/>
+<rect x="30.5" y="126.5" width="155" height="53" rx="5.5" fill="none" stroke="#3a3735" stroke-width="1"/>
+<path d="M53 218L163 218L194 249L163 280L53 280L22 249Z" fill="#fe8019"/>
+<path d="M53 219.5L163 219.5L192.5 249L163 278.5L53 278.5L23.5 249Z" fill="#332b21"/>
+<path d="M30 365.5Q30 359 108 359Q186 359 186 365.5Q186 372 108 372Q30 372 30 365.5Z" fill="#3a3735"/>
+<rect x="30" y="324.5" width="156" height="41" rx="0" fill="#3a3735"/>
+<path d="M30 324.5Q30 318 108 318Q186 318 186 324.5Q186 331 108 331Q30 331 30 324.5Z" fill="#3a3735"/>
+<path d="M31 364.5Q31 358 108 358Q185 358 185 364.5Q185 371 108 371Q31 371 31 364.5Z" fill="#282828"/>
+<rect x="31" y="324.5" width="154" height="41" rx="0" fill="#282828"/>
+<path d="M31 325.5Q31 319 108 319Q185 319 185 325.5Q185 332 108 332Q31 332 31 325.5Z" fill="#282828"/>
+<path d="M31 325.5Q31 319 108 319Q185 319 185 325.5Q185 332 108 332Q31 332 31 325.5Z" fill="#3a3735"/>
+<path d="M32 325.5Q32 320 108 320Q184 320 184 325.5Q184 331 108 331Q32 331 32 325.5Z" fill="#282828"/>
+<path d="M30 441Q30 414 108 414Q186 414 186 441Q186 468 108 468Q30 468 30 441Z" fill="#3a3735"/>
+<path d="M31 441Q31 415 108 415Q185 415 185 441Q185 467 108 467Q31 467 31 441Z" fill="#282828"/>
+<rect x="242" y="318" width="156" height="54" rx="6" fill="#332b21"/>
+<rect x="242.75" y="318.75" width="154.5" height="52.5" rx="5.25" fill="none" stroke="#fe8019" stroke-width="1.5"/>
+<rect x="115" y="97" width="72" height="34" rx="3" fill="#1f1f1f"/>
+<text x="122.03" y="109.75" font-size="10" font-weight="400" fill="#a89984" xml:space="preserve">for each row </text>
+<text x="124.69" y="125.75" font-size="10" font-weight="400" fill="#a89984" xml:space="preserve">in the sheet</text>
+<rect x="115" y="289" width="72" height="34" rx="3" fill="#1f1f1f"/>
+<text x="122.46" y="301.75" font-size="10" font-weight="400" fill="#a89984" xml:space="preserve">some writes </text>
+<text x="138.46" y="317.75" font-size="10" font-weight="400" fill="#a89984" xml:space="preserve">failed</text>
+<rect x="187.5" y="275" width="53" height="18" rx="3" fill="#1f1f1f"/>
+<text x="191.5" y="287.75" font-size="10" font-weight="400" fill="#a89984" xml:space="preserve">all written</text>
+<rect x="115" y="385" width="72" height="34" rx="3" fill="#1f1f1f"/>
+<text x="119.16" y="397.75" font-size="10" font-weight="400" fill="#a89984" xml:space="preserve">escalate after </text>
+<text x="127.91" y="413.75" font-size="10" font-weight="400" fill="#a89984" xml:space="preserve">three tries</text>
+<text x="55.16" y="46.5" font-size="12" font-weight="400" fill="#ebdbb2" xml:space="preserve">The importer reads </text>
+<text x="63.45" y="61.5" font-size="12" font-weight="400" fill="#ebdbb2" xml:space="preserve">every row of the </text>
+<text x="66.22" y="76.5" font-size="12" font-weight="400" fill="#ebdbb2" xml:space="preserve">uploaded sheet</text>
+<text x="48.67" y="143" font-size="12" font-weight="400" fill="#ebdbb2" xml:space="preserve">Each row is written to </text>
+<text x="66.32" y="158" font-size="12" font-weight="400" fill="#ebdbb2" xml:space="preserve">the ingest table</text>
+<text x="41.65" y="172.44" font-size="10.5" font-weight="400" fill="#a89984" xml:space="preserve">apps/ingest/src/batch.ts, f…</text>
+<text x="46.62" y="246" font-size="12" font-weight="600" fill="#ebdbb2" xml:space="preserve">Did every single write </text>
+<text x="82.13" y="261" font-size="12" font-weight="600" fill="#ebdbb2" xml:space="preserve">succeed?</text>
+<text x="48.51" y="342" font-size="12" font-weight="400" fill="#ebdbb2" xml:space="preserve">Retry queue for failed </text>
+<text x="94.98" y="357" font-size="12" font-weight="400" fill="#ebdbb2" xml:space="preserve">rows</text>
+<svg x="40" y="361" width="136" height="5" overflow="hidden"><g transform="translate(-40 -361)">
+<text x="66.62" y="371.44" font-size="10.5" font-weight="400" fill="#a89984" xml:space="preserve">redis, ingest:retry</text>
+</g></svg>
+<text x="53.68" y="445.5" font-size="12" font-weight="400" fill="#ebdbb2" xml:space="preserve">Operations reviewer</text>
+<text x="258.54" y="335" font-size="12" font-weight="600" fill="#ebdbb2" xml:space="preserve">Mark the whole batch </text>
+<text x="268.22" y="350" font-size="12" font-weight="600" fill="#ebdbb2" xml:space="preserve">finished and notify</text>
+<text x="254.79" y="364.44" font-size="10.5" font-weight="600" fill="#a89984" xml:space="preserve">a note far too long to fit o…</text>
+</svg>

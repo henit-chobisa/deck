@@ -29,6 +29,50 @@ pub const HEAD: (f32, f32) = (9., 6.5);
 /// far into the page that their edges were guesswork.
 pub const ASIDE: f32 = 0.46;
 
+/// A node's label: its size and its line height.
+///
+/// The line height is spelled out rather than left to the face. A box is a
+/// fixed height and what goes in it has to be known to fit: with the default
+/// leading a label and a note came to more than the box, and the note was cut
+/// through by the bottom border. A 15 and a 13 leave room inside 50 even when
+/// the label wraps.
+pub const LABEL: (f32, f32) = (12., 15.);
+/// A node's note, the one line under its label: size and line height.
+pub const NOTE: (f32, f32) = (10.5, 13.);
+/// The space between a label and its note.
+pub const LABEL_GAP: f32 = 1.;
+/// How far a store's words stay below its lid and above its foot.
+pub const STORE_PAD: (f32, f32) = (12., 6.);
+/// How big an edge label is.
+pub const EDGE_LABEL: f32 = 10.;
+/// How big a cluster's name is.
+pub const CLUSTER_NAME: f32 = 10.;
+/// Where a cluster's name sits, from its frame's top-left corner.
+pub const CLUSTER_NAME_AT: (f32, f32) = (13., 5.);
+/// The padding inside an edge label's chip, across and down.
+pub const CHIP_PAD: (f32, f32) = (4., 1.);
+/// How round an edge label's chip is.
+pub const CHIP_RADIUS: f32 = 3.;
+/// How far above a horizontal run its label's chip ends.
+pub const CHIP_ABOVE: f32 = 4.;
+/// Where a vertical run's label chip starts, from the middle of the run.
+pub const CHIP_BESIDE: (f32, f32) = (7., -8.);
+
+/// The widest an edge label's chip may be: the gutter it sits in, give or
+/// take a few pixels. A label is meant to be a word or two, and one that is
+/// not wraps rather than lying across the two nodes the arrow joins.
+#[must_use]
+pub fn chip_widest() -> f32 {
+    crate::geometry::GAP_X + 16.
+}
+
+/// The line height text gets when nothing sets one: the golden ratio of its
+/// size, rounded to a whole pixel, as GPUI's default text style has it.
+#[must_use]
+pub fn default_line(size: f32) -> f32 {
+    (size * 1.618_034).round()
+}
+
 /// One thing to paint.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Prim {
