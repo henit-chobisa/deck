@@ -17,7 +17,7 @@
 //! the window's panes and the protocol's refs can both say.
 
 use crate::LineRange;
-use crate::protocol::{PageRef, Ref};
+use crate::protocol::{Ref, RefSpec};
 
 /// A run of the paragraph that is styled the same way throughout.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -62,7 +62,7 @@ pub fn words(say: &str) -> Vec<String> {
     let last = paragraphs.len().saturating_sub(1);
 
     for (ix, para) in paragraphs.into_iter().enumerate() {
-        out.extend(para.tokens.into_iter().map(|token| token.text.to_string()));
+        out.extend(para.tokens.into_iter().map(|token| token.text));
         // The last word of a paragraph carries no trailing space — nothing
         // follows it on its own line. A selection that runs into the next
         // paragraph would join the two words together without one.
@@ -164,13 +164,13 @@ fn tokenised(say: &str, keep_beats: bool) -> Vec<Paragraph> {
 /// The paragraph gaps matter as much as the words. A break in the narration is
 /// a change of subject, and a voice that runs two subjects together turns an
 /// argument back into a stream, which is the thing the groups exist to prevent.
-/// `[[slnc n]]` is the system synthesiser's own instruction for a pause.
+/// The gap is written as a beat, `[pause long]`, and each engine decides how
+/// long that is — which is why this takes no length of its own.
 #[must_use]
-pub fn spoken(say: &str, pause: u16) -> String {
+pub fn spoken(say: &str) -> String {
     // Google's own spelling, used as the one neutral way to write a beat.
     // Every engine renders it differently and none of them show it, so there is
     // no reason for a second syntax that would have to be translated twice.
-    let _ = pause;
     let between = " [pause long] ".to_string();
     tokenised(say, true)
         .into_iter()
@@ -381,6 +381,32 @@ pub fn unpoint(text: &str) -> String {
     out
 }
 
+/// Every point in `say`, in the order it is written.
+///
+/// Read exactly as [`pointed`] reads them, with the same rule for what counts:
+/// a `[point …]` that [`spot`] would not take is prose, and is not here. So
+/// anything that checks a group's points — the command line warning about a
+/// block no pane answers to, an export numbering its margins — sees the points
+/// the window will light, and none that it will leave on the page as words.
+#[must_use]
+pub fn points(say: &str) -> Vec<Spot> {
+    let (mut out, mut rest) = (Vec::new(), say);
+    while let Some(at) = rest.find(POINT) {
+        let after = &rest[at + POINT.len()..];
+        let Some(end) = after.find(']') else {
+            break; // an opener with no closer is just text
+        };
+        match spot(&after[..end]) {
+            Some(found) => {
+                out.push(found);
+                rest = &after[end + 1..];
+            }
+            None => rest = after,
+        }
+    }
+    out
+}
+
 /// One stretch of narration, and where it points while it is being said.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Said {
@@ -411,7 +437,7 @@ fn counted(text: &str) -> usize {
 /// Narration with no points comes back as a single piece, which is what
 /// [`spoken`] returns on its own.
 #[must_use]
-pub fn pointed(say: &str, pause: u16) -> Vec<Said> {
+pub fn pointed(say: &str) -> Vec<Said> {
     let mut out: Vec<Said> = Vec::new();
     let mut point: Option<Spot> = None;
     let mut piece = String::new();
@@ -452,7 +478,7 @@ pub fn pointed(say: &str, pause: u16) -> Vec<Said> {
             rest = &rest.trim_start()[beat.len()..];
         }
 
-        let text = spoken(&piece, pause);
+        let text = spoken(&piece);
         if !text.is_empty() {
             out.push(Said {
                 point,
@@ -465,7 +491,7 @@ pub fn pointed(say: &str, pause: u16) -> Vec<Said> {
     }
 
     piece.push_str(rest);
-    let text = spoken(&piece, pause);
+    let text = spoken(&piece);
     if !text.is_empty() {
         out.push(Said {
             point,
@@ -873,55 +899,68 @@ pub fn resolve<P: Answers>(
 
 /// [`resolve`] over a group's refs, for a reader with no window.
 ///
-/// An export has the deck and nothing else: no pane has scrolled, nothing has
-/// followed the file, and no live walk has carried a pane in. So a code ref
-/// answers with the range it was written with, and nothing is asked first.
+/// An export has the deck and nothing else: no pane has scrolled and no live
+/// walk has carried a pane in, so nothing is asked first.
 ///
-/// A page's names are read out of its markup, and that reading lives with the
-/// command line rather than in this crate — it is the one thing here that has
-/// to understand HTML. So the caller says which names a page answers to, and
-/// `deck_cli::answered_by` is the answer it already has.
+/// What it can still do is what the window does to a range before lighting
+/// it: keep it inside the file. A deck is written against a file the reader
+/// may have edited since, and the window clamps a ref's range to the lines the
+/// file really has — so `[point 110]` on a ref of `90-120`, in a file a hundred
+/// lines long, lands nowhere on screen. Unclamped it would land on paper, and
+/// the two would disagree about the same sentence. `line_count` says how long
+/// each code ref's file is; `None` is a file nobody has measured, and its range
+/// is taken as written.
+///
+/// A page's names are read out of its markup by
+/// [`answered_by`](crate::page::answered_by), the same reading the window does.
 #[must_use]
 pub fn resolve_refs(
     spot: &Spot,
     refs: &[Ref],
-    answers_to: impl Fn(&PageRef, &str) -> bool,
+    line_count: impl Fn(&RefSpec) -> Option<u32>,
 ) -> Landing {
-    let panes: Vec<Unopened<'_, _>> = refs
+    let panes: Vec<Unopened<'_>> = refs
         .iter()
-        .map(|of| Unopened {
-            of,
-            answers_to: &answers_to,
+        .map(|of| match of {
+            Ref::Code(code) => Unopened::Code(
+                line_count(code).map_or(code.range, |count| code.range.clamp_to(count)),
+            ),
+            Ref::Diagram(drawn) => Unopened::Drawn(&drawn.diagram),
+            Ref::Page(page) => Unopened::Page(crate::page::answered_by(&page.page)),
         })
         .collect();
     resolve(spot, &panes, |_| false)
 }
 
-/// A ref standing in for the pane it would open as.
-struct Unopened<'a, F> {
-    of: &'a Ref,
-    answers_to: &'a F,
+/// A ref standing in for the pane it would open as, already measured.
+enum Unopened<'a> {
+    /// Lines of a file, kept inside it.
+    Code(LineRange),
+    /// A picture.
+    Drawn(&'a crate::Diagram),
+    /// A page, as the names it answers to.
+    Page(Vec<String>),
 }
 
-impl<F: Fn(&PageRef, &str) -> bool> Answers for Unopened<'_, F> {
+impl Answers for Unopened<'_> {
     fn lines(&self) -> Option<LineRange> {
-        match self.of {
-            Ref::Code(code) => Some(code.range),
-            Ref::Diagram(_) | Ref::Page(_) => None,
+        match self {
+            Self::Code(range) => Some(*range),
+            Self::Drawn(_) | Self::Page(_) => None,
         }
     }
 
     fn draws(&self, id: &str) -> bool {
-        match self.of {
-            Ref::Diagram(drawn) => drawn.diagram.nodes.iter().any(|node| node.id == id),
-            Ref::Code(_) | Ref::Page(_) => false,
+        match self {
+            Self::Drawn(diagram) => diagram.nodes.iter().any(|node| node.id == id),
+            Self::Code(_) | Self::Page(_) => false,
         }
     }
 
     fn pages(&self, id: &str) -> bool {
-        match self.of {
-            Ref::Page(page) => (self.answers_to)(page, id),
-            Ref::Code(_) | Ref::Diagram(_) => false,
+        match self {
+            Self::Page(names) => names.iter().any(|name| name == id),
+            Self::Code(_) | Self::Drawn(_) => false,
         }
     }
 }
@@ -957,11 +996,7 @@ mod tests {
         // is a direction the reader is handed instead of the sentence.
         let said = "the guard is here. [point 106-110] and it waves it through.";
         assert!(!unpoint(said).contains("[point"), "{}", unpoint(said));
-        assert!(
-            !spoken(said, 420).contains("point"),
-            "{}",
-            spoken(said, 420)
-        );
+        assert!(!spoken(said).contains("point"), "{}", spoken(said));
         let seen: String = parse(said)
             .into_iter()
             .flat_map(|para| para.tokens)
@@ -991,7 +1026,7 @@ mod tests {
         );
 
         // The band counts what the voice says, which is what keeps them level.
-        let heard = pointed(said, 420);
+        let heard = pointed(said);
         let words: usize = heard.iter().map(|piece| piece.words).sum();
         assert_eq!(words, tokens.len(), "{heard:#?}");
     }
@@ -1001,7 +1036,7 @@ mod tests {
         // A diagram has no lines, so the only name a sentence can carry for a
         // block is the id the agent gave it in the file.
         let said = "first the call. [point checkout] then the write. [point 140] and done.";
-        let out = pointed(said, 420);
+        let out = pointed(said);
         assert_eq!(
             out[1].point,
             Some(Spot {
@@ -1021,7 +1056,7 @@ mod tests {
 
         // And prose about pointing is still prose: a payload with a space in it
         // is a sentence somebody wrote, not a direction they gave.
-        let prose = pointed("the [point of view] here is the caller's.", 420);
+        let prose = pointed("the [point of view] here is the caller's.");
         assert_eq!(prose.len(), 1);
         assert!(
             prose[0].text.contains("[point of view]"),
@@ -1034,13 +1069,13 @@ mod tests {
     fn one_point_can_hold_a_file_and_a_picture_at_once() {
         // The thing neither a diff nor a diagram can do on its own: these lines,
         // and where they sit in the flow, lit in the same breath.
-        let out = pointed("so here. [point 106-110 checkout] both at once.", 420);
+        let out = pointed("so here. [point 106-110 checkout] both at once.");
         let both = out[1].point.clone().expect("a point");
         assert_eq!(both.lines, Some(LineRange::new(106, 110)));
         assert_eq!(both.block.as_deref(), Some("checkout"));
 
         // Either order, and a comma is as good as a space.
-        let swapped = pointed("[point checkout, 106] a.", 420)[0]
+        let swapped = pointed("[point checkout, 106] a.")[0]
             .point
             .clone()
             .expect("a point");
@@ -1049,7 +1084,7 @@ mod tests {
 
         // Two files is two things to read, so it is not a point at all — the
         // words stay on the page rather than half of them being obeyed.
-        let refused = pointed("the [point 106 140] thing.", 420);
+        let refused = pointed("the [point 106 140] thing.");
         assert_eq!(refused.len(), 1);
         assert!(
             refused[0].text.contains("[point 106 140]"),
@@ -1062,7 +1097,7 @@ mod tests {
     fn the_narration_is_cut_where_the_pointing_changes() {
         let said = "first, the call. [point 106-110] then the guard. [point 140] \
                     and then nothing happens.";
-        let out = pointed(said, 420);
+        let out = pointed(said);
 
         assert_eq!(out.len(), 3, "one piece per point, plus what came before");
         assert_eq!(out[0].point, None, "nothing was pointed at yet");
@@ -1092,7 +1127,7 @@ mod tests {
         let out = parsed(said);
         assert!(!out[0].0.contains('['), "{}", out[0].0);
         assert_eq!(out[0].1, vec![Mark::Pane, Mark::Pane]);
-        assert_eq!(spoken(said, 420), "the answer is in batch 2, not in retry.");
+        assert_eq!(spoken(said), "the answer is in batch 2, not in retry.");
         assert_eq!(unname(said), "the answer is in batch-2, not in retry.");
     }
 
@@ -1109,7 +1144,7 @@ mod tests {
         // sentence would drift further from the voice with every point.
         let said = "The guard is `base_url`. [point 12] It *asks* whether anything \
                     changed.\n\n[pause] [point 40] And [retry] waves it through.";
-        let pieces: usize = pointed(said, 420).iter().map(|piece| piece.words).sum();
+        let pieces: usize = pointed(said).iter().map(|piece| piece.words).sum();
         assert_eq!(pieces, words(said).len());
     }
 
@@ -1118,10 +1153,7 @@ mod tests {
         // Written after the point, the beat would open the next clip, and the
         // silence at the front of a clip is what gets trimmed when the pieces
         // are joined. Moved into the gap before, it survives.
-        let out = pointed(
-            "the guard is here. [point 140] [pause] and it is ignored.",
-            420,
-        );
+        let out = pointed("the guard is here. [point 140] [pause] and it is ignored.");
         assert_eq!(out.len(), 2);
         assert!(out[0].text.ends_with("[pause]"), "{}", out[0].text);
         assert!(!out[1].text.contains("[pause]"), "{}", out[1].text);
@@ -1131,7 +1163,7 @@ mod tests {
     fn a_paragraph_ending_at_a_point_keeps_its_gap() {
         // A paragraph break is a change of subject. Cutting a passage there
         // used to throw the gap away with the blank line.
-        let out = pointed("the guard is here.\n\n[point 140] and it is ignored.", 420);
+        let out = pointed("the guard is here.\n\n[point 140] and it is ignored.");
         assert!(out[0].text.ends_with("[pause long]"), "{}", out[0].text);
     }
 
@@ -1141,7 +1173,7 @@ mod tests {
         // writing the words `[point at` in a sentence meant the words.
         let said = "it is worth a [point about the guard] here";
         assert_eq!(unpoint(said), said);
-        let out = pointed(said, 420);
+        let out = pointed(said);
         assert_eq!(out.len(), 1);
         assert_eq!(out[0].point, None);
     }
@@ -1151,9 +1183,9 @@ mod tests {
         // What `spoken` returned on its own, unchanged — otherwise every deck
         // written before pointing existed would be said differently.
         let said = "the guard is here.\n\nand it waves it through.";
-        let out = pointed(said, 420);
+        let out = pointed(said);
         assert_eq!(out.len(), 1);
-        assert_eq!(out[0].text, spoken(said, 420));
+        assert_eq!(out[0].text, spoken(said));
     }
 
     #[test]
@@ -1194,7 +1226,7 @@ mod tests {
         // The agent writes one copy. The ear gets the pacing it asked for; the
         // eye never gets a stage direction in the middle of a sentence.
         let say = "It waves the empty password through. [pause] Then line 132.";
-        assert!(spoken(say, 420).contains("[pause]"), "the ear keeps it");
+        assert!(spoken(say).contains("[pause]"), "the ear keeps it");
 
         let seen: String = tokenised(say, false)
             .into_iter()
@@ -1214,7 +1246,7 @@ mod tests {
         // Spoken verbatim these are "base underscore url" and one long word
         // with the stress in the wrong place. Both were written without a space
         // for the compiler, so the space goes back in.
-        let said = spoken("`base_url` and `buildPayload` and `if credentials:`", 0);
+        let said = spoken("`base_url` and `buildPayload` and `if credentials:`");
         assert!(said.contains("base url"), "{said}");
         assert!(said.contains("build Payload"), "{said}");
         assert!(said.contains("if credentials"), "{said}");
@@ -1229,7 +1261,7 @@ mod tests {
     fn a_path_is_said_by_its_last_part() {
         // "crates slash app slash src slash view dot r s" is a sentence nobody
         // needed — the pane already shows which file it is.
-        let said = spoken("see `crates/app/src/view.rs`", 0);
+        let said = spoken("see `crates/app/src/view.rs`");
         assert!(said.contains("view.rs"), "{said}");
         assert!(!said.contains("crates"), "{said}");
     }
@@ -1238,7 +1270,7 @@ mod tests {
     fn an_empty_string_is_called_one() {
         // The narration this came from was about exactly this bug, and "quote
         // quote" is not what anybody says out loud.
-        assert!(spoken(r#"carries `password: ""`"#, 0).contains("empty string"));
+        assert!(spoken(r#"carries `password: ""`"#).contains("empty string"));
     }
 
     #[test]
@@ -1249,7 +1281,7 @@ mod tests {
         // Written in Google's spelling because one engine has to win, and that
         // is the one that understands a beat natively and judges its length
         // from what surrounds it. The others are told what to do with it.
-        let said = spoken("First claim.\n\nSecond claim.", 400);
+        let said = spoken("First claim.\n\nSecond claim.");
         assert!(said.contains("[pause long]"), "{said}");
         assert_eq!(said.matches("[pause").count(), 1, "one gap, not two");
     }
@@ -1469,9 +1501,7 @@ mod tests {
             ]"#,
         )
         .expect("refs");
-        let landed = resolve_refs(&at("105 hop"), &refs, |page, id| {
-            page.page.contains(&format!("\"{id}\""))
-        });
+        let landed = resolve_refs(&at("105 hop"), &refs, |_| None);
         assert_eq!(
             landed,
             Landing {
@@ -1479,6 +1509,37 @@ mod tests {
                 drawing: None,
                 paging: Some(2),
             }
+        );
+    }
+
+    #[test]
+    fn a_range_past_the_end_of_its_file_lands_where_the_window_lands_it() {
+        // The window clamps a ref's range to the file before it lights it, so
+        // a point past the end of the file lands nowhere on screen. On paper it
+        // must land nowhere too, or the export and the window disagree about
+        // the same sentence.
+        let refs: Vec<Ref> =
+            serde_json::from_str(r#"[{ "id": "g1r1", "file": "a.rs", "range": [90, 120] }]"#)
+                .expect("refs");
+        let measured = |_: &RefSpec| Some(100);
+        assert_eq!(resolve_refs(&at("110"), &refs, measured).reading, None);
+        assert_eq!(resolve_refs(&at("95"), &refs, measured).reading, Some(0));
+        // A file nobody measured keeps the range it was written with.
+        assert_eq!(resolve_refs(&at("110"), &refs, |_| None).reading, Some(0));
+    }
+
+    #[test]
+    fn the_points_are_the_ones_the_window_lights() {
+        let said = "first [point 12] then [point the guard] and [point +40-44 write].";
+        let found = points(said);
+        assert_eq!(found.len(), 2, "the guard is prose: {found:?}");
+        assert_eq!(found[0].lines, Some(LineRange::single(12)));
+        assert_eq!(found[1].side, Side::Arriving);
+        assert_eq!(found[1].block.as_deref(), Some("write"));
+        let heard: Vec<Option<Spot>> = pointed(said).into_iter().map(|piece| piece.point).collect();
+        assert_eq!(
+            heard[1..],
+            found.into_iter().map(Some).collect::<Vec<_>>()[..]
         );
     }
 }

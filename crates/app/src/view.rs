@@ -1917,7 +1917,7 @@ impl DeckView {
         speech: &deck_core::config::Speech,
         cx: &mut Context<Self>,
     ) {
-        let said = crate::prose::pointed(text, speech.pause);
+        let said = crate::prose::pointed(text);
         // Nobody is listening, so there is no clock to keep.
         //
         // Without a real voice the queue is paced by `timed`, which walks the
@@ -1975,7 +1975,7 @@ impl DeckView {
         order.extend(fresh.filter(|ix| *ix < self.group_ix));
         let passages = order
             .into_iter()
-            .map(|ix| crate::prose::pointed(&groups[ix].say, speech.pause))
+            .map(|ix| crate::prose::pointed(&groups[ix].say))
             .collect();
         self.ahead = groups.len();
         if speech.aloud {
@@ -2357,10 +2357,11 @@ impl DeckView {
         // Which half of a change those lines mean, if the pane is showing one.
         let side = at.as_ref().map_or(crate::prose::Side::Going, |at| at.side);
         let block = at.as_ref().and_then(|at| at.block.clone());
-        // Two owners, because one point may hold a file and a picture at once:
-        // the code, and where it sits in the flow. Each half finds its own pane
-        // by what that pane is already showing — the rule lives in the core,
-        // so an export with no window lands every point in the same place.
+        // Up to three owners, because one point may hold a file and a picture
+        // at once — the code, and where it sits in the flow — and a picture and
+        // a page may both answer to the same word. Each finds its own pane by
+        // what that pane is already showing. The rule lives in the core, so an
+        // export with no window lands every point in the same place.
         let landing = at.as_ref().map_or_else(Default::default, |at| {
             deck_core::prose::resolve(at, &self.panes, |ix| self.temporary.contains(&ix))
         });
@@ -4192,7 +4193,7 @@ impl DeckView {
         let mut seen = 0;
         // The pause only changes what a voice hears, and nothing here is
         // heard. Cutting is the same either way.
-        for piece in crate::prose::pointed(say, 0) {
+        for piece in crate::prose::pointed(say) {
             seen += piece.words;
             if at < seen {
                 return piece.point;
@@ -5417,7 +5418,7 @@ impl DeckView {
         // lights the first pane whose lit lines it overlaps, and opens the
         // gate only on a line holding a value. Gating on overlap alone shut
         // panes no sentence would ever open.
-        let spots: Vec<LineRange> = crate::prose::pointed(&group.say, 0)
+        let spots: Vec<LineRange> = crate::prose::pointed(&group.say)
             .into_iter()
             .filter_map(|piece| piece.point.and_then(|spot| spot.lines))
             .collect();

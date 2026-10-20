@@ -382,7 +382,7 @@ pub fn what_will_not_light(say: &str, pointing: &[Pointing]) -> Vec<String> {
         answers.extend(picture.diagram.nodes.iter().map(|node| node.id.clone()));
     }
     for page in &written {
-        answers.extend(answered_by(&page.html));
+        answers.extend(deck_core::page::answered_by(&page.html));
         notes.extend(unordered(&page.html).into_iter().map(|name| {
             format!(
                 "`data-from=\"{name}\"` is not in the page's `deck-points`, so it never \
@@ -391,10 +391,14 @@ pub fn what_will_not_light(say: &str, pointing: &[Pointing]) -> Vec<String> {
             )
         }));
     }
-    for block in blocks(say) {
-        // `106` and `106-110` are lines, not blocks, and belong to a file.
-        let lines = block.split('-').all(|part| part.parse::<u32>().is_ok());
-        if lines || answers.contains(&block) {
+    // Read with the window's own reader, so a `[point …]` the window leaves on
+    // the page as words is not warned about as if it were a point. Lines are
+    // not blocks, and belong to a file, so only the word half is checked.
+    for block in deck_core::prose::points(say)
+        .into_iter()
+        .filter_map(|spot| spot.block)
+    {
+        if answers.contains(&block) {
             continue;
         }
         notes.push(format!(
@@ -457,67 +461,6 @@ fn unordered(html: &str) -> Vec<String> {
         rest = &rest[end + 1..];
     }
     missing
-}
-
-/// Every payload a `[point ...]` in `say` carries, block names and all.
-fn blocks(say: &str) -> Vec<String> {
-    let mut out = Vec::new();
-    let mut rest = say;
-    while let Some(at) = rest.find("[point ") {
-        rest = &rest[at + 7..];
-        let Some(end) = rest.find(']') else {
-            break;
-        };
-        for part in rest[..end].split([',', ' ']) {
-            let part = part.trim();
-            if !part.is_empty() {
-                out.push(part.to_string());
-            }
-        }
-        rest = &rest[end + 1..];
-    }
-    out
-}
-
-/// The names a page answers to: its ids, whatever it declares in
-/// `deck-points`, and every name its elements light or show on —
-/// `data-on`, `data-show`, `data-from`.
-///
-/// Shared with the window, which needs the same answer before a page has a
-/// view to ask, so the two can never disagree about which page a point is in.
-#[must_use]
-pub fn answered_by(html: &str) -> Vec<String> {
-    let mut out = Vec::new();
-    if let Some(at) = html.find("name=\"deck-points\"")
-        && let Some(from) = html[at..].find("content=\"")
-        && let Some(end) = html[at + from + 9..].find('"')
-    {
-        let start = at + from + 9;
-        out.extend(
-            html[start..start + end]
-                .split_whitespace()
-                .map(str::to_string),
-        );
-    }
-    for attribute in ["id=\"", "data-on=\"", "data-show=\"", "data-from=\""] {
-        let mut rest = html;
-        while let Some(at) = rest.find(attribute) {
-            // `data-id="…"` is not an id, nor `grid="…"` one of these.
-            let whole =
-                at == 0 || !rest[..at].ends_with(|ch: char| ch.is_alphanumeric() || ch == '-');
-            rest = &rest[at + attribute.len()..];
-            let Some(end) = rest.find('"') else {
-                break;
-            };
-            if whole {
-                out.extend(rest[..end].split_whitespace().map(str::to_string));
-            }
-            rest = &rest[end + 1..];
-        }
-    }
-    out.sort();
-    out.dedup();
-    out
 }
 
 /// The words a page shows, which is the only thing it is rationed on.
@@ -1391,20 +1334,6 @@ mod tests {
         assert_eq!(unordered(page), ["three"]);
     }
 
-    #[test]
-    fn a_page_answers_to_what_its_parts_light_on() {
-        let page = r#"<meta name="deck-points" content="rest hop">
-            <div id="box" class="node" data-on="hop settle">a</div>
-            <div data-show="arrive" data-from="leave">b</div>
-            <div data-id="not-a-name" grid="nor-this">c</div>"#;
-        let names = answered_by(page);
-        for name in ["rest", "hop", "box", "settle", "arrive", "leave"] {
-            assert!(names.contains(&name.to_string()), "{name}");
-        }
-        assert!(!names.contains(&"not-a-name".to_string()));
-        assert!(!names.contains(&"nor-this".to_string()));
-    }
-
     /// A code ref, from the syntax an agent would write.
     fn pointing(refs: &[&str]) -> Vec<Pointing> {
         refs.iter()
@@ -1742,6 +1671,30 @@ mod tests {
         let alone = what_will_not_light("It returns before the write.", &[named("a.rs:1-2")]);
         assert_eq!(alone.len(), 1, "{alone:#?}");
         assert!(alone[0].contains("no points"), "{alone:#?}");
+    }
+
+    #[test]
+    fn only_a_point_the_window_would_light_is_checked() {
+        // Read with the window's own reader. `[point the guard]` is three parts,
+        // so the window leaves it on the page as words — and a warning that it
+        // names nothing would be a warning about a point that was never made.
+        // A real point at a block nobody has is still caught.
+        let page = Pointing::Written(crate::refs::Written {
+            html: r#"<div id="hop"></div>"#.to_string(),
+            note: None,
+            name: None,
+        });
+        let prose = what_will_not_light("[point the guard] holds, [point hop] moves.", &[page]);
+        assert!(prose.is_empty(), "{prose:#?}");
+
+        let page = Pointing::Written(crate::refs::Written {
+            html: r#"<div id="hop"></div>"#.to_string(),
+            note: None,
+            name: None,
+        });
+        let missing = what_will_not_light("[point 12 skip] moves.", &[page]);
+        assert_eq!(missing.len(), 1, "{missing:#?}");
+        assert!(missing[0].contains("[point skip]"), "{missing:#?}");
     }
 
     #[test]

@@ -1,23 +1,15 @@
 //! The narration, rendered.
 //!
-//! An agent writes markdown, so the band has to read markdown — but only the
-//! inline part of it. A group's `say` is prose with a few words emphasised and
-//! a few spelled as code; it is not a document, and it has no headings, lists
-//! or tables to lay out.
+//! [`deck_core::prose`] reads a group's `say` into words, marks and sentences;
+//! this draws them. The library's markdown view was tried and it renders a
+//! *document*: its own spacing, its own idea of a code chip, its own leading.
+//! Reaching into that to match the deck's measurements is more work than
+//! drawing the four marks that actually appear, and the result still is not
+//! ours.
 //!
-//! The library's markdown view was tried and it renders a *document*: its own
-//! spacing, its own idea of a code chip, its own leading. Reaching into that to
-//! match the deck's measurements is more work than reading the four marks that
-//! actually appear, and the result still is not ours.
-//!
-//! So [`deck_core::prose`] reads those four marks, and this hands the result to
-//! GPUI one element per word. Wrapping, selection and measurement come from
-//! GPUI rather than from a flex box full of word fragments.
-//!
-//! The reading lives in the core and only the drawing lives here. An export has
-//! no window, and it still has to know which word is a chip and where a
-//! sentence points; a second parser beside the first would be two answers to
-//! that question, and they would drift.
+//! So each word becomes an element of its own. Wrapping, selection and
+//! measurement come from GPUI rather than from a flex box full of word
+//! fragments.
 
 use deck_core::theme::Palette;
 use gpui_kit::component::StyledExt as _;

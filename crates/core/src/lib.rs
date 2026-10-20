@@ -17,6 +17,7 @@
 //!   counting.
 //! - [`live`] — pure state transitions for an anchored live conversation.
 //! - [`protocol`] — the wire format, mirroring the JSON field for field.
+//! - [`page`] — the names a page of the agent's markup answers to.
 //! - [`prose`] — a group's narration read into words, sentences and points,
 //!   and where each point lands.
 //! - [`relocate`] — following a pinned line while the file moves under it.
@@ -36,6 +37,7 @@ pub mod home;
 pub mod layout;
 pub mod line;
 pub mod live;
+pub mod page;
 pub mod prose;
 pub mod protocol;
 pub mod relocate;
