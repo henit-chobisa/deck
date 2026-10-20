@@ -462,6 +462,31 @@ fn hermetic(cwd: &Path, repo: Option<&Repo>, ceiling: Option<&Path>) -> Match {
     matching_with(cwd, repo, ceiling, Some(&config))
 }
 
+/// What git says when asked, the way [`matching`] asks, for the top of the
+/// checkout at `dir` and its remote: the reason, when a match that should
+/// have been found was not.
+fn why(dir: &Path, ceiling: &Path, config: Option<&Path>) -> String {
+    let empty = ceiling.join("empty.gitconfig");
+    std::fs::write(&empty, "").expect("an empty config");
+    let config = config.unwrap_or(&empty);
+    [
+        "rev-parse --show-toplevel",
+        "config --get remote.origin.url",
+        "remote get-url origin",
+    ]
+    .iter()
+    .map(|args| {
+        let args: Vec<&str> = args.split(' ').collect();
+        format!(
+            "git {}: {:?}",
+            args.join(" "),
+            local_git(dir, Some(ceiling), Some(config), &args)
+        )
+    })
+    .collect::<Vec<_>>()
+    .join("\n")
+}
+
 #[test]
 fn the_same_repo_at_the_same_commit_matches() {
     let outer = tempfile::tempdir().expect("a temp dir");
@@ -477,7 +502,10 @@ fn the_same_repo_at_the_same_commit_matches() {
 
     let Match::Same { commit, root } = hermetic(&dir.join("src"), Some(&packed), Some(&ceiling))
     else {
-        panic!("credentials in the reader's remote are cleaned off before comparing");
+        panic!(
+            "credentials in the reader's remote are cleaned off before comparing\n{}",
+            why(&dir, &ceiling, None)
+        );
     };
     assert_eq!(commit, head);
     assert_eq!(
@@ -508,7 +536,7 @@ fn the_same_repo_at_another_commit_has_moved() {
         root,
     } = hermetic(&dir, Some(&packed), Some(&ceiling))
     else {
-        panic!("the code has moved");
+        panic!("the code has moved\n{}", why(&dir, &ceiling, None));
     };
     assert_eq!(was, first);
     assert_eq!(now, head);
@@ -566,10 +594,14 @@ fn a_checkout_cloned_over_ssh_matches_a_deck_packed_over_https() {
         remote: Some("https://github.com/acme/ingest".to_string()),
         commit: Some(head),
     };
-    assert!(matches!(
-        hermetic(&dir, Some(&packed), Some(&ceiling)),
-        Match::Same { .. }
-    ));
+    assert!(
+        matches!(
+            hermetic(&dir, Some(&packed), Some(&ceiling)),
+            Match::Same { .. }
+        ),
+        "{}",
+        why(&dir, &ceiling, None)
+    );
 }
 
 #[test]
@@ -653,10 +685,14 @@ fn a_checkout_whose_remote_is_rewritten_matches_either_spelling() {
         remote: Some("https://github.com/acme/ingest".to_string()),
         commit: Some(head),
     };
-    assert!(matches!(
-        matching_with(&dir, Some(&packed), Some(&ceiling), Some(&config)),
-        Match::Same { .. }
-    ));
+    assert!(
+        matches!(
+            matching_with(&dir, Some(&packed), Some(&ceiling), Some(&config)),
+            Match::Same { .. }
+        ),
+        "{}",
+        why(&dir, &ceiling, Some(&config))
+    );
     // Without the rewrite, `gh:acme/ingest` is host `gh`: another repo.
     assert_eq!(
         hermetic(&dir, Some(&packed), Some(&ceiling)),

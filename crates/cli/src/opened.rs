@@ -351,7 +351,7 @@ fn matching_with(
     else {
         return Match::Elsewhere;
     };
-    let git = |dir: &Path, args: &[&str]| local_git(dir, ceiling, config, args);
+    let git = |dir: &Path, args: &[&str]| local_git(dir, ceiling, config, args).ok();
     let Some(root) = git(cwd, &["rev-parse", "--show-toplevel"]).filter(|root| !root.is_empty())
     else {
         return Match::Elsewhere;
@@ -397,32 +397,37 @@ fn local_git(
     ceiling: Option<&Path>,
     config: Option<&Path>,
     args: &[&str],
-) -> Option<String> {
+) -> Result<String, String> {
     let mut command = std::process::Command::new("git");
     for (name, _) in std::env::vars_os() {
         if name.to_string_lossy().starts_with("GIT_") {
             command.env_remove(name);
         }
     }
+    // Every path without the `\\?\` a resolved Windows path carries: git
+    // reads none of them with it — not as the directory to run in, not as a
+    // ceiling, and not as the settings file, which it then refuses to run
+    // without.
     command
         .env("GIT_CONFIG_NOSYSTEM", "1")
         .arg("-C")
-        .arg(dir)
+        .arg(crate::pack::shown(dir))
         .args(args)
-        .stdin(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null());
+        .stdin(std::process::Stdio::null());
     if let Some(config) = config {
-        command.env("GIT_CONFIG_GLOBAL", config);
+        command.env("GIT_CONFIG_GLOBAL", crate::pack::shown(config));
     }
     if let Some(ceiling) = ceiling {
-        command.env("GIT_CEILING_DIRECTORIES", ceiling);
+        command.env("GIT_CEILING_DIRECTORIES", crate::pack::shown(ceiling));
     }
-    let out = command.output().ok()?;
-    out.status.success().then(|| {
-        String::from_utf8_lossy(&out.stdout)
+    let out = command.output().map_err(|err| err.to_string())?;
+    if out.status.success() {
+        Ok(String::from_utf8_lossy(&out.stdout)
             .trim_end_matches(['\r', '\n'])
-            .to_string()
-    })
+            .to_string())
+    } else {
+        Err(String::from_utf8_lossy(&out.stderr).trim().to_string())
+    }
 }
 
 /// A remote as `host/owner/repo`, for telling whether two remotes are the

@@ -1183,7 +1183,7 @@ fn lexical(path: &Path) -> PathBuf {
 }
 
 /// A path as text, without the `\\?\` Windows puts on a resolved one.
-fn shown(path: &Path) -> String {
+pub(crate) fn shown(path: &Path) -> String {
     let text = path.to_string_lossy();
     text.strip_prefix(r"\\?\").unwrap_or(&text).to_string()
 }
