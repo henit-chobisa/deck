@@ -1124,7 +1124,9 @@ mod tests {
                         };
                         let moved = (hsl(made).2 - hsl(ink).2).abs();
                         assert!(
-                            moved <= best + 2.0 / 255.0,
+                            // Half a channel step for rounding to 8 bits,
+                            // and one step of the search.
+                            moved <= best + 0.5 / 255.0 + 1.0 / 4096.0 + 1e-6,
                             "{} on {}: moved {moved}, least {best}",
                             ink.to_hex(),
                             ground.to_hex()
