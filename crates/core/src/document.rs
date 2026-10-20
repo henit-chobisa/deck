@@ -644,14 +644,11 @@ fn path_of(spec: &RefSpec) -> String {
 }
 
 /// Where the placeholders for points can come from, in order of preference,
-/// with how many each holds.
-///
-/// Yi syllables first: letters, so the parser treats a placeholder as part
-/// of the word it touches — `_snake_` followed by a point stays inside its
-/// word, as it does in the window, where the point is simply gone — and no
-/// narration about code is written in Yi. Failing that, the supplementary
-/// private-use planes, which nothing writes.
-const HOLDS: [(u32, usize); 3] = [(0xA000, 1165), (0xF_0000, 65_534), (0x10_0000, 65_534)];
+/// with how many each holds: the two supplementary private-use planes, which
+/// the parser sees straight through ([`prose::transparent`]), so the marks
+/// around a point read as they would with the point gone, as the window
+/// reads them.
+const HOLDS: [(u32, usize); 2] = [(0xF_0000, 65_534), (0x10_0000, 65_534)];
 
 /// The first range of placeholders `say` does not already use, and how many
 /// it holds.
@@ -662,7 +659,7 @@ fn holds_for(say: &str) -> (u32, usize) {
             let end = base + u32::try_from(size).unwrap_or(0);
             !say.chars().any(|ch| (base..end).contains(&(ch as u32)))
         })
-        .unwrap_or(HOLDS[1])
+        .unwrap_or(HOLDS[0])
 }
 
 /// The narration as paragraphs of runs, every point it makes with its
@@ -1874,8 +1871,9 @@ mod tests {
 
     #[test]
     fn a_character_the_narration_already_uses_is_never_taken_for_a_point() {
-        // A Powerline glyph and a Yi syllable, both already in the text.
-        let (prose, _, _) = read_alone("Icon \u{e0a0} and \u{a000} here.[point 143]");
+        // A Powerline glyph, and a character from the plane placeholders
+        // are first taken from, both already in the text.
+        let (prose, _, _) = read_alone("Icon \u{e0a0} and \u{f0000} here.[point 143]");
         assert_eq!(numerals_in(&prose[0]), [1]);
         let text: String = prose[0]
             .iter()
@@ -1884,7 +1882,7 @@ mod tests {
                 Run::Point { .. } => None,
             })
             .collect();
-        assert!(text.contains('\u{e0a0}') && text.contains('\u{a000}'));
+        assert!(text.contains('\u{e0a0}') && text.contains('\u{f0000}'));
     }
 
     #[test]
@@ -1908,6 +1906,23 @@ mod tests {
                 ..
             }
         )));
+    }
+
+    #[test]
+    fn emphasis_just_before_a_point_still_closes() {
+        let (prose, _, _) = read_alone("an _emphasis_[point 143] here, and *it*[point 144], so.");
+        let emphasised: Vec<String> = prose[0]
+            .iter()
+            .filter_map(|run| match run {
+                Run::Text {
+                    text,
+                    mark: Some(Marked::Emphasis),
+                    ..
+                } => Some(text.trim().to_string()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(emphasised, ["emphasis", "it"]);
     }
 
     #[test]
