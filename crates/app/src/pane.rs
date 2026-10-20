@@ -34,8 +34,10 @@ use crate::palette::paint;
 use crate::sheet::Slot;
 use crate::view::DeckView;
 
-/// Row height, as a multiple of the monospace size.
-const LINE_HEIGHT: f32 = 1.62;
+// Row height, as a multiple of the monospace size: measured once, with the
+// rest of the window, in `deck_render::metrics`.
+use deck_render::metrics::LINE_HEIGHT;
+
 /// Lines of context shown above the range when the pane opens.
 const LEAD_IN: u32 = 2;
 

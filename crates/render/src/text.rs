@@ -26,6 +26,23 @@ pub const PLEX: &[(&[u8], &str)] = &[
     (include_bytes!("../fonts/IBMPlexSans-600.ttf"), "semibold"),
 ];
 
+/// The code face an export sets code in, embedded for the same reason as
+/// [`PLEX`]: JetBrains Mono's regular and its italic, under the SIL Open Font
+/// License (`fonts/LICENSE-JetBrains-Mono.txt`), from its 2.304 release.
+///
+/// The window sets code in the editor's own monospace, found on the machine,
+/// which a file sent to somebody else cannot count on finding. A face that
+/// travels with the file is the only way the code on the page is the code
+/// that was laid out. Only the two cuts code is set in — the highlighter
+/// leans a comment and never bolds anything.
+pub const MONO: &[(&[u8], &str)] = &[
+    (include_bytes!("../fonts/JetBrainsMono-400.ttf"), "regular"),
+    (
+        include_bytes!("../fonts/JetBrainsMono-400-Italic.ttf"),
+        "italic",
+    ),
+];
+
 /// Which cut of the face.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Weight {

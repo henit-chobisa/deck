@@ -238,13 +238,13 @@ pub fn install(palette: &Palette, dark: bool, cx: &mut App) {
 
     // Code wants to be dense. The component default is sized for prose, and at
     // that size a pane holds a dozen lines and the deck reads as a slideshow.
-    theme.mono_font_size = px(12.);
+    theme.mono_font_size = px(deck_render::metrics::MONO_SIZE);
     if let Some(mono) = first_installed(MONO, cx) {
         Theme::global_mut(cx).mono_font_family = mono;
     }
     let theme = Theme::global_mut(cx);
     theme.font_family = SharedString::from("IBM Plex Sans");
-    theme.font_size = px(13.2);
+    theme.font_size = px(deck_render::metrics::SANS_SIZE);
     theme.shadow = true;
     theme.radius = px(5.);
 

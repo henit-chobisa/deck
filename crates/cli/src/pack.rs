@@ -715,7 +715,14 @@ pub fn pack(deck: &Path, out: Option<&Path>, options: &Options) -> anyhow::Resul
 }
 
 /// Write `bytes` to `path`, refusing to replace a file unless `force`.
-fn write_new(path: &Path, bytes: &[u8], force: bool) -> anyhow::Result<()> {
+///
+/// An export writes through this too, so `deck export` refuses to replace a
+/// file in the same words `deck pack` does.
+///
+/// # Errors
+///
+/// When the file is there and `force` is off, or it cannot be written.
+pub fn write_new(path: &Path, bytes: &[u8], force: bool) -> anyhow::Result<()> {
     use std::io::Write as _;
     if force {
         return std::fs::write(path, bytes)

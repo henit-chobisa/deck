@@ -456,6 +456,57 @@ enum What {
         dir: Option<PathBuf>,
     },
 
+    /// Write a deck out for somebody who does not have deck: one HTML file
+    /// that is the window, a group to a screen, with the `.deck` inside it.
+    ///
+    /// The file asks for nothing from the network and runs no script; a page
+    /// pane is drawn in a frame that can run none either. A deck directory is
+    /// packed first, in memory, exactly as `deck pack` would pack it —
+    /// scrubbed and scanned for secrets, refused on a hit — so an export
+    /// leaves the machine holding what a `.deck` file would and no more.
+    ///
+    /// `deck export d-1.deck`, `deck export review.deck -o review.html`,
+    /// `deck export d-1.deck --groups 1,3-5 --no-comments`.
+    Export {
+        /// The `.deck` directory, a directory `deck unpack` made, or a
+        /// `.deck` file.
+        deck: PathBuf,
+        /// What to write. Only `html` is written yet; the PDF is coming.
+        /// Defaults to what `-o` ends in, and to `html`.
+        #[arg(long, value_enum)]
+        format: Option<Format>,
+        /// The colours to paint it in: `editor` (the default) is whatever
+        /// `deck open` would paint the window in — your editor's theme if
+        /// one is set in `~/.deck/config.toml`, light or dark as it says;
+        /// `dark` or `light` is deck's own; `vscode:Solarized Dark` and the
+        /// rest try an editor's theme on, as `deck open --theme` does.
+        #[arg(long, value_name = "THEME", default_value = "editor")]
+        theme: String,
+        /// Only these groups, by number: `1,3-5`. The `.deck` inside still
+        /// carries the whole deck, so the reader can open all of it.
+        #[arg(long, value_name = "LIST")]
+        groups: Option<String>,
+        /// Leave out what the reader and the agent said: from the page, and
+        /// the review from the `.deck` inside it too.
+        #[arg(long)]
+        no_comments: bool,
+        /// Where to write it. Defaults to `YYYY-MM-DD-<title>.html` in the
+        /// current directory; a directory here puts it in there.
+        #[arg(short = 'o', long = "out", value_name = "FILE")]
+        out: Option<PathBuf>,
+        /// Replace a file already at that path.
+        #[arg(long)]
+        force: bool,
+        /// Let one secret-scanner hit through when a directory is packed, by
+        /// the fingerprint the refusal printed. As `deck pack --allow`.
+        #[arg(long, value_name = "FINGERPRINT")]
+        allow: Vec<String>,
+        /// Export even when a file the deck points at cannot be read, as
+        /// `deck pack --allow-missing`. Its panes say so.
+        #[arg(long)]
+        allow_missing: bool,
+    },
+
     /// Choose whether a deck can walk you through itself, and in whose voice.
     ///
     /// Everything else works without this: the narration lands in the panel,
@@ -853,6 +904,30 @@ impl Cli {
                     println!("{}", unpacked.dir.display());
                 }),
             ),
+            What::Export {
+                deck,
+                format,
+                theme,
+                groups,
+                no_comments,
+                out,
+                force,
+                allow,
+                allow_missing,
+            } => report(
+                export(&Exporting {
+                    deck: &deck,
+                    format,
+                    theme: &theme,
+                    groups: groups.as_deref(),
+                    comments: !no_comments,
+                    out: out.as_deref(),
+                    force,
+                    allow,
+                    allow_missing,
+                })
+                .map(|path| println!("{}", path.display())),
+            ),
             What::Next {
                 deck,
                 status,
@@ -861,6 +936,174 @@ impl Cli {
             } => Err(next(&deck, status, after.as_deref(), timeout)),
             What::Wait { deck, timeout } => Err(wait(&deck, timeout)),
         }
+    }
+}
+
+/// What `deck export` writes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
+pub enum Format {
+    /// One self-contained HTML file.
+    Html,
+    /// A PDF. Not written yet.
+    Pdf,
+}
+
+/// Everything `deck export` was asked.
+struct Exporting<'a> {
+    deck: &'a std::path::Path,
+    format: Option<Format>,
+    theme: &'a str,
+    groups: Option<&'a str>,
+    comments: bool,
+    out: Option<&'a std::path::Path>,
+    force: bool,
+    allow: Vec<String>,
+    allow_missing: bool,
+}
+
+/// `deck export`: the deck, packed or opened, written as HTML. Returns where.
+fn export(asked: &Exporting) -> anyhow::Result<PathBuf> {
+    // The format is what was asked, or what the file is called; the two
+    // disagreeing is a mistake worth saying rather than guessing at.
+    let named = asked
+        .out
+        .filter(|out| !out.is_dir())
+        .and_then(|out| out.extension())
+        .and_then(|ext| ext.to_str())
+        .map(str::to_ascii_lowercase);
+    let from_name = match named.as_deref() {
+        Some("html" | "htm") => Some(Format::Html),
+        Some("pdf") => Some(Format::Pdf),
+        _ => None,
+    };
+    if let (Some(format), Some(named)) = (asked.format, from_name) {
+        anyhow::ensure!(
+            format == named,
+            "--format and the file name disagree: drop one of them"
+        );
+    }
+    let format = asked.format.or(from_name).unwrap_or(Format::Html);
+    anyhow::ensure!(
+        format == Format::Html,
+        "PDF export is not here yet: write HTML with --format html, and print it from a browser if you need paper"
+    );
+    let groups = match asked.groups {
+        Some(list) => deck_render::export::groups(list).map_err(anyhow::Error::msg)?,
+        None => Vec::new(),
+    };
+
+    // A file is opened; a directory is packed first, exactly as `deck pack`
+    // packs it, so what goes into the page is what would go into a `.deck`.
+    let (bundle, name) = if asked.deck.is_file() {
+        let bytes = std::fs::read(asked.deck)
+            .map_err(|err| anyhow::anyhow!("cannot read {}: {err}", asked.deck.display()))?;
+        let (bundle, ignored) = deck_core::bundle::Bundle::open(&bytes)
+            .map_err(|err| anyhow::anyhow!("{}: {err}", asked.deck.display()))?;
+        for name in &ignored {
+            eprintln!("deck: {name} is from a newer deck, and was left out");
+        }
+        let header = bundle
+            .header()
+            .map_err(|err| anyhow::anyhow!("{}: {err}", asked.deck.display()))?;
+        let name = deck_cli::pack::default_name(&header.title, &bundle.manifest.created);
+        (bundle, name)
+    } else {
+        let options = deck_cli::pack::Options {
+            allow: asked.allow.clone(),
+            allow_missing: asked.allow_missing,
+            ..deck_cli::pack::Options::default()
+        };
+        let packing = deck_cli::pack::gather(asked.deck, &options)?;
+        if let Some(why) = packing.refusal() {
+            anyhow::bail!(why);
+        }
+        for note in packing.notes() {
+            eprintln!("deck: {note}");
+        }
+        (packing.bundle, packing.name)
+    };
+    let name = format!("{}.html", name.trim_end_matches(".deck"));
+
+    let (palette, dark, syntax) = export_theme(asked.theme)?;
+    let options = deck_render::export::Options {
+        groups,
+        comments: asked.comments,
+        dark,
+    };
+    let html = deck_render::export::deck(&bundle, &palette, syntax, &options)
+        .map_err(anyhow::Error::msg)?;
+    let path = match asked.out {
+        Some(out) if out.is_dir() => out.join(&name),
+        Some(out) => out.to_path_buf(),
+        None => PathBuf::from(&name),
+    };
+    deck_cli::pack::write_new(&path, html.as_bytes(), asked.force)?;
+    Ok(path)
+}
+
+/// The palette an export is painted in, whether it is dark, and the syntax
+/// colours, for `--theme`.
+///
+/// `editor` is the window's own answer, by the window's own rules: the
+/// config's editor theme and mode, the palette derived from the theme when
+/// one is read and deck's own otherwise, and anything written by hand over
+/// both. Only the machine's light or dark is asked differently — the window
+/// asks the platform once it is up, and an export has no window.
+fn export_theme(
+    theme: &str,
+) -> anyhow::Result<(deck_core::theme::Palette, bool, deck_core::theme::Syntax)> {
+    let config = crate::config::read()?;
+    let (asked, mode) = match theme {
+        "dark" => (None, Mode::Dark),
+        "light" => (None, Mode::Light),
+        "editor" => (config.theme.editor.clone(), config.theme.mode),
+        other => (Some(other.to_string()), config.theme.mode),
+    };
+    let machine_dark = machine_dark();
+    let imported = match asked.as_deref() {
+        Some(asked) => {
+            let (editor, named) = match asked.split_once(':') {
+                Some((editor, name)) => (editor.to_string(), Some(name)),
+                None => (asked.to_string(), None),
+            };
+            deck_theme::read(deck_theme::Editor::from(editor), named, machine_dark).unwrap_or_else(
+                |err| {
+                    // As the window does: said, then carried on in deck's own.
+                    eprintln!("deck: cannot read the theme: {err}");
+                    None
+                },
+            )
+        }
+        None => None,
+    };
+    let dark = mode.is_dark(imported.map_or(machine_dark, |imported| imported.bg.is_dark()));
+    let mut palette = match imported {
+        Some(imported) => deck_core::theme::derive(imported),
+        None => crate::palette::current_on(dark, config.theme.paper),
+    };
+    config.theme.colors.apply(&mut palette);
+    Ok((
+        palette,
+        dark,
+        imported.map(|imported| imported.syntax).unwrap_or_default(),
+    ))
+}
+
+/// Whether the machine is set to dark, asked without a window.
+///
+/// On a Mac the setting is a default anybody can read; elsewhere there is no
+/// one place to ask, and light is what an unset machine shows.
+fn machine_dark() -> bool {
+    #[cfg(target_os = "macos")]
+    {
+        std::process::Command::new("defaults")
+            .args(["read", "-g", "AppleInterfaceStyle"])
+            .output()
+            .is_ok_and(|out| String::from_utf8_lossy(&out.stdout).trim() == "Dark")
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        false
     }
 }
 
@@ -1811,5 +2054,76 @@ mod tests {
         );
         let cli = Cli::try_parse_from(["deck", "unpack", "a.deck"]).expect("parses");
         assert!(matches!(cli.what, What::Unpack { dir: None, .. }));
+    }
+
+    /// `export` takes its options as written, and paints in the editor's
+    /// theme unless told otherwise.
+    #[test]
+    fn export_reads_its_options() {
+        let cli = Cli::try_parse_from([
+            "deck",
+            "export",
+            "d.deck",
+            "--groups",
+            "1,3-5",
+            "--no-comments",
+            "-o",
+            "out.html",
+            "--allow",
+            "a1",
+        ])
+        .expect("parses");
+        let What::Export {
+            format,
+            theme,
+            groups,
+            no_comments,
+            out,
+            force,
+            allow,
+            ..
+        } = cli.what
+        else {
+            panic!("an export");
+        };
+        assert_eq!(format, None);
+        assert_eq!(theme, "editor");
+        assert_eq!(groups.as_deref(), Some("1,3-5"));
+        assert!(no_comments && !force);
+        assert_eq!(out, Some(PathBuf::from("out.html")));
+        assert_eq!(allow, ["a1"]);
+        let cli =
+            Cli::try_parse_from(["deck", "export", "d.deck", "--format", "pdf"]).expect("parses");
+        assert!(matches!(
+            cli.what,
+            What::Export {
+                format: Some(Format::Pdf),
+                ..
+            }
+        ));
+    }
+
+    /// A PDF is asked for in either of the two ways, and either way it is
+    /// refused before anything is read.
+    #[test]
+    fn a_pdf_is_not_here_yet() {
+        for (format, out) in [
+            (Some(Format::Pdf), None),
+            (None, Some(std::path::Path::new("review.pdf"))),
+        ] {
+            let err = export(&Exporting {
+                deck: std::path::Path::new("nowhere.deck"),
+                format,
+                theme: "dark",
+                groups: None,
+                comments: true,
+                out,
+                force: false,
+                allow: Vec::new(),
+                allow_missing: false,
+            })
+            .expect_err("refused");
+            assert!(err.to_string().contains("not here yet"), "{err}");
+        }
     }
 }

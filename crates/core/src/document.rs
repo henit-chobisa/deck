@@ -121,6 +121,26 @@ pub struct Inks {
     pub on_band: Words,
     /// Words set on a pane: its label, its header.
     pub on_pane: Words,
+    /// The `−` in the gutter of a line that is going, legible on that line's
+    /// ground.
+    pub going: Rgb,
+    /// The `+` in the gutter of a line that is arriving, legible on its.
+    pub arriving: Rgb,
+    /// A confidence's level as the band shows it, each legible on the band:
+    /// high, medium and low.
+    pub levels: Levels,
+}
+
+/// The ink each confidence level is shown in, as the window colours its
+/// bars and its name.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub struct Levels {
+    /// It watched it behave.
+    pub high: Rgb,
+    /// It read every line.
+    pub medium: Rgb,
+    /// It inferred it.
+    pub low: Rgb,
 }
 
 /// The three inks words come in, for one ground.
@@ -156,6 +176,14 @@ impl Inks {
             on_page: Words::on(palette, palette.bg),
             on_band: Words::on(palette, palette.band),
             on_pane: Words::on(palette, palette.wash),
+            going: legible(palette.del, palette.gone, LEGIBLE),
+            arriving: legible(palette.add, palette.fresh, LEGIBLE),
+            // The window's own choice for each level (`keys::level_colour`).
+            levels: Levels {
+                high: legible(palette.add, palette.band, LEGIBLE),
+                medium: legible(palette.accent.mix(palette.fg, 0.3), palette.band, LEGIBLE),
+                low: legible(palette.del, palette.band, LEGIBLE),
+            },
         }
     }
 }
@@ -1853,6 +1881,12 @@ mod tests {
             for ink in [words.text, words.muted, words.accent] {
                 assert!(ink.contrast(ground) >= LEGIBLE);
             }
+        }
+        let palette = palette();
+        assert!(inks.going.contrast(palette.gone) >= LEGIBLE);
+        assert!(inks.arriving.contrast(palette.fresh) >= LEGIBLE);
+        for ink in [inks.levels.high, inks.levels.medium, inks.levels.low] {
+            assert!(ink.contrast(inks.band) >= LEGIBLE);
         }
     }
 

@@ -17,6 +17,8 @@
 #![forbid(unsafe_code)]
 
 pub mod document;
+pub mod export;
+pub mod metrics;
 pub mod svg;
 pub mod text;
 
