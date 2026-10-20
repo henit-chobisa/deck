@@ -208,17 +208,41 @@ pub fn sha256(bytes: &[u8]) -> String {
 }
 
 impl Bundle {
-    /// The bundle as a `.deck` file.
+    /// The bundle as a `.deck` file, stamped with this build's container
+    /// version.
     ///
     /// The same bundle always gives the same bytes: entries in a fixed
     /// order, every time and date fixed, the manifest's own `created` and
-    /// `generator` whatever the caller put there.
+    /// `generator` whatever the caller put there. Packing what was opened
+    /// gives back the same file when this build wrote it. A file from a newer
+    /// minor version loses the additions this build cannot read, so it is
+    /// stamped as this version rather than claim what it no longer holds.
+    ///
+    /// What comes back has been opened again before it is returned: a file
+    /// `pack` makes is a file [`Self::open`] accepts.
     ///
     /// # Errors
     ///
-    /// When a file's name is not one a deck uses, or `deck/deck.json` is
-    /// missing.
+    /// When a file's name is not one a deck uses, `deck/deck.json` is
+    /// missing, or the result would not open — too many files, too large,
+    /// or a part that does not parse.
     pub fn pack(&self) -> Result<Vec<u8>, String> {
+        let mut stamped = self.clone();
+        stamped.manifest.container = CONTAINER;
+        let bytes = stamped.write()?;
+        Self::open(&bytes).map_err(|err| err.to_string())?;
+        Ok(bytes)
+    }
+
+    /// The bundle as a `.deck` file, as it is, unchecked.
+    fn write(&self) -> Result<Vec<u8>, String> {
+        let limits = zip::Limits::default();
+        // Two for the mimetype and the manifest.
+        if self.files.len() + 2 > limits.entries
+            || self.files.values().map(Vec::len).sum::<usize>() > limits.bytes
+        {
+            return Err("more than a deck can hold".to_string());
+        }
         if !self.files.contains_key("deck/deck.json") {
             return Err("a deck needs deck/deck.json".to_string());
         }
@@ -265,7 +289,17 @@ impl Bundle {
             Some((name, content)) if name == "mimetype" && content == MIMETYPE.as_bytes() => {}
             _ => return Err(Unreadable::NotADeck),
         }
-        let mut files: BTreeMap<String, Vec<u8>> = entries.collect();
+        let entries: Vec<(String, Vec<u8>)> = entries.collect();
+        // In the order deck writes them, so a file that opens packs back to
+        // the same bytes. Entries this build does not know have no place in
+        // that order and are left out of the check.
+        let ranks: Vec<(u8, u32)> = entries.iter().filter_map(|(name, _)| rank(name)).collect();
+        if ranks.windows(2).any(|pair| pair[0] >= pair[1]) {
+            return Err(Unreadable::Malformed(
+                "its entries are not in the order deck writes them".to_string(),
+            ));
+        }
+        let mut files: BTreeMap<String, Vec<u8>> = entries.into_iter().collect();
 
         let manifest_json = files
             .remove("manifest.json")
@@ -280,11 +314,17 @@ impl Bundle {
         }
         let versions: Versions = serde_json::from_slice(&manifest_json)
             .map_err(|err| Unreadable::Malformed(format!("manifest.json: {err}")))?;
-        if versions.container.major != CONTAINER.major {
+        if versions.container.major > CONTAINER.major {
             return Err(Unreadable::Newer {
                 container: versions.container,
                 generator: versions.generator,
             });
+        }
+        if versions.container.major < CONTAINER.major {
+            return Err(Unreadable::Malformed(format!(
+                "container version {}.{} was never written by any deck",
+                versions.container.major, versions.container.minor
+            )));
         }
         let manifest: Manifest = serde_json::from_slice(&manifest_json)
             .map_err(|err| Unreadable::Malformed(format!("manifest.json: {err}")))?;
@@ -345,7 +385,10 @@ impl Bundle {
         names.sort_by_key(|name| rank(name));
         names
             .into_iter()
-            .map(|name| self.json(name).map(|group| group.expect("listed above")))
+            .map(|name| {
+                self.json(name)?
+                    .ok_or_else(|| Unreadable::Missing(name.clone()))
+            })
             .collect()
     }
 
@@ -560,7 +603,17 @@ mod tests {
         let mut entries = zip::read(&packed, zip::Limits::default()).expect("reads");
         match entries.iter_mut().find(|(n, _)| n == name) {
             Some(entry) => entry.1 = bytes.to_vec(),
-            None => entries.push((name.to_string(), bytes.to_vec())),
+            // Slipped in where deck would have put it, so only the manifest
+            // can tell.
+            None => {
+                let at = rank(name).map_or(entries.len(), |new| {
+                    entries
+                        .iter()
+                        .position(|(n, _)| rank(n).is_some_and(|r| r > new))
+                        .unwrap_or(entries.len())
+                });
+                entries.insert(at, (name.to_string(), bytes.to_vec()));
+            }
         }
         zip::write(&entries)
     }
@@ -596,7 +649,7 @@ mod tests {
         let mut newer = bundle();
         newer.manifest.container = Container { major: 2, minor: 0 };
         newer.manifest.generator = "deck 0.9.0".to_string();
-        let packed = newer.pack().expect("packs");
+        let packed = newer.write().expect("writes");
         assert_eq!(
             Bundle::open(&packed),
             Err(Unreadable::Newer {
@@ -607,7 +660,20 @@ mod tests {
         // A newer minor version is still this format.
         let mut minor = bundle();
         minor.manifest.container.minor = 7;
-        assert!(Bundle::open(&minor.pack().expect("packs")).is_ok());
+        let packed = minor.write().expect("writes");
+        assert!(Bundle::open(&packed).is_ok());
+        // Packed again, it says what it now is: this version.
+        let (opened, _) = Bundle::open(&packed).expect("opens");
+        let again = opened.pack().expect("packs");
+        let (reopened, _) = Bundle::open(&again).expect("opens");
+        assert_eq!(reopened.manifest.container, CONTAINER);
+        // And a major version below one is not "newer".
+        let mut old = bundle();
+        old.manifest.container = Container { major: 0, minor: 1 };
+        assert!(matches!(
+            Bundle::open(&old.write().expect("writes")),
+            Err(Unreadable::Malformed(_))
+        ));
     }
 
     #[test]
@@ -627,9 +693,35 @@ mod tests {
         lying
             .files
             .insert("snap/1.txt".to_string(), b"just one line\n".to_vec());
-        let packed = lying.pack().expect("packs");
+        // Packing refuses it, so a lying snapshot never leaves deck.
+        assert!(lying.pack().is_err());
+        let packed = lying.write().expect("writes");
         assert!(matches!(
             Bundle::open(&packed),
+            Err(Unreadable::Malformed(_))
+        ));
+    }
+
+    #[test]
+    fn more_than_a_deck_can_hold_is_refused_when_packing() {
+        let mut huge = bundle();
+        for n in 1..5000 {
+            huge.files.insert(
+                format!("deck/g{n}.json"),
+                format!(r#"{{"id":"g{n}","say":""}}"#).into_bytes(),
+            );
+        }
+        assert!(huge.pack().is_err());
+    }
+
+    #[test]
+    fn entries_out_of_order_are_refused() {
+        let packed = bundle().pack().expect("packs");
+        let mut entries = zip::read(&packed, zip::Limits::default()).expect("reads");
+        // Swap the two groups.
+        entries.swap(3, 4);
+        assert!(matches!(
+            Bundle::open(&zip::write(&entries)),
             Err(Unreadable::Malformed(_))
         ));
     }

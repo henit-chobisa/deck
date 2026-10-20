@@ -67,22 +67,23 @@ pub enum State {
 pub struct Snapshot {
     /// What the index says about it.
     pub file: File,
-    /// Its kept lines, every one ending in a newline, span after span.
+    /// Its kept lines, every one ending in a newline, span after span, each
+    /// exactly as the file had it — a `\r` before the newline included.
     pub text: String,
 }
 
 impl Snapshot {
-    /// Line `n` of the source file, counted from one, without its newline,
-    /// or `None` when it was not kept.
+    /// Line `n` of the source file, counted from one, without its newline
+    /// (but with a `\r` the file had), or `None` when it was not kept.
     #[must_use]
     pub fn line(&self, n: u32) -> Option<&str> {
-        let mut before = 0u32;
+        let mut before = 0u64;
         for span in &self.file.kept {
             if span.contains(n) {
-                let at = usize::try_from(before + (n - span.first)).ok()?;
-                return self.text.lines().nth(at);
+                let at = usize::try_from(before + u64::from(n - span.first)).ok()?;
+                return self.text.split_terminator('\n').nth(at);
             }
-            before += span.len();
+            before += u64::from(span.len());
         }
         None
     }
@@ -126,7 +127,7 @@ impl Snapshot {
         if !self.text.is_empty() && !self.text.ends_with('\n') {
             return Err(format!("{path}: its last kept line has no newline"));
         }
-        if self.text.lines().count() as u64 != lines {
+        if self.text.split_terminator('\n').count() as u64 != lines {
             return Err(format!("{path}: its text and its spans disagree"));
         }
         Ok(())
@@ -137,10 +138,11 @@ impl Snapshot {
 /// lines and merged where they touch, and those lines' text.
 ///
 /// The text holds the kept lines in order, every one ending in a newline,
-/// including a last line the file left without one.
+/// including a last line the file left without one. A line keeps whatever
+/// else it ended with: a file written with `\r\n` is frozen with them.
 #[must_use]
 pub fn keep(source: &str, ranges: &[LineRange], context: u32) -> (Vec<LineRange>, String) {
-    let lines: Vec<&str> = source.lines().collect();
+    let lines: Vec<&str> = source.split_terminator('\n').collect();
     let count = u32::try_from(lines.len()).unwrap_or(u32::MAX);
     if count == 0 {
         return (Vec::new(), String::new());
@@ -254,6 +256,14 @@ mod tests {
         let snap = snapshot("a\nb", &[LineRange::new(2, 2)], 0);
         assert_eq!(snap.text, "b\n");
         assert_eq!(snap.line(2), Some("b"));
+        assert!(snap.check().is_ok());
+    }
+
+    #[test]
+    fn a_crlf_file_is_frozen_as_it_was() {
+        let snap = snapshot("a\r\nb\r\nc\r\n", &[LineRange::new(2, 2)], 0);
+        assert_eq!(snap.text, "b\r\n");
+        assert_eq!(snap.line(2), Some("b\r"));
         assert!(snap.check().is_ok());
     }
 

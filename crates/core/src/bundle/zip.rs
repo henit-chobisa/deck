@@ -98,23 +98,36 @@ impl std::error::Error for Refusal {}
 /// Whether `name` is a name an entry may have.
 ///
 /// Relative, with forward slashes, made of lowercase letters, digits, `.`,
-/// `_` and `-`, with no empty segment, no `.` or `..` segment, and short. That
-/// is narrower than zip allows, and it is meant to be: every name a deck uses
-/// fits, and nothing that fits can climb out of the folder it is unpacked
-/// into, name a device, or collide with another entry on a file system that
-/// ignores case.
+/// `_` and `-`, short, with no empty segment, no segment ending in a dot, and
+/// no segment Windows keeps for a device (`con`, `nul`, `com1` and the rest,
+/// with or without an extension). That is narrower than zip allows, and it is
+/// meant to be: every name a deck uses fits, and nothing that fits can climb
+/// out of the folder it is unpacked into, name a device, or land on the same
+/// file as another name — Windows drops a trailing dot, and every name is
+/// lowercase, so case cannot collide either. [`read`] also refuses a name
+/// that is another's folder.
 #[must_use]
 pub fn valid_name(name: &str) -> bool {
     !name.is_empty()
         && name.len() <= 255
         && name.split('/').all(|segment| {
             !segment.is_empty()
-                && segment != "."
-                && segment != ".."
+                && !segment.ends_with('.')
+                && !device(segment)
                 && segment.bytes().all(|b| {
                     b.is_ascii_lowercase() || b.is_ascii_digit() || matches!(b, b'.' | b'_' | b'-')
                 })
         })
+}
+
+/// Whether Windows reads `segment` as a device rather than a file: one of its
+/// reserved names, alone or before an extension.
+fn device(segment: &str) -> bool {
+    let stem = segment.split('.').next().unwrap_or(segment);
+    matches!(stem, "con" | "prn" | "aux" | "nul")
+        || (stem.len() == 4
+            && (stem.starts_with("com") || stem.starts_with("lpt"))
+            && stem.as_bytes()[3].is_ascii_digit())
 }
 
 /// `entries` as a zip, in the order given, every one stored.
@@ -221,7 +234,9 @@ pub fn read(bytes: &[u8], limits: Limits) -> Result<Vec<(String, Vec<u8>)>, Refu
     let mut next_local = 0usize;
     let mut at = central_at;
     for _ in 0..count {
-        let header = bytes.get(at..at + CENTRAL_LEN).ok_or(Refusal::Truncated)?;
+        let header = bytes
+            .get(at..at.saturating_add(CENTRAL_LEN))
+            .ok_or(Refusal::Truncated)?;
         if get32(header, 0) != CENTRAL {
             return Err(Refusal::NotThisZip("a broken directory"));
         }
@@ -236,12 +251,18 @@ pub fn read(bytes: &[u8], limits: Limits) -> Result<Vec<(String, Vec<u8>)>, Refu
         let disk = get16(header, 34);
         let local_at = wide(get32(header, 42));
         let name_bytes = bytes
-            .get(at + CENTRAL_LEN..at + CENTRAL_LEN + name_len)
+            .get(at + CENTRAL_LEN..(at + CENTRAL_LEN).saturating_add(name_len))
             .ok_or(Refusal::Truncated)?;
         let name = std::str::from_utf8(name_bytes)
             .map_err(|_| Refusal::Name(String::from_utf8_lossy(name_bytes).into_owned()))?
             .to_string();
-        at += CENTRAL_LEN + name_len + extra_len + comment_len;
+        // deck writes neither, and either one is a second place for a name or
+        // a file's meaning to hide: an extra field can carry a different path
+        // for the same entry, which another tool would unpack instead.
+        if extra_len != 0 || comment_len != 0 {
+            return Err(Refusal::NotThisZip("an extra field or an entry comment"));
+        }
+        at += CENTRAL_LEN + name_len;
         if at > end_at {
             return Err(Refusal::Truncated);
         }
@@ -270,7 +291,7 @@ pub fn read(bytes: &[u8], limits: Limits) -> Result<Vec<(String, Vec<u8>)>, Refu
             return Err(Refusal::Mismatch(name));
         }
         let local = bytes
-            .get(local_at..local_at + LOCAL_LEN)
+            .get(local_at..local_at.saturating_add(LOCAL_LEN))
             .ok_or(Refusal::Truncated)?;
         if get32(local, 0) != LOCAL
             || get16(local, 6) != flags
@@ -285,10 +306,10 @@ pub fn read(bytes: &[u8], limits: Limits) -> Result<Vec<(String, Vec<u8>)>, Refu
             return Err(Refusal::Mismatch(name));
         }
         let data_at = local_at + LOCAL_LEN + name_len;
-        let data_end = data_at + wide(size);
-        if data_end > central_at {
+        if wide(size) > central_at.saturating_sub(data_at) {
             return Err(Refusal::Truncated);
         }
+        let data_end = data_at + wide(size);
         total += wide(size);
         if total > limits.bytes {
             return Err(Refusal::TooBig);
@@ -302,6 +323,22 @@ pub fn read(bytes: &[u8], limits: Limits) -> Result<Vec<(String, Vec<u8>)>, Refu
     }
     if at != end_at || next_local != central_at {
         return Err(Refusal::NotThisZip("bytes nothing accounts for"));
+    }
+    // A name that is another's folder: on disk, a file and a folder cannot
+    // share a path, so one of the two would be lost or put somewhere else.
+    if let Some((name, _)) = entries.iter().find(|(name, _)| {
+        let folder = format!("{name}/");
+        entries.iter().any(|(other, _)| other.starts_with(&folder))
+    }) {
+        return Err(Refusal::Name(name.clone()));
+    }
+    // Last, the whole of it: the file must be exactly what [`write`] makes of
+    // these entries. Every field above was checked for a reason worth naming;
+    // this catches the ones nothing reads — who made it, its permission bits,
+    // its dates — so a file deck accepts is a file deck could have written,
+    // and there is nothing in it that one tool shows and another does not.
+    if write(&entries) != bytes {
+        return Err(Refusal::NotThisZip("a field deck never writes"));
     }
     Ok(entries)
 }
@@ -417,10 +454,27 @@ mod tests {
             "Deck/deck.json",
             "a\0b",
             "snap/ü.txt",
+            ".",
+            "..",
+            "a.",
+            "deck/a.",
+            "con",
+            "nul.json",
+            "deck/aux.txt",
+            "com1",
+            "lpt9.json",
         ] {
             assert!(!valid_name(bad), "{bad:?}");
         }
-        for good in ["mimetype", "deck/g12.json", "snap/3.txt", "review.json"] {
+        for good in [
+            "mimetype",
+            "deck/g12.json",
+            "snap/3.txt",
+            "review.json",
+            "console.json",
+            "com.json",
+            "comx",
+        ] {
             assert!(valid_name(good), "{good:?}");
         }
     }
@@ -533,20 +587,69 @@ mod tests {
     }
 
     #[test]
-    fn no_single_flipped_byte_reads_as_something_else() {
-        // A flipped byte is refused, or — where it lands somewhere nothing
-        // reads, such as the time field — changes nothing. It never panics
-        // and never yields different entries.
-        let entries = two();
-        let bytes = write(&entries);
+    fn every_flipped_bit_is_refused() {
+        // Nothing in the file goes unread: a change anywhere, even to a field
+        // that means nothing to deck, is refused — and never a panic.
+        let bytes = write(&two());
         for at in 0..bytes.len() {
-            for bit in [1u8, 0x80] {
+            for bit in 0..8 {
                 let mut bent = bytes.clone();
-                bent[at] ^= bit;
-                if let Ok(read) = read(&bent, Limits::default()) {
-                    assert_eq!(read, entries, "byte {at} bit {bit}");
-                }
+                bent[at] ^= 1 << bit;
+                assert!(
+                    read(&bent, Limits::default()).is_err(),
+                    "byte {at} bit {bit}"
+                );
             }
         }
+    }
+
+    /// `bytes` with one more field added to the first central entry: `extra`
+    /// bytes of extra field or of comment, the sizes and offsets after it
+    /// moved to match, so only that field is wrong.
+    fn grown(bytes: &[u8], extra: bool) -> Vec<u8> {
+        let at = central(bytes, 0);
+        let name_len = usize::from(get16(bytes, at + 28));
+        let mut out = bytes[..at + CENTRAL_LEN + name_len].to_vec();
+        let field = if extra { at + 30 } else { at + 32 };
+        out[field..field + 2].copy_from_slice(&4u16.to_le_bytes());
+        out.extend_from_slice(&[0x75, 0x70, 0, 0]);
+        out.extend_from_slice(&bytes[at + CENTRAL_LEN + name_len..]);
+        let end = out.len() - END_LEN;
+        let len = get32(&out, end + 12) + 4;
+        out[end + 12..end + 16].copy_from_slice(&len.to_le_bytes());
+        out
+    }
+
+    #[test]
+    fn an_extra_field_or_an_entry_comment_is_refused() {
+        // An extra field can carry a second path for the entry, which another
+        // tool unpacks in place of the one deck checked.
+        let bytes = write(&two());
+        for extra in [true, false] {
+            assert!(matches!(
+                refused(&grown(&bytes, extra)),
+                Refusal::NotThisZip(_)
+            ));
+        }
+    }
+
+    #[test]
+    fn a_name_that_is_another_names_folder_is_refused() {
+        let bytes = write(&[
+            ("deck/a".to_string(), vec![]),
+            ("deck/a/b".to_string(), vec![]),
+        ]);
+        assert_eq!(refused(&bytes), Refusal::Name("deck/a".to_string()));
+    }
+
+    #[test]
+    fn a_size_past_the_end_of_memory_is_refused_not_overflowed() {
+        // Both headers agree on a size no file could hold.
+        let mut bytes = write(&two());
+        let at = central(&bytes, 0);
+        for field in [at + 20, at + 24, 18, 22] {
+            bytes[field..field + 4].copy_from_slice(&0xFFFF_FFF0u32.to_le_bytes());
+        }
+        assert!(read(&bytes, Limits::default()).is_err());
     }
 }
