@@ -595,10 +595,10 @@ impl Paper {
 }
 
 /// The names a document answers to, as the command line reads them — see
-/// [`deck_cli::answered_by`]. Read from the markup rather than asked of the
+/// [`deck_core::page::answered_by`]. Read from the markup rather than asked of the
 /// document, because the answer is needed before there is a view to ask.
 fn declared(html: &str) -> Vec<SharedString> {
-    deck_cli::answered_by(html)
+    deck_core::page::answered_by(html)
         .into_iter()
         .map(SharedString::from)
         .collect()

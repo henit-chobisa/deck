@@ -1917,7 +1917,7 @@ impl DeckView {
         speech: &deck_core::config::Speech,
         cx: &mut Context<Self>,
     ) {
-        let said = crate::prose::pointed(text, speech.pause);
+        let said = crate::prose::pointed(text);
         // Nobody is listening, so there is no clock to keep.
         //
         // Without a real voice the queue is paced by `timed`, which walks the
@@ -1975,7 +1975,7 @@ impl DeckView {
         order.extend(fresh.filter(|ix| *ix < self.group_ix));
         let passages = order
             .into_iter()
-            .map(|ix| crate::prose::pointed(&groups[ix].say, speech.pause))
+            .map(|ix| crate::prose::pointed(&groups[ix].say))
             .collect();
         self.ahead = groups.len();
         if speech.aloud {
@@ -2357,27 +2357,20 @@ impl DeckView {
         // Which half of a change those lines mean, if the pane is showing one.
         let side = at.as_ref().map_or(crate::prose::Side::Going, |at| at.side);
         let block = at.as_ref().and_then(|at| at.block.clone());
-        // Two owners, because one point may hold a file and a picture at once:
-        // the code, and where it sits in the flow. Each half finds its own pane
-        // by what that pane is already showing.
-        let reading = lines.and_then(|at| {
-            self.panes.iter().position(|pane| {
-                pane.code().is_some_and(|code| {
-                    let lit = code.spotlight_range();
-                    lit.first <= at.last && at.first <= lit.last
-                })
-            })
+        // Up to three owners, because one point may hold a file and a picture
+        // at once — the code, and where it sits in the flow — and a picture and
+        // a page may both answer to the same word. Each finds its own pane by
+        // what that pane is already showing. The rule lives in the core, so an
+        // export with no window lands every point in the same place.
+        let landing = at.as_ref().map_or_else(Default::default, |at| {
+            deck_core::prose::resolve(at, &self.panes, |ix| self.temporary.contains(&ix))
         });
-        let drawing = block
-            .as_deref()
-            .and_then(|id| self.claiming(|pane| pane.chart().is_some_and(|c| c.has_block(id))));
-        // A page answers the same question a picture does — *do you have an
-        // element by this name* — so one word in the narration reaches whichever
-        // of them is showing it, and neither needed a syntax of its own.
-        let paging = block
-            .as_deref()
-            .and_then(|id| self.claiming(|pane| pane.paper().is_some_and(|p| p.has_block(id))));
-        let owner = reading.or(drawing).or(paging);
+        let deck_core::prose::Landing {
+            reading,
+            drawing,
+            paging,
+        } = landing;
+        let owner = landing.owner();
         // The light is about to land in a pane that is folded away, so the
         // pane comes back. Lighting lines nobody can see is the same as
         // lighting nothing, and a walk that points into a spine has stopped
@@ -2438,25 +2431,6 @@ impl DeckView {
             self.glide(owner, target, cx);
         }
         moved
-    }
-
-    /// The pane that answers to this, borrowed panes first.
-    ///
-    /// Two panes can honestly claim the same name: a page about putting a node
-    /// in and a page about taking one out both have a `rest` state, and neither
-    /// is wrong. What decides it is which one the agent is talking about — and
-    /// if it has just carried one in to answer a question, that is the one.
-    ///
-    /// The bug this fixes: an answer's points landed in the group's own page,
-    /// which also pulled it back out of the spine it had just been folded into.
-    /// The reader got two pages, one of them ignoring every word being said.
-    fn claiming(&self, mine: impl Fn(&Sheet) -> bool) -> Option<usize> {
-        self.panes
-            .iter()
-            .enumerate()
-            .find(|(ix, pane)| self.temporary.contains(ix) && mine(pane))
-            .or_else(|| self.panes.iter().enumerate().find(|(_, pane)| mine(pane)))
-            .map(|(ix, _)| ix)
     }
 
     /// Keep the voice moving without repainting to do it.
@@ -4219,7 +4193,7 @@ impl DeckView {
         let mut seen = 0;
         // The pause only changes what a voice hears, and nothing here is
         // heard. Cutting is the same either way.
-        for piece in crate::prose::pointed(say, 0) {
+        for piece in crate::prose::pointed(say) {
             seen += piece.words;
             if at < seen {
                 return piece.point;
@@ -5444,7 +5418,7 @@ impl DeckView {
         // lights the first pane whose lit lines it overlaps, and opens the
         // gate only on a line holding a value. Gating on overlap alone shut
         // panes no sentence would ever open.
-        let spots: Vec<LineRange> = crate::prose::pointed(&group.say, 0)
+        let spots: Vec<LineRange> = crate::prose::pointed(&group.say)
             .into_iter()
             .filter_map(|piece| piece.point.and_then(|spot| spot.lines))
             .collect();

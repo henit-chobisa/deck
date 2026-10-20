@@ -244,3 +244,22 @@ impl Sheet {
         }
     }
 }
+
+/// A pane, answering the questions a point asks of it.
+///
+/// What a pane is showing *now*: a code pane answers with the range it is
+/// lighting, which may have followed the file since the deck was written, not
+/// the range the ref was written with.
+impl deck_core::prose::Answers for Sheet {
+    fn lines(&self) -> Option<deck_core::LineRange> {
+        self.code().map(Pane::spotlight_range)
+    }
+
+    fn draws(&self, id: &str) -> bool {
+        self.chart().is_some_and(|chart| chart.has_block(id))
+    }
+
+    fn pages(&self, id: &str) -> bool {
+        self.paper().is_some_and(|paper| paper.has_block(id))
+    }
+}
