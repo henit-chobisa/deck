@@ -1,5 +1,6 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="428" height="498" viewBox="0 0 428 498" font-family="'IBM Plex Sans', sans-serif" font-kerning="normal">
-<rect width="428" height="498" fill="#1f1f1f"/>
+<svg xmlns="http://www.w3.org/2000/svg" width="428" height="498" viewBox="0 0 428 498" role="img" aria-label="labels that wrap" font-family="'IBM Plex Sans', sans-serif" style="font-kerning:normal">
+<title>labels that wrap</title>
+<rect x="0" y="0" width="428" height="498" fill="#1f1f1f"/>
 <rect x="107.38" y="84" width="1.25" height="21" rx="0" fill="#8f8670"/>
 <rect x="107.38" y="105" width="1.25" height="21" rx="0" fill="#8f8670"/>
 <path d="M108 126L104.75 117L111.25 117Z" fill="#8f8670"/>

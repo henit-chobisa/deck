@@ -36,14 +36,34 @@ pub enum Fonts {
 #[must_use]
 pub fn diagram(diagram: &Diagram, palette: &Palette, fonts: Fonts) -> String {
     let plan = geometry::plan(diagram, &diagram.layout());
+    // The picture's bounds: the plan, grown to take in any cluster frame
+    // that reaches past it. A cluster in the first row stands its name above
+    // the margin, and the window, which does not clip its canvas, shows the
+    // frame whole whenever the pane has room (#174). An export has no pane
+    // around it, so it makes the room itself.
+    let (mut left, mut top, mut right, mut bottom) = (0f32, 0f32, plan.width, plan.height);
+    for frame in &plan.frames {
+        left = left.min(frame.at.x);
+        top = top.min(frame.at.y);
+        right = right.max(frame.at.right());
+        bottom = bottom.max(frame.at.bottom());
+    }
+    let (w, h) = (right - left, bottom - top);
+    let title = diagram.title.as_deref().unwrap_or("diagram");
     let mut out = String::new();
     let _ = write!(
         out,
-        r#"<svg xmlns="http://www.w3.org/2000/svg" width="{w}" height="{h}" viewBox="0 0 {w} {h}" font-family="'IBM Plex Sans', sans-serif" font-kerning="normal">"#,
-        w = num(plan.width),
-        h = num(plan.height),
+        r#"<svg xmlns="http://www.w3.org/2000/svg" width="{}" height="{}" viewBox="{} {} {} {}" role="img" aria-label="{}" font-family="'IBM Plex Sans', sans-serif" style="font-kerning:normal">"#,
+        num(w),
+        num(h),
+        num(left),
+        num(top),
+        num(w),
+        num(h),
+        escape(title),
     );
     out.push('\n');
+    let _ = writeln!(out, "<title>{}</title>", escape(title));
     if fonts == Fonts::Embedded {
         out.push_str("<style>");
         for ((bytes, _), weight) in PLEX.iter().zip([400, 500, 600]) {
@@ -58,9 +78,11 @@ pub fn diagram(diagram: &Diagram, palette: &Palette, fonts: Fonts) -> String {
     // The pane's own ground, which the edge labels are cut out of.
     let _ = writeln!(
         out,
-        r#"<rect width="{}" height="{}" fill="{}"/>"#,
-        num(plan.width),
-        num(plan.height),
+        r#"<rect x="{}" y="{}" width="{}" height="{}" fill="{}"/>"#,
+        num(left),
+        num(top),
+        num(w),
+        num(h),
         hex(palette.wash)
     );
 
@@ -502,6 +524,22 @@ mod tests {
         let svg = diagram(&picture, &palette(), Fonts::Embedded);
         assert_eq!(svg.matches("@font-face").count(), 3);
         assert!(!diagram(&picture, &palette(), Fonts::Named).contains("@font-face"));
+    }
+
+    #[test]
+    fn a_cluster_in_the_first_row_is_drawn_whole() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests");
+        let json = std::fs::read_to_string(root.join("fixtures/diagrams/across.json"))
+            .expect("the fixture exists");
+        let picture: Diagram = serde_json::from_str(&json).expect("a diagram");
+        let plan = geometry::plan(&picture, &picture.layout());
+        let top = plan.frames.iter().map(|f| f.at.y).fold(0f32, f32::min);
+        assert!(top < 0., "the fixture's frame should reach above the plan");
+        let svg = diagram(&picture, &palette(), Fonts::Named);
+        assert!(
+            svg.contains(&format!(r#"viewBox="0 {} "#, num(top))),
+            "{svg}"
+        );
     }
 
     #[test]

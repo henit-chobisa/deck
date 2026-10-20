@@ -1,5 +1,6 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="640" height="129" viewBox="0 0 640 129" font-family="'IBM Plex Sans', sans-serif" font-kerning="normal">
-<rect width="640" height="129" fill="#1f1f1f"/>
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="133" viewBox="0 -4 640 133" role="img" aria-label="diagram" font-family="'IBM Plex Sans', sans-serif" style="font-kerning:normal">
+<title>diagram</title>
+<rect x="0" y="-4" width="640" height="133" fill="#1f1f1f"/>
 <rect x="15" y="-4" width="398" height="103" rx="6" fill="#1b1b1b"/>
 <rect x="15.5" y="-3.5" width="397" height="102" rx="5.5" fill="none" stroke="#312f2d" stroke-width="1"/>
 <rect x="186" y="56.38" width="28" height="1.25" rx="0" fill="#8f8670"/>
