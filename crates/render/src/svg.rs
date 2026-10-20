@@ -550,10 +550,9 @@ mod tests {
         let top = plan.frames.iter().map(|f| f.at.y).fold(0f32, f32::min);
         assert!(top < 0., "the fixture's frame should reach above the plan");
         let svg = diagram(&picture, &palette(), Fonts::Named);
-        assert!(
-            svg.contains(&format!(r#"viewBox="0 {} "#, num(top))),
-            "{svg}"
-        );
+        // The frame's top, less the margin a frame keeps on every side.
+        let edge = num(top - geometry::CLUSTER_PAD);
+        assert!(svg.contains(&format!(r#"viewBox="0 {edge} "#)), "{svg}");
     }
 
     #[test]
