@@ -89,9 +89,10 @@ pub fn deck(
 /// `bundle` holding only the groups numbered in `chosen`, or all of it when
 /// `chosen` is empty or names every group.
 ///
-/// - **The groups**, renumbered `g1.json` on in the deck's order. The
-///   protocol reads nothing from a group's file name but that it is one
-///   (`g*.json`), so the names can close up. The ids inside — `g2`, `g2r1` —
+/// - **The groups**, renumbered `g1.json` on in the deck's order, each
+///   group's `ord` with it. The protocol reads nothing from a group's file
+///   name but that it is one (`g*.json`), so the names can close up. The
+///   ids inside — `g2`, `g2r1` —
 ///   stay as they are: the review's remarks and moments, and every ref, are
 ///   tied to them, and they say only where a group stood, never what the
 ///   others said.
@@ -148,10 +149,21 @@ pub fn only(bundle: &Bundle, chosen: &[u32]) -> Result<Bundle, String> {
         .filter(|(_, keep)| **keep)
     {
         ids.push(group.id.clone());
-        out.files.insert(
-            format!("deck/g{}.json", ids.len()),
-            bundle.files[*name].clone(),
-        );
+        // Its place in the order closes up with its name. A window reads a
+        // numbered deck from `ord` 1 and stops at the first gap, so groups
+        // two and three carried as they were numbered would open to
+        // nothing at all.
+        let bytes = &bundle.files[*name];
+        let mut json: serde_json::Value =
+            serde_json::from_slice(bytes).map_err(|err| format!("{name}: {err}"))?;
+        let bytes = match json.get_mut("ord") {
+            Some(ord) => {
+                *ord = serde_json::Value::from(ids.len());
+                serde_json::to_vec(&json).map_err(|err| err.to_string())?
+            }
+            None => bytes.clone(),
+        };
+        out.files.insert(format!("deck/g{}.json", ids.len()), bytes);
     }
     let path = |file: &std::path::Path| file.to_string_lossy().replace('\\', "/");
 

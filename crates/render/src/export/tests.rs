@@ -126,7 +126,7 @@ fn deck_of(groups: &[&str], review: Option<&str>) -> Bundle {
 /// with a remark on a line, an answer, and a word for the whole deck.
 fn bundle() -> Bundle {
     let g1 = r#"{
-        "id": "g1",
+        "id": "g1", "ord": 1,
         "title": "The error path <script>alert(1)</script> counts twice",
         "confidence": {"level": "medium", "why": "read both paths & did not run it"},
         "say": "A write that fails lands in the catch in [batch] and takes the counter down.[point 10] It goes on to the tail and takes it down again.[point 13]\n\nSo every failed write costs **two**. [path] follows one row, and `pending` is the count. The [shown] page is the picture.",
@@ -141,13 +141,13 @@ fn bundle() -> Bundle {
         ]
     }"#;
     let g2 = r#"{
-        "id": "g2",
+        "id": "g2", "ord": 2,
         "title": "Count once",
         "say": "Count once, where the write settles.[point +10]",
         "refs": [{"id": "g2r1", "file": "src/batch.ts", "range": [10, 10], "name": "fix",
                   "after": "      // counted at the tail\n"}]
     }"#;
-    let g3 = r#"{"id": "g3", "title": "Nothing else moves", "say": "The close stays as it is.[point 60]",
+    let g3 = r#"{"id": "g3", "ord": 3, "title": "Nothing else moves", "say": "The close stays as it is.[point 60]",
         "refs": [{"id": "g3r1", "file": "src/batch.ts", "range": [59, 61]},
                  {"id": "g3r2", "file": "src/store.ts", "range": [2, 2], "name": "store"}]}"#;
     let review = r#"{
@@ -435,6 +435,31 @@ fn a_deck_of_some_groups_carries_nothing_of_the_others() {
     // Nor on the page, where the whole-deck remark has no group to follow.
     assert!(!html.contains("everything I had"));
     assert!(html.contains("group 2/3"));
+}
+
+/// A deck of groups two and three opens to groups two and three: renumbered
+/// from one in their order, as a window reads a numbered deck — from `ord`
+/// 1, up to the first gap.
+#[test]
+fn a_deck_of_some_groups_opens_to_those_groups_in_order() {
+    let html = export(&Options {
+        groups: vec![2, 3],
+        ..Options::default()
+    });
+    let mut groups = carried(&html).groups().unwrap();
+    groups.sort_by_key(|group| group.ord.unwrap_or(u32::MAX));
+    // The window's rule (`load::readable`): every group numbered, and read
+    // while each is numbered one more than the last.
+    let readable = groups
+        .iter()
+        .enumerate()
+        .take_while(|(ix, group)| group.ord == u32::try_from(*ix + 1).ok())
+        .count();
+    assert_eq!(readable, 2);
+    let ids: Vec<&str> = groups.iter().map(|group| group.id.as_str()).collect();
+    assert_eq!(ids, ["g2", "g3"]);
+    let titles: Vec<Option<&str>> = groups.iter().map(|g| g.title.as_deref()).collect();
+    assert_eq!(titles, [Some("Count once"), Some("Nothing else moves")]);
 }
 
 #[test]

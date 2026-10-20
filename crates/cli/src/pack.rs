@@ -155,6 +155,15 @@ pub struct Packing {
     pub hits: Vec<Hit>,
     /// Scanner hits the author let through with `--allow`.
     pub allowed: Vec<Hit>,
+    /// Scanner hits let through by the file itself: fingerprints its
+    /// manifest already records, from whoever packed it.
+    ///
+    /// Apart from [`Self::allowed`] because they are not the same claim. A
+    /// file from somebody else saying a hit is fine is that somebody's word,
+    /// and what is passed on should say whose word it is. They are still
+    /// honoured: refusing them would refuse every re-export of a deck whose
+    /// author looked at the hit and let it through on purpose.
+    pub inherited: Vec<Hit>,
     /// `--allow` fingerprints that matched nothing.
     pub unused: Vec<String>,
     /// Files in the folder that stay on this machine.
@@ -370,6 +379,7 @@ pub fn gather(deck: &Path, options: &Options) -> anyhow::Result<Packing> {
         missing,
         hits: Vec::new(),
         allowed: Vec::new(),
+        inherited: Vec::new(),
         unused: Vec::new(),
         left,
         repacked: false,
@@ -414,6 +424,7 @@ fn regather(dir: &Path, options: &Options) -> anyhow::Result<Packing> {
         missing: Vec::new(),
         hits: Vec::new(),
         allowed: Vec::new(),
+        inherited: Vec::new(),
         unused: Vec::new(),
         left,
         repacked: true,
@@ -453,6 +464,7 @@ pub fn opened(bundle: Bundle, options: &Options) -> anyhow::Result<Packing> {
         missing: Vec::new(),
         hits: Vec::new(),
         allowed: Vec::new(),
+        inherited: Vec::new(),
         unused: Vec::new(),
         left: Vec::new(),
         repacked: true,
@@ -564,7 +576,11 @@ impl Packing {
         recorded.dedup();
         self.bundle.manifest.allowed = recorded;
         self.hits = hits;
-        self.allowed = allowed;
+        let (asked, inherited) = allowed
+            .into_iter()
+            .partition(|hit| allow.contains(&hit.fingerprint));
+        self.allowed = asked;
+        self.inherited = inherited;
     }
 
     /// Why this cannot be packed, if it cannot: a secret nobody let through,
@@ -642,6 +658,9 @@ impl Packing {
         for hit in &self.allowed {
             notes.push(format!("let through, as asked: {hit}"));
         }
+        for hit in &self.inherited {
+            notes.push(format!("let through by whoever packed it: {hit}"));
+        }
         for fingerprint in &self.unused {
             notes.push(format!("--allow {fingerprint} matched nothing"));
         }
@@ -714,6 +733,12 @@ impl Packing {
         if !self.allowed.is_empty() {
             out.push_str("\n\nLet through, as asked:\n");
             for hit in &self.allowed {
+                out.push_str(&format!("\n  {hit}"));
+            }
+        }
+        if !self.inherited.is_empty() {
+            out.push_str("\n\nLet through by whoever packed it:\n");
+            for hit in &self.inherited {
                 out.push_str(&format!("\n  {hit}"));
             }
         }

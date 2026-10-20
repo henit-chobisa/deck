@@ -2121,7 +2121,7 @@ mod tests {
 
     /// A `.deck` file written by hand, holding `say` as its one group's
     /// narration, in `dir`.
-    fn hand_built(dir: &std::path::Path, say: &str) -> PathBuf {
+    fn hand_built(dir: &std::path::Path, say: &str, allowed: &[String]) -> PathBuf {
         let group = serde_json::json!({ "id": "g1", "say": say }).to_string();
         let mut files = std::collections::BTreeMap::new();
         files.insert(
@@ -2137,7 +2137,7 @@ mod tests {
                 generator: "deck test".to_string(),
                 repo: None,
                 entries: std::collections::BTreeMap::new(),
-                allowed: Vec::new(),
+                allowed: allowed.to_vec(),
             },
             files,
         };
@@ -2168,7 +2168,11 @@ mod tests {
         let dir = tempfile::tempdir().expect("a temp dir");
         // Put together here, so no whole token is ever in the source.
         let token = format!("ghp_{}", "a1B2".repeat(9));
-        let deck = hand_built(dir.path(), &format!("The token is {token} in the config."));
+        let deck = hand_built(
+            dir.path(),
+            &format!("The token is {token} in the config."),
+            &[],
+        );
         let out = dir.path().join("out.html");
         let err = export(&exporting(&deck, &out)).expect_err("refused");
         let said = err.to_string();
@@ -2181,7 +2185,7 @@ mod tests {
             .expect("a fingerprint to pass")
             .to_string();
         let path = export(&Exporting {
-            allow: vec![fingerprint],
+            allow: vec![fingerprint.clone()],
             ..exporting(&deck, &out)
         })
         .expect("let through");
@@ -2190,13 +2194,48 @@ mod tests {
                 .unwrap()
                 .contains("Powered by Deck")
         );
+        let options = deck_cli::pack::Options {
+            allow: vec![fingerprint.clone()],
+            ..deck_cli::pack::Options::default()
+        };
+        let open = |path: &std::path::Path| {
+            deck_core::bundle::Bundle::open(&std::fs::read(path).unwrap())
+                .unwrap()
+                .0
+        };
+        let asked = deck_cli::pack::opened(open(&deck), &options).unwrap();
+        assert!(
+            asked
+                .notes()
+                .iter()
+                .any(|n| n.starts_with("let through, as asked: "))
+        );
+
+        // A file whose own manifest lets the hit through is honoured, and
+        // said to be that file's word rather than the exporter's.
+        let theirs = hand_built(
+            dir.path(),
+            &format!("The token is {token} in the config."),
+            std::slice::from_ref(&fingerprint),
+        );
+        let packing =
+            deck_cli::pack::opened(open(&theirs), &deck_cli::pack::Options::default()).unwrap();
+        assert!(packing.refusal().is_none());
+        let notes = packing.notes();
+        assert!(
+            notes
+                .iter()
+                .any(|n| n.starts_with("let through by whoever packed it: ")),
+            "{notes:?}"
+        );
+        assert!(!notes.iter().any(|n| n.contains("as asked")), "{notes:?}");
     }
 
     /// A group that is not in the deck is a typo, and said as one.
     #[test]
     fn a_group_the_deck_does_not_have_is_refused() {
         let dir = tempfile::tempdir().expect("a temp dir");
-        let deck = hand_built(dir.path(), "Nothing secret here.");
+        let deck = hand_built(dir.path(), "Nothing secret here.", &[]);
         let out = dir.path().join("out.html");
         let err = export(&Exporting {
             groups: Some("1,9"),
