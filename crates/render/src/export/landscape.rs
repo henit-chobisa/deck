@@ -444,15 +444,29 @@ fn header(document: &Document, pane: &Pane, at: Rect, items: &mut Vec<Item>) -> 
         ));
         x += measure(&name, Face::Mono, size) + 8.;
     }
+    let shown = fit(&what, Face::Mono, size, at.x + at.w - 16. - x);
     items.push(text_at(
         x,
         at.y + 12.,
         15.,
-        &fit(&what, Face::Mono, size, at.x + at.w - 16. - x),
+        &shown,
         Face::Mono,
         size,
         inks.on_pane.muted,
     ));
+    if let Pane::Code(code) = pane
+        && let Some(url) = super::links::source(document.repo.as_ref(), code)
+    {
+        items.push(Item::Url {
+            rect: Rect::new(
+                at.x + 16.,
+                at.y + 8.,
+                x + measure(&shown, Face::Mono, size) - at.x - 16.,
+                23.,
+            ),
+            url,
+        });
+    }
     let mut high = PANE_HEAD;
     if let Some(note) = note {
         items.push(text_at(
@@ -746,6 +760,7 @@ fn shifted(item: &Item, dx: f32, dy: f32) -> Item {
         | Item::Frame { rect, .. }
         | Item::Svg { rect, .. }
         | Item::Dots { rect, .. }
+        | Item::Url { rect, .. }
         | Item::Link { rect, .. } => {
             rect.x += dx;
             rect.y += dy;
@@ -1183,7 +1198,12 @@ fn strip(document: &Document, kind: Kind, page: usize, total: usize) -> Vec<Item
     let mut x = STRIP_SIDE + 15.;
     let brand = "Powered by Deck";
     items.push(row(x, brand));
-    x += measure(brand, Face::Mono, STRIP_SIZE) + STRIP_GAP;
+    x += measure(brand, Face::Mono, STRIP_SIZE);
+    items.push(Item::Url {
+        rect: Rect::new(STRIP_SIDE, STRIP_TOP, x - STRIP_SIDE, STRIP_HIGH),
+        url: super::links::DECK.to_string(),
+    });
+    x += STRIP_GAP;
     let of = if super::layout::complete(document) {
         format!("/{}", document.groups.len())
     } else {

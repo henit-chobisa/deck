@@ -51,6 +51,8 @@ h2{margin:0;font-size:14px;font-weight:600;color:var(--band-text);white-space:no
 .ph{flex:none;display:flex;gap:8px;align-items:baseline;padding:12px 16px 6px;font:400 11.5px var(--mono);color:var(--pane-muted);white-space:nowrap;overflow:hidden}
 .ph b{font-weight:400;color:var(--pane-accent)}
 .ph .file{overflow:hidden;text-overflow:ellipsis}
+.ph a{color:inherit;text-decoration:underline;text-decoration-color:var(--edge);text-underline-offset:3px}
+.ph a:hover{color:var(--pane-text)}
 .note{flex:none;padding:0 16px 6px;font-size:11px;color:var(--pane-muted)}
 .rows{flex:1;min-height:0;overflow:auto;padding:4px 0 10px;font:400 12px/19px var(--mono);font-variant-ligatures:none}
 .row{display:grid;grid-template-columns:26px 12px 40px minmax(0,1fr);align-items:baseline;padding-right:16px;position:relative}
@@ -84,7 +86,8 @@ iframe.page{flex:1;min-height:0;width:100%;border:0;background:transparent}
 .toc .said.on{color:var(--band-accent)}
 .strip{grid-column:1/-1;display:flex;align-items:center;gap:14px;padding:7px 14px;background:var(--band);border-top:1px solid var(--edge);font:400 10.5px var(--mono);color:var(--band-muted);white-space:nowrap;min-width:0}
 .strip .fill{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis}
-.brand{display:inline-flex;align-items:center;gap:6px}
+.brand{display:inline-flex;align-items:center;gap:6px;color:inherit}
+.brand:hover{color:var(--band-text)}
 .brand i{width:9px;height:9px;border-radius:2px;background:var(--band-accent)}
 .go{display:inline-flex;gap:4px}
 .go a,.go span{display:inline-grid;place-items:center;width:22px;height:18px;border:1px solid var(--edge);border-radius:4px;color:var(--band-text)}
@@ -139,7 +142,7 @@ iframe.page{flex:1;min-height:0;width:100%;border:0;background:transparent}
 </div>
 </header>
 <div class="panes">
-<section class="pane code" id="pane-g1r1"><div class="ph"><b>batch</b><span class="file">src/batch.ts:6-13</span></div><div class="note">the loop &lt;b&gt;body&lt;/b&gt;</div><div class="rows">
+<section class="pane code" id="pane-g1r1"><div class="ph"><b>batch</b><span class="file"><a href="https://github.com/acme/ingest/blob/a1b2c3d4e5/src/batch.ts#L6-L13" rel="noopener noreferrer" target="_blank">src/batch.ts:6-13</a></span></div><div class="note">the loop &lt;b&gt;body&lt;/b&gt;</div><div class="rows">
 <div class="row ctx b0"><span class="at"></span><span class="bar"></span><span class="no">3</span><span class="t"><span class="i1">export</span><span class="i2"> </span><span class="i1">async</span><span class="i2"> </span><span class="i1">function</span><span class="i2"> </span><span class="i3">flush</span><span class="i4">(</span><span class="i2">rows: </span><span class="i5">Row</span><span class="i4">[])</span><span class="i2"> </span><span class="i4">{</span></span></div>
 <div class="row ctx b0"><span class="at"></span><span class="bar"></span><span class="no">4</span><span class="t"><span class="i2">  </span><span class="i1">let</span><span class="i2"> </span><span class="i2">pending</span><span class="i2"> </span><span class="i4">=</span><span class="i2"> </span><span class="i2">rows</span><span class="i4">.</span><span class="i2">length</span></span></div>
 <div class="row ctx b0"><span class="at"></span><span class="bar"></span><span class="no">5</span><span class="t"><span class="i2">  </span><span class="i1">for</span><span class="i2"> </span><span class="i4">(</span><span class="i1">const</span><span class="i2"> </span><span class="i2">row</span><span class="i2"> </span><span class="i1">of</span><span class="i2"> </span><span class="i2">rows</span><span class="i4">)</span><span class="i2"> </span><span class="i4">{</span></span></div>
@@ -172,7 +175,7 @@ iframe.page{flex:1;min-height:0;width:100%;border:0;background:transparent}
 <section class="pane page" id="pane-g1p1"><div class="ph"><b>shown</b><span class="file">page</span></div><iframe class="page" sandbox="" referrerpolicy="no-referrer" title="shown" srcdoc="&lt;!doctype html&gt;&lt;meta charset=&quot;utf-8&quot;&gt;&lt;style&gt;:root{--deck-bg:#282828;--deck-fg:#ebdbb2;--deck-accent:#fe8019;--deck-on-accent:#282828;--deck-muted:#999078;--deck-edge:#4f4f4f;--deck-wash:#262626;--deck-add:#b8bb26;--deck-del:#fc6654;--deck-comment:#999078;}html,body{background:transparent;color:var(--deck-fg);font:12px ui-monospace,SFMono-Regular,Menlo,monospace;}[data-show]:not(.deck-seen),[data-from]:not(.deck-seen){opacity:0!important;pointer-events:none!important}&lt;/style&gt;&lt;h1 id=&quot;hi&quot;&gt;Hello&lt;/h1&gt;&lt;script&gt;parent.document.body.remove()&lt;/script&gt;&lt;img src=&quot;https://example.com/x.png&quot; srcset=&quot;//cdn.example.com/y.png 2x&quot;&gt;"></iframe></section>
 </div>
 <nav class="side" aria-label="Contents"><h4><span>Contents</span><span>1 of 3</span></h4><ol class="toc"><li class="on"><a href="#g1"><b>1</b><span>The error path &lt;script&gt;alert(1)&lt;/script&gt; counts twice</span></a><a class="said" href="#g1-argument">the argument · 2</a></li><li><a href="#g2"><b>2</b><span>Count once</span></a></li><li><a href="#g3"><b>3</b><span>Nothing else moves</span></a><a class="said" href="#g3-argument">the argument · 1</a></li></ol><ol class="toc"><li><a href="#said"><b>·</b><span>What was said about the deck</span></a></li></ol></nav>
-<footer class="strip"><span class="brand"><i></i>Powered by Deck</span><span>group 1/3</span><span class="fill">Why the batch counter stalls at 63</span><span>acme/ingest@a1b2c3d</span><span>20 Oct 2026</span><span>page 1 of 6</span><span class="go"><span aria-hidden="true">←</span><a href="#g1-argument" aria-label="Next">→</a></span></footer>
+<footer class="strip"><a class="brand" href="https://trydeck.dev/?ref=export" rel="noopener noreferrer" target="_blank"><i></i>Powered by Deck</a><span>group 1/3</span><span class="fill">Why the batch counter stalls at 63</span><span>acme/ingest@a1b2c3d</span><span>20 Oct 2026</span><span>page 1 of 6</span><span class="go"><span aria-hidden="true">←</span><a href="#g1-argument" aria-label="Next">→</a></span></footer>
 </section>
 <section class="stop argument" id="g1-argument" aria-label="What was said about group 1">
 <header class="thin"><div class="num">1</div><h2>The error path &lt;script&gt;alert(1)&lt;/script&gt; counts twice <span class="dim">— the argument</span></h2><span class="count">2 said</span></header>
@@ -181,7 +184,7 @@ iframe.page{flex:1;min-height:0;width:100%;border:0;background:transparent}
 <article class="msg agent"><span class="dot"></span><div><div class="who"><b>Agent</b><span class="n">2/2</span></div><p>A finally also runs on the retry branch.</p></div></article>
 </div></div>
 <nav class="side" aria-label="Contents"><h4><span>Contents</span><span>1 of 3</span></h4><ol class="toc"><li class="on"><a href="#g1"><b>1</b><span>The error path &lt;script&gt;alert(1)&lt;/script&gt; counts twice</span></a><a class="said on" href="#g1-argument">the argument · 2</a></li><li><a href="#g2"><b>2</b><span>Count once</span></a></li><li><a href="#g3"><b>3</b><span>Nothing else moves</span></a><a class="said" href="#g3-argument">the argument · 1</a></li></ol><ol class="toc"><li><a href="#said"><b>·</b><span>What was said about the deck</span></a></li></ol></nav>
-<footer class="strip"><span class="brand"><i></i>Powered by Deck</span><span>group 1/3 · the argument</span><span class="fill">Why the batch counter stalls at 63</span><span>acme/ingest@a1b2c3d</span><span>20 Oct 2026</span><span>page 2 of 6</span><span class="go"><a href="#g1" aria-label="Previous">←</a><a href="#g2" aria-label="Next">→</a></span></footer>
+<footer class="strip"><a class="brand" href="https://trydeck.dev/?ref=export" rel="noopener noreferrer" target="_blank"><i></i>Powered by Deck</a><span>group 1/3 · the argument</span><span class="fill">Why the batch counter stalls at 63</span><span>acme/ingest@a1b2c3d</span><span>20 Oct 2026</span><span>page 2 of 6</span><span class="go"><a href="#g1" aria-label="Previous">←</a><a href="#g2" aria-label="Next">→</a></span></footer>
 </section>
 <section class="stop" id="g2" aria-label="Group 2: Count once">
 <header class="band">
@@ -191,7 +194,7 @@ iframe.page{flex:1;min-height:0;width:100%;border:0;background:transparent}
 </div>
 </header>
 <div class="panes">
-<section class="pane code" id="pane-g2r1"><div class="ph"><b>fix</b><span class="file">src/batch.ts:10 · proposed</span></div><div class="rows">
+<section class="pane code" id="pane-g2r1"><div class="ph"><b>fix</b><span class="file"><a href="https://github.com/acme/ingest/blob/a1b2c3d4e5/src/batch.ts#L10" rel="noopener noreferrer" target="_blank">src/batch.ts:10 · proposed</a></span></div><div class="rows">
 <div class="row ctx b0"><span class="at"></span><span class="bar"></span><span class="no">7</span><span class="t"><span class="i2">      </span><span class="i1">await</span><span class="i2"> </span><span class="i3">write</span><span class="i4">(</span><span class="i2">row</span><span class="i4">)</span></span></div>
 <div class="row ctx b0"><span class="at"></span><span class="bar"></span><span class="no">8</span><span class="t"><span class="i2">    </span><span class="i4">}</span><span class="i2"> </span><span class="i1">catch</span><span class="i2"> </span><span class="i4">(</span><span class="i2">err</span><span class="i4">)</span><span class="i2"> </span><span class="i4">{</span></span></div>
 <div class="row ctx b0"><span class="at"></span><span class="bar"></span><span class="no">9</span><span class="t"><span class="i2">      </span><span class="i2">log</span><span class="i4">.</span><span class="i3">error</span><span class="i4">(</span><span class="i2">err</span><span class="i4">)</span></span></div>
@@ -203,7 +206,7 @@ iframe.page{flex:1;min-height:0;width:100%;border:0;background:transparent}
 </div></section>
 </div>
 <nav class="side" aria-label="Contents"><h4><span>Contents</span><span>2 of 3</span></h4><ol class="toc"><li><a href="#g1"><b>1</b><span>The error path &lt;script&gt;alert(1)&lt;/script&gt; counts twice</span></a><a class="said" href="#g1-argument">the argument · 2</a></li><li class="on"><a href="#g2"><b>2</b><span>Count once</span></a></li><li><a href="#g3"><b>3</b><span>Nothing else moves</span></a><a class="said" href="#g3-argument">the argument · 1</a></li></ol><ol class="toc"><li><a href="#said"><b>·</b><span>What was said about the deck</span></a></li></ol></nav>
-<footer class="strip"><span class="brand"><i></i>Powered by Deck</span><span>group 2/3</span><span class="fill">Why the batch counter stalls at 63</span><span>acme/ingest@a1b2c3d</span><span>20 Oct 2026</span><span>page 3 of 6</span><span class="go"><a href="#g1-argument" aria-label="Previous">←</a><a href="#g3" aria-label="Next">→</a></span></footer>
+<footer class="strip"><a class="brand" href="https://trydeck.dev/?ref=export" rel="noopener noreferrer" target="_blank"><i></i>Powered by Deck</a><span>group 2/3</span><span class="fill">Why the batch counter stalls at 63</span><span>acme/ingest@a1b2c3d</span><span>20 Oct 2026</span><span>page 3 of 6</span><span class="go"><a href="#g1-argument" aria-label="Previous">←</a><a href="#g3" aria-label="Next">→</a></span></footer>
 </section>
 <section class="stop" id="g3" aria-label="Group 3: Nothing else moves">
 <header class="band">
@@ -213,7 +216,7 @@ iframe.page{flex:1;min-height:0;width:100%;border:0;background:transparent}
 </div>
 </header>
 <div class="panes">
-<section class="pane code" id="pane-g3r1"><div class="ph"><span class="file">src/batch.ts:59-61</span></div><div class="rows">
+<section class="pane code" id="pane-g3r1"><div class="ph"><span class="file"><a href="https://github.com/acme/ingest/blob/a1b2c3d4e5/src/batch.ts#L59-L61" rel="noopener noreferrer" target="_blank">src/batch.ts:59-61</a></span></div><div class="rows">
 <div class="row ctx b0"><span class="at"></span><span class="bar"></span><span class="no">56</span><span class="t"><span class="i13 it">// spacer 56</span></span></div>
 <div class="row ctx b0"><span class="at"></span><span class="bar"></span><span class="no">57</span><span class="t"><span class="i13 it">// spacer 57</span></span></div>
 <div class="row ctx b0"><span class="at"></span><span class="bar"></span><span class="no">58</span><span class="t"><span class="i13 it">// spacer 58</span></span></div>
@@ -221,14 +224,14 @@ iframe.page{flex:1;min-height:0;width:100%;border:0;background:transparent}
 <div class="row spot lit b1"><span class="at"><span class="mk" style="background:#fe8019;color:#483425">1</span></span><span class="bar" style="--accent-of-row:#fe8019"></span><span class="no i0">60</span><span class="t"><span class="i6">  </span><span class="i9">finish</span><span class="i8">(</span><span class="i6">batch</span><span class="i8">)</span></span></div>
 <div class="row spot b1"><span class="at"></span><span class="bar"></span><span class="no">61</span><span class="t"><span class="i8">}</span></span></div>
 </div></section>
-<section class="pane code" id="pane-g3r2"><div class="ph"><b>store</b><span class="file">src/store.ts:2</span></div><div class="rows">
+<section class="pane code" id="pane-g3r2"><div class="ph"><b>store</b><span class="file"><a href="https://github.com/acme/ingest/blob/a1b2c3d4e5/src/store.ts#L2" rel="noopener noreferrer" target="_blank">src/store.ts:2</a></span></div><div class="rows">
 <div class="row ctx b0"><span class="at"></span><span class="bar"></span><span class="no">1</span><span class="t"><span class="i1">export</span><span class="i2"> </span><span class="i1">async</span><span class="i2"> </span><span class="i1">function</span><span class="i2"> </span><span class="i3">write</span><span class="i4">(</span><span class="i2">row: </span><span class="i5">Row</span><span class="i4">)</span><span class="i2"> </span><span class="i4">{</span></span></div>
 <div class="row spot b1"><span class="at"></span><span class="bar"></span><span class="no">2</span><span class="t"><span class="i6">  </span><span class="i7">await</span><span class="i6"> </span><span class="i6">db</span><span class="i8">.</span><span class="i9">put</span><span class="i8">(</span><span class="i6">row</span><span class="i8">.</span><span class="i6">id</span><span class="i8">,</span><span class="i6"> </span><span class="i6">row</span><span class="i8">.</span><span class="i6">payload</span><span class="i8">)</span></span></div>
 <div class="row ctx b0"><span class="at"></span><span class="bar"></span><span class="no">3</span><span class="t"><span class="i4">}</span></span></div>
 </div></section>
 </div>
 <nav class="side" aria-label="Contents"><h4><span>Contents</span><span>3 of 3</span></h4><ol class="toc"><li><a href="#g1"><b>1</b><span>The error path &lt;script&gt;alert(1)&lt;/script&gt; counts twice</span></a><a class="said" href="#g1-argument">the argument · 2</a></li><li><a href="#g2"><b>2</b><span>Count once</span></a></li><li class="on"><a href="#g3"><b>3</b><span>Nothing else moves</span></a><a class="said" href="#g3-argument">the argument · 1</a></li></ol><ol class="toc"><li><a href="#said"><b>·</b><span>What was said about the deck</span></a></li></ol></nav>
-<footer class="strip"><span class="brand"><i></i>Powered by Deck</span><span>group 3/3</span><span class="fill">Why the batch counter stalls at 63</span><span>acme/ingest@a1b2c3d</span><span>20 Oct 2026</span><span>page 4 of 6</span><span class="go"><a href="#g2" aria-label="Previous">←</a><a href="#g3-argument" aria-label="Next">→</a></span></footer>
+<footer class="strip"><a class="brand" href="https://trydeck.dev/?ref=export" rel="noopener noreferrer" target="_blank"><i></i>Powered by Deck</a><span>group 3/3</span><span class="fill">Why the batch counter stalls at 63</span><span>acme/ingest@a1b2c3d</span><span>20 Oct 2026</span><span>page 4 of 6</span><span class="go"><a href="#g2" aria-label="Previous">←</a><a href="#g3-argument" aria-label="Next">→</a></span></footer>
 </section>
 <section class="stop argument" id="g3-argument" aria-label="What was said about group 3">
 <header class="thin"><div class="num">3</div><h2>Nothing else moves <span class="dim">— the argument</span></h2><span class="count">1 said</span></header>
@@ -236,7 +239,7 @@ iframe.page{flex:1;min-height:0;width:100%;border:0;background:transparent}
 <article class="msg reader"><span class="dot"></span><div><div class="who"><b>Reader</b><span>· nit</span><span>· src/batch.ts, line 60</span><span class="n">1/1</span></div><p>Close it where it opens.</p><div class="q"><div class="row spot lit b1"><span class="no i0">60</span><span class="t"><span class="i6">  </span><span class="i9">finish</span><span class="i8">(</span><span class="i6">batch</span><span class="i8">)</span></span></div></div></div></article>
 </div></div>
 <nav class="side" aria-label="Contents"><h4><span>Contents</span><span>3 of 3</span></h4><ol class="toc"><li><a href="#g1"><b>1</b><span>The error path &lt;script&gt;alert(1)&lt;/script&gt; counts twice</span></a><a class="said" href="#g1-argument">the argument · 2</a></li><li><a href="#g2"><b>2</b><span>Count once</span></a></li><li class="on"><a href="#g3"><b>3</b><span>Nothing else moves</span></a><a class="said on" href="#g3-argument">the argument · 1</a></li></ol><ol class="toc"><li><a href="#said"><b>·</b><span>What was said about the deck</span></a></li></ol></nav>
-<footer class="strip"><span class="brand"><i></i>Powered by Deck</span><span>group 3/3 · the argument</span><span class="fill">Why the batch counter stalls at 63</span><span>acme/ingest@a1b2c3d</span><span>20 Oct 2026</span><span>page 5 of 6</span><span class="go"><a href="#g3" aria-label="Previous">←</a><a href="#said" aria-label="Next">→</a></span></footer>
+<footer class="strip"><a class="brand" href="https://trydeck.dev/?ref=export" rel="noopener noreferrer" target="_blank"><i></i>Powered by Deck</a><span>group 3/3 · the argument</span><span class="fill">Why the batch counter stalls at 63</span><span>acme/ingest@a1b2c3d</span><span>20 Oct 2026</span><span>page 5 of 6</span><span class="go"><a href="#g3" aria-label="Previous">←</a><a href="#said" aria-label="Next">→</a></span></footer>
 </section>
 <section class="stop argument" id="said" aria-label="What was said about the whole deck">
 <header class="thin"><h2>Why the batch counter stalls at 63 <span class="dim">— what was said about the deck</span></h2><span class="count">1 said</span></header>
@@ -244,7 +247,7 @@ iframe.page{flex:1;min-height:0;width:100%;border:0;background:transparent}
 <article class="msg agent"><span class="dot"></span><div><div class="who"><b>Agent</b><span class="n">1/1</span></div><p>That is everything I had.</p></div></article>
 </div></div>
 <nav class="side" aria-label="Contents"><h4><span>Contents</span><span>3</span></h4><ol class="toc"><li><a href="#g1"><b>1</b><span>The error path &lt;script&gt;alert(1)&lt;/script&gt; counts twice</span></a><a class="said" href="#g1-argument">the argument · 2</a></li><li><a href="#g2"><b>2</b><span>Count once</span></a></li><li><a href="#g3"><b>3</b><span>Nothing else moves</span></a><a class="said" href="#g3-argument">the argument · 1</a></li></ol><ol class="toc"><li class="on"><a href="#said"><b>·</b><span>What was said about the deck</span></a></li></ol></nav>
-<footer class="strip"><span class="brand"><i></i>Powered by Deck</span><span>the deck</span><span class="fill">Why the batch counter stalls at 63</span><span>acme/ingest@a1b2c3d</span><span>20 Oct 2026</span><span>page 6 of 6</span><span class="go"><a href="#g3-argument" aria-label="Previous">←</a><span aria-hidden="true">→</span></span></footer>
+<footer class="strip"><a class="brand" href="https://trydeck.dev/?ref=export" rel="noopener noreferrer" target="_blank"><i></i>Powered by Deck</a><span>the deck</span><span class="fill">Why the batch counter stalls at 63</span><span>acme/ingest@a1b2c3d</span><span>20 Oct 2026</span><span>page 6 of 6</span><span class="go"><a href="#g3-argument" aria-label="Previous">←</a><span aria-hidden="true">→</span></span></footer>
 </section>
 </main>
 <script type="application/x-deck" id="deck">…</script>

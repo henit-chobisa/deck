@@ -385,6 +385,16 @@
         "colour": "#999078"
       },
       {
+        "item": "url",
+        "rect": {
+          "x": 48.0,
+          "y": 800.0,
+          "w": 72.0,
+          "h": 24.0
+        },
+        "url": "https://trydeck.dev/?ref=export"
+      },
+      {
         "item": "text",
         "x": 246.08125,
         "baseline": 814.8125,
@@ -676,6 +686,16 @@
         "face": "mono",
         "size": 8.0,
         "colour": "#999078"
+      },
+      {
+        "item": "url",
+        "rect": {
+          "x": 60.0,
+          "y": 220.0,
+          "w": 116.0,
+          "h": 20.0
+        },
+        "url": "https://github.com/acme/ingest/blob/a1b2c3d4e5/src/batch.ts#L6-L13"
       },
       {
         "item": "text",
@@ -1647,6 +1667,16 @@
         "colour": "#999078"
       },
       {
+        "item": "url",
+        "rect": {
+          "x": 48.0,
+          "y": 800.0,
+          "w": 72.0,
+          "h": 24.0
+        },
+        "url": "https://trydeck.dev/?ref=export"
+      },
+      {
         "item": "text",
         "x": 155.88625,
         "baseline": 814.8125,
@@ -1869,6 +1899,16 @@
         "colour": "#999078"
       },
       {
+        "item": "link",
+        "rect": {
+          "x": 48.0,
+          "y": 236.0,
+          "w": 500.0,
+          "h": 16.0
+        },
+        "page": 3
+      },
+      {
         "item": "text",
         "x": 48.0,
         "baseline": 277.0,
@@ -2068,6 +2108,16 @@
         "colour": "#999078"
       },
       {
+        "item": "url",
+        "rect": {
+          "x": 48.0,
+          "y": 800.0,
+          "w": 72.0,
+          "h": 24.0
+        },
+        "url": "https://trydeck.dev/?ref=export"
+      },
+      {
         "item": "text",
         "x": 155.88625,
         "baseline": 814.8125,
@@ -2175,6 +2225,16 @@
         "face": "mono",
         "size": 8.0,
         "colour": "#999078"
+      },
+      {
+        "item": "url",
+        "rect": {
+          "x": 60.0,
+          "y": 152.0,
+          "w": 152.0,
+          "h": 20.0
+        },
+        "url": "https://github.com/acme/ingest/blob/a1b2c3d4e5/src/batch.ts#L10"
       },
       {
         "item": "text",
@@ -2574,6 +2634,16 @@
         "colour": "#999078"
       },
       {
+        "item": "link",
+        "rect": {
+          "x": 48.0,
+          "y": 316.0,
+          "w": 500.0,
+          "h": 16.0
+        },
+        "page": 4
+      },
+      {
         "item": "text",
         "x": 48.0,
         "baseline": 357.0,
@@ -2683,6 +2753,16 @@
         "colour": "#999078"
       },
       {
+        "item": "url",
+        "rect": {
+          "x": 48.0,
+          "y": 800.0,
+          "w": 72.0,
+          "h": 24.0
+        },
+        "url": "https://trydeck.dev/?ref=export"
+      },
+      {
         "item": "text",
         "x": 225.895,
         "baseline": 814.8125,
@@ -2781,6 +2861,16 @@
         "face": "mono",
         "size": 8.0,
         "colour": "#999078"
+      },
+      {
+        "item": "url",
+        "rect": {
+          "x": 60.0,
+          "y": 152.0,
+          "w": 88.0,
+          "h": 20.0
+        },
+        "url": "https://github.com/acme/ingest/blob/a1b2c3d4e5/src/batch.ts#L59-L61"
       },
       {
         "item": "text",
@@ -3056,6 +3146,16 @@
         "face": "mono",
         "size": 8.0,
         "colour": "#999078"
+      },
+      {
+        "item": "url",
+        "rect": {
+          "x": 60.0,
+          "y": 276.0,
+          "w": 100.0,
+          "h": 20.0
+        },
+        "url": "https://github.com/acme/ingest/blob/a1b2c3d4e5/src/store.ts#L2"
       },
       {
         "item": "text",
@@ -3527,6 +3627,16 @@
         "colour": "#999078"
       },
       {
+        "item": "url",
+        "rect": {
+          "x": 48.0,
+          "y": 800.0,
+          "w": 72.0,
+          "h": 24.0
+        },
+        "url": "https://trydeck.dev/?ref=export"
+      },
+      {
         "item": "text",
         "x": 211.915,
         "baseline": 814.8125,
@@ -3627,6 +3737,16 @@
         "face": "regular",
         "size": 7.5,
         "colour": "#999078"
+      },
+      {
+        "item": "url",
+        "rect": {
+          "x": 48.0,
+          "y": 800.0,
+          "w": 72.0,
+          "h": 24.0
+        },
+        "url": "https://trydeck.dev/?ref=export"
       },
       {
         "item": "text",
@@ -3931,6 +4051,16 @@
         "face": "mono",
         "size": 11.5,
         "colour": "#999078"
+      },
+      {
+        "item": "url",
+        "rect": {
+          "x": 16.0,
+          "y": 240.0,
+          "w": 159.8,
+          "h": 23.0
+        },
+        "url": "https://github.com/acme/ingest/blob/a1b2c3d4e5/src/batch.ts#L6-L13"
       },
       {
         "item": "text",
@@ -5200,6 +5330,16 @@
         "colour": "#999078"
       },
       {
+        "item": "url",
+        "rect": {
+          "x": 14.0,
+          "y": 764.0,
+          "w": 109.5,
+          "h": 30.0
+        },
+        "url": "https://trydeck.dev/?ref=export"
+      },
+      {
         "item": "text",
         "x": 137.5,
         "baseline": 782.78,
@@ -5671,6 +5811,16 @@
         "colour": "#999078"
       },
       {
+        "item": "url",
+        "rect": {
+          "x": 14.0,
+          "y": 764.0,
+          "w": 109.5,
+          "h": 30.0
+        },
+        "url": "https://trydeck.dev/?ref=export"
+      },
+      {
         "item": "text",
         "x": 137.5,
         "baseline": 782.78,
@@ -5834,6 +5984,16 @@
         "face": "mono",
         "size": 11.5,
         "colour": "#999078"
+      },
+      {
+        "item": "url",
+        "rect": {
+          "x": 16.0,
+          "y": 240.0,
+          "w": 208.1,
+          "h": 23.0
+        },
+        "url": "https://github.com/acme/ingest/blob/a1b2c3d4e5/src/batch.ts#L10"
       },
       {
         "item": "text",
@@ -6397,6 +6557,16 @@
         "colour": "#999078"
       },
       {
+        "item": "url",
+        "rect": {
+          "x": 14.0,
+          "y": 764.0,
+          "w": 109.5,
+          "h": 30.0
+        },
+        "url": "https://trydeck.dev/?ref=export"
+      },
+      {
         "item": "text",
         "x": 137.5,
         "baseline": 782.78,
@@ -6551,6 +6721,16 @@
         "face": "mono",
         "size": 11.5,
         "colour": "#999078"
+      },
+      {
+        "item": "url",
+        "rect": {
+          "x": 16.0,
+          "y": 240.0,
+          "w": 124.20001,
+          "h": 23.0
+        },
+        "url": "https://github.com/acme/ingest/blob/a1b2c3d4e5/src/batch.ts#L59-L61"
       },
       {
         "item": "text",
@@ -6846,6 +7026,16 @@
         "face": "mono",
         "size": 11.5,
         "colour": "#999078"
+      },
+      {
+        "item": "url",
+        "rect": {
+          "x": 425.0,
+          "y": 240.0,
+          "w": 139.09998,
+          "h": 23.0
+        },
+        "url": "https://github.com/acme/ingest/blob/a1b2c3d4e5/src/store.ts#L2"
       },
       {
         "item": "text",
@@ -7310,6 +7500,16 @@
         "colour": "#999078"
       },
       {
+        "item": "url",
+        "rect": {
+          "x": 14.0,
+          "y": 764.0,
+          "w": 109.5,
+          "h": 30.0
+        },
+        "url": "https://trydeck.dev/?ref=export"
+      },
+      {
         "item": "text",
         "x": 137.5,
         "baseline": 782.78,
@@ -7746,6 +7946,16 @@
         "colour": "#999078"
       },
       {
+        "item": "url",
+        "rect": {
+          "x": 14.0,
+          "y": 764.0,
+          "w": 109.5,
+          "h": 30.0
+        },
+        "url": "https://trydeck.dev/?ref=export"
+      },
+      {
         "item": "text",
         "x": 137.5,
         "baseline": 782.78,
@@ -8094,6 +8304,16 @@
         "face": "mono",
         "size": 10.5,
         "colour": "#999078"
+      },
+      {
+        "item": "url",
+        "rect": {
+          "x": 14.0,
+          "y": 764.0,
+          "w": 109.5,
+          "h": 30.0
+        },
+        "url": "https://trydeck.dev/?ref=export"
       },
       {
         "item": "text",

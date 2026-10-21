@@ -109,6 +109,7 @@ fn every_portrait_box_is_on_the_four_point_grid() {
                 | Item::Frame { rect, .. }
                 | Item::Svg { rect, .. }
                 | Item::Dots { rect, .. }
+                | Item::Url { rect, .. }
                 | Item::Link { rect, .. } => {
                     vec![rect.x, rect.y, rect.x + rect.w, rect.y + rect.h]
                 }
@@ -489,4 +490,35 @@ fn a_long_line_wraps_and_is_never_clipped() {
     assert_eq!(rows, 150, "{mono:?}");
     let marks = mono.iter().filter(|text| **text == "↪" || **text == ">");
     assert!(marks.count() >= 1);
+}
+
+/// The PDF's links are real annotations: deck's site and the code's lines
+/// as URIs, the contents and the hand-offs as jumps to a page.
+#[test]
+fn the_pdf_carries_its_links() {
+    for format in [Format::Portrait, Format::Landscape] {
+        let (pdf, _) = export_pdf(&Options::default(), format);
+        let text = String::from_utf8_lossy(&pdf);
+        assert!(text.contains("/Subtype/Link"));
+        assert!(text.contains(&format!("/URI({})", crate::export::links::DECK)));
+        assert!(
+            text.contains(
+                "/URI(https://github.com/acme/ingest/blob/a1b2c3d4e5/src/batch.ts#L6-L13)"
+            )
+        );
+    }
+    let pages = portrait();
+    // The cover's contents and every hand-off jump to the group's page.
+    let jumps = pages
+        .iter()
+        .flat_map(|page| &page.items)
+        .filter(|item| matches!(item, Item::Link { .. }))
+        .count();
+    assert!(jumps >= 3 + 2, "{jumps}");
+    let urls = pages
+        .iter()
+        .flat_map(|page| &page.items)
+        .filter(|item| matches!(item, Item::Url { url, .. } if url == crate::export::links::DECK))
+        .count();
+    assert_eq!(urls, pages.len());
 }

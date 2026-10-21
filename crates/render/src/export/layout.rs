@@ -184,6 +184,14 @@ pub enum Item {
         /// How far apart.
         pitch: f32,
     },
+    /// A part of the page that opens `url` when it is pressed: deck's
+    /// site, or a pane's lines on the repo's host.
+    Url {
+        /// What can be pressed.
+        rect: Rect,
+        /// Where it goes.
+        url: String,
+    },
     /// A part of the page that goes to another page when it is pressed.
     Link {
         /// What can be pressed.

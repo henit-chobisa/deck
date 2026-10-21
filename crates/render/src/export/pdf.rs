@@ -180,8 +180,20 @@ pub fn pdf(
             surface.push_transform(&Transform::from_scale(page.scale, page.scale));
             for item in &page.items {
                 draw(&mut surface, &faces, (page.width, page.height), item);
-                if let Item::Link { rect, page: to } = item {
-                    links.push((*rect, *to));
+                match item {
+                    Item::Link { rect, page: to } => links.push((
+                        *rect,
+                        krilla::annotation::Target::Destination(Destination::Xyz(
+                            XyzDestination::new(*to, Point::from_xy(0., 0.)),
+                        )),
+                    )),
+                    Item::Url { rect, url } => links.push((
+                        *rect,
+                        krilla::annotation::Target::Action(krilla::action::Action::Link(
+                            krilla::action::LinkAction::new(url.clone()),
+                        )),
+                    )),
+                    _ => {}
                 }
             }
             if writing.grid {
@@ -190,7 +202,7 @@ pub fn pdf(
             surface.pop();
             surface.finish();
         }
-        for (rect, to) in links {
+        for (rect, target) in links {
             let Some(at) = krilla::geom::Rect::from_xywh(
                 rect.x * page.scale,
                 rect.y * page.scale,
@@ -200,13 +212,7 @@ pub fn pdf(
                 continue;
             };
             sheet.add_annotation(krilla::annotation::Annotation::new_link(
-                krilla::annotation::LinkAnnotation::new(
-                    at,
-                    krilla::annotation::Target::Destination(Destination::Xyz(XyzDestination::new(
-                        to,
-                        Point::from_xy(0., 0.),
-                    ))),
-                ),
+                krilla::annotation::LinkAnnotation::new(at, target),
                 None,
             ));
         }
@@ -461,7 +467,7 @@ fn draw(surface: &mut Surface, faces: &Faces, size: (f32, f32), item: &Item) {
                 surface.draw_path(&path);
             }
         }
-        Item::Link { .. } => {}
+        Item::Link { .. } | Item::Url { .. } => {}
     }
 }
 

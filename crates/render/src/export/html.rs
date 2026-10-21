@@ -276,6 +276,8 @@ h2{{margin:0;font-size:{TITLE_SIZE}px;font-weight:600;color:var(--band-text);whi
 .ph{{flex:none;display:flex;gap:8px;align-items:baseline;padding:12px 16px 6px;font:400 11.5px var(--mono);color:var(--pane-muted);white-space:nowrap;overflow:hidden}}
 .ph b{{font-weight:400;color:var(--pane-accent)}}
 .ph .file{{overflow:hidden;text-overflow:ellipsis}}
+.ph a{{color:inherit;text-decoration:underline;text-decoration-color:var(--edge);text-underline-offset:3px}}
+.ph a:hover{{color:var(--pane-text)}}
 .note{{flex:none;padding:0 16px 6px;font-size:11px;color:var(--pane-muted)}}
 .rows{{flex:1;min-height:0;overflow:auto;padding:4px 0 10px;font:400 {MONO_SIZE}px/{row}px var(--mono);font-variant-ligatures:none}}
 .row{{display:grid;grid-template-columns:26px 12px 40px minmax(0,1fr);align-items:baseline;padding-right:16px;position:relative}}
@@ -309,7 +311,8 @@ iframe.page{{flex:1;min-height:0;width:100%;border:0;background:transparent}}
 .toc .said.on{{color:var(--band-accent)}}
 .strip{{grid-column:1/-1;display:flex;align-items:center;gap:{STRIP_GAP}px;padding:{STRIP_ROW}px {STRIP_SIDE}px;background:var(--band);border-top:1px solid var(--edge);font:400 {STRIP_SIZE}px var(--mono);color:var(--band-muted);white-space:nowrap;min-width:0}}
 .strip .fill{{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis}}
-.brand{{display:inline-flex;align-items:center;gap:6px}}
+.brand{{display:inline-flex;align-items:center;gap:6px;color:inherit}}
+.brand:hover{{color:var(--band-text)}}
 .brand i{{width:9px;height:9px;border-radius:2px;background:var(--band-accent)}}
 .go{{display:inline-flex;gap:4px}}
 .go a,.go span{{display:inline-grid;place-items:center;width:22px;height:18px;border:1px solid var(--edge);border-radius:4px;color:var(--band-text)}}
@@ -498,13 +501,23 @@ impl Writer<'_> {
         self.out.push_str("</div>\n");
     }
 
-    fn header(&mut self, name: Option<&str>, what: &str, note: Option<&str>) {
+    /// A pane's header: its name, what it shows, and its note. `url`, for
+    /// a code pane, takes the file and its range to those lines on the
+    /// repo's host.
+    fn header(&mut self, name: Option<&str>, what: &str, note: Option<&str>, url: Option<&str>) {
+        let what = match url {
+            Some(url) => format!(
+                "<a href=\"{}\" rel=\"noopener noreferrer\" target=\"_blank\">{}</a>",
+                esc(url),
+                esc(what)
+            ),
+            None => esc(what),
+        };
         let _ = write!(
             self.out,
-            "<div class=\"ph\">{}<span class=\"file\">{}</span></div>",
+            "<div class=\"ph\">{}<span class=\"file\">{what}</span></div>",
             name.map(|name| format!("<b>{}</b>", esc(name)))
                 .unwrap_or_default(),
-            esc(what)
         );
         if let Some(note) = note {
             let _ = write!(self.out, "<div class=\"note\">{}</div>", esc(note));
@@ -527,7 +540,13 @@ impl Writer<'_> {
             Some(Change::Made) => format!("{range} · changed"),
             None => range,
         };
-        self.header(code.name.as_deref(), &what, code.note.as_deref());
+        let url = super::links::source(self.document.repo.as_ref(), code);
+        self.header(
+            code.name.as_deref(),
+            &what,
+            code.note.as_deref(),
+            url.as_deref(),
+        );
         if code.missing {
             let _ = writeln!(
                 self.out,
@@ -702,6 +721,7 @@ impl Writer<'_> {
             picture.name.as_deref(),
             picture.note.as_deref().unwrap_or("diagram"),
             None,
+            None,
         );
         // Written by deck's own SVG writer, which escapes every word it
         // draws: markup to place, not text to escape again.
@@ -737,7 +757,7 @@ impl Writer<'_> {
             anchor(&page.id)
         );
         let label = page.note.as_deref().unwrap_or("page");
-        self.header(page.name.as_deref(), label, None);
+        self.header(page.name.as_deref(), label, None, None);
         let _ = writeln!(
             self.out,
             "<iframe class=\"page\" sandbox=\"\" referrerpolicy=\"no-referrer\" title=\"{}\" \
@@ -939,10 +959,12 @@ impl Writer<'_> {
         };
         let _ = write!(
             self.out,
-            "<footer class=\"strip\"><span class=\"brand\"><i></i>Powered by Deck</span>\
+            "<footer class=\"strip\"><a class=\"brand\" href=\"{deck}\" rel=\"noopener noreferrer\" \
+             target=\"_blank\"><i></i>Powered by Deck</a>\
              <span>{}</span><span class=\"fill\">{}</span>",
             esc(&place),
-            esc(&self.document.title)
+            esc(&self.document.title),
+            deck = super::links::DECK,
         );
         if let Some(repo) = repo(self.document) {
             let _ = write!(self.out, "<span>{}</span>", esc(&repo));

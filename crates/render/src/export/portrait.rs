@@ -126,6 +126,7 @@ fn down(item: &Item, dy: f32) -> Item {
         | Item::Frame { rect, .. }
         | Item::Svg { rect, .. }
         | Item::Dots { rect, .. }
+        | Item::Url { rect, .. }
         | Item::Link { rect, .. } => rect.y += dy,
         Item::Rule { y, .. } => *y += dy,
         Item::Text { baseline, .. } => *baseline += dy,
@@ -453,6 +454,18 @@ fn pane_head(document: &Document, pane: &Pane) -> Vec<Row> {
         size,
         inks.on_pane.muted,
     ));
+    // The file and its range go to those lines on the repo's host, at the
+    // packed commit, where there is an honest link to make.
+    if let Pane::Code(code) = pane
+        && let Some(url) = super::links::source(document.repo.as_ref(), code)
+    {
+        let shown = fit(&what, Face::Mono, size, RIGHT - PANE_X - at);
+        let w = up4(measure(&shown, Face::Mono, size)).min(RIGHT - PANE_X - x);
+        items.push(Item::Url {
+            rect: Rect::new(x, 0., up4(at - x + w).min(COLUMN - 2. * PANE_X), PANE_HEAD),
+            url,
+        });
+    }
     let mut rows = vec![Row::with(PANE_HEAD, items)];
     if let Some(note) = note {
         rows.push(Row::with(
@@ -1091,6 +1104,10 @@ fn foot(document: &Document, group: &Group, ix: usize, end: f32, first: &[usize]
                     inks.on_page.text,
                 ),
                 text_right(RIGHT, line, &page, Face::Mono, small, inks.on_page.muted),
+                Item::Link {
+                    rect: Rect::new(LEFT, 0., COLUMN, line),
+                    page: first[ix + 1],
+                },
             ],
         )]);
     }
@@ -1285,6 +1302,10 @@ fn footer(document: &Document, kind: Kind, page: usize, total: usize) -> Vec<Ite
             face: Face::Regular,
             size,
             colour: ink,
+        },
+        Item::Url {
+            rect: Rect::new(LEFT, top, up4(left_end - LEFT), FOOTER_HIGH),
+            url: super::links::DECK.to_string(),
         },
         Item::Text {
             x: mid_x,

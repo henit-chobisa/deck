@@ -314,6 +314,11 @@ pub struct Code {
     /// range names, was not frozen into it — so there is nothing to print.
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub missing: bool,
+    /// How the file stood against the deck's commit when it was frozen, if
+    /// it was: only a clean file's lines are at that commit, so only a
+    /// clean file can be linked to it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub state: Option<crate::bundle::snap::State>,
 }
 
 /// Which way a code pane's change runs.
@@ -906,11 +911,13 @@ fn code_of(
         change,
         lines: Vec::new(),
         missing: false,
+        state: None,
     };
     let Some(snapshot) = by_file.get(file.as_str()) else {
         code.missing = true;
         return code;
     };
+    code.state = Some(snapshot.file.state);
     let Some(span) = snapshot
         .file
         .kept

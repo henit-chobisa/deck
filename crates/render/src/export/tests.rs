@@ -288,6 +288,32 @@ fn nothing_is_asked_for_from_the_network() {
     let planted = "<img src=\"https://example.com/x.png\" srcset=\"//cdn.example.com/y.png 2x\">";
     assert!(html.contains(planted));
     let html = html.replace(planted, "");
+    // Links the reader can press are navigations, not loads: the policy
+    // does not stop them and nothing is fetched until somebody clicks. Each
+    // is an anchor opening a new tab, and they go only to deck's site and to
+    // the fixture's lines on GitHub; with them taken out, nothing else may
+    // name the network.
+    let mut html = html;
+    let anchor = " href=\"https://";
+    while let Some(at) = html.find(anchor) {
+        let tag_start = html[..at].rfind('<').expect("in a tag");
+        let tag_end = at + html[at..].find('>').expect("closed");
+        let tag = &html[tag_start..=tag_end];
+        assert!(tag.starts_with("<a "), "{tag}");
+        assert!(
+            tag.contains("rel=\"noopener") && tag.contains("target=\"_blank\""),
+            "{tag}"
+        );
+        let url_start = at + " href=\"".len();
+        let url_end = url_start + html[url_start..].find('"').expect("quoted");
+        let url = &html[url_start..url_end];
+        assert!(
+            url == crate::export::links::DECK
+                || url.starts_with("https://github.com/acme/ingest/blob/a1b2c3d4e5/src/"),
+            "{url}"
+        );
+        html.replace_range(at..url_end + 1, "");
+    }
     let svg = "xmlns=\"http://www.w3.org/2000/svg\"";
     let lower = html.to_ascii_lowercase();
     for scheme in ["http:", "https:"] {
@@ -317,6 +343,23 @@ fn nothing_is_asked_for_from_the_network() {
             .count();
         assert_eq!(found, 0, "{asked}");
     }
+}
+
+/// "Powered by Deck" goes to deck's site, and a clean file's header to its
+/// lines at the packed commit; a file the deck does not hold goes nowhere.
+#[test]
+fn the_brand_and_the_code_are_links() {
+    let html = export(&Options::default());
+    let brand = format!("<a class=\"brand\" href=\"{}\"", crate::export::links::DECK);
+    assert_eq!(
+        html.matches(&brand).count(),
+        html.matches("<footer").count()
+    );
+    assert!(
+        html.contains(
+            "href=\"https://github.com/acme/ingest/blob/a1b2c3d4e5/src/batch.ts#L6-L13\""
+        )
+    );
 }
 
 #[test]

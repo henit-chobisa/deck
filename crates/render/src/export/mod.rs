@@ -16,6 +16,7 @@ mod face;
 mod html;
 mod landscape;
 mod layout;
+pub mod links;
 mod pdf;
 mod portrait;
 
