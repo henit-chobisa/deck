@@ -32,11 +32,15 @@ enum What {
     /// they are ready to give a review, which is not the same moment as the
     /// agent being ready to ask for one.
     Open {
-        /// The `.deck` directories to show.
+        /// The `.deck` directories to show, or `.deck` files somebody sent.
         ///
         /// More than one is a queue: the bar says how many are waiting and the
         /// reader walks them. Five worktrees finishing at once is the case this
         /// is for.
+        ///
+        /// A file is opened into `~/.deck/opened/`, read-only, and shows the
+        /// code it carries. Its review is written beside it, as
+        /// `<name>.review`.
         #[arg(required = true)]
         deck: Vec<PathBuf>,
         /// Hand the window to a process of its own and return straight away.
@@ -610,6 +614,36 @@ fn prose(text: &str) -> Result<String, std::convert::Infallible> {
     Ok(deck_cli::real_breaks(text))
 }
 
+/// `deck open`'s paths, with every `.deck` file opened into the cache and
+/// replaced by the deck folder there. A directory is left as it is.
+///
+/// Opening is idempotent, so the process that is handed the window, which is
+/// given the same arguments, finds what this one wrote and uses it.
+///
+/// Each comes back with the [`deck_cli::opened::Origin`] it was opened with —
+/// which file, and where its review goes — and `None` for a folder. Two
+/// copies of the same bytes share one deck folder, so the folder alone
+/// cannot say which of them this is; everything after this is handed the
+/// origin instead.
+type Unpacked = (Vec<PathBuf>, Vec<Option<deck_cli::opened::Origin>>);
+fn unpacked(paths: Vec<PathBuf>) -> anyhow::Result<Unpacked> {
+    let mut decks = Vec::with_capacity(paths.len());
+    let mut origins = Vec::with_capacity(paths.len());
+    for path in paths {
+        if !path.is_file() {
+            decks.push(path);
+            origins.push(None);
+            continue;
+        }
+        let cache = deck_cli::opened::cache()
+            .ok_or_else(|| anyhow::anyhow!("there is no home directory to open it into"))?;
+        let opened = deck_cli::opened::open(&path, &cache)?;
+        decks.push(opened.deck);
+        origins.push(Some(opened.origin));
+    }
+    Ok((decks, origins))
+}
+
 /// Where decks go when nobody says otherwise.
 fn decks() -> PathBuf {
     deck_core::home::deck().unwrap_or_default().join("decks")
@@ -629,6 +663,17 @@ impl Cli {
                 mode,
                 theme,
             } => {
+                // A file is a packed deck, and the window reads folders: it is
+                // opened into the cache, checked, and the folder there is what
+                // is shown from here on. Before anything else, so every path
+                // below — the listener as much as the window — has the folder.
+                let (deck, origins) = match unpacked(deck) {
+                    Ok(opened) => opened,
+                    Err(err) => {
+                        eprintln!("deck: {err:#}");
+                        return Err(ExitCode::FAILURE);
+                    }
+                };
                 // The file, then the flag over it. A flag is somebody trying
                 // something on; the file is what they decided.
                 let config = match crate::config::read() {
@@ -686,7 +731,8 @@ impl Cli {
                     for path in &deck {
                         deck_cli::reopened(path);
                     }
-                    return Err(wait(&deck[0], 0));
+                    let review = origins[0].as_ref().map(|origin| origin.review.as_path());
+                    return Err(wait(&deck[0], review, 0));
                 }
 
                 // The reading itself waits for a window. An editor with no
@@ -695,6 +741,7 @@ impl Cli {
                 // can say, and only once it is up.
                 Ok(Some(Opening {
                     deck,
+                    origins,
                     // Whoever reaches here is the window, and the window never
                     // reports: the process that spawned it is listening, and
                     // this one's output goes nowhere.
@@ -938,7 +985,7 @@ impl Cli {
                 after,
                 timeout,
             } => Err(next(&deck, status, after.as_deref(), timeout)),
-            What::Wait { deck, timeout } => Err(wait(&deck, timeout)),
+            What::Wait { deck, timeout } => Err(wait(&deck, None, timeout)),
         }
     }
 }
@@ -1127,6 +1174,8 @@ fn machine_dark() -> bool {
 pub struct Opening {
     /// The directories to show, in the order they were named.
     pub deck: Vec<PathBuf>,
+    /// For each, the `.deck` file it was opened from, when it was.
+    pub origins: Vec<Option<deck_cli::opened::Origin>>,
     /// Whether to hold the process and print the review once the window has
     /// gone. True unless `--detach` was asked for.
     pub wait: bool,
@@ -1834,7 +1883,7 @@ fn next(deck: &std::path::Path, status: bool, after: Option<&str>, timeout: u64)
 }
 
 /// Wait for a review to land beside the deck, and print it.
-fn wait(deck: &std::path::Path, timeout: u64) -> ExitCode {
+fn wait(deck: &std::path::Path, review: Option<&std::path::Path>, timeout: u64) -> ExitCode {
     // This also carries interruptions now. Four hundred milliseconds was
     // harmless for a final review, but added a visible pause to every reply.
     const EVERY: std::time::Duration = std::time::Duration::from_millis(80);
@@ -1871,7 +1920,10 @@ fn wait(deck: &std::path::Path, timeout: u64) -> ExitCode {
     loop {
         // Submit wins over queued nudges: the final review already contains
         // them, and asking for another answer after submit is a dead end.
-        match deck_cli::review(deck) {
+        // A deck opened from a file has its review wherever its origin
+        // says, which the folder alone cannot tell.
+        let found = review.map_or_else(|| deck_cli::review(deck), deck_cli::review_at);
+        match found {
             Ok(Some(review)) => {
                 match serde_json::to_string_pretty(&review) {
                     Ok(json) => println!("{json}"),

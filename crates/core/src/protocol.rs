@@ -394,6 +394,16 @@ pub struct Review {
     /// transcript says what they were looking at when they thought it.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub transcript: Vec<Moment>,
+    /// The sha256 of the `.deck` file this answers, when it answers one.
+    ///
+    /// A deck's id says which deck, not which copy of it: an author who packs
+    /// again after a fix sends a file with the same id and different code,
+    /// and a review of the first would be read back into the second as if
+    /// its comments were about lines they never saw. Absent for a deck an
+    /// agent opened from its folder, and from any review written before it
+    /// was — which a reader then treats as answering no file in particular.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub deck_sha256: Option<String>,
 }
 
 /// One thing that happened while a deck was being walked.
@@ -885,6 +895,7 @@ mod tests {
                 quote: "if (--pending === 0) finish()".into(),
                 text: "why does this assume sorted input?".into(),
             }],
+            deck_sha256: None,
         };
 
         let json = serde_json::to_string(&review).unwrap();
@@ -919,6 +930,7 @@ mod tests {
                 quote: String::new(),
                 text: "this whole approach is wrong".into(),
             }],
+            deck_sha256: None,
         };
 
         let json = serde_json::to_string(&review).unwrap();

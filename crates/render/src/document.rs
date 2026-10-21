@@ -91,6 +91,7 @@ mod tests {
                 commit: None,
                 state: snap::State::Untracked,
                 kept,
+                lines: None,
             }],
         };
         let group = r#"{"id":"g1","say":"The total is wrong.[point 3]","refs":[

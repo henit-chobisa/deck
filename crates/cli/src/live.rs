@@ -426,7 +426,9 @@ pub struct Owner {
     requests: PathBuf,
     processing: PathBuf,
     replies: PathBuf,
-    _lock: File,
+    /// The advisory lock, unlocked by hand when the owner goes: see its
+    /// `Drop`.
+    lock: File,
     seen: std::sync::Mutex<HashSet<String>>,
     /// How many events this generation has published.
     published: std::sync::atomic::AtomicU64,
@@ -495,7 +497,7 @@ impl Owner {
             requests,
             processing,
             replies,
-            _lock: lock,
+            lock,
             seen: std::sync::Mutex::new(HashSet::new()),
         })
     }
@@ -635,6 +637,19 @@ impl Drop for Owner {
         {
             let _ = std::fs::remove_file(owner_file);
         }
+        // Last, once this owner's file is dealt with: unlocked any earlier,
+        // a new owner could claim the deck and write its own file in the gap,
+        // and that file would be the one taken away.
+        //
+        // Unlocked by hand, not left to the file closing. The lock belongs to
+        // the open file, not to this descriptor, and a child process this one
+        // is starting at the moment holds a copy of every descriptor until it
+        // has finished exec'ing — close-on-exec closes them only then, and on
+        // macOS that is after the new program is loaded. Closing ours left the
+        // lock held by that copy for as long as the load took, so a deck put
+        // away and opened again straight after was told it already had an
+        // owner. Unlocking releases it for every copy at once.
+        let _ = fs2::FileExt::unlock(&self.lock);
     }
 }
 

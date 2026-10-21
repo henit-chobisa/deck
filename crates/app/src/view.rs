@@ -19,7 +19,7 @@ use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 
 use crate::chart::Chart;
-use crate::load::{Deck, read_source};
+use crate::load::{Deck, Source};
 use crate::palette::{current, paint};
 use crate::pane::{Away, Mark, Pane};
 use crate::sheet::{Sheet, Slot};
@@ -471,7 +471,7 @@ pub struct Session {
     /// two groups back and no longer built, and it is still a remark about the
     /// text the reader was looking at. Taken once and never replaced: the whole
     /// point is that it does not follow the file.
-    snapshots: std::collections::HashMap<std::path::PathBuf, std::sync::Arc<str>>,
+    snapshots: std::collections::HashMap<std::path::PathBuf, Source>,
     remarks: Vec<Remark>,
     conversation: crate::conversation::Conversation,
     reading: Vec<ReadingPlace>,
@@ -553,7 +553,7 @@ pub struct DeckView {
     /// The session owner whose status follows this view through hide/reopen.
     live: crate::live::Handle,
     /// See [`Session::snapshots`].
-    snapshots: std::collections::HashMap<std::path::PathBuf, std::sync::Arc<str>>,
+    snapshots: std::collections::HashMap<std::path::PathBuf, Source>,
     palette: Palette,
     grid: GridSpec,
     /// Panes for the group being read. Rebuilt when the group changes, which is
@@ -919,6 +919,14 @@ pub struct DeckView {
     /// whether this is a drag is read from the move event itself, which cannot
     /// be stale.
     hovered: Option<(usize, usize)>,
+    /// Where the review of a deck from a `.deck` file was last saved, once
+    /// it has been.
+    ///
+    /// Such a deck has nobody waiting on it — it was sent, not opened by an
+    /// agent — so submitting leaves the window where it is and says where
+    /// the review went, rather than closing on the reader and leaving them
+    /// to wonder.
+    saved: Option<std::path::PathBuf>,
 }
 
 /// How fast a flow travels.
@@ -1025,6 +1033,45 @@ impl DeckView {
                 for remark in &mut remarks {
                     remark.moment = None;
                 }
+            }
+        }
+
+        // A deck from a file that was reviewed before comes back with that
+        // review in it, the way a draft does: the reader picks up where they
+        // stopped, and submitting again replaces it. Only a review of this
+        // very file — this deck, these bytes. Opening put any other review
+        // somewhere this one will not touch.
+        let previous = deck.packed.as_ref().and_then(|packed| {
+            deck_cli::review_at(&packed.origin.review)
+                .ok()
+                .flatten()
+                .filter(|review| {
+                    deck_cli::opened::is_ours(review, &deck.header.id, &packed.origin.sha256)
+                })
+                .map(|review| (packed.origin.review.clone(), review))
+        });
+        let saved = previous.as_ref().map(|(path, _)| path.clone());
+        if remarks.is_empty()
+            && let Some((_, review)) = previous
+        {
+            remarks = review
+                .comments
+                .into_iter()
+                .map(|comment| Remark {
+                    group: comment.group.into(),
+                    ref_id: comment.ref_id.map(SharedString::from),
+                    file: comment.file,
+                    range: comment.range,
+                    said: None,
+                    moment: None,
+                    quote: comment.quote,
+                    text: comment.text,
+                    when: comment.when,
+                    kind: comment.kind,
+                })
+                .collect();
+            if conversation.transcript.is_empty() {
+                conversation.transcript = review.transcript;
             }
         }
 
@@ -1140,6 +1187,7 @@ impl DeckView {
             tipping: Task::ready(()),
             review_scroll: ScrollHandle::new(),
             review_settle: false,
+            saved,
         };
         if let Some((about, state, when)) = draft {
             view.live.pause(PauseReason::Composer);
@@ -1752,11 +1800,16 @@ impl DeckView {
             }
         };
 
-        let snapshot = self.snapshots.get(&code.file).cloned().or_else(|| {
-            std::fs::read_to_string(&wanted)
-                .ok()
-                .map(std::sync::Arc::<str>::from)
-        });
+        let snapshot = self
+            .snapshots
+            .get(&code.file)
+            .and_then(Source::whole)
+            .map(std::sync::Arc::<str>::from)
+            .or_else(|| {
+                std::fs::read_to_string(&wanted)
+                    .ok()
+                    .map(std::sync::Arc::<str>::from)
+            });
         let Some(snapshot) = snapshot else {
             return Err(crate::live::ShowAnswer::refused(
                 deck_cli::live::ResponseStatus::NotFound,
@@ -2058,13 +2111,12 @@ impl DeckView {
             fold_group,
             fold,
         } = brought;
-        let base = self.deck.base();
         let source = self
             .snapshots
             .entry(file.clone())
-            .or_insert_with(|| std::sync::Arc::from(read_source(&base, &file)))
+            .or_insert_with(|| self.deck.read_source(&file))
             .clone();
-        if source.is_empty() {
+        if source.whole().is_none_or(str::is_empty) {
             return crate::live::ShowAnswer::refused(
                 deck_cli::live::ResponseStatus::NotFound,
                 "there is nothing at that path to bring in",
@@ -2513,7 +2565,6 @@ impl DeckView {
     /// replacement put in — the same path an authored `--after` takes, so a
     /// proposal made in an answer reads exactly like one written into a group.
     fn propose(&mut self, pane_ix: usize, range: LineRange, after: Option<String>, cx: &mut App) {
-        let base = self.deck.base();
         let after_is_new = after.is_some();
         let Some(Ref::Code(code)) = self
             .deck
@@ -2531,7 +2582,7 @@ impl DeckView {
         let source = self
             .snapshots
             .entry(spec.file.clone())
-            .or_insert_with(|| std::sync::Arc::from(read_source(&base, &spec.file)))
+            .or_insert_with(|| self.deck.read_source(&spec.file))
             .clone();
         // Values written onto this pane — the evidence for the bug — have to
         // survive the fix arriving beside them, and so does which of them the
@@ -5091,8 +5142,29 @@ impl DeckView {
             .filter_map(|(ix, remark)| Some((ix, remark.file.as_deref()?, remark.range?)))
             .collect();
 
-        let base = self.deck.base();
-        follow(&pins, &self.snapshots, |file| read_source(&base, file))
+        // A deck from a `.deck` file is not followed. Its remarks are about
+        // the lines the reader was shown — the deck's copy, or their own
+        // checkout once they asked for it — and the author has the commit to
+        // read either against. Following from one to the other would move a
+        // remark written on the checkout as if it had been written on the
+        // copy.
+        if self.deck.packed.is_some() {
+            return std::collections::HashMap::new();
+        }
+        let shown: std::collections::HashMap<std::path::PathBuf, std::sync::Arc<str>> = self
+            .snapshots
+            .iter()
+            .filter_map(|(file, source)| {
+                Some((file.clone(), std::sync::Arc::from(source.whole()?)))
+            })
+            .collect();
+        follow(&pins, &shown, |file| {
+            self.deck
+                .read_source(file)
+                .whole()
+                .unwrap_or_default()
+                .to_string()
+        })
     }
 
     /// Take everything worth keeping, so the window can be put away.
@@ -5263,7 +5335,10 @@ impl DeckView {
         // and the deck should not be left claiming both. Not in `on_hide`
         // either — hiding is coming back later, and the waiter should still be
         // there when they do.
-        if !answered && let Err(err) = deck_cli::shut(&self.deck.root) {
+        if !answered
+            && self.saved.is_none()
+            && let Err(err) = deck_cli::shut(&self.deck.root)
+        {
             eprintln!("deck: could not say the deck was closed: {err}");
         }
 
@@ -5306,16 +5381,29 @@ impl DeckView {
             v: deck_core::VERSION,
             // A failed write must leave the conversation intact for retry.
             transcript: self.conversation.transcript.clone(),
+            // Which file this answers, so opening it again knows the review
+            // is its own and not an earlier copy's.
+            deck_sha256: self
+                .deck
+                .packed
+                .as_ref()
+                .map(|packed| packed.origin.sha256.clone()),
             deck: self.deck.header.id.clone(),
             comments,
         };
 
-        let path = self
-            .deck
-            .root
-            .parent()
-            .unwrap_or(&self.deck.root)
-            .join(format!("{}.review", self.deck.header.id));
+        // A deck from a file has its review beside the file, or wherever
+        // opening it found room for one.
+        let path = self.deck.packed.as_ref().map_or_else(
+            || {
+                self.deck
+                    .root
+                    .parent()
+                    .unwrap_or(&self.deck.root)
+                    .join(format!("{}.review", self.deck.header.id))
+            },
+            |packed| packed.origin.review.clone(),
+        );
         let tmp = path.with_extension("review.tmp");
 
         let wrote = serde_json::to_string(&review)
@@ -5334,10 +5422,61 @@ impl DeckView {
                 // The walk is over: whatever the agent was away answering,
                 // the review is what it gets now.
                 deck_cli::stopped_answering(&self.deck.root);
+                // Nobody is waiting on a deck that was sent as a file, so
+                // the window stays, and says where the review went.
+                if self.deck.packed.is_some() {
+                    self.saved = Some(path);
+                    cx.notify();
+                    return;
+                }
                 self.stand_down(true, window, cx);
             }
             Err(err) => eprintln!("deck: could not write {}: {err}", path.display()),
         }
+    }
+
+    /// What a pane's header says about where its code stands, for a deck
+    /// from a `.deck` file opened inside the repo it came from.
+    ///
+    /// Nothing at the same commit when the file is the deck's copy too: a
+    /// note saying so is a note about nothing. At the same commit with a file
+    /// that is not — see [`crate::load::Packed::differs`] — it says so. Nothing
+    /// outside the repo either, where there is no other copy to offer.
+    fn aside(&self, file: &std::path::Path) -> Option<crate::pane::Aside> {
+        use deck_cli::opened::{Match, short};
+        let packed = self.deck.packed.as_ref()?;
+        match &packed.repo {
+            Match::Moved { head, .. } | Match::Same { commit: head, .. } if packed.live => {
+                Some(crate::pane::Aside::Live {
+                    head: short(head).to_string().into(),
+                })
+            }
+            Match::Moved { packed, .. } => Some(crate::pane::Aside::Moved {
+                since: short(packed).to_string().into(),
+            }),
+            Match::Same { .. } if packed.differs(file) => Some(crate::pane::Aside::Differs),
+            _ => None,
+        }
+    }
+
+    /// Switch a deck from a `.deck` file between its own copy of the code
+    /// and the reader's checkout, and back.
+    ///
+    /// The whole deck at once, not a pane: a reader comparing claims against
+    /// the code wants every pane on the same side, and a deck half on each
+    /// would have panes quietly disagreeing about which file they show.
+    pub fn toggle_live(&mut self, cx: &mut Context<Self>) {
+        let Some(packed) = self.deck.packed.as_mut() else {
+            return;
+        };
+        if packed.checkout().is_none() {
+            return;
+        }
+        packed.live = !packed.live;
+        // Read again from the other side.
+        self.snapshots.clear();
+        self.build_panes(cx);
+        cx.notify();
     }
 
     /// Rebuild the panes for the current group.
@@ -5382,7 +5521,6 @@ impl DeckView {
         self.name_hovered = None;
         self.name_pinned = None;
 
-        let base = self.deck.base();
         let Some(group) = self.deck.groups().get(self.group_ix) else {
             self.panes = Vec::new();
             return;
@@ -5399,14 +5537,59 @@ impl DeckView {
                     let source = self
                         .snapshots
                         .entry(code.file.clone())
-                        .or_insert_with(|| std::sync::Arc::from(read_source(&base, &code.file)))
+                        .or_insert_with(|| self.deck.read_source(&code.file))
                         .clone();
-                    Sheet::Code(Box::new(Pane::new(code, &source, cx)))
+                    // The reader's checkout, for a deck from a file: the range
+                    // the author lit is followed from the deck's copy to
+                    // wherever those lines are now, the way a remark is
+                    // followed on its way back. Lines that cannot be followed
+                    // are not lit at their old numbers on code that has moved:
+                    // the pane keeps the deck's copy, and says so.
+                    let frozen = self
+                        .deck
+                        .packed
+                        .as_ref()
+                        .filter(|packed| packed.live)
+                        .and_then(|packed| packed.frozen(&code.file))
+                        .cloned();
+                    let (spec, source, lost) = match (frozen, source.whole()) {
+                        (Some(snapshot), Some(current)) => {
+                            match crate::load::followed(&snapshot, current, code.range) {
+                                Some(range) => (
+                                    deck_core::protocol::RefSpec {
+                                        range,
+                                        ..code.clone()
+                                    },
+                                    source,
+                                    false,
+                                ),
+                                None => (code.clone(), Source::Snapshot(snapshot), true),
+                            }
+                        }
+                        _ => (code.clone(), source, false),
+                    };
+                    let mut pane = Pane::new(&spec, &source, cx);
+                    pane.aside = lost.then_some(crate::pane::Aside::Lost);
+                    Sheet::Code(Box::new(pane))
                 }
                 Ref::Diagram(drawn) => Sheet::Drawn(Chart::new(drawn)),
                 Ref::Page(page) => Sheet::Page(crate::page::Paper::new(page)),
             })
             .collect();
+        // Every other pane's note, now the panes are built and the deck can
+        // be asked about each file.
+        let asides: Vec<Option<crate::pane::Aside>> = self
+            .panes
+            .iter()
+            .map(|pane| pane.code().and_then(|code| self.aside(&code.file)))
+            .collect();
+        for (pane, aside) in self.panes.iter_mut().zip(asides) {
+            if let Sheet::Code(code) = pane
+                && code.aside.is_none()
+            {
+                code.aside = aside;
+            }
+        }
         // A pane the prose points into keeps its values away until a sentence
         // reaches them; one it never points into shows them from the start.
         // Reached is decided the way the narration will decide it: a point
@@ -5996,8 +6179,101 @@ impl DeckView {
                             .when(below > 0, |this| {
                                 this.child(more("review-down", format!("↓ {below} more"), true))
                             }),
-                    ),
+                    )
+                    .children(self.render_destination(cx)),
             )
+    }
+
+    /// Where the review of a deck from a `.deck` file goes, in one muted line
+    /// at the foot of the review column: `Saves to 2026-10-20-batch.review`,
+    /// and once it has, `Saved to … · Reveal`.
+    ///
+    /// Only the name when it is beside the file, because that is where the
+    /// reader will look. The whole path when it is not — the folder could not
+    /// be written and it went to deck's own cache — because a name alone
+    /// would send them looking beside the file for something that is not
+    /// there.
+    fn render_destination(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
+        let packed = self.deck.packed.as_ref()?;
+        let palette = &self.palette;
+        let review = &packed.origin.review;
+        let beside = review.parent() == packed.origin.file.parent();
+        let named = if beside {
+            review
+                .file_name()
+                .map_or_else(String::new, |name| name.to_string_lossy().into_owned())
+        } else {
+            review.display().to_string()
+        };
+        let saved = self.saved.clone();
+        // A review of another copy was already where this one would go, and
+        // is left alone: said, so the reader is not surprised by two files.
+        let kept = packed
+            .origin
+            .beside
+            .as_ref()
+            .and_then(|beside| beside.file_name())
+            .map(|name| name.to_string_lossy().into_owned());
+        Some(
+            div()
+                .v_flex()
+                .flex_none()
+                .child(self.render_saves(named, saved, cx))
+                .children(kept.map(|kept| {
+                    div()
+                        .text_size(px(10.5))
+                        .line_height(px(15.))
+                        .text_color(paint(palette.muted))
+                        .child(format!("{kept} is another copy's review, left as it was"))
+                }))
+                .into_any_element(),
+        )
+    }
+
+    /// `Saves to <name>`, or `Saved to <name> · Reveal`.
+    fn render_saves(
+        &self,
+        named: String,
+        saved: Option<std::path::PathBuf>,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        let palette = &self.palette;
+        div()
+            .h_flex()
+            .flex_wrap()
+            .flex_none()
+            .gap(px(4.))
+            .pt(px(6.))
+            .text_size(px(10.5))
+            .line_height(px(15.))
+            .text_color(paint(palette.muted))
+            .child(if saved.is_some() {
+                "Saved to"
+            } else {
+                "Saves to"
+            })
+            .child(
+                div()
+                    .min_w_0()
+                    .font_family(cx.theme().mono_font_family.clone())
+                    .text_color(paint(palette.fg.mix(palette.band, 0.15)))
+                    .child(named),
+            )
+            .children(saved.map(|path| {
+                let mut line = paint(palette.accent);
+                line.a = 0.4;
+                div().h_flex().gap(px(4.)).child("·").child(
+                    div()
+                        .id("reveal-review")
+                        .cursor_pointer()
+                        .text_color(paint(palette.accent))
+                        .border_b_1()
+                        .border_color(line)
+                        .on_click(move |_, _window, cx| cx.reveal_path(&path))
+                        .child("Reveal"),
+                )
+            }))
+            .into_any_element()
     }
 
     /// Move the seam between the narration and the code.
@@ -6849,7 +7125,18 @@ impl DeckView {
                     // Said quietly, and only once it is true for four beats
                     // running. Muted rather than accent: this is a fact about
                     // the room, not a thing asking to be pressed.
-                    .when(unheard, |this| {
+                    // A deck from a file names the file where a deck an agent
+                    // opened would say whether anybody is listening: nobody
+                    // is, by design, and what the reader needs to know is
+                    // which document this is.
+                    .when_some(self.deck.packed.as_ref(), |this, packed| {
+                        this.child(
+                            div()
+                                .text_color(paint(self.palette.fg.mix(self.palette.band, 0.15)))
+                                .child(format!("from {}", packed.name())),
+                        )
+                    })
+                    .when(unheard && self.deck.packed.is_none(), |this| {
                         this.child(
                             div()
                                 .h_flex()

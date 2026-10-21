@@ -220,6 +220,20 @@ pub struct Unpacked {
     pub ignored: Vec<String>,
 }
 
+/// How many lines a file had, as a snapshot records it: `None` past
+/// [`snap::MOST_LINES`], where a reader would refuse the number, so a very
+/// long file whose kept spans are near its top still packs.
+fn length(count: usize) -> Option<u32> {
+    u32::try_from(count)
+        .ok()
+        .filter(|count| *count <= snap::MOST_LINES)
+}
+
+/// Whether spans `kept` reach past the furthest line a reader lays out.
+fn beyond(kept: &[LineRange]) -> bool {
+    kept.last().is_some_and(|span| span.last > snap::MOST_LINES)
+}
+
 /// Gather what `deck` would pack, without writing anything.
 ///
 /// `deck` is a deck folder, or a folder `deck unpack` made — told apart by the
@@ -329,6 +343,19 @@ pub fn gather(deck: &Path, options: &Options) -> anyhow::Result<Packing> {
         } else {
             snap::keep(&source, &pointed.ranges, options.context)
         };
+        // Past the furthest line any reader will lay out, the file is left
+        // out like one that cannot be read — said, and refused unless the
+        // author lets it through — rather than refusing the whole pack.
+        if beyond(&kept) {
+            missing.push((
+                pointed.abs.clone(),
+                format!(
+                    "it is past line {}, further than a deck carries",
+                    snap::MOST_LINES
+                ),
+            ));
+            continue;
+        }
         let entry = format!("snap/{}.txt", snapped.len() + 1);
         let state = git
             .as_ref()
@@ -341,6 +368,7 @@ pub fn gather(deck: &Path, options: &Options) -> anyhow::Result<Packing> {
             commit: commit.clone(),
             state,
             kept,
+            lines: length(source.split_terminator('\n').count()),
         });
     }
     if !snapped.is_empty() {
@@ -1226,7 +1254,7 @@ fn lexical(path: &Path) -> PathBuf {
 }
 
 /// A path as text, without the `\\?\` Windows puts on a resolved one.
-fn shown(path: &Path) -> String {
+pub(crate) fn shown(path: &Path) -> String {
     let text = path.to_string_lossy();
     text.strip_prefix(r"\\?\").unwrap_or(&text).to_string()
 }
