@@ -46,6 +46,7 @@ libc = "0.2"
 # exactly what a dimmer must not be — see `shade`. All three crates are already
 # in the tree underneath gpui, so this costs a line rather than a build.
 [target.'cfg(target_os = "macos")'.dependencies]
+block2 = "0.6"
 objc2 = "0.6"
 objc2-app-kit = "0.3"
 objc2-foundation = "0.3"

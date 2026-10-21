@@ -212,6 +212,59 @@ pub fn step_back() {
     before.activateWithOptions(NSApplicationActivationOptions::empty());
 }
 
+/// Ask where to save a file, with the system's save panel on `window`
+/// itself: `name` offered, opening in `directory`. The answer arrives on the
+/// receiver — the path chosen, or `None` for Cancel.
+///
+/// Not gpui's `prompt_for_new_path`. That opens a free-standing panel at the
+/// ordinary window level, and the deck's window floats above that level — so
+/// the panel opened behind the deck, out of sight, and Export sat on
+/// "Choosing where…" with nothing anywhere to answer. A panel run as a sheet
+/// belongs to the window it hangs from: it comes down from the deck's own
+/// title edge, at the deck's own level, and holds the keyboard while it is
+/// there. Deck is brought forward first, so the sheet is in front of
+/// whatever the reader was in.
+///
+/// `None` when there is no native window to hang it from, for the caller to
+/// ask some other way.
+pub fn save_panel(
+    window: &Window,
+    directory: &std::path::Path,
+    name: &str,
+) -> Option<futures::channel::oneshot::Receiver<Option<std::path::PathBuf>>> {
+    use objc2_app_kit::{NSModalResponse, NSModalResponseOK, NSSavePanel};
+    use objc2_foundation::{NSString, NSURL};
+
+    let main = objc2::MainThreadMarker::new()?;
+    let parent = ns_window(window)?;
+    let panel = NSSavePanel::savePanel(main);
+    let folder = NSString::from_str(&directory.to_string_lossy());
+    panel.setDirectoryURL(Some(&NSURL::fileURLWithPath_isDirectory(&folder, true)));
+    panel.setNameFieldStringValue(&NSString::from_str(name));
+    panel.setCanCreateDirectories(true);
+
+    let (answer, answered) = futures::channel::oneshot::channel();
+    // Taken once: the handler is called once, and holding the sender in a
+    // cell lets a closure AppKit may call by shared reference send it.
+    let answer = std::cell::Cell::new(Some(answer));
+    let asked = panel.clone();
+    let handler = block2::RcBlock::new(move |response: NSModalResponse| {
+        let path = (response == NSModalResponseOK)
+            .then(|| asked.URL())
+            .flatten()
+            .and_then(|url| url.path())
+            .map(|path| std::path::PathBuf::from(path.to_string()));
+        if let Some(answer) = answer.take() {
+            let _ = answer.send(path);
+        }
+    });
+    NSRunningApplication::currentApplication()
+        .activateWithOptions(NSApplicationActivationOptions::empty());
+    parent.makeKeyAndOrderFront(None);
+    panel.beginSheetModalForWindow_completionHandler(&parent, &handler);
+    Some(answered)
+}
+
 /// Whether `class` is `ancestor` or was made from it.
 fn descends(class: &AnyClass, ancestor: &AnyClass) -> bool {
     let mut at = Some(class);

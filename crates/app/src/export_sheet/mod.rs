@@ -58,6 +58,35 @@ pub fn bindings() -> Vec<KeyBinding> {
     ]
 }
 
+/// Ask where to save `name`, opening in `start`: the path chosen, `None` for
+/// Cancel, or why no dialog could be shown.
+///
+/// On a Mac the save panel hangs from the deck's own window as a sheet
+/// ([`crate::mac::save_panel`]): the deck floats above ordinary windows,
+/// and the free-standing panel gpui opens came up behind it, where nobody
+/// could see it. Elsewhere it is gpui's `prompt_for_new_path`, whose dialog
+/// on Windows is owned by the deck's window and so stands above it.
+fn ask_where(
+    start: &std::path::Path,
+    name: &str,
+    window: &mut Window,
+    cx: &mut App,
+) -> futures::future::LocalBoxFuture<'static, Result<Option<PathBuf>, String>> {
+    #[cfg(target_os = "macos")]
+    if let Some(answer) = crate::mac::save_panel(window, start, name) {
+        return Box::pin(async move { Ok(answer.await.unwrap_or(None)) });
+    }
+    let _ = window;
+    let answer = cx.prompt_for_new_path(start, Some(name));
+    Box::pin(async move {
+        match answer.await {
+            Ok(Ok(path)) => Ok(path),
+            Ok(Err(err)) => Err(format!("the save dialog would not open: {err}")),
+            Err(_) => Ok(None),
+        }
+    })
+}
+
 /// What the theme the window is painted in is called, said once at start.
 static THEME_NAME: std::sync::OnceLock<Option<String>> = std::sync::OnceLock::new();
 
@@ -175,6 +204,8 @@ pub struct ExportSheet {
     writing: Task<()>,
     /// A state to show at once, for the screenshots: debug builds only.
     shown: Option<String>,
+    /// Whether `asking` has opened its dialog yet.
+    asked_once: bool,
 }
 
 impl EventEmitter<Closed> for ExportSheet {}
@@ -220,6 +251,7 @@ impl ExportSheet {
             scanning: Task::ready(()),
             writing: Task::ready(()),
             shown: None,
+            asked_once: false,
         };
         if cfg!(debug_assertions)
             && let Some(asked) = shown
@@ -551,10 +583,15 @@ impl ExportSheet {
     }
 
     /// Return, or the button: ask where, then write it there.
-    fn export(&mut self, cx: &mut Context<Self>) {
+    fn export(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         // A sheet opened for its picture is a picture: a click that lands on
-        // it while it is being taken opens no dialog.
-        if self.shown.is_some() {
+        // it while it is being taken opens no dialog. The one exception is
+        // the picture of the dialog itself, `asking`.
+        if self
+            .shown
+            .as_deref()
+            .is_some_and(|shown| !shown.starts_with("asking"))
+        {
             return;
         }
         let (_, ready) = self.button();
@@ -575,20 +612,18 @@ impl ExportSheet {
         let shape = self.choice.shape();
         let pages = shape.map(|_| laid.pages.len());
         self.phase = Phase::Asking;
-        let answer = cx.prompt_for_new_path(&start, Some(&name));
+        let answer = ask_where(&start, &name, window, cx);
         self.writing = cx.spawn(async move |this, cx| {
             let asked = match answer.await {
-                Ok(Ok(path)) => Asked::from_dialog(path),
-                Ok(Err(err)) => {
+                Ok(path) => Asked::from_dialog(path),
+                Err(err) => {
                     this.update(cx, |sheet, cx| {
-                        sheet.phase =
-                            Phase::Failed(format!("the save dialog would not open: {err}"));
+                        sheet.phase = Phase::Failed(err);
                         cx.notify();
                     })
                     .ok();
                     return;
                 }
-                Err(_) => None,
             };
             let Some(asked) = asked else {
                 // Cancel: nothing written, nothing said.
@@ -643,6 +678,23 @@ impl ExportSheet {
 
     fn close(&mut self, cx: &mut Context<Self>) {
         cx.emit(Closed);
+    }
+
+    /// Escape: out of waiting for a save dialog that never answered, back to
+    /// the sheet as it was; otherwise, the sheet put away. A dialog that is
+    /// up holds the keyboard itself, so this is reached while "Choosing
+    /// where…" only when there is no dialog to be seen, and the export must
+    /// not sit on it for ever.
+    fn escape(&mut self, cx: &mut Context<Self>) {
+        if matches!(self.phase, Phase::Asking) {
+            // The wait is dropped with its task; an answer arriving after
+            // this goes nowhere and writes nothing.
+            self.writing = Task::ready(());
+            self.phase = Phase::Ready;
+            cx.notify();
+        } else {
+            self.close(cx);
+        }
     }
 
     fn turn_page(&mut self, by: isize, cx: &mut Context<Self>) {
@@ -905,7 +957,21 @@ fn notice(tone: Rgb, palette: &Palette) -> Div {
 
 impl Render for ExportSheet {
     #[allow(clippy::too_many_lines)]
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        // For the picture of the save dialog in front of the deck: asked
+        // once the sheet could export, without anything being pressed.
+        if cfg!(debug_assertions)
+            && !self.asked_once
+            && self
+                .shown
+                .as_deref()
+                .is_some_and(|shown| shown.starts_with("asking"))
+            && matches!(self.scan, Scan::Clear)
+            && self.current().is_some()
+        {
+            self.asked_once = true;
+            cx.defer_in(window, |sheet, window, cx| sheet.export(window, cx));
+        }
         let palette = self.palette;
         let mono = cx.theme().mono_font_family.clone();
         let warn = crate::keys::level_colour(deck_core::protocol::Level::Medium, &palette);
@@ -1342,7 +1408,7 @@ impl Render for ExportSheet {
                         this.bg(paint(palette.accent))
                             .text_color(paint(palette.on_accent))
                             .cursor_pointer()
-                            .on_click(cx.listener(|sheet, _, _, cx| sheet.export(cx)))
+                            .on_click(cx.listener(|sheet, _, window, cx| sheet.export(window, cx)))
                     })
                     .when(!ready, |this| {
                         this.bg(paint(palette.edge))
@@ -1628,10 +1694,10 @@ impl Render for ExportSheet {
             .id("export-shade")
             .track_focus(&self.focus)
             .key_context("DeckExport")
-            .on_action(cx.listener(|sheet, _: &CloseSheet, _, cx| sheet.close(cx)))
+            .on_action(cx.listener(|sheet, _: &CloseSheet, _, cx| sheet.escape(cx)))
             .on_action(cx.listener(|sheet, _: &NextPage, _, cx| sheet.turn_page(1, cx)))
             .on_action(cx.listener(|sheet, _: &PrevPage, _, cx| sheet.turn_page(-1, cx)))
-            .on_action(cx.listener(|sheet, _: &ExportNow, _, cx| sheet.export(cx)))
+            .on_action(cx.listener(|sheet, _: &ExportNow, window, cx| sheet.export(window, cx)))
             .occlude()
             .on_mouse_down(
                 MouseButton::Left,
@@ -1673,16 +1739,21 @@ impl Render for ExportSheet {
             // A sheet opened for its picture takes no pointer at all: a
             // click or a scroll that lands on the window while it is being
             // taken would otherwise change what the picture shows.
-            .when(self.shown.is_some(), |this| {
-                this.child(
-                    div()
-                        .id("export-picture")
-                        .absolute()
-                        .inset_0()
-                        .occlude()
-                        .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-                        .on_scroll_wheel(|_, _, cx| cx.stop_propagation()),
-                )
-            })
+            .when(
+                self.shown
+                    .as_deref()
+                    .is_some_and(|shown| !shown.starts_with("asking")),
+                |this| {
+                    this.child(
+                        div()
+                            .id("export-picture")
+                            .absolute()
+                            .inset_0()
+                            .occlude()
+                            .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                            .on_scroll_wheel(|_, _, cx| cx.stop_propagation()),
+                    )
+                },
+            )
     }
 }
