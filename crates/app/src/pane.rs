@@ -34,8 +34,13 @@ use crate::palette::paint;
 use crate::sheet::Slot;
 use crate::view::DeckView;
 
-/// Row height, as a multiple of the monospace size.
-const LINE_HEIGHT: f32 = 1.62;
+// Row height, as a multiple of the monospace size: measured once, with the
+// rest of the window, in `deck_render::metrics`.
+use deck_render::metrics::LINE_HEIGHT;
+// Where a value hangs on its line, shared with the exports so a value sits
+// in the same place on paper.
+use deck_render::{after_name, whole_word};
+
 /// Lines of context shown above the range when the pane opens.
 const LEAD_IN: u32 = 2;
 
@@ -3092,15 +3097,6 @@ fn row_content(
     }
 }
 
-/// Where a value for `name` goes on `text`: right after the first time the
-/// name appears as a whole word, or at the line's end if it never does.
-///
-/// A whole word, because a plain search for `id` found it inside `markPaid`
-/// and hung the value on the function's name.
-fn after_name(text: &str, name: &str) -> usize {
-    whole_word(text, name).unwrap_or(text.len())
-}
-
 /// A value's identity: its line, its name, and which half of a change it is
 /// about. A proposal's value and the code's own can share a line number and a
 /// name, and they are two different values.
@@ -3116,26 +3112,6 @@ fn who_of(value: &Value) -> Who {
 /// Whether `name` appears in `text` as a whole word.
 fn has_word(text: &str, name: &str) -> bool {
     !name.is_empty() && whole_word(text, name).is_some()
-}
-
-/// Where `name` first ends in `text` as a whole word, if it does at all.
-fn whole_word(text: &str, name: &str) -> Option<usize> {
-    let word =
-        |ch: Option<char>| ch.is_some_and(|ch| ch.is_alphanumeric() || ch == '_' || ch == '$');
-    let mut from = 0;
-    while let Some(found) = text[from..].find(name) {
-        let start = from + found;
-        let end = start + name.len();
-        let before = text[..start].chars().next_back();
-        let after = text[end..].chars().next();
-        let starts_word = !word(name.chars().next()) || !word(before);
-        let ends_word = !word(name.chars().next_back()) || !word(after);
-        if starts_word && ends_word {
-            return Some(end);
-        }
-        from = start + name.len().max(1);
-    }
-    None
 }
 
 /// How many monospace cells `text` takes: two for a wide character, four for

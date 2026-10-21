@@ -12,6 +12,12 @@ serde_json = { workspace = true }
 # Shaping, kerning included, and advance widths, from the embedded faces, for
 # breaking lines the way the window does without a window. Already in the tree.
 rustybuzz = "0.20"
+# Cuts each embedded face down to the characters an export sets, so a file
+# carries a few hundred glyphs rather than a megabyte of faces. Pinned: it is
+# written for PDF and what it hands back is completed into a web font in
+# `export::face`, which depends on exactly which tables it keeps. Without its
+# variable-font support, which pulls in a second font stack nothing here uses.
+subsetter = { version = "=0.2.6", default-features = false }
 gpui-kit = { version = "0.6", features = [
     # Syntax highlighting is not on by default, and a grammar is only compiled
     # in if it is named. Every language deck can highlight is listed here, and

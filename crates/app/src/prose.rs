@@ -159,14 +159,14 @@ impl Look {
     #[must_use]
     pub fn band(palette: &Palette) -> Self {
         Self {
-            size: 12.5,
-            leading: 21.5,
+            size: deck_render::metrics::PROSE_SIZE,
+            leading: deck_render::metrics::PROSE_LEADING,
             // A step off the page's ink, so the group's title is the
             // brightest line in the band and the prose reads as its body.
             tone: palette.fg.mix(palette.band, 0.22),
             // Close: a group's paragraphs are beats of one claim, and a wide
             // gap between them read as separate statements.
-            spacing: 5.,
+            spacing: deck_render::metrics::PROSE_SPACING,
         }
     }
 
@@ -178,8 +178,8 @@ impl Look {
     #[must_use]
     pub fn rail(palette: &Palette) -> Self {
         Self {
-            size: 12.2,
-            leading: 17.6,
+            size: deck_render::metrics::RAIL_SIZE,
+            leading: deck_render::metrics::RAIL_LEADING,
             tone: palette.fg.mix(palette.muted, 0.22),
             spacing: 18.6 * 0.42,
         }
@@ -420,7 +420,7 @@ fn render_token(
                 .child(
                     div()
                         .font_family(mono)
-                        .text_size(px(11.6))
+                        .text_size(px(deck_render::metrics::CHIP_SIZE))
                         .px(px(4.))
                         .py(px(1.))
                         .rounded(px(3.))

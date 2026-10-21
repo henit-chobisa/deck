@@ -24,6 +24,13 @@
       "text": "#ebdbb2",
       "muted": "#999078",
       "accent": "#fe8019"
+    },
+    "going": "#fc6654",
+    "arriving": "#b8bb26",
+    "levels": {
+      "high": "#b8bb26",
+      "medium": "#f89b47",
+      "low": "#fb4934"
     }
   },
   "contents": [

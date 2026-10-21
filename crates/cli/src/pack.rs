@@ -155,6 +155,15 @@ pub struct Packing {
     pub hits: Vec<Hit>,
     /// Scanner hits the author let through with `--allow`.
     pub allowed: Vec<Hit>,
+    /// Scanner hits let through by the file itself: fingerprints its
+    /// manifest already records, from whoever packed it.
+    ///
+    /// Apart from [`Self::allowed`] because they are not the same claim. A
+    /// file from somebody else saying a hit is fine is that somebody's word,
+    /// and what is passed on should say whose word it is. They are still
+    /// honoured: refusing them would refuse every re-export of a deck whose
+    /// author looked at the hit and let it through on purpose.
+    pub inherited: Vec<Hit>,
     /// `--allow` fingerprints that matched nothing.
     pub unused: Vec<String>,
     /// Files in the folder that stay on this machine.
@@ -370,6 +379,7 @@ pub fn gather(deck: &Path, options: &Options) -> anyhow::Result<Packing> {
         missing,
         hits: Vec::new(),
         allowed: Vec::new(),
+        inherited: Vec::new(),
         unused: Vec::new(),
         left,
         repacked: false,
@@ -414,8 +424,49 @@ fn regather(dir: &Path, options: &Options) -> anyhow::Result<Packing> {
         missing: Vec::new(),
         hits: Vec::new(),
         allowed: Vec::new(),
+        inherited: Vec::new(),
         unused: Vec::new(),
         left,
+        repacked: true,
+        allow_missing: options.allow_missing,
+    };
+    packing.screen(&options.allow);
+    Ok(packing)
+}
+
+/// A `.deck` file someone already made, opened and taken as the bundle it is,
+/// then scanned as anything about to leave the machine is.
+///
+/// Opening checked that nothing in it changed since it was packed, not that
+/// nothing in it is a secret: a file from somebody else, or one packed by a
+/// build with fewer rules, is passed on by whatever exports it. The scan is
+/// pack's, and so is what lets a hit through — a fingerprint the manifest
+/// already records, or one in `options.allow`. Nothing in it can be
+/// missing, so `allow_missing` has nothing to apply to.
+///
+/// # Errors
+///
+/// When its header does not parse.
+pub fn opened(bundle: Bundle, options: &Options) -> anyhow::Result<Packing> {
+    let header = bundle.header().map_err(|err| anyhow::anyhow!("{err}"))?;
+    let snapped = bundle
+        .snapshots()
+        .map_err(|err| anyhow::anyhow!("{err}"))?
+        .into_iter()
+        .map(|snapshot| snapshot.file)
+        .collect();
+    let name = default_name(&header.title, &bundle.manifest.created);
+    let mut packing = Packing {
+        bundle,
+        name,
+        snapped,
+        outside: Vec::new(),
+        missing: Vec::new(),
+        hits: Vec::new(),
+        allowed: Vec::new(),
+        inherited: Vec::new(),
+        unused: Vec::new(),
+        left: Vec::new(),
         repacked: true,
         allow_missing: options.allow_missing,
     };
@@ -525,7 +576,11 @@ impl Packing {
         recorded.dedup();
         self.bundle.manifest.allowed = recorded;
         self.hits = hits;
-        self.allowed = allowed;
+        let (asked, inherited) = allowed
+            .into_iter()
+            .partition(|hit| allow.contains(&hit.fingerprint));
+        self.allowed = asked;
+        self.inherited = inherited;
     }
 
     /// Why this cannot be packed, if it cannot: a secret nobody let through,
@@ -603,6 +658,9 @@ impl Packing {
         for hit in &self.allowed {
             notes.push(format!("let through, as asked: {hit}"));
         }
+        for hit in &self.inherited {
+            notes.push(format!("let through by whoever packed it: {hit}"));
+        }
         for fingerprint in &self.unused {
             notes.push(format!("--allow {fingerprint} matched nothing"));
         }
@@ -678,6 +736,12 @@ impl Packing {
                 out.push_str(&format!("\n  {hit}"));
             }
         }
+        if !self.inherited.is_empty() {
+            out.push_str("\n\nLet through by whoever packed it:\n");
+            for hit in &self.inherited {
+                out.push_str(&format!("\n  {hit}"));
+            }
+        }
         match self.refusal() {
             Some(why) => out.push_str(&format!("\n\nIt would not be packed: {why}")),
             None => out.push_str("\n\nNothing in it looks like a secret."),
@@ -715,7 +779,14 @@ pub fn pack(deck: &Path, out: Option<&Path>, options: &Options) -> anyhow::Resul
 }
 
 /// Write `bytes` to `path`, refusing to replace a file unless `force`.
-fn write_new(path: &Path, bytes: &[u8], force: bool) -> anyhow::Result<()> {
+///
+/// An export writes through this too, so `deck export` refuses to replace a
+/// file in the same words `deck pack` does.
+///
+/// # Errors
+///
+/// When the file is there and `force` is off, or it cannot be written.
+pub fn write_new(path: &Path, bytes: &[u8], force: bool) -> anyhow::Result<()> {
     use std::io::Write as _;
     if force {
         return std::fs::write(path, bytes)
@@ -1631,7 +1702,8 @@ fn strings(value: &serde_json::Value, path: &str, each: &mut dyn FnMut(&str, &st
 
 /// Every entry of a bundle scanned, a snapshot's hits placed at their line
 /// in the source file rather than in the entry.
-fn scan_bundle(files: &BTreeMap<String, Vec<u8>>) -> Vec<Hit> {
+#[must_use]
+pub fn scan_bundle(files: &BTreeMap<String, Vec<u8>>) -> Vec<Hit> {
     let index: Option<snap::Index> = files
         .get("snap/index.json")
         .and_then(|bytes| serde_json::from_slice(bytes).ok());

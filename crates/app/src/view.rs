@@ -261,19 +261,14 @@ impl Divide {
 /// lines of prose, which is what most groups carry.
 const BAND_NATURAL: f32 = 168.;
 
-/// The shortest the band is on its own: room for a short narration to
-/// breathe, and for the review column beside it to show a handful of rows.
-const BAND_LEAST: f32 = 231.;
-
-/// The tallest the band grows on its own before its prose scrolls.
-const BAND_MOST: f32 = 300.;
-
-/// How wide the group's number sits, and the line that runs down from it.
-const STEM: f32 = 30.;
-
-/// The gap between the group's number and the titles beside it, which the
-/// prose under them keeps too, so the three share one left edge.
-const STEM_GAP: f32 = 14.;
+// The group's number and the line that hangs from it, the band's padding and
+// its type, the rail and the strip: measured once, in `deck_render::metrics`,
+// so a page an export prints is the band this draws.
+use deck_render::metrics::{
+    BAND_BOTTOM, BAND_GAP, BAND_LEAST, BAND_MOST, BAND_SIDE, BAND_TOP, CONFIDENCE_SIZE,
+    DECK_TITLE_SIZE, NUMBER_SIZE, NUMBER_SIZE_TENS, RAIL, SANS_SIZE, STEM, STEM_GAP, STRIP_GAP,
+    STRIP_ROW, STRIP_SIDE, STRIP_SIZE, TITLE_SIZE,
+};
 
 /// What a remark is about.
 ///
@@ -5495,8 +5490,8 @@ impl DeckView {
                     .min_w_0()
                     .min_h_0()
                     .overflow_hidden()
-                    .gap(px(9.))
-                    .pb(px(14.))
+                    .gap(px(BAND_GAP))
+                    .pb(px(BAND_BOTTOM))
                     // The horizontal and top padding belong to the children
                     // rather than to this column, so that the titlebar can
                     // include the gap above the title. Put here, that gap is a
@@ -5535,9 +5530,9 @@ impl DeckView {
                                 .h_flex()
                                 .items_center()
                                 .gap(px(STEM_GAP))
-                                .pt(px(15.))
-                                .pl(px(18.))
-                                .pr(px(18.))
+                                .pt(px(BAND_TOP))
+                                .pl(px(BAND_SIDE))
+                                .pr(px(BAND_SIDE))
                                 .when(cfg!(target_os = "windows"), |this| {
                                     this.window_control_area(WindowControlArea::Drag)
                                 })
@@ -5563,9 +5558,9 @@ impl DeckView {
                                             // digits stay in the column the line
                                             // hangs from.
                                             .text_size(px(if self.group_ix >= 9 {
-                                                27.
+                                                NUMBER_SIZE_TENS
                                             } else {
-                                                36.
+                                                NUMBER_SIZE
                                             }))
                                             .line_height(px(36.))
                                             .font_weight(FontWeight::LIGHT)
@@ -5588,7 +5583,7 @@ impl DeckView {
                                         // find it gone.
                                         .child(
                                             div()
-                                                .text_size(px(11.5))
+                                                .text_size(px(DECK_TITLE_SIZE))
                                                 .text_color(paint(self.palette.muted))
                                                 .overflow_hidden()
                                                 .text_ellipsis()
@@ -5604,7 +5599,7 @@ impl DeckView {
                                                 .child(
                                                     div()
                                                         .min_w_0()
-                                                        .text_size(px(14.))
+                                                        .text_size(px(TITLE_SIZE))
                                                         .font_weight(FontWeight::SEMIBOLD)
                                                         .text_color(paint(self.palette.fg))
                                                         .overflow_hidden()
@@ -5632,7 +5627,7 @@ impl DeckView {
                                                                     .child(crate::keys::bars(confidence.level, &self.palette))
                                                                     .child(
                                                                         div()
-                                                                            .text_size(px(11.))
+                                                                            .text_size(px(CONFIDENCE_SIZE))
                                                                             .text_color(paint(crate::keys::level_colour(
                                                                                 confidence.level,
                                                                                 &self.palette,
@@ -5662,8 +5657,8 @@ impl DeckView {
                             // scrolling box, not on what it holds — pulled up
                             // inside it, the first line was clipped at the top.
                             .mt(px(-4.))
-                            .pl(px(18.))
-                            .pr(px(18.))
+                            .pl(px(BAND_SIDE))
+                            .pr(px(BAND_SIDE))
                             // Scrolls, because a `say` is as long as the agent
                             // needed it to be and the band is as tall as the
                             // window can spare. When the two disagreed the
@@ -5675,7 +5670,7 @@ impl DeckView {
                             .min_h_0()
                             .overflow_y_scroll()
                             .track_scroll(&self.band_scroll)
-                            .text_size(px(13.2))
+                            .text_size(px(SANS_SIZE))
                             .text_color(paint(self.palette.fg))
                             // Hung on a line that runs down from the group's
                             // number, and stops where the prose stops: the
@@ -6799,15 +6794,15 @@ impl DeckView {
             .flex_none()
             .justify_between()
             .items_center()
-            .gap(px(14.))
-            .pl(px(14.))
-            .pr(px(14.))
-            .py(px(7.))
+            .gap(px(STRIP_GAP))
+            .pl(px(STRIP_SIDE))
+            .pr(px(STRIP_SIDE))
+            .py(px(STRIP_ROW))
             .bg(paint(self.palette.band))
             .border_t_1()
             .border_color(paint(self.palette.edge))
             .font_family(cx.theme().mono_font_family.clone())
-            .text_size(px(10.5))
+            .text_size(px(STRIP_SIZE))
             .text_color(paint(self.palette.muted))
             .child(
                 div()
@@ -8152,8 +8147,9 @@ const NOTHING_YET: &[&str] = &[
 /// the other end the strip along the bottom is what says so.
 const PATIENCE: std::time::Duration = std::time::Duration::from_secs(600);
 
-/// Room for a readable reply without turning the evidence into a thumbnail.
-const RAIL: f32 = 304.;
+// `RAIL`, room for a readable reply without turning the evidence into a
+// thumbnail, is in `deck_render::metrics` with the rest of the window's
+// measurements.
 
 /// How much of the page a seam claims.
 ///
