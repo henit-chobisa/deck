@@ -68,6 +68,20 @@ pub fn build(
     document::build(bundle, palette, &Painter::new(palette, dark, imported))
 }
 
+/// [`build`] with nothing folded: every line of every range, for paper.
+///
+/// # Errors
+///
+/// When a part of the bundle does not parse.
+pub fn build_unfolded(
+    bundle: &Bundle,
+    palette: &Palette,
+    dark: bool,
+    imported: Syntax,
+) -> Result<Document, Unreadable> {
+    document::build_unfolded(bundle, palette, &Painter::new(palette, dark, imported))
+}
+
 #[cfg(test)]
 mod tests {
     use std::collections::BTreeMap;

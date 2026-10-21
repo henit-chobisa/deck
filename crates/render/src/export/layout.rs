@@ -168,12 +168,17 @@ pub enum Item {
     },
     /// A diagram, drawn at `scale` of its own size, centred in `rect`.
     Svg {
-        /// The room it is centred in.
+        /// The room it is centred in, and clipped to.
         rect: Rect,
         /// The drawing, as deck writes it.
         svg: String,
         /// Units of the page to one of the drawing's.
         scale: f32,
+        /// The band of the drawing this shows, top and bottom in its own
+        /// units, when it is too tall for one page and is cut across pages;
+        /// `None` for all of it.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        band: Option<[f32; 2]>,
     },
     /// A field of dots to write in.
     Dots {
@@ -686,6 +691,29 @@ pub(super) enum Context {
     Trimmed,
 }
 
+/// How many columns a tab takes, as the window's panes count it.
+const TAB: usize = 4;
+
+/// The smallest a diagram may be drawn, as a share of its own size: where a
+/// box's label, set at [`deck_core::drawing::LABEL`], is six points on the
+/// page. Smaller and it is not read, so a taller diagram is cut across
+/// pages instead and a wider one is cut at the edge.
+pub(super) const DIAGRAM_LEAST: f32 = 6. / (deck_core::drawing::LABEL.0 * 0.75);
+
+/// Where `n` numerals go in a gutter from `left` to `right`, each disc's
+/// centre and radius: the first beside the code, the rest outward from it,
+/// smaller where there are more than the gutter holds at `most`, so none of
+/// them ever leaves it.
+pub(super) fn numeral_slots(n: usize, left: f32, right: f32, most: f32) -> Vec<(f32, f32)> {
+    if n == 0 {
+        return Vec::new();
+    }
+    let r = most.min(((right - left) / count(n) - 1.) / 2.).max(1.);
+    (0..n)
+        .map(|ix| (right - r - count(ix) * (2. * r + 1.), r))
+        .collect()
+}
+
 /// How far a context line's ink is taken toward its ground.
 const CONTEXT_FADE: f32 = 0.35;
 
@@ -779,7 +807,14 @@ pub(super) fn whole(row: &Row) -> Vec<Visual> {
         };
         for ch in span.text.chars() {
             put_values(at, &mut chars, false);
-            chars.push((if ch == '\t' { ' ' } else { ch }, ink, span.italic));
+            if ch == '\t' {
+                // To the next stop, as the window sets a tab.
+                let column = chars.len();
+                let to = (column / TAB + 1) * TAB;
+                chars.extend(std::iter::repeat_n((' ', ink, span.italic), to - column));
+            } else {
+                chars.push((ch, ink, span.italic));
+            }
             at += ch.len_utf8();
         }
     }
@@ -872,8 +907,9 @@ pub(super) fn cut(row: &Visual, cols: usize) -> Vec<Visual> {
             indent: pad,
             runs: runs_of(piece),
         });
-        let skip = next.iter().take_while(|(ch, _, _)| *ch == ' ').count();
-        rest = &next[skip..];
+        // The spaces a line was cut at stay with it: in code a run of
+        // spaces is the code, and a wrap must not eat it.
+        rest = next;
         if rest.is_empty() {
             break;
         }
@@ -982,4 +1018,56 @@ pub(super) fn svg_size(svg: &str) -> (f32, f32) {
         attr("width").unwrap_or(320.),
         attr("height").unwrap_or(240.),
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use deck_core::document::{Row, RowKind, Span};
+    use deck_core::theme::Rgb;
+
+    use super::*;
+
+    fn row(text: &str) -> Row {
+        Row {
+            no: 1,
+            kind: RowKind::Spot,
+            numerals: Vec::new(),
+            lit_by: Vec::new(),
+            ground: Rgb::new(0, 0, 0),
+            accent: Rgb::new(255, 128, 0),
+            spans: vec![Span {
+                text: text.to_string(),
+                ink: Rgb::new(200, 200, 200),
+                italic: false,
+            }],
+            values: Vec::new(),
+        }
+    }
+
+    fn text_of(rows: &[Visual]) -> Vec<String> {
+        rows.iter()
+            .filter_map(|row| match row {
+                Visual::Code { runs, indent, .. } => Some(format!(
+                    "{}{}",
+                    " ".repeat(*indent),
+                    runs.iter().map(|(t, _, _)| t.as_str()).collect::<String>()
+                )),
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// A tab goes to the next stop, as the window sets it, and the spaces
+    /// a long line is cut at stay with it.
+    #[test]
+    fn tabs_expand_and_wraps_keep_their_spaces() {
+        let rows = whole(&row("\tif (x) {"));
+        assert_eq!(text_of(&rows), ["    if (x) {"]);
+        let rows = whole(&row("ab\tc"));
+        assert_eq!(text_of(&rows), ["ab  c"]);
+        let long = format!("{}    {}", "a".repeat(10), "b".repeat(10));
+        let cut_rows = cut(&whole(&row(&long))[0], 12);
+        let all: String = text_of(&cut_rows).join("|");
+        assert!(all.matches(' ').count() >= 4, "{all}");
+    }
 }

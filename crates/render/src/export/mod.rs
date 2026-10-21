@@ -119,7 +119,8 @@ pub fn deck_pdf(
     }
     let carried = only(&bundle, &options.groups)?;
     let bytes = carried.pack()?;
-    let document = crate::document::build(&bundle, palette, options.dark, syntax)
+    // Unfolded: a gap on paper is lines nobody can open again.
+    let document = crate::document::build_unfolded(&bundle, palette, options.dark, syntax)
         .map_err(|err| err.to_string())?;
     let document = shown(&document, options);
     let pages = layout(&document, format);
@@ -127,7 +128,10 @@ pub fn deck_pdf(
         .iter()
         .flat_map(|page| page.warnings.iter().cloned())
         .collect();
-    Ok((pdf(&document, &pages, &bytes, writing)?, warnings))
+    let (pdf, more) = pdf(&document, &pages, &bytes, writing)?;
+    let mut warnings: Vec<String> = warnings;
+    warnings.extend(more);
+    Ok((pdf, warnings))
 }
 
 /// `document` as an export shows it: only the groups asked for, keeping

@@ -9,10 +9,14 @@
 //!
 //! The file is the same file every time for the same deck: its creation date
 //! is the day the deck was packed, krilla names a document by a hash of what
-//! is in it, and no clock is read. It carries the `.deck` it was made from, as
+//! is in it, and no clock is read. The one exception is text the embedded
+//! faces cannot set — CJK, emoji, Arabic — which is drawn from a face the
+//! machine has: a PDF made on another machine may set those runs, and only
+//! those, in another face. It carries the `.deck` it was made from, as
 //! an attachment a reader's PDF viewer lists, so whoever it was sent to can
 //! take it out and open it in deck.
 
+use std::collections::{BTreeSet, HashMap};
 use std::sync::{Arc, OnceLock};
 
 use deck_core::document::Document;
@@ -44,46 +48,272 @@ pub struct Writing {
     pub grid: bool,
 }
 
+/// Where a run of characters is drawn from.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Source {
+    /// The face the layout chose.
+    Own,
+    /// A face from the machine, for what the embedded faces lack.
+    Machine(usvg::fontdb::ID),
+}
+
+/// The faces from the machine, found only once something needs them.
+struct Machine {
+    db: Arc<usvg::fontdb::Database>,
+    chosen: HashMap<char, Option<usvg::fontdb::ID>>,
+    loaded: HashMap<usvg::fontdb::ID, (Font, Arc<Vec<u8>>, u32)>,
+}
+
+/// The families tried first for a character the embedded faces lack, in
+/// order: the Mac's own CJK, emoji and Arabic faces, then Noto, then a face
+/// that holds nearly everything. Past these, any face on the machine that
+/// has the character.
+const FALLBACKS: &[&str] = &[
+    "PingFang SC",
+    "Hiragino Sans",
+    "Hiragino Kaku Gothic ProN",
+    "Apple SD Gothic Neo",
+    "Apple Color Emoji",
+    "Geeza Pro",
+    "Arial Hebrew",
+    "Noto Sans CJK SC",
+    "Noto Sans CJK JP",
+    "Noto Color Emoji",
+    "Noto Sans Arabic",
+    "Noto Sans Hebrew",
+    "Noto Sans",
+    "Arial Unicode MS",
+];
+
+impl Machine {
+    fn load() -> Self {
+        let mut db = usvg::fontdb::Database::new();
+        db.load_system_fonts();
+        // Plex, so a diagram read with this database is still set in it.
+        for (bytes, _) in PLEX {
+            db.load_font_data(bytes.to_vec());
+        }
+        db.set_sans_serif_family("IBM Plex Sans");
+        Self {
+            db: Arc::new(db),
+            chosen: HashMap::new(),
+            loaded: HashMap::new(),
+        }
+    }
+
+    fn has(&self, id: usvg::fontdb::ID, ch: char) -> bool {
+        self.db
+            .with_face_data(id, |data, index| {
+                rustybuzz::ttf_parser::Face::parse(data, index)
+                    .ok()
+                    .and_then(|face| face.glyph_index(ch))
+                    .is_some()
+            })
+            .unwrap_or(false)
+    }
+
+    /// A face on the machine with a glyph for `ch`, if there is one.
+    fn face_for(&mut self, ch: char) -> Option<usvg::fontdb::ID> {
+        if let Some(chosen) = self.chosen.get(&ch) {
+            return *chosen;
+        }
+        let named = FALLBACKS.iter().flat_map(|family| {
+            self.db
+                .faces()
+                .filter(move |face| face.families.iter().any(|(name, _)| name == family))
+                .map(|face| face.id)
+        });
+        let any = self.db.faces().map(|face| face.id);
+        let found = named.chain(any).find(|&id| self.has(id, ch));
+        self.chosen.insert(ch, found);
+        found
+    }
+
+    fn font(&mut self, id: usvg::fontdb::ID) -> Option<(Font, Arc<Vec<u8>>, u32)> {
+        if let Some(loaded) = self.loaded.get(&id) {
+            return Some(loaded.clone());
+        }
+        let (bytes, index) = self
+            .db
+            .with_face_data(id, |data, index| (Arc::new(data.to_vec()), index))?;
+        let font = Font::new(Data::from(bytes.clone()), index)?;
+        self.loaded.insert(id, (font.clone(), bytes.clone(), index));
+        Some((font, bytes, index))
+    }
+}
+
+/// What text is drawn with: the embedded faces, the machine's when they
+/// lack a character, and a record of what nothing could draw.
+struct Pen {
+    faces: Faces,
+    machine: Option<Machine>,
+    missing: BTreeSet<char>,
+}
+
+/// The embedded face `face` is, parsed once, for shaping and coverage.
+fn own(face: Face) -> Option<&'static rustybuzz::Face<'static>> {
+    static OWN: [OnceLock<Option<rustybuzz::Face<'static>>>; 5] = [const { OnceLock::new() }; 5];
+    let (ix, bytes) = match face {
+        Face::Regular => (0, PLEX[0].0),
+        Face::Medium => (1, PLEX[1].0),
+        Face::Semibold => (2, PLEX[2].0),
+        Face::Mono => (3, MONO[0].0),
+        Face::MonoItalic => (4, MONO[1].0),
+    };
+    OWN[ix]
+        .get_or_init(|| rustybuzz::Face::from_slice(bytes, 0))
+        .as_ref()
+}
+
+/// A character that belongs with the one before it, whatever face that one
+/// came from: a joiner, a variation selector, a skin tone, a combining mark.
+fn rides(ch: char) -> bool {
+    matches!(
+        ch,
+        '\u{200D}' | '\u{FE00}'..='\u{FE0F}' | '\u{1F3FB}'..='\u{1F3FF}'
+            | '\u{0300}'..='\u{036F}' | '\u{E0020}'..='\u{E007F}'
+    )
+}
+
+impl Pen {
+    fn machine(&mut self) -> &mut Machine {
+        self.machine.get_or_insert_with(Machine::load)
+    }
+
+    /// `text` cut into runs by where each is drawn from.
+    fn runs(&mut self, face: Face, text: &str) -> Vec<(Source, std::ops::Range<usize>)> {
+        let mine = own(face);
+        let mut out: Vec<(Source, std::ops::Range<usize>)> = Vec::new();
+        for (at, ch) in text.char_indices() {
+            let source = if ch.is_whitespace() || rides(ch) {
+                out.last().map_or(Source::Own, |(source, _)| *source)
+            } else if mine.is_some_and(|face| face.glyph_index(ch).is_some()) {
+                Source::Own
+            } else if let Some(id) = self.machine().face_for(ch) {
+                Source::Machine(id)
+            } else {
+                self.missing.insert(ch);
+                Source::Own
+            };
+            let end = at + ch.len_utf8();
+            match out.last_mut() {
+                Some((was, range)) if *was == source => range.end = end,
+                _ => out.push((source, at..end)),
+            }
+        }
+        out
+    }
+
+    /// Whether a diagram needs the machine's faces, noting what not even
+    /// they can draw.
+    fn diagram_needs_machine(&mut self, svg: &str) -> bool {
+        let Some(plex) = own(Face::Regular) else {
+            return false;
+        };
+        let lacking: Vec<char> = svg
+            .chars()
+            .filter(|ch| !ch.is_ascii() && !ch.is_whitespace() && !rides(*ch))
+            .filter(|ch| plex.glyph_index(*ch).is_none())
+            .collect();
+        if lacking.is_empty() {
+            return false;
+        }
+        for ch in lacking {
+            if self.machine().face_for(ch).is_none() {
+                self.missing.insert(ch);
+            }
+        }
+        true
+    }
+}
+
 /// `text` in `face` at `size` from `at`, shaped here rather than by krilla.
 ///
 /// krilla's own shaping turns on every feature a face has, and JetBrains
 /// Mono's ligatures draw `===` as one long bar and `!=` as `≠`: not what the
 /// file says, in a review of the file. Code is shaped with ligatures and
 /// contextual alternates off; Plex keeps its kerning.
-fn write(surface: &mut Surface, faces: &Faces, face: Face, size: f32, at: Point, text: &str) {
-    let (bytes, features): (&[u8], &[&str]) = match face {
-        Face::Regular => (PLEX[0].0, &[]),
-        Face::Medium => (PLEX[1].0, &[]),
-        Face::Semibold => (PLEX[2].0, &[]),
-        Face::Mono => (MONO[0].0, &["-liga", "-calt", "-dlig"]),
-        Face::MonoItalic => (MONO[1].0, &["-liga", "-calt", "-dlig"]),
+///
+/// What the embedded faces have no glyph for — CJK, emoji, Arabic — is drawn
+/// from a face on the machine, still as real text, and a right-to-left run
+/// is shaped right to left. Those runs are the one part of a PDF that can
+/// differ between machines: another machine may have another face, or none.
+fn write(surface: &mut Surface, pen: &mut Pen, face: Face, size: f32, at: Point, text: &str) {
+    let features: &[&str] = match face {
+        Face::Mono | Face::MonoItalic => &["-liga", "-calt", "-dlig"],
+        _ => &[],
     };
-    let Some(shaper) = rustybuzz::Face::from_slice(bytes, 0) else {
-        return;
-    };
-    #[allow(clippy::cast_precision_loss)]
-    let units = shaper.units_per_em() as f32;
     let features: Vec<rustybuzz::Feature> = features
         .iter()
         .filter_map(|feature| feature.parse().ok())
         .collect();
+    let mut x = at.x;
+    for (source, range) in pen.runs(face, text) {
+        let piece = &text[range];
+        let drawn = match source {
+            Source::Own => {
+                let Some(shaper) = own(face) else { continue };
+                let advance = draw_run(
+                    surface,
+                    shaper,
+                    &features,
+                    pen.faces.get(face),
+                    size,
+                    x,
+                    at.y,
+                    piece,
+                );
+                Some(advance)
+            }
+            Source::Machine(id) => pen.machine().font(id).and_then(|(font, bytes, index)| {
+                let shaper = rustybuzz::Face::from_slice(&bytes, index)?;
+                Some(draw_run(surface, &shaper, &[], font, size, x, at.y, piece))
+            }),
+        };
+        x += drawn.unwrap_or(0.);
+    }
+}
+
+/// One run shaped with `shaper` and drawn in `font` at `x`, `y`; returns how
+/// far it moved the pen.
+#[allow(clippy::too_many_arguments)]
+fn draw_run(
+    surface: &mut Surface,
+    shaper: &rustybuzz::Face,
+    features: &[rustybuzz::Feature],
+    font: Font,
+    size: f32,
+    x: f32,
+    y: f32,
+    text: &str,
+) -> f32 {
+    #[allow(clippy::cast_precision_loss)]
+    let units = shaper.units_per_em() as f32;
     let mut buffer = rustybuzz::UnicodeBuffer::new();
     buffer.push_str(text);
+    // The script, and so the direction: Arabic and Hebrew come out right to
+    // left, in the order they are seen.
     buffer.guess_segment_properties();
-    let shaped = rustybuzz::shape(&shaper, &features, buffer);
+    let shaped = rustybuzz::shape(shaper, features, buffer);
     let infos = shaped.glyph_infos();
+    // Each glyph's text runs from its cluster to the next cluster after it,
+    // which in a right-to-left run is not the next glyph's.
+    let mut clusters: Vec<usize> = infos.iter().map(|info| info.cluster as usize).collect();
+    clusters.sort_unstable();
+    clusters.dedup();
+    let mut advance = 0.;
     let glyphs: Vec<KrillaGlyph> = infos
         .iter()
         .zip(shaped.glyph_positions())
-        .enumerate()
-        .map(|(ix, (info, at))| {
+        .map(|(info, at)| {
             let start = info.cluster as usize;
-            let end = infos[ix + 1..]
+            let end = clusters
                 .iter()
-                .find(|next| next.cluster != info.cluster)
-                .map_or(text.len(), |next| next.cluster as usize);
+                .find(|&&next| next > start)
+                .copied()
+                .unwrap_or(text.len());
             #[allow(clippy::cast_precision_loss)]
-            KrillaGlyph::new(
+            let glyph = KrillaGlyph::new(
                 GlyphId::new(info.glyph_id),
                 at.x_advance as f32 / units,
                 at.x_offset as f32 / units,
@@ -91,10 +321,16 @@ fn write(surface: &mut Surface, faces: &Faces, face: Face, size: f32, at: Point,
                 at.y_advance as f32 / units,
                 start..end,
                 None,
-            )
+            );
+            #[allow(clippy::cast_precision_loss)]
+            {
+                advance += at.x_advance as f32 / units * size;
+            }
+            glyph
         })
         .collect();
-    surface.draw_glyphs(at, &glyphs, faces.get(face), text, size, false);
+    surface.draw_glyphs(Point::from_xy(x, y), &glyphs, font, text, size, false);
+    advance
 }
 
 /// The faces, parsed once.
@@ -145,7 +381,8 @@ fn fontdb() -> Arc<usvg::fontdb::Database> {
     .clone()
 }
 
-/// `pages` as a PDF of `document`, carrying `bundle`.
+/// `pages` as a PDF of `document`, carrying `bundle`, and what the person
+/// exporting should hear: characters no face on this machine could draw.
 ///
 /// # Errors
 ///
@@ -156,8 +393,13 @@ pub fn pdf(
     pages: &[Page],
     bundle: &[u8],
     writing: &Writing,
-) -> Result<Vec<u8>, String> {
+) -> Result<(Vec<u8>, Vec<String>), String> {
     let faces = faces().ok_or("the embedded faces would not load")?;
+    let mut pen = Pen {
+        faces,
+        machine: None,
+        missing: BTreeSet::new(),
+    };
     let mut pdf = Pdf::new();
     let date = date(&document.created);
     let mut metadata = Metadata::new()
@@ -179,7 +421,7 @@ pub fn pdf(
             let mut surface = sheet.surface();
             surface.push_transform(&Transform::from_scale(page.scale, page.scale));
             for item in &page.items {
-                draw(&mut surface, &faces, (page.width, page.height), item);
+                draw(&mut surface, &mut pen, (page.width, page.height), item);
                 match item {
                     Item::Link { rect, page: to } => links.push((
                         *rect,
@@ -253,6 +495,10 @@ pub fn pdf(
         path: writing.name.clone(),
         mime_type: MimeType::new("application/vnd.deck+zip"),
         description: Some("The deck this was exported from: open it in deck".to_string()),
+        // Written out as `/AFRelationship /Source` only in PDF/A-3 and later,
+        // which krilla holds to rules this file does not keep (no
+        // transparency, every colour profiled). Outside it the file is still
+        // attached and listed; only the relationship goes unsaid.
         association_kind: AssociationKind::Source,
         data: bundle.to_vec().into(),
         modification_date: None,
@@ -265,7 +511,20 @@ pub fn pdf(
     }
     pdf.embed_file(file)
         .ok_or("the deck could not be attached")?;
-    pdf.finish().map_err(|err| format!("{err:?}"))
+    let bytes = pdf.finish().map_err(|err| format!("{err:?}"))?;
+    let mut warnings = Vec::new();
+    if !pen.missing.is_empty() {
+        let listed: Vec<String> = pen
+            .missing
+            .iter()
+            .map(|ch| format!("{ch} (U+{:04X})", u32::from(*ch)))
+            .collect();
+        warnings.push(format!(
+            "no face on this machine can draw {}; they show as boxes",
+            listed.join(", ")
+        ));
+    }
+    Ok((bytes, warnings))
 }
 
 /// The packing day and time, `2026-10-20T09:30:00Z`, as a PDF date.
@@ -326,7 +585,7 @@ fn circle(cx: f32, cy: f32, r: f32) -> Option<krilla::geom::Path> {
     path.finish()
 }
 
-fn draw(surface: &mut Surface, faces: &Faces, size: (f32, f32), item: &Item) {
+fn draw(surface: &mut Surface, pen: &mut Pen, size: (f32, f32), item: &Item) {
     match item {
         Item::Fill { rect, colour } | Item::Chip { rect, colour } => {
             if let Some(path) = rect_path(*rect) {
@@ -364,7 +623,7 @@ fn draw(surface: &mut Surface, faces: &Faces, size: (f32, f32), item: &Item) {
             surface.set_fill(Some(fill_of(*colour)));
             write(
                 surface,
-                faces,
+                pen,
                 *face,
                 *size,
                 Point::from_xy(*x, *baseline),
@@ -390,7 +649,7 @@ fn draw(surface: &mut Surface, faces: &Faces, size: (f32, f32), item: &Item) {
             surface.set_fill(Some(fill_of(*ink)));
             write(
                 surface,
-                faces,
+                pen,
                 Face::Semibold,
                 size,
                 Point::from_xy(cx - width / 2., cy + size * 0.36),
@@ -415,9 +674,20 @@ fn draw(surface: &mut Surface, faces: &Faces, size: (f32, f32), item: &Item) {
                 surface.draw_path(&path);
             }
         }
-        Item::Svg { rect, svg, scale } => {
+        Item::Svg {
+            rect,
+            svg,
+            scale,
+            band,
+        } => {
+            // Plex alone, unless the drawing has words Plex cannot set.
+            let fontdb = if pen.diagram_needs_machine(svg) {
+                pen.machine().db.clone()
+            } else {
+                fontdb()
+            };
             let options = usvg::Options {
-                fontdb: fontdb(),
+                fontdb,
                 ..usvg::Options::default()
             };
             let Ok(tree) = usvg::Tree::from_str(svg, &options) else {
@@ -427,8 +697,17 @@ fn draw(surface: &mut Surface, faces: &Faces, size: (f32, f32), item: &Item) {
             let Some(size) = Size::from_wh(w, h) else {
                 return;
             };
-            let x = rect.x + (rect.w - w) / 2.;
-            let y = rect.y + ((rect.h - h) / 2.).max(0.);
+            // Centred, or from the left edge when wider than its room; a
+            // band of a tall drawing is moved up so the band is in view.
+            let x = rect.x + ((rect.w - w) / 2.).max(0.);
+            let y = match band {
+                Some([from, _]) => rect.y - from * scale,
+                None => rect.y + ((rect.h - h) / 2.).max(0.),
+            };
+            let Some(clip) = rect_path(*rect) else {
+                return;
+            };
+            surface.push_clip_path(&clip, &krilla::paint::FillRule::NonZero);
             surface.push_transform(&Transform::from_translate(x, y));
             surface.draw_svg(
                 &tree,
@@ -438,6 +717,7 @@ fn draw(surface: &mut Surface, faces: &Faces, size: (f32, f32), item: &Item) {
                     ..SvgSettings::default()
                 },
             );
+            surface.pop();
             surface.pop();
         }
         Item::Dots {

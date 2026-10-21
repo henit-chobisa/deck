@@ -20,9 +20,9 @@ use deck_core::protocol::Kind as Remark;
 use deck_core::theme::Rgb;
 
 use super::layout::{
-    Context, Face, Item, Kind, Page, Rect, Tones, Visual, baseline, count, cut, day, fit, flow,
-    level, line_items, measure, number_width, pane_name, repo, svg_size, tokens, visual_rows,
-    whole,
+    Context, DIAGRAM_LEAST, Face, Item, Kind, Page, Placed, Rect, Token, Tones, Visual, baseline,
+    count, cut, day, fit, flow, level, line_items, measure, middle, number_width, numeral_slots,
+    pane_name, repo, svg_size, tokens, visual_rows, whole,
 };
 use crate::metrics::{
     BAND_BOTTOM, BAND_GAP, BAND_LEAST, BAND_SIDE, BAND_TOP, CONFIDENCE_SIZE, DECK_TITLE_SIZE,
@@ -58,17 +58,44 @@ pub(super) fn pages(document: &Document) -> Vec<Page> {
     let tones = Tones::of(document);
     // Each group's stops, to know the page numbers before writing a strip.
     let mut stops: Vec<(Kind, Vec<Item>, Vec<String>)> = Vec::new();
+    if document.groups.is_empty() {
+        stops.push((Kind::Cover, empty(document), Vec::new()));
+    }
     for group in &document.groups {
-        let (items, warnings) = group_page(document, group, &tones);
+        let (items, mut warnings, leftover) = group_page(document, group, &tones);
+        let more = if leftover.is_empty() {
+            Vec::new()
+        } else {
+            narration_pages(document, group, leftover)
+        };
+        let of = u32::try_from(more.len() + 1).unwrap_or(u32::MAX);
+        if !more.is_empty() {
+            warnings.push(format!(
+                "group {}: its narration is longer than a landscape band holds; it continues \
+                 on the page after",
+                group.n
+            ));
+        }
         stops.push((
             Kind::Group {
                 n: group.n,
                 part: 1,
-                of: 1,
+                of,
             },
             items,
             warnings,
         ));
+        for (ix, items) in more.into_iter().enumerate() {
+            stops.push((
+                Kind::Group {
+                    n: group.n,
+                    part: u32::try_from(ix + 2).unwrap_or(u32::MAX),
+                    of,
+                },
+                items,
+                Vec::new(),
+            ));
+        }
         if !group.argument.is_empty() {
             let pages = argument_pages(document, Some(group), &group.argument);
             let of = u32::try_from(pages.len()).unwrap_or(u32::MAX);
@@ -94,7 +121,7 @@ pub(super) fn pages(document: &Document) -> Vec<Page> {
         .iter()
         .enumerate()
         .filter_map(|(ix, (kind, _, _))| match kind {
-            Kind::Group { n, .. } => Some((*n, ix)),
+            Kind::Group { n, part: 1, .. } => Some((*n, ix)),
             _ => None,
         })
         .collect();
@@ -125,6 +152,32 @@ pub(super) fn pages(document: &Document) -> Vec<Page> {
         .collect()
 }
 
+/// The one page of a deck with no groups to show: its title, and that.
+fn empty(document: &Document) -> Vec<Item> {
+    let inks = &document.inks;
+    vec![
+        Item::Ground { colour: inks.page },
+        text_at(
+            BAND_SIDE + STEM + STEM_GAP,
+            300.,
+            40.,
+            &fit(&document.title, Face::Semibold, 28., MAIN - 120.),
+            Face::Semibold,
+            28.,
+            inks.on_page.text,
+        ),
+        text_at(
+            BAND_SIDE + STEM + STEM_GAP,
+            344.,
+            24.,
+            "0 groups",
+            Face::Regular,
+            16.,
+            inks.on_page.muted,
+        ),
+    ]
+}
+
 /// A line of text in a row `height` high whose top is `top`.
 fn text_at(x: f32, top: f32, height: f32, text: &str, face: Face, size: f32, colour: Rgb) -> Item {
     Item::Text {
@@ -138,10 +191,13 @@ fn text_at(x: f32, top: f32, height: f32, text: &str, face: Face, size: f32, col
 }
 
 /// The group's page: the band over the panes.
-fn group_page(document: &Document, group: &Group, tones: &Tones) -> (Vec<Item>, Vec<String>) {
+/// A group's page, and the narration the band could not hold.
+type GroupPage = (Vec<Item>, Vec<String>, Vec<Vec<Placed>>);
+
+fn group_page(document: &Document, group: &Group, tones: &Tones) -> GroupPage {
     let inks = &document.inks;
     let mut items = vec![Item::Ground { colour: inks.page }];
-    let band_high = band(document, group, tones, &mut items);
+    let (band_high, leftover) = band(document, group, tones, &mut items);
     let top = band_high + 1.;
     let mut warnings = Vec::new();
     items.push(Item::Fill {
@@ -195,11 +251,29 @@ fn group_page(document: &Document, group: &Group, tones: &Tones) -> (Vec<Item>, 
                     at.h - PANE_HEAD - 14.,
                 );
                 let (w, h) = svg_size(&picture.svg);
-                let scale = (inner.w / w).min(inner.h / h).min(1.);
+                let fit_scale = (inner.w / w).min(inner.h / h).min(1.);
+                // Never so small its labels cannot be read; past that it is
+                // cut at the pane's edge, and the portrait pages show it all.
+                let least = DIAGRAM_LEAST * 0.75 / SCALE;
+                let scale = fit_scale.max(least);
+                if fit_scale < least {
+                    warnings.push(format!(
+                        "group {}: diagram {} is too large for its landscape pane at a size its \
+                         labels can be read; it is cut at the pane's edge, and the portrait \
+                         pages show it whole",
+                        group.n,
+                        picture.name.clone().unwrap_or_else(|| picture.id.clone())
+                    ));
+                }
                 items.push(Item::Svg {
-                    rect: Rect::new(inner.x, inner.y, inner.w, h * scale),
+                    rect: Rect::new(inner.x, inner.y, inner.w, (h * scale).min(inner.h)),
                     svg: picture.svg.clone(),
                     scale,
+                    band: if h * scale > inner.h {
+                        Some([0., inner.h / scale])
+                    } else {
+                        None
+                    },
                 });
                 if !picture.marks.is_empty() {
                     let mut mx = at.x + 16.;
@@ -274,29 +348,34 @@ fn group_page(document: &Document, group: &Group, tones: &Tones) -> (Vec<Item>, 
             x += 1.;
         }
     }
-    (items, warnings)
+    (items, warnings, leftover)
 }
 
 /// The band, as the window draws it: the number, the deck's title over the
 /// group's, the confidence, and the narration hung from the number's stem.
 /// Returns its height: the window's least and most when the prose allows,
 /// taller when it does not, since a page cannot scroll it.
-fn band(document: &Document, group: &Group, tones: &Tones, items: &mut Vec<Item>) -> f32 {
+fn band(
+    document: &Document,
+    group: &Group,
+    tones: &Tones,
+    items: &mut Vec<Item>,
+) -> (f32, Vec<Vec<Placed>>) {
     let inks = &document.inks;
     let titles_x = BAND_SIDE + STEM + STEM_GAP;
     let prose_x = titles_x;
     let width = MAIN - BAND_SIDE - prose_x;
-    let lines: Vec<Vec<super::layout::Placed>> = group
+    let mut lines: Vec<Vec<Placed>> = group
         .prose
         .iter()
         .flat_map(|paragraph| {
             let mut lines = flow(&tokens(paragraph, document, tones), PROSE_SIZE, width);
             if let Some(last) = lines.last_mut() {
                 // A marker for the space after a paragraph.
-                last.push(super::layout::Placed {
+                last.push(Placed {
                     x: -1.,
                     width: 0.,
-                    token: super::layout::Token {
+                    token: Token {
                         text: String::new(),
                         face: Face::Regular,
                         colour: inks.band,
@@ -310,11 +389,24 @@ fn band(document: &Document, group: &Group, tones: &Tones, items: &mut Vec<Item>
         .collect();
     let head = 38.;
     let prose_top = BAND_TOP + head + BAND_GAP - 4.;
-    let paragraphs = group.prose.len();
-    let prose_high =
-        count(lines.len()) * PROSE_LEADING + count(paragraphs.saturating_sub(1)) * PROSE_SPACING;
+    // As much of the prose as the band holds at its tallest; the rest goes
+    // on a page of its own, so the panes keep their room.
+    let room = BAND_CAP - prose_top - BAND_BOTTOM;
+    let mut used = 0.;
+    let mut fits = 0;
+    for line in &lines {
+        let ends = line.last().is_some_and(|piece| piece.x < 0.);
+        let step = PROSE_LEADING + if ends { PROSE_SPACING } else { 0. };
+        if used + PROSE_LEADING > room {
+            break;
+        }
+        used += step;
+        fits += 1;
+    }
+    let leftover = lines.split_off(fits);
+    let prose_high = used;
     let high = (prose_top + prose_high + BAND_BOTTOM)
-        .max(BAND_LEAST)
+        .clamp(BAND_LEAST, BAND_CAP)
         .round();
     items.push(Item::Fill {
         rect: Rect::new(0., 0., MAIN, high),
@@ -422,7 +514,73 @@ fn band(document: &Document, group: &Group, tones: &Tones, items: &mut Vec<Item>
             y += PROSE_SPACING;
         }
     }
-    high
+    (high, leftover)
+}
+
+/// The tallest the band grows on a page: under half of it, so the panes
+/// under it always have their room.
+const BAND_CAP: f32 = 357.;
+
+/// Narration too long for the band, on pages of its own after the group's:
+/// the band's ground and its measure, the prose from the top, headed as a
+/// continuation.
+fn narration_pages(document: &Document, group: &Group, lines: Vec<Vec<Placed>>) -> Vec<Vec<Item>> {
+    let inks = &document.inks;
+    let prose_x = BAND_SIDE + STEM + STEM_GAP;
+    let top = BAND_TOP + 40.;
+    let bottom = STRIP_TOP - BAND_BOTTOM;
+    let mut pages: Vec<Vec<Item>> = Vec::new();
+    let mut y = bottom;
+    for line in lines {
+        if y + PROSE_LEADING > bottom {
+            pages.push(vec![
+                Item::Ground { colour: inks.page },
+                Item::Fill {
+                    rect: Rect::new(0., 0., MAIN, STRIP_TOP),
+                    colour: inks.band,
+                },
+            ]);
+            y = top;
+        }
+        let page = pages.last_mut().expect("a page");
+        let end_of_paragraph = line.last().is_some_and(|piece| piece.x < 0.);
+        let pieces: Vec<_> = line.into_iter().filter(|piece| piece.x >= 0.).collect();
+        page.extend(line_items(
+            &pieces,
+            prose_x,
+            y,
+            PROSE_LEADING,
+            PROSE_SIZE,
+            inks.band,
+        ));
+        y += PROSE_LEADING;
+        if end_of_paragraph {
+            y += PROSE_SPACING;
+        }
+    }
+    let of = pages.len() + 1;
+    for (ix, page) in pages.iter_mut().enumerate() {
+        page.push(text_at(
+            prose_x,
+            BAND_TOP,
+            20.,
+            &fit(
+                &format!(
+                    "Group {}, continued ({} of {of}) · {}",
+                    group.n,
+                    ix + 2,
+                    group.title
+                ),
+                Face::Medium,
+                TITLE_SIZE,
+                MAIN - BAND_SIDE - prose_x,
+            ),
+            Face::Medium,
+            TITLE_SIZE,
+            inks.on_band.muted,
+        ));
+    }
+    pages
 }
 
 /// A pane's header: its name in the accent, then what it shows, and its
@@ -432,7 +590,12 @@ fn header(document: &Document, pane: &Pane, at: Rect, items: &mut Vec<Item>) -> 
     let (name, what, note) = pane_name(pane);
     let size = 11.5;
     let mut x = at.x + 16.;
-    if let Some(name) = name {
+    // The file and its range are kept whole; a long name gives way first.
+    let room = at.w - 32. - measure(&what, Face::Mono, size) - 8.;
+    if let Some(name) = name
+        && room > measure("…", Face::Mono, size)
+    {
+        let name = fit(&name, Face::Mono, size, room);
         items.push(text_at(
             x,
             at.y + 12.,
@@ -638,11 +801,14 @@ fn code_row(
                 }),
                 RowKind::Context { .. } => {}
             }
-            for (ix, numeral) in numerals.iter().enumerate() {
+            // The first beside the code, the rest outward, all inside the
+            // gutter however many start here.
+            let slots = numeral_slots(numerals.len(), at.x + 2., at.x + 26., 7.5);
+            for (numeral, (cx, r)) in numerals.iter().zip(slots) {
                 items.push(Item::Badge {
-                    cx: at.x + 18. - count(ix) * 16.,
+                    cx,
                     cy: y + row / 2.,
-                    r: 7.5,
+                    r,
                     numeral: *numeral,
                     fill: *accent,
                     ink: *ground,
@@ -1217,11 +1383,16 @@ fn strip(document: &Document, kind: Kind, page: usize, total: usize) -> Vec<Item
     items.push(row(x, &place));
     x += measure(&place, Face::Mono, STRIP_SIZE) + STRIP_GAP;
     // The right side, from the right.
-    let right: Vec<String> = [repo(document), day(&document.created)]
-        .into_iter()
-        .flatten()
-        .chain(std::iter::once(format!("page {page} of {total}")))
-        .collect();
+    // A long repo is cut in the middle, as the portrait footer cuts it, so
+    // both of its ends still say which one it is.
+    let right: Vec<String> = [
+        repo(document).map(|repo| middle(&repo, Face::Mono, STRIP_SIZE, 260.)),
+        day(&document.created),
+    ]
+    .into_iter()
+    .flatten()
+    .chain(std::iter::once(format!("page {page} of {total}")))
+    .collect();
     let mut rx = WIDTH - STRIP_SIDE;
     for words in right.iter().rev() {
         let w = measure(words, Face::Mono, STRIP_SIZE);

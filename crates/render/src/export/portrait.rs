@@ -29,9 +29,9 @@ use deck_core::protocol::Kind as Remark;
 use deck_core::theme::Rgb;
 
 use super::layout::{
-    Context, Face, Item, Kind, Page, Rect, Tones, Visual, baseline, count, cut, day, fit, flow,
-    level, line_items, measure, middle, number_width, pane_name, repo, svg_size, tokens, up4,
-    visual_rows,
+    Context, DIAGRAM_LEAST, Face, Item, Kind, Page, Rect, Tones, Visual, baseline, count, cut, day,
+    fit, flow, level, line_items, measure, middle, number_width, numeral_slots, pane_name, repo,
+    svg_size, tokens, up4, visual_rows,
 };
 use crate::text::{self, Weight};
 
@@ -115,6 +115,11 @@ struct Block {
     pad: f32,
     head: Vec<Row>,
     rows: Vec<Row>,
+    /// Start on a page of its own, unless it starts one already: a diagram
+    /// cut across pages, which reads best from the top of one.
+    fresh: bool,
+    /// What the person exporting should hear about it.
+    warning: Option<String>,
 }
 
 /// `item` moved down by `dy`.
@@ -144,6 +149,11 @@ fn paginate(blocks: &[Block]) -> (Vec<Vec<Item>>, f32) {
     let mut y = top;
     for block in blocks {
         let mut from = 0;
+        if block.fresh && (y - top).abs() > f32::EPSILON {
+            pages.push(Vec::new());
+            top = CONTINUED_TOP;
+            y = top;
+        }
         loop {
             let start = if (y - top).abs() < f32::EPSILON {
                 y
@@ -206,34 +216,46 @@ pub(super) fn pages(document: &Document) -> Vec<Page> {
     // Each group's pages, the evidence trimmed only where two pages are not
     // enough.
     let mut laid: Vec<(Vec<Vec<Item>>, f32)> = Vec::new();
+    let mut said_of: Vec<Vec<String>> = Vec::new();
     for group in &document.groups {
-        let try_with = |context| paginate(&group_blocks(document, group, &tones, context));
-        let mut pages = try_with(Context::Around(3));
+        let try_with = |context| {
+            let blocks = group_blocks(document, group, &tones, context);
+            let warnings: Vec<String> = blocks.iter().filter_map(|b| b.warning.clone()).collect();
+            (paginate(&blocks), warnings)
+        };
+        let (mut pages, mut warnings) = try_with(Context::Around(3));
         if pages.0.len() > 2 {
-            pages = try_with(Context::Trimmed);
+            (pages, warnings) = try_with(Context::Trimmed);
         }
         laid.push(pages);
+        said_of.push(warnings);
     }
     let said = (!document.general.is_empty()).then(|| paginate(&said_blocks(document)));
 
-    // Where each group starts, counting the cover as page one.
+    // Where each group starts, after however many pages the contents take.
+    let covers = cover(document, &laid, &vec![0; laid.len()]).len();
     let mut first: Vec<usize> = Vec::new();
-    let mut at = 1;
+    let mut at = covers;
     for (pages, _) in &laid {
         first.push(at);
         at += pages.len();
     }
     let total = at + said.as_ref().map_or(0, |(pages, _)| pages.len());
 
-    let mut out = vec![Page {
-        width: WIDTH,
-        height: HEIGHT,
-        scale: 1.,
-        kind: Kind::Cover,
-        items: cover(document, &laid, &first),
-        warnings: Vec::new(),
-    }];
-    for (ix, (group, (pages, end))) in document.groups.iter().zip(laid).enumerate() {
+    let mut out: Vec<Page> = cover(document, &laid, &first)
+        .into_iter()
+        .map(|items| Page {
+            width: WIDTH,
+            height: HEIGHT,
+            scale: 1.,
+            kind: Kind::Cover,
+            items,
+            warnings: Vec::new(),
+        })
+        .collect();
+    for (ix, ((group, (pages, end)), blocked)) in
+        document.groups.iter().zip(laid).zip(said_of).enumerate()
+    {
         let of = u32::try_from(pages.len()).unwrap_or(u32::MAX);
         let last = pages.len() - 1;
         for (part, mut items) in pages.into_iter().enumerate() {
@@ -246,15 +268,17 @@ pub(super) fn pages(document: &Document) -> Vec<Page> {
             }
             // Past the one extra page a group may take: said once, on its
             // first page, so the person exporting knows to look.
-            let warnings = if part == 0 && of > 2 {
-                vec![format!(
-                    "group {} needs {of} pages even with its context trimmed; its pages after \
-                     the first are headed \"continued\"",
-                    group.n
-                )]
-            } else {
-                Vec::new()
-            };
+            let mut warnings = Vec::new();
+            if part == 0 {
+                if of > 2 {
+                    warnings.push(format!(
+                        "group {} needs {of} pages even with its context trimmed; its pages \
+                         after the first are headed \"continued\"",
+                        group.n
+                    ));
+                }
+                warnings.extend(blocked.iter().cloned());
+            }
             out.push(Page {
                 width: WIDTH,
                 height: HEIGHT,
@@ -338,7 +362,7 @@ fn group_blocks(document: &Document, group: &Group, tones: &Tones, context: Cont
     for pane in &group.panes {
         let mut block = match pane {
             Pane::Code(code) => code_block(document, pane, code, context),
-            Pane::Diagram(picture) => diagram_block(document, pane, picture),
+            Pane::Diagram(picture) => diagram_block(document, group, pane, picture),
             Pane::Page(_) => page_card(document, pane),
         };
         block.gap = BETWEEN;
@@ -424,6 +448,7 @@ fn band(document: &Document, group: &Group, tones: &Tones) -> Block {
         pad: BAND_PAD,
         head: Vec::new(),
         rows,
+        ..Block::default()
     }
 }
 
@@ -435,7 +460,12 @@ fn pane_head(document: &Document, pane: &Pane) -> Vec<Row> {
     let x = LEFT + PANE_X;
     let mut items = Vec::new();
     let mut at = x;
-    if let Some(name) = name {
+    // The file and its range are kept whole; a long name gives way first.
+    let room = RIGHT - PANE_X - x - measure(&what, Face::Mono, size) - 8.;
+    if let Some(name) = name
+        && room > measure("…", Face::Mono, size)
+    {
+        let name = fit(&name, Face::Mono, size, room);
         items.push(text_at(
             at,
             PANE_HEAD,
@@ -510,6 +540,7 @@ fn code_block(
                     inks.on_pane.muted,
                 )],
             )],
+            ..Block::default()
         };
     }
     let rows = code_rows(
@@ -526,6 +557,7 @@ fn code_block(
         pad: PANE_Y,
         head,
         rows,
+        ..Block::default()
     }
 }
 
@@ -646,14 +678,14 @@ fn code_row(
         });
     }
     if margin {
-        // Out in the margin, the last one's right edge twelve points short
-        // of the column.
-        for (ix, numeral) in numerals.iter().rev().enumerate() {
-            let right = LEFT - NUMERAL_GAP - count(ix) * (2. * NUMERAL_R + 2.);
+        // Out in the margin, the first twelve points short of the column
+        // and the rest outward from it, never past the page's edge.
+        let slots = numeral_slots(numerals.len(), 4., LEFT - NUMERAL_GAP, NUMERAL_R);
+        for (numeral, (cx, r)) in numerals.iter().zip(slots) {
             items.push(Item::Badge {
-                cx: right - NUMERAL_R,
+                cx,
                 cy: line / 2.,
-                r: NUMERAL_R,
+                r,
                 numeral: *numeral,
                 fill: document.inks.on_page.accent,
                 ink: document.inks.page,
@@ -715,30 +747,101 @@ fn code_row(
     Row::with(line, items)
 }
 
-/// The largest a diagram can be drawn on a page: the column inside a pane,
-/// and a page's height less what any page holds above it.
-const DIAGRAM_MOST: (f32, f32) = (COLUMN - 2. * PANE_X, BOTTOM - CONTINUED_TOP - 64.);
+/// The widest a diagram can be drawn: the column inside a pane.
+const DIAGRAM_WIDE: f32 = COLUMN - 2. * PANE_X;
+
+/// The tallest one page holds of a diagram: a page under a continued page's
+/// heading, less the pane's header, its insets and a mark that it goes on.
+const DIAGRAM_HIGH: f32 = BOTTOM - CONTINUED_TOP - PANE_HEAD - 2. * PANE_Y - 12.;
 
 /// A diagram at the size deck draws it — a pixel being three quarters of a
-/// point, as on any page — and only ever smaller, to fit.
+/// point, as on any page — smaller only to fit, and never so small its
+/// labels go under six points ([`DIAGRAM_LEAST`]). One that would need
+/// smaller starts a page of its own and is cut across pages in bands of the
+/// page's height, each saying it continues.
 fn diagram_block(
     document: &Document,
+    group: &Group,
     pane: &Pane,
     picture: &deck_core::document::Picture,
 ) -> Block {
     let inks = &document.inks;
     let (w, h) = svg_size(&picture.svg);
     let (w, h) = (w * 0.75, h * 0.75);
-    let scale = (DIAGRAM_MOST.0 / w).min(DIAGRAM_MOST.1 / h).min(1.);
-    let high = up4(h * scale);
-    let mut rows = vec![Row::with(
-        high,
-        vec![Item::Svg {
-            rect: Rect::new(LEFT + PANE_X, 0., COLUMN - 2. * PANE_X, high),
-            svg: picture.svg.clone(),
-            scale: 0.75 * scale,
-        }],
-    )];
+    let named = picture.name.clone().unwrap_or_else(|| picture.id.clone());
+    let mut warning = None;
+    let wide = (DIAGRAM_WIDE / w).min(1.);
+    let mut scale = wide.min(DIAGRAM_HIGH / h);
+    if scale < DIAGRAM_LEAST {
+        scale = wide.max(DIAGRAM_LEAST);
+    }
+    if w * scale > DIAGRAM_WIDE + 0.5 {
+        warning = Some(format!(
+            "group {}: diagram {named} is wider than a page at a size its labels can be read; \
+             it is cut at the page's edge",
+            group.n
+        ));
+    }
+    let drawn = h * scale;
+    let mut rows = Vec::new();
+    let fresh = drawn > DIAGRAM_HIGH;
+    if fresh {
+        // In bands of a page's height, from the top.
+        let band = (DIAGRAM_HIGH / 4.).floor() * 4.;
+        let per = band / (0.75 * scale);
+        let natural = h / 0.75;
+        let mut from = 0.;
+        let mut bands = 0;
+        while from < natural {
+            let to = (from + per).min(natural);
+            rows.push(Row::with(
+                up4((to - from) * 0.75 * scale),
+                vec![Item::Svg {
+                    rect: Rect::new(
+                        LEFT + PANE_X,
+                        0.,
+                        DIAGRAM_WIDE,
+                        up4((to - from) * 0.75 * scale),
+                    ),
+                    svg: picture.svg.clone(),
+                    scale: 0.75 * scale,
+                    band: Some([from, to]),
+                }],
+            ));
+            if to < natural {
+                let (size, line) = SMALL;
+                rows.push(Row::with(
+                    line,
+                    vec![text_at(
+                        LEFT + PANE_X,
+                        line,
+                        "↓ the diagram continues on the next page",
+                        Face::Regular,
+                        size,
+                        inks.on_pane.muted,
+                    )],
+                ));
+            }
+            from = to;
+            bands += 1;
+        }
+        warning = Some(format!(
+            "group {}: diagram {named} is too tall for a page at a size its labels can be \
+             read; it is cut across {bands} pages",
+            group.n
+        ));
+    } else {
+        let high = up4(drawn);
+        rows.push(Row::with(
+            high,
+            vec![Item::Svg {
+                rect: Rect::new(LEFT + PANE_X, 0., DIAGRAM_WIDE, high),
+                svg: picture.svg.clone(),
+                scale: 0.75 * scale,
+                band: None,
+            }],
+        ));
+    }
     if !picture.marks.is_empty() {
         let (size, line) = SMALL;
         let mut items = Vec::new();
@@ -772,6 +875,8 @@ fn diagram_block(
         pad: PANE_Y,
         head: pane_head(document, pane),
         rows,
+        fresh,
+        warning,
     }
 }
 
@@ -815,6 +920,7 @@ fn page_card(document: &Document, pane: &Pane) -> Block {
         pad: PANE_Y,
         head: pane_head(document, pane),
         rows: vec![Row::with(40., items)],
+        ..Block::default()
     }
 }
 
@@ -1328,8 +1434,10 @@ fn footer(document: &Document, kind: Kind, page: usize, total: usize) -> Vec<Ite
 
 /// The cover: the deck's title, a line on what follows, the contents, and a
 /// bar of how many pages each group takes, centred down the page with no
-/// header and nothing about who or when.
-fn cover(document: &Document, laid: &[(Vec<Vec<Item>>, f32)], first: &[usize]) -> Vec<Item> {
+/// header and nothing about who or when — when it all fits on one. A deck
+/// with more groups than a page holds runs its contents on, from the top,
+/// onto pages headed "Contents, continued".
+fn cover(document: &Document, laid: &[(Vec<Vec<Item>>, f32)], first: &[usize]) -> Vec<Vec<Item>> {
     let inks = &document.inks;
     let mut rows: Vec<Row> = Vec::new();
     let (size, line) = (28., 32.);
@@ -1393,30 +1501,35 @@ fn cover(document: &Document, laid: &[(Vec<Vec<Item>>, f32)], first: &[usize]) -
     ));
     rows.push(Row::new(16.));
 
-    // How many pages each group takes, the cover first.
-    let pages: Vec<usize> = std::iter::once(1)
+    // How many pages each group takes, the contents first. Past the point
+    // where a page is narrower than one step of the scale, the bar would be
+    // a smear, and the caption says it alone.
+    let covers = first.first().copied().unwrap_or(1).max(1);
+    let pages: Vec<usize> = std::iter::once(covers)
         .chain(laid.iter().map(|(pages, _)| pages.len()))
         .collect();
     let total: usize = pages.iter().sum();
-    let unit = ((COLUMN + 4.) / count(total) / 4.).floor().max(1.) * 4.;
-    let mut bar = Vec::new();
-    let mut x = LEFT;
-    for (ix, n) in pages.iter().enumerate() {
-        let w = count(*n) * unit - 4.;
-        bar.push(Item::Fill {
-            rect: Rect::new(x, 0., w.max(4.), 8.),
-            colour: if ix == 0 {
-                inks.edge
-            } else {
-                inks.page.mix(inks.on_page.accent, 0.55)
-            },
-        });
-        x += count(*n) * unit;
+    let unit = ((COLUMN + 4.) / count(total) / 4.).floor() * 4.;
+    if unit >= 4. {
+        let mut bar = Vec::new();
+        let mut x = LEFT;
+        for (ix, n) in pages.iter().enumerate() {
+            let w = count(*n) * unit - 4.;
+            bar.push(Item::Fill {
+                rect: Rect::new(x, 0., w.max(4.), 8.),
+                colour: if ix == 0 {
+                    inks.edge
+                } else {
+                    inks.page.mix(inks.on_page.accent, 0.55)
+                },
+            });
+            x += count(*n) * unit;
+        }
+        rows.push(Row::with(8., bar));
+        rows.push(Row::new(4.));
     }
-    rows.push(Row::with(8., bar));
-    rows.push(Row::new(4.));
     let caption = format!(
-        "pages: the cover, then {}",
+        "pages: the contents, then {}",
         laid.iter()
             .map(|(pages, _)| pages.len().to_string())
             .collect::<Vec<_>>()
@@ -1427,7 +1540,7 @@ fn cover(document: &Document, laid: &[(Vec<Vec<Item>>, f32)], first: &[usize]) -
         vec![text_at(
             LEFT,
             12.,
-            &caption,
+            &fit(&caption, Face::Regular, small, COLUMN),
             Face::Regular,
             small,
             inks.on_page.muted,
@@ -1435,14 +1548,39 @@ fn cover(document: &Document, laid: &[(Vec<Vec<Item>>, f32)], first: &[usize]) -
     ));
 
     let high: f32 = rows.iter().map(|row| row.height).sum();
-    let top = (MARGIN + ((BOTTOM - MARGIN - high) / 2. / 4.).floor() * 4.).max(MARGIN);
-    let mut out = Vec::new();
-    let mut y = top;
+    if high <= BOTTOM - MARGIN {
+        let top = MARGIN + ((BOTTOM - MARGIN - high) / 2. / 4.).floor() * 4.;
+        let mut out = Vec::new();
+        let mut y = top;
+        for row in rows {
+            out.extend(row.items.iter().map(|item| down(item, y)));
+            y += row.height;
+        }
+        return vec![out];
+    }
+    // From the top, page after page.
+    let mut pages: Vec<Vec<Item>> = vec![Vec::new()];
+    let mut y = MARGIN;
     for row in rows {
-        out.extend(row.items.iter().map(|item| down(item, y)));
+        if y + row.height > BOTTOM {
+            let mut page = Vec::new();
+            let (size, _) = PROSE;
+            page.push(text_at(
+                LEFT,
+                24.,
+                "Contents, continued",
+                Face::Medium,
+                size,
+                inks.on_page.muted,
+            ));
+            pages.push(page.into_iter().map(|item| down(&item, MARGIN)).collect());
+            y = CONTINUED_TOP;
+        }
+        let page = pages.last_mut().expect("a page");
+        page.extend(row.items.iter().map(|item| down(item, y)));
         y += row.height;
     }
-    out
+    pages
 }
 
 /// One group in the contents: its number and title, its confidence and

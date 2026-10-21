@@ -9,8 +9,8 @@ use crate::export::{Face, Format, Item, Kind, Page, Writing, deck_pdf, layout, s
 
 /// The fixture as the document the pages are laid out from.
 fn document_of(bundle: &Bundle, options: &Options) -> Document {
-    let document =
-        crate::document::build(bundle, &palette(), true, Syntax::default()).expect("builds");
+    let document = crate::document::build_unfolded(bundle, &palette(), true, Syntax::default())
+        .expect("builds");
     shown(&document, options)
 }
 
@@ -498,7 +498,11 @@ fn a_long_line_wraps_and_is_never_clipped() {
 fn the_pdf_carries_its_links() {
     for format in [Format::Portrait, Format::Landscape] {
         let (pdf, _) = export_pdf(&Options::default(), format);
-        let text = String::from_utf8_lossy(&pdf);
+        // Written with or without a space before a value, as the writer
+        // chooses.
+        let text = String::from_utf8_lossy(&pdf)
+            .replace("/Subtype /", "/Subtype/")
+            .replace("/URI (", "/URI(");
         assert!(text.contains("/Subtype/Link"));
         assert!(text.contains(&format!("/URI({})", crate::export::links::DECK)));
         assert!(
@@ -521,4 +525,317 @@ fn the_pdf_carries_its_links() {
         .filter(|item| matches!(item, Item::Url { url, .. } if url == crate::export::links::DECK))
         .count();
     assert_eq!(urls, pages.len());
+}
+
+/// A deck of one file, `path`, kept whole, and `groups`.
+fn deck_with_file(path: &str, source: &str, groups: &[&str]) -> Bundle {
+    use std::collections::BTreeMap;
+
+    use deck_core::bundle::{CONTAINER, Manifest, Repo, sha256, snap};
+    use deck_core::line::LineRange;
+
+    let (kept, text) = snap::keep(source, &[LineRange::new(1, u32::MAX)], 0);
+    let index = snap::Index {
+        files: vec![snap::File {
+            path: path.to_string(),
+            entry: "snap/1.txt".to_string(),
+            sha256: sha256(source.as_bytes()),
+            commit: Some("a1b2c3d4e5".to_string()),
+            state: snap::State::Clean,
+            kept,
+            lines: None,
+        }],
+    };
+    let mut files = BTreeMap::new();
+    files.insert(
+        "deck/deck.json".to_string(),
+        br#"{"v":1,"id":"d-1","title":"One file"}"#.to_vec(),
+    );
+    for (ix, group) in groups.iter().enumerate() {
+        files.insert(format!("deck/g{}.json", ix + 1), group.as_bytes().to_vec());
+    }
+    files.insert(
+        "snap/index.json".to_string(),
+        serde_json::to_vec(&index).unwrap(),
+    );
+    files.insert("snap/1.txt".to_string(), text.into_bytes());
+    let bundle = Bundle {
+        manifest: Manifest {
+            container: CONTAINER,
+            protocol: 1,
+            created: "2026-10-20T09:30:00Z".to_string(),
+            generator: "deck test".to_string(),
+            repo: Some(Repo {
+                remote: Some("https://github.com/acme/ingest.git".to_string()),
+                commit: Some("a1b2c3d4e5".to_string()),
+            }),
+            entries: BTreeMap::new(),
+            allowed: Vec::new(),
+        },
+        files,
+    };
+    Bundle::open(&bundle.pack().expect("packs"))
+        .expect("opens")
+        .0
+}
+
+/// On paper a fold is lines nobody can open, so a long quiet range prints
+/// every line and lets the pages run on.
+#[test]
+fn a_long_range_prints_every_line_on_paper() {
+    let source: String = (1..=320).map(|n| format!("let line{n} = {n}\n")).collect();
+    let group = r#"{"id": "g1", "ord": 1, "say": "All of it.[point 150]",
+        "refs": [{"id": "g1r1", "file": "src/long.ts", "range": [11, 310]}]}"#;
+    let pages = layout(
+        &document_of(
+            &deck_with_file("src/long.ts", &source, &[group]),
+            &Options::default(),
+        ),
+        Format::Portrait,
+    );
+    let all: String = pages.iter().map(words).collect::<Vec<_>>().join(" ");
+    for n in 11..=310 {
+        assert!(all.contains(&format!("line{n} ")), "line {n}");
+    }
+    assert!(!all.contains("⋯"), "nothing is folded");
+}
+
+/// Six points that all start on one line: every numeral is on the page and
+/// inside the gutter, the first beside the code and the rest outward, in
+/// both formats.
+#[test]
+fn many_numerals_on_a_line_stay_in_the_gutter() {
+    let group = r#"{"id": "g1", "ord": 1, "say": "One.[point 6] Two.[point 6-7] Three.[point 6-8] Four.[point 6-9] Five.[point 6-10] Six.[point 6-11]",
+        "refs": [{"id": "g1r1", "file": "src/batch.ts", "range": [6, 12]}]}"#;
+    let document = document_of(&deck_of(&[group], None), &Options::default());
+    for (format, left, right) in [(Format::Portrait, 0., 36.), (Format::Landscape, 0., 26.)] {
+        let pages = layout(&document, format);
+        let mut badges: Vec<(u32, f32, f32)> = pages
+            .iter()
+            .flat_map(|page| &page.items)
+            .filter_map(|item| match item {
+                Item::Badge { cx, r, numeral, .. } if *cx < 40. => Some((*numeral, *cx, *r)),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(badges.len(), 6, "{format:?}");
+        for (numeral, cx, r) in &badges {
+            assert!(
+                cx - r >= left && cx + r <= right + 0.01,
+                "{format:?} {numeral} at {cx}"
+            );
+        }
+        badges.sort_by_key(|(numeral, _, _)| *numeral);
+        for pair in badges.windows(2) {
+            assert!(pair[0].1 > pair[1].1, "{format:?}: ascending outward");
+        }
+    }
+}
+
+/// Sixty groups do not fit one page of contents: they run on, nothing is
+/// drawn into the footer, and every group is listed with its page.
+#[test]
+fn a_long_contents_runs_onto_more_pages() {
+    let groups: Vec<String> = (1..=60)
+        .map(|n| {
+            format!(
+                r#"{{"id": "g{n}", "ord": {n}, "title": "Group number {n}", "say": "Here.[point 6]",
+                    "refs": [{{"id": "g{n}r1", "file": "src/batch.ts", "range": [6, 7]}}]}}"#
+            )
+        })
+        .collect();
+    let refs: Vec<&str> = groups.iter().map(String::as_str).collect();
+    let pages = layout(
+        &document_of(&deck_of(&refs, None), &Options::default()),
+        Format::Portrait,
+    );
+    let covers: Vec<&Page> = pages.iter().filter(|p| p.kind == Kind::Cover).collect();
+    assert!(covers.len() > 1);
+    for page in &covers {
+        for item in &page.items {
+            let bottom = match item {
+                Item::Text { baseline, .. } => *baseline,
+                Item::Fill { rect, .. } | Item::Chip { rect, .. } | Item::Link { rect, .. } => {
+                    rect.y + rect.h
+                }
+                _ => continue,
+            };
+            assert!(bottom <= 768. || bottom >= 800., "{item:?}");
+        }
+    }
+    let contents: String = covers
+        .iter()
+        .map(|p| words(p))
+        .collect::<Vec<_>>()
+        .join(" ");
+    assert!(contents.contains("Contents, continued"));
+    for n in 1..=60 {
+        assert!(contents.contains(&format!("Group number {n} ")), "{n}");
+    }
+    let first = pages
+        .iter()
+        .position(|p| matches!(p.kind, Kind::Group { n: 1, part: 1, .. }))
+        .unwrap();
+    assert_eq!(first, covers.len());
+    assert!(contents.contains(&format!("p.{}", first + 1)));
+}
+
+/// A narration too long for a landscape band goes on, on a page of its own,
+/// and the panes keep their room.
+#[test]
+fn a_long_narration_continues_past_the_landscape_band() {
+    let say = (1..=1500)
+        .map(|n| format!("word{n}"))
+        .collect::<Vec<_>>()
+        .join(" ");
+    let group = format!(
+        r#"{{"id": "g1", "ord": 1, "say": "{say}.[point 6]", "refs": [{{"id": "g1r1", "file": "src/batch.ts", "range": [6, 8]}}]}}"#
+    );
+    let pages = layout(
+        &document_of(&deck_of(&[&group], None), &Options::default()),
+        Format::Landscape,
+    );
+    assert!(
+        pages
+            .iter()
+            .any(|p| matches!(p.kind, Kind::Group { n: 1, part: 2, .. }))
+    );
+    assert!(pages[0].warnings.iter().any(|w| w.contains("narration")));
+    for page in &pages {
+        for item in &page.items {
+            if let Item::Fill { rect, .. } = item {
+                assert!(rect.h >= 0. && rect.y + rect.h <= 794.01, "{item:?}");
+            }
+        }
+    }
+    let all: String = pages.iter().map(words).collect::<Vec<_>>().join(" ");
+    assert!(all.contains("word1500"));
+}
+
+/// A diagram too tall for a page is never shrunk past readable: it is cut
+/// into page-high bands, said to continue, and the export warns.
+#[test]
+fn a_tall_diagram_is_cut_across_pages_not_shrunk() {
+    let nodes: Vec<String> = (0..80)
+        .map(|n| format!(r#"{{"id": "n{n}", "label": "step {n}"}}"#))
+        .collect();
+    let edges: Vec<String> = (0..79)
+        .map(|n| format!(r#"{{"from": "n{n}", "to": "n{}"}}"#, n + 1))
+        .collect();
+    let group = format!(
+        r#"{{"id": "g1", "ord": 1, "say": "The chain.", "refs": [{{"id": "g1d1", "name": "chain", "diagram": {{"nodes": [{}], "edges": [{}]}}}}]}}"#,
+        nodes.join(","),
+        edges.join(",")
+    );
+    let pages = layout(
+        &document_of(&deck_of(&[&group], None), &Options::default()),
+        Format::Portrait,
+    );
+    let bands: Vec<f32> = pages
+        .iter()
+        .flat_map(|p| &p.items)
+        .filter_map(|item| match item {
+            Item::Svg {
+                scale,
+                band: Some(_),
+                ..
+            } => Some(*scale),
+            _ => None,
+        })
+        .collect();
+    assert!(bands.len() >= 2, "{bands:?}");
+    for scale in bands {
+        assert!(scale >= 0.75 * super::super::layout::DIAGRAM_LEAST - 1e-4);
+    }
+    let all: String = pages.iter().map(words).collect::<Vec<_>>().join(" ");
+    assert!(all.contains("the diagram continues on the next page"));
+    assert!(
+        pages
+            .iter()
+            .flat_map(|p| &p.warnings)
+            .any(|w| w.contains("cut across"))
+    );
+}
+
+/// A pane's name gives way before its file and range, which are kept whole.
+#[test]
+fn a_pane_header_keeps_its_range_whole() {
+    let file = "src/a/very/deep/directory/structure/that/goes/on/and/on/batch.ts";
+    let group = format!(
+        r#"{{"id": "g1", "ord": 1, "say": "Here.", "refs": [{{"id": "g1r1", "file": "{file}", "range": [6, 8], "name": "averyveryverylongname"}}]}}"#
+    );
+    let what = format!("{file}:6-8");
+    for format in [Format::Portrait, Format::Landscape] {
+        let pages = layout(
+            &document_of(&deck_of(&[&group], None), &Options::default()),
+            format,
+        );
+        assert!(
+            pages
+                .iter()
+                .flat_map(|p| &p.items)
+                .any(|item| matches!(item, Item::Text { text, .. } if text == &what)),
+            "{format:?}"
+        );
+    }
+}
+
+/// Words the embedded faces cannot set are drawn from the machine, as real
+/// text in a face of its own; or, where the machine has no face for them,
+/// the export says which.
+#[test]
+fn a_script_plex_lacks_is_drawn_from_the_machine_or_said() {
+    let sample = "漢字 😀 مرحبا שלום";
+    let group = format!(
+        r#"{{"id": "g1", "ord": 1, "say": "{sample}[point 6]", "refs": [{{"id": "g1r1", "file": "src/batch.ts", "range": [6, 7]}}]}}"#
+    );
+    let (pdf, warnings) = deck_pdf(
+        &deck_of(&[&group], None),
+        &palette(),
+        Syntax::default(),
+        &Options::default(),
+        Format::Portrait,
+        &writing(),
+    )
+    .expect("exports");
+    let text = String::from_utf8_lossy(&pdf);
+    let faces: Vec<&str> = text
+        .match_indices("/BaseFont")
+        .map(|(at, _)| {
+            let rest = text[at + 9..].trim_start().trim_start_matches('/');
+            rest.split(|c: char| c == '/' || c.is_whitespace() || c == '>')
+                .next()
+                .unwrap_or_default()
+        })
+        .collect();
+    let borrowed = faces
+        .iter()
+        .any(|face| !face.contains("IBMPlex") && !face.contains("JetBrains"));
+    let said = warnings
+        .iter()
+        .find(|w| w.contains("no face on this machine"));
+    for ch in sample.chars().filter(|ch| !ch.is_whitespace()) {
+        let missing = said.is_some_and(|w| w.contains(ch));
+        assert!(
+            missing || borrowed,
+            "{ch} neither drawn nor said: {faces:?}"
+        );
+    }
+}
+
+/// A landscape export with nothing to show is a page that says so.
+#[test]
+fn a_landscape_export_of_nothing_says_so() {
+    let pages = layout(
+        &document_of(
+            &bundle(),
+            &Options {
+                groups: vec![99],
+                ..Options::default()
+            },
+        ),
+        Format::Landscape,
+    );
+    assert_eq!(pages.len(), 1);
+    assert!(words(&pages[0]).contains("0 groups"));
 }
