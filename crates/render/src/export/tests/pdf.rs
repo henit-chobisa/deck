@@ -601,8 +601,8 @@ fn a_long_range_prints_every_line_on_paper() {
 }
 
 /// Six points that all start on one line: every numeral is on the page and
-/// inside the gutter, the first beside the code and the rest outward, in
-/// both formats.
+/// inside the gutter, never smaller than six points, the first beside the
+/// code and the rest outward and then under, in both formats.
 #[test]
 fn many_numerals_on_a_line_stay_in_the_gutter() {
     let group = r#"{"id": "g1", "ord": 1, "say": "One.[point 6] Two.[point 6-7] Three.[point 6-8] Four.[point 6-9] Five.[point 6-10] Six.[point 6-11]",
@@ -610,25 +610,72 @@ fn many_numerals_on_a_line_stay_in_the_gutter() {
     let document = document_of(&deck_of(&[group], None), &Options::default());
     for (format, left, right) in [(Format::Portrait, 0., 36.), (Format::Landscape, 0., 26.)] {
         let pages = layout(&document, format);
-        let mut badges: Vec<(u32, f32, f32)> = pages
+        let scale = pages[0].scale;
+        let mut badges: Vec<(u32, f32, f32, f32)> = pages
             .iter()
             .flat_map(|page| &page.items)
             .filter_map(|item| match item {
-                Item::Badge { cx, r, numeral, .. } if *cx < 40. => Some((*numeral, *cx, *r)),
+                Item::Badge {
+                    cx, cy, r, numeral, ..
+                } if *cx < 40. => Some((*numeral, *cx, *cy, *r)),
                 _ => None,
             })
             .collect();
         assert_eq!(badges.len(), 6, "{format:?}");
-        for (numeral, cx, r) in &badges {
+        for (numeral, cx, _, r) in &badges {
             assert!(
                 cx - r >= left && cx + r <= right + 0.01,
                 "{format:?} {numeral} at {cx}"
             );
+            assert!(
+                r * 1.25 * scale >= 6. - 1e-3,
+                "{format:?}: {numeral} is {r}"
+            );
         }
-        badges.sort_by_key(|(numeral, _, _)| *numeral);
+        badges.sort_by_key(|(numeral, _, _, _)| *numeral);
         for pair in badges.windows(2) {
-            assert!(pair[0].1 > pair[1].1, "{format:?}: ascending outward");
+            let outward = pair[0].1 > pair[1].1 && (pair[0].2 - pair[1].2).abs() < 1e-3;
+            let under = pair[1].2 > pair[0].2;
+            assert!(outward || under, "{format:?}: {pair:?}");
         }
+    }
+}
+
+/// Japanese prose and a Japanese string in code are measured in the face
+/// that draws them, so every line stays inside its column.
+#[test]
+fn cjk_stays_inside_its_column() {
+    let prose = "日本語の文章がここに続きます。".repeat(14);
+    let value = "値".repeat(120);
+    let group = format!(
+        r#"{{"id": "g1", "ord": 1, "say": "{prose}[point 6]", "refs": [{{"id": "g1r1", "file": "src/batch.ts", "range": [6, 8],
+            "values": [{{"line": 6, "at": "nowhere", "is": "{value}"}}]}}]}}"#
+    );
+    let document = document_of(&deck_of(&[&group], None), &Options::default());
+    for (format, right) in [(Format::Portrait, 548.), (Format::Landscape, 1123.)] {
+        let pages = layout(&document, format);
+        let mut seen = 0;
+        for page in &pages {
+            for item in &page.items {
+                if let Item::Text {
+                    x,
+                    text,
+                    face,
+                    size,
+                    ..
+                } = item
+                    && !text.is_ascii()
+                {
+                    let end = x + crate::export::layout::measure(text, *face, *size);
+                    assert!(
+                        *x >= 0. && end <= right + 0.5,
+                        "{format:?}: {text} ends at {end}"
+                    );
+                    seen += 1;
+                }
+            }
+        }
+        assert!(seen > 2, "{format:?}");
     }
 }
 
@@ -838,4 +885,115 @@ fn a_landscape_export_of_nothing_says_so() {
     );
     assert_eq!(pages.len(), 1);
     assert!(words(&pages[0]).contains("0 groups"));
+}
+
+/// The 80-node chain, cut into bands: no box straddles a band's edge, and
+/// each band's drawing holds only its own boxes' labels, each label once.
+#[test]
+fn a_band_never_cuts_a_box_and_holds_only_its_own_words() {
+    let nodes: Vec<String> = (0..80)
+        .map(|n| format!(r#"{{"id": "n{n}", "label": "step {n}"}}"#))
+        .collect();
+    let edges: Vec<String> = (0..79)
+        .map(|n| format!(r#"{{"from": "n{n}", "to": "n{}"}}"#, n + 1))
+        .collect();
+    let group = format!(
+        r#"{{"id": "g1", "ord": 1, "say": "The chain.", "refs": [{{"id": "g1d1", "name": "chain", "diagram": {{"nodes": [{}], "edges": [{}]}}}}]}}"#,
+        nodes.join(","),
+        edges.join(",")
+    );
+    let document = document_of(&deck_of(&[&group], None), &Options::default());
+    let whole = match &document.groups[0].panes[0] {
+        deck_core::document::Pane::Diagram(picture) => picture.svg.clone(),
+        _ => panic!("a diagram"),
+    };
+    let all_boxes = crate::export::layout::boxes(&whole);
+    assert_eq!(all_boxes.len(), 80);
+    let pages = layout(&document, Format::Portrait);
+    let mut labels: Vec<String> = Vec::new();
+    for item in pages.iter().flat_map(|p| &p.items) {
+        let Item::Svg {
+            svg,
+            band: Some([from, to]),
+            ..
+        } = item
+        else {
+            continue;
+        };
+        for (top, bottom) in &all_boxes {
+            let inside = top >= from && bottom <= to;
+            let outside = bottom <= from || top >= to;
+            assert!(
+                inside || outside,
+                "a box {top}-{bottom} straddles {from}-{to}"
+            );
+        }
+        for line in svg.lines().filter(|line| line.starts_with("<text ")) {
+            let words = &line[line.find('>').unwrap() + 1..line.rfind("</text>").unwrap()];
+            labels.push(words.to_string());
+        }
+    }
+    for n in 0..80 {
+        let label = format!("step {n}");
+        assert_eq!(labels.iter().filter(|l| **l == label).count(), 1, "{label}");
+    }
+}
+
+/// A character Plex lacks is borrowed from a face of the weight it stands
+/// in for: regular prose from a regular cut, a title from a heavier one.
+#[test]
+fn a_borrowed_face_has_the_weight_it_stands_in_for() {
+    let mut missing = std::collections::BTreeSet::new();
+    let pick = |face, missing: &mut std::collections::BTreeSet<char>| {
+        crate::export::fallback::runs(face, "漢", missing)
+            .into_iter()
+            .find_map(|(source, _)| match source {
+                crate::export::fallback::Source::Machine(id) => crate::export::fallback::weight(id),
+                crate::export::fallback::Source::Own => None,
+            })
+    };
+    let (Some(regular), Some(semibold)) = (
+        pick(Face::Regular, &mut missing),
+        pick(Face::Semibold, &mut missing),
+    ) else {
+        // No face on this machine sets it: then the export says so.
+        assert!(missing.contains(&'漢'));
+        return;
+    };
+    assert!(regular <= 500, "regular prose borrowed a {regular} face");
+    assert!(semibold >= regular, "{semibold} < {regular}");
+    assert!(regular.abs_diff(400) <= semibold.abs_diff(400));
+}
+
+/// A landscape group whose narration runs on: its page, then the
+/// narration's pages, then its argument's.
+#[test]
+fn a_continued_band_comes_before_the_argument() {
+    let say = (1..=1500)
+        .map(|n| format!("word{n}"))
+        .collect::<Vec<_>>()
+        .join(" ");
+    let group = format!(
+        r#"{{"id": "g1", "ord": 1, "say": "{say}.[point 6]", "refs": [{{"id": "g1r1", "file": "src/batch.ts", "range": [6, 8]}}]}}"#
+    );
+    let review = r#"{"v": 1, "deck": "d-1", "comments": [
+        {"group": "g1", "ref": "g1r1", "range": [6, 6], "kind": "question", "text": "Why?"}]}"#;
+    let pages = layout(
+        &document_of(&deck_of(&[&group], Some(review)), &Options::default()),
+        Format::Landscape,
+    );
+    let kinds: Vec<Kind> = pages.iter().map(|page| page.kind).collect();
+    let parts = kinds
+        .iter()
+        .filter(|k| matches!(k, Kind::Group { n: 1, .. }))
+        .count();
+    assert!(parts >= 2, "{kinds:?}");
+    for (ix, kind) in kinds.iter().enumerate() {
+        match kind {
+            Kind::Group { part, .. } => assert_eq!(*part as usize, ix + 1, "{kinds:?}"),
+            Kind::Argument { .. } => assert_eq!(ix, parts, "{kinds:?}"),
+            _ => {}
+        }
+    }
+    assert!(matches!(kinds[parts], Kind::Argument { n: 1, .. }));
 }

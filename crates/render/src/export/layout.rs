@@ -278,12 +278,72 @@ pub(super) fn count(n: usize) -> f32 {
     n as f32
 }
 
-/// How wide `text` is in `face` at `size`, as it will be drawn.
+/// How wide `text` is in `face` at `size`, as it will be drawn: words in
+/// the face that will draw them, a character Plex lacks in the machine's
+/// face [`super::fallback`] chooses for it, and code by its columns.
 pub(super) fn measure(text: &str, face: Face, size: f32) -> f32 {
     match face.weight() {
-        Some(weight) => text::shaped_width(text, size, weight),
-        None => count(text.chars().count()) * text::mono_advance(size),
+        None => count(columns(text)) * text::mono_advance(size),
+        Some(weight) if super::fallback::covered(face, text) => {
+            text::shaped_width(text, size, weight)
+        }
+        Some(weight) => {
+            let mut missing = std::collections::BTreeSet::new();
+            super::fallback::runs(face, text, &mut missing)
+                .into_iter()
+                .map(|(source, range)| match source {
+                    super::fallback::Source::Own => text::shaped_width(&text[range], size, weight),
+                    super::fallback::Source::Machine(id) => {
+                        super::fallback::machine_width(id, &text[range], size)
+                    }
+                })
+                .sum()
+        }
     }
+}
+
+/// How many columns `text` takes as code: one a character, two for a wide
+/// one — CJK, most emoji — and none for a mark that sits on the one before.
+pub(super) fn columns(text: &str) -> usize {
+    text.chars().map(column).sum()
+}
+
+/// See [`columns`].
+pub(super) fn column(ch: char) -> usize {
+    unicode_width::UnicodeWidthChar::width(ch).unwrap_or(1)
+}
+
+/// `text` broken into lines `width` wide in `face`: the window's own breaks
+/// where Plex sets every character, and otherwise word by word, measured in
+/// the faces that will draw them, a run with no spaces — Japanese — broken
+/// where it fills the line.
+pub(super) fn wrap(text: &str, face: Face, size: f32, width: f32) -> Vec<String> {
+    if let Some(weight) = face.weight()
+        && super::fallback::covered(face, text)
+    {
+        return text::wrap(text, size, weight, width);
+    }
+    let mut out = Vec::new();
+    for paragraph in text.split('\n') {
+        let tokens: Vec<Token> = paragraph
+            .split_inclusive(' ')
+            .map(|word| Token {
+                text: word.to_string(),
+                face,
+                colour: Rgb::new(0, 0, 0),
+                ground: None,
+                numeral: None,
+            })
+            .collect();
+        let lines = flow(&tokens, size, width);
+        if lines.is_empty() {
+            out.push(String::new());
+        }
+        for line in lines {
+            out.push(line.into_iter().map(|piece| piece.token.text).collect());
+        }
+    }
+    out
 }
 
 /// Where a line of `face` at `size` sits in a row `height` high whose top is
@@ -299,21 +359,29 @@ pub(super) fn baseline(top: f32, height: f32, face: Face, size: f32) -> f32 {
 
 /// `line` cut short with an ellipsis to fit `width` in `face`.
 pub(super) fn fit(line: &str, face: Face, size: f32, width: f32) -> String {
-    match face.weight() {
-        Some(weight) => text::truncate(line, size, weight, width),
-        None => {
-            let cols = (width / text::mono_advance(size)).floor().max(1.);
-            #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
-            let cols = cols as usize;
-            if line.chars().count() <= cols {
-                line.to_string()
-            } else {
-                let mut cut: String = line.chars().take(cols.saturating_sub(1)).collect();
-                cut.push('…');
-                cut
-            }
-        }
+    if let Some(weight) = face.weight()
+        && super::fallback::covered(face, line)
+    {
+        return text::truncate(line, size, weight, width);
     }
+    if measure(line, face, size) <= width {
+        return line.to_string();
+    }
+    // Character by character, in the faces that will draw them, until the
+    // ellipsis would no longer fit after them.
+    let room = width - measure("…", face, size);
+    let mut cut = String::new();
+    for ch in line.chars() {
+        let mut next = cut.clone();
+        next.push(ch);
+        if measure(&next, face, size) > room {
+            break;
+        }
+        cut = next;
+    }
+    let mut cut = cut.trim_end().to_string();
+    cut.push('…');
+    cut
 }
 
 /// `text` shortened in the middle to fit `width`: for a repo, whose two ends
@@ -691,6 +759,98 @@ pub(super) enum Context {
     Trimmed,
 }
 
+/// Every box of a drawing deck wrote, as how far down it starts and ends
+/// from the drawing's top: the `data-top` and `data-bottom` the SVG writer
+/// puts on each.
+pub(super) fn boxes(svg: &str) -> Vec<(f32, f32)> {
+    let mut out = Vec::new();
+    for line in svg.lines() {
+        let attr = |name: &str| {
+            let key = format!("{name}=\"");
+            let at = line.find(&key)? + key.len();
+            line[at..at + line[at..].find('"')?].parse::<f32>().ok()
+        };
+        if line.starts_with("<g ")
+            && let (Some(top), Some(bottom)) = (attr("data-top"), attr("data-bottom"))
+        {
+            out.push((top, bottom));
+        }
+    }
+    out
+}
+
+/// Where a band that starts at `from` and could reach `limit` should end:
+/// `limit` itself when no box crosses it, and otherwise just above the box
+/// it would cut, so long as that leaves the band something. Whether it had
+/// to cut through a box anyway: one taller than the band.
+pub(super) fn snap(boxes: &[(f32, f32)], from: f32, limit: f32) -> (f32, bool) {
+    let crosses = |at: f32| boxes.iter().any(|&(top, bottom)| top < at && at < bottom);
+    if !crosses(limit) {
+        return (limit, false);
+    }
+    // The highest point at or below `limit` in a gap: just above a box's
+    // top, halfway into the gap over it where there is one.
+    let mut best: Option<f32> = None;
+    for &(top, _) in boxes {
+        if top <= from || top > limit {
+            continue;
+        }
+        let above = boxes
+            .iter()
+            .filter(|&&(_, bottom)| bottom <= top)
+            .map(|&(_, bottom)| bottom)
+            .fold(from, f32::max);
+        let at = (above + top) / 2.;
+        if at > from && !crosses(at) && best.is_none_or(|best| at > best) {
+            best = Some(at);
+        }
+    }
+    best.map_or((limit, true), |at| (at, false))
+}
+
+/// `svg` with only what lies in the band from `from` to `to` (in its own
+/// units, from its top): the boxes that reach into the band and the words
+/// whose line sits in it. The rest is clipped out of sight anyway, and left
+/// in, its words would be in the page's text where nobody can see them.
+pub(super) fn banded(svg: &str, from: f32, to: f32) -> String {
+    let top = svg
+        .find("viewBox=\"")
+        .and_then(|at| svg[at + 9..].split_whitespace().nth(1))
+        .and_then(|t| t.parse::<f32>().ok())
+        .unwrap_or(0.);
+    let mut out = String::with_capacity(svg.len());
+    let mut skipping = false;
+    for line in svg.lines() {
+        let attr = |name: &str| {
+            let key = format!(" {name}=\"");
+            let at = line.find(&key)? + key.len();
+            line[at..at + line[at..].find('"')?].parse::<f32>().ok()
+        };
+        if skipping {
+            if line == "</g>" {
+                skipping = false;
+            }
+            continue;
+        }
+        if line.starts_with("<g ")
+            && let (Some(t), Some(b)) = (attr("data-top"), attr("data-bottom"))
+            && (b <= from || t >= to)
+        {
+            skipping = true;
+            continue;
+        }
+        if line.starts_with("<text ")
+            && let Some(y) = attr("y")
+            && !(from..=to).contains(&(y - top))
+        {
+            continue;
+        }
+        out.push_str(line);
+        out.push('\n');
+    }
+    out
+}
+
 /// How many columns a tab takes, as the window's panes count it.
 const TAB: usize = 4;
 
@@ -700,17 +860,31 @@ const TAB: usize = 4;
 /// pages instead and a wider one is cut at the edge.
 pub(super) const DIAGRAM_LEAST: f32 = 6. / (deck_core::drawing::LABEL.0 * 0.75);
 
-/// Where `n` numerals go in a gutter from `left` to `right`, each disc's
-/// centre and radius: the first beside the code, the rest outward from it,
-/// smaller where there are more than the gutter holds at `most`, so none of
-/// them ever leaves it.
-pub(super) fn numeral_slots(n: usize, left: f32, right: f32, most: f32) -> Vec<(f32, f32)> {
+/// Where `n` numerals go in a gutter from `left` to `right`: each disc's
+/// centre across, how far below its row's middle it sits, and its radius.
+/// The first is beside the code and the rest go outward from it; a disc is
+/// `most` across when there is room and never under `least`, so its numeral
+/// stays readable, and what one row of the gutter cannot hold goes on a
+/// row under it rather than out of the gutter or smaller.
+pub(super) fn numeral_slots(
+    n: usize,
+    left: f32,
+    right: f32,
+    most: f32,
+    least: f32,
+) -> Vec<(f32, f32, f32)> {
     if n == 0 {
         return Vec::new();
     }
-    let r = most.min(((right - left) / count(n) - 1.) / 2.).max(1.);
+    let r = most.min(((right - left) / count(n) - 1.) / 2.).max(least);
+    let step = 2. * r + 1.;
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    let per_row = (((right - left) + 1.) / step).floor().max(1.) as usize;
     (0..n)
-        .map(|ix| (right - r - count(ix) * (2. * r + 1.), r))
+        .map(|ix| {
+            let (row, col) = (ix / per_row, ix % per_row);
+            (right - r - count(col) * step, count(row) * step, r)
+        })
         .collect()
 }
 
@@ -886,14 +1060,25 @@ pub(super) fn cut(row: &Visual, cols: usize) -> Vec<Visual> {
     let mut pad = 0;
     loop {
         let room = cols - pad;
-        let (piece, next) = if rest.len() <= room {
+        // As many characters as fit the room's columns, a wide one taking
+        // two; never none, or a character wider than the room would stall.
+        let mut used = 0;
+        let mut fits = 0;
+        for (ch, _, _) in rest {
+            if used + column(*ch) > room && fits > 0 {
+                break;
+            }
+            used += column(*ch);
+            fits += 1;
+        }
+        let (piece, next) = if fits >= rest.len() {
             (rest, &rest[rest.len()..])
         } else {
-            let at = rest[..room]
+            let at = rest[..fits]
                 .iter()
                 .rposition(|(ch, _, _)| *ch == ' ')
-                .filter(|&at| at >= room / 2)
-                .map_or(room, |at| at + 1);
+                .filter(|&at| at >= fits / 2)
+                .map_or(fits, |at| at + 1);
             (&rest[..at], &rest[at..])
         };
         let first = out.is_empty();

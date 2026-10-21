@@ -13,6 +13,7 @@
 //! boxes and drawn by [`pdf()`].
 
 mod face;
+mod fallback;
 mod html;
 mod landscape;
 mod layout;

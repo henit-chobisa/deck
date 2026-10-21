@@ -50,14 +50,23 @@
 <rect x="213.38" y="249" width="1.25" height="192" rx="0" fill="#fe8019"/>
 <rect x="186" y="248.38" width="28" height="1.25" rx="0" fill="#fe8019"/>
 <path d="M186 249L195 245.75L195 252.25Z" fill="#fe8019"/>
+<g data-top="49" data-bottom="103">
 <path d="M30 57Q30 30 108 30Q186 30 186 57Q186 84 108 84Q30 84 30 57Z" fill="#3a3735"/>
 <path d="M31 57Q31 31 108 31Q185 31 185 57Q185 83 108 83Q31 83 31 57Z" fill="#282828"/>
+</g>
+<g data-top="145" data-bottom="199">
 <rect x="30" y="126" width="156" height="54" rx="27" fill="#282828"/>
 <rect x="30.5" y="126.5" width="155" height="53" rx="26.5" fill="none" stroke="#3a3735" stroke-width="1"/>
+</g>
+<g data-top="237" data-bottom="299">
 <path d="M53 218L163 218L194 249L163 280L53 280L22 249Z" fill="#fe8019"/>
 <path d="M53 219.5L163 219.5L192.5 249L163 278.5L53 278.5L23.5 249Z" fill="#332b21"/>
+</g>
+<g data-top="337" data-bottom="391">
 <rect x="30" y="318" width="156" height="54" rx="6" fill="#282828"/>
 <rect x="30.5" y="318.5" width="155" height="53" rx="5.5" fill="none" stroke="#3a3735" stroke-width="1"/>
+</g>
+<g data-top="433" data-bottom="487">
 <path d="M30 461.5Q30 455 108 455Q186 455 186 461.5Q186 468 108 468Q30 468 30 461.5Z" fill="#3a3735"/>
 <rect x="30" y="420.5" width="156" height="41" rx="0" fill="#3a3735"/>
 <path d="M30 420.5Q30 414 108 414Q186 414 186 420.5Q186 427 108 427Q30 427 30 420.5Z" fill="#3a3735"/>
@@ -66,8 +75,11 @@
 <path d="M31 421.5Q31 415 108 415Q185 415 185 421.5Q185 428 108 428Q31 428 31 421.5Z" fill="#282828"/>
 <path d="M31 421.5Q31 415 108 415Q185 415 185 421.5Q185 428 108 428Q31 428 31 421.5Z" fill="#3a3735"/>
 <path d="M32 421.5Q32 416 108 416Q184 416 184 421.5Q184 427 108 427Q32 427 32 421.5Z" fill="#282828"/>
+</g>
+<g data-top="337" data-bottom="391">
 <rect x="242" y="318" width="156" height="54" rx="6" fill="#1f1f1f"/>
 <rect x="242.5" y="318.5" width="155" height="53" rx="5.5" fill="none" stroke="#2d2b2a" stroke-width="1"/>
+</g>
 <text x="28" y="12.75" font-size="10" font-weight="400" fill="#a89984" xml:space="preserve">browser</text>
 <rect x="115" y="193" width="32.54" height="18" rx="3" fill="#1f1f1f"/>
 <text x="119" y="205.75" font-size="10" font-weight="400" fill="#a89984" xml:space="preserve">POST</text>

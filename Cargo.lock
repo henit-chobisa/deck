@@ -1680,6 +1680,7 @@ dependencies = [
  "serde",
  "serde_json",
  "subsetter",
+ "unicode-width",
  "usvg 0.45.1",
 ]
 

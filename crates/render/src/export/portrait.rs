@@ -29,11 +29,11 @@ use deck_core::protocol::Kind as Remark;
 use deck_core::theme::Rgb;
 
 use super::layout::{
-    Context, DIAGRAM_LEAST, Face, Item, Kind, Page, Rect, Tones, Visual, baseline, count, cut, day,
-    fit, flow, level, line_items, measure, middle, number_width, numeral_slots, pane_name, repo,
-    svg_size, tokens, up4, visual_rows,
+    Context, DIAGRAM_LEAST, Face, Item, Kind, Page, Rect, Tones, Visual, banded, baseline, boxes,
+    count, cut, day, fit, flow, level, line_items, measure, middle, number_width, numeral_slots,
+    pane_name, repo, snap, svg_size, tokens, up4, visual_rows,
 };
-use crate::text::{self, Weight};
+use crate::text;
 
 /// The page, in points.
 const WIDTH: f32 = 595.;
@@ -382,7 +382,7 @@ fn band(document: &Document, group: &Group, tones: &Tones) -> Block {
     let text_x = inner + number_width + 12.;
     let width = RIGHT - BAND_PAD - text_x;
     let mut rows = Vec::new();
-    for (ix, title) in text::wrap(&group.title, size, Weight::Semibold, width)
+    for (ix, title) in super::layout::wrap(&group.title, Face::Semibold, size, width)
         .iter()
         .enumerate()
     {
@@ -680,11 +680,13 @@ fn code_row(
     if margin {
         // Out in the margin, the first twelve points short of the column
         // and the rest outward from it, never past the page's edge.
-        let slots = numeral_slots(numerals.len(), 4., LEFT - NUMERAL_GAP, NUMERAL_R);
-        for (numeral, (cx, r)) in numerals.iter().zip(slots) {
+        // A numeral is set at 1.25 times its disc's radius: six points at
+        // the least.
+        let slots = numeral_slots(numerals.len(), 4., LEFT - NUMERAL_GAP, NUMERAL_R, 4.8);
+        for (numeral, (cx, dy, r)) in numerals.iter().zip(slots) {
             items.push(Item::Badge {
                 cx,
-                cy: line / 2.,
+                cy: line / 2. + dy,
                 r,
                 numeral: *numeral,
                 fill: document.inks.on_page.accent,
@@ -742,7 +744,7 @@ fn code_row(
                 *ink,
             ));
         }
-        x += count(text.chars().count()) * advance;
+        x += count(super::layout::columns(text)) * advance;
     }
     Row::with(line, items)
 }
@@ -792,8 +794,14 @@ fn diagram_block(
         let natural = h / 0.75;
         let mut from = 0.;
         let mut bands = 0;
+        let boxes = boxes(&picture.svg);
+        let mut through = false;
         while from < natural {
-            let to = (from + per).min(natural);
+            // Where the band would end, moved up into the gap above the
+            // first box it would cut, so no box is cut in half; only a box
+            // taller than a whole band is, and then it is said.
+            let (to, cuts) = snap(&boxes, from, (from + per).min(natural));
+            through |= cuts;
             rows.push(Row::with(
                 up4((to - from) * 0.75 * scale),
                 vec![Item::Svg {
@@ -803,7 +811,9 @@ fn diagram_block(
                         DIAGRAM_WIDE,
                         up4((to - from) * 0.75 * scale),
                     ),
-                    svg: picture.svg.clone(),
+                    // Only what is in the band, so a page's text is what it
+                    // shows and nothing is found, or copied, twice.
+                    svg: banded(&picture.svg, from, to),
                     scale: 0.75 * scale,
                     band: Some([from, to]),
                 }],
@@ -815,7 +825,11 @@ fn diagram_block(
                     vec![text_at(
                         LEFT + PANE_X,
                         line,
-                        "↓ the diagram continues on the next page",
+                        if cuts {
+                            "↓ the diagram continues on the next page, through a box too tall for one"
+                        } else {
+                            "↓ the diagram continues on the next page"
+                        },
                         Face::Regular,
                         size,
                         inks.on_pane.muted,
@@ -827,8 +841,13 @@ fn diagram_block(
         }
         warning = Some(format!(
             "group {}: diagram {named} is too tall for a page at a size its labels can be \
-             read; it is cut across {bands} pages",
-            group.n
+             read; it is cut across {bands} pages{}",
+            group.n,
+            if through {
+                ", through a box taller than a page"
+            } else {
+                ", between its boxes"
+            }
         ));
     } else {
         let high = up4(drawn);
@@ -1030,7 +1049,7 @@ fn message_block(
         ],
     )];
     for paragraph in message.text.split('\n') {
-        for words in text::wrap(paragraph, size, Weight::Regular, RIGHT - x) {
+        for words in super::layout::wrap(paragraph, Face::Regular, size, RIGHT - x) {
             rows.push(Row::with(
                 line,
                 vec![text_at(
@@ -1441,7 +1460,7 @@ fn cover(document: &Document, laid: &[(Vec<Vec<Item>>, f32)], first: &[usize]) -
     let inks = &document.inks;
     let mut rows: Vec<Row> = Vec::new();
     let (size, line) = (28., 32.);
-    for title in text::wrap(&document.title, size, Weight::Semibold, COLUMN) {
+    for title in super::layout::wrap(&document.title, Face::Semibold, size, COLUMN) {
         rows.push(Row::with(
             line,
             vec![text_at(
@@ -1470,7 +1489,7 @@ fn cover(document: &Document, laid: &[(Vec<Vec<Item>>, f32)], first: &[usize]) -
         intro.push_str(" What was said about each follows it.");
     }
     let (size, line) = (12., 18.);
-    let intro_lines = text::wrap(&intro, size, Weight::Regular, COLUMN);
+    let intro_lines = super::layout::wrap(&intro, Face::Regular, size, COLUMN);
     let intro_high = up4(count(intro_lines.len()) * line);
     let mut items = Vec::new();
     for (ix, words) in intro_lines.iter().enumerate() {

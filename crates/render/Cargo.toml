@@ -9,6 +9,9 @@ repository.workspace = true
 [dependencies]
 deck-core = { path = "../core" }
 serde = { workspace = true }
+# How many columns a character of code takes: two for a wide one, as the
+# window counts it.
+unicode-width = "0.2"
 serde_json = { workspace = true }
 # Shaping, kerning included, and advance widths, from the embedded faces, for
 # breaking lines the way the window does without a window. Already in the tree.

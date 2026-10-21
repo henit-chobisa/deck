@@ -30,7 +30,7 @@ use crate::metrics::{
     PROSE_SPACING, RAIL, RAIL_LEADING, RAIL_SIZE, STEM, STEM_GAP, STRIP_GAP, STRIP_ROW, STRIP_SIDE,
     STRIP_SIZE, TITLE_SIZE,
 };
-use crate::text::{self, Weight};
+use crate::text;
 
 /// A4 on its side, in the window's pixels.
 const WIDTH: f32 = 1123.;
@@ -303,10 +303,10 @@ fn group_page(document: &Document, group: &Group, tones: &Tones) -> GroupPage {
             }
             Pane::Page(_) => {
                 header(document, pane, at, &mut items);
-                let lines = text::wrap(
+                let lines = super::layout::wrap(
                     "Interactive page: open the HTML export to use it",
+                    Face::Regular,
                     13.,
-                    Weight::Regular,
                     at.w - 64.,
                 );
                 let card_high = 20. * count(lines.len()) + 44.;
@@ -803,11 +803,14 @@ fn code_row(
             }
             // The first beside the code, the rest outward, all inside the
             // gutter however many start here.
-            let slots = numeral_slots(numerals.len(), at.x + 2., at.x + 26., 7.5);
-            for (numeral, (cx, r)) in numerals.iter().zip(slots) {
+            // Six points at the least: a numeral is 1.25 times its disc's
+            // radius, and a pixel is three quarters of a point.
+            let least = 6. / SCALE / 1.25;
+            let slots = numeral_slots(numerals.len(), at.x + 2., at.x + 26., 7.5, least);
+            for (numeral, (cx, dy, r)) in numerals.iter().zip(slots) {
                 items.push(Item::Badge {
                     cx,
-                    cy: y + row / 2.,
+                    cy: y + row / 2. + dy,
                     r,
                     numeral: *numeral,
                     fill: *accent,
@@ -855,7 +858,7 @@ fn code_row(
                         *ink,
                     ));
                 }
-                x += count(text.chars().count()) * advance;
+                x += count(super::layout::columns(text)) * advance;
             }
         }
     }
@@ -1086,7 +1089,7 @@ fn message_block(
     ));
     let mut y = 18.;
     for paragraph in message.text.split('\n') {
-        for words in text::wrap(paragraph, 13., Weight::Regular, width - x) {
+        for words in super::layout::wrap(paragraph, Face::Regular, 13., width - x) {
             items.push(text_at(
                 x,
                 y,
@@ -1154,7 +1157,7 @@ fn message_block(
                         *ink,
                     ));
                 }
-                cx += count(text.chars().count()) * advance;
+                cx += count(super::layout::columns(text)) * advance;
             }
             y += row;
         }
@@ -1282,7 +1285,7 @@ fn side(
             RAIL_SIZE,
             if on { inks.on_band.accent } else { ink },
         ));
-        let lines = text::wrap(&group.title, RAIL_SIZE, Weight::Regular, width - 24.);
+        let lines = super::layout::wrap(&group.title, Face::Regular, RAIL_SIZE, width - 24.);
         for line in lines.iter().take(2) {
             items.push(text_at(
                 x + 24.,
