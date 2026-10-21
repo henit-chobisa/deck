@@ -3342,15 +3342,18 @@ impl DeckView {
         )
     }
 
-    /// Lay the export sheet over the window.
+    /// Whether there is a whole deck to export: sealed, with a group in it.
+    fn exportable(&self) -> bool {
+        self.deck.sealed() && !self.deck.groups().is_empty()
+    }
+
+    /// The band's Export button: the export sheet, over the window.
     ///
     /// The sheet holds the keyboard while it is up, as the notes card does:
-    /// the deck's own keys must not act under it, and its escape and arrows
-    /// must reach it whatever was focused before.
-    // Only the debug snapshot opens it until the export button does.
-    #[cfg_attr(not(debug_assertions), allow(dead_code))]
+    /// the deck's own keys must not act under it, and its own keys must
+    /// reach it whatever was focused before.
     fn open_export(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if self.export.is_some() || self.deck.groups().is_empty() {
+        if self.export.is_some() || !self.exportable() {
             return;
         }
         let deck = self.deck.packed.as_ref().map_or_else(
@@ -3394,7 +3397,7 @@ impl DeckView {
     /// the deck has every group.
     #[cfg(debug_assertions)]
     fn debug_sheet(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if self.export_shown || !self.deck.sealed() || self.deck.groups().is_empty() {
+        if self.export_shown || !self.exportable() {
             return;
         }
         let Ok(asked) = std::env::var("DECK_DEBUG_SHEET") else {
@@ -6056,7 +6059,6 @@ impl DeckView {
         let palette = &self.palette;
         let mono = cx.theme().mono_font_family.clone();
         let groups = self.deck.groups();
-        let seen = self.seen.len().min(groups.len());
         let ground = paint(palette.band);
         let mut clear = ground;
         clear.a = 0.;
@@ -6197,6 +6199,7 @@ impl DeckView {
                         div()
                             .h_flex()
                             .justify_between()
+                            .items_center()
                             .child(
                                 div()
                                     .text_size(px(10.))
@@ -6204,13 +6207,35 @@ impl DeckView {
                                     .text_color(paint(palette.muted.mix(palette.band, 0.3)))
                                     .child("YOUR REVIEW"),
                             )
-                            .child(
-                                div()
-                                    .font_family(mono.clone())
-                                    .text_size(px(10.5))
-                                    .text_color(paint(palette.muted))
-                                    .child(format!("{seen} of {}", groups.len())),
-                            ),
+                            // Export, once there is a whole deck to export: an
+                            // outline that lights on hover, so it never
+                            // speaks over the narration beside it.
+                            .when(self.exportable(), |this| {
+                                this.child(
+                                    div()
+                                        .id("band-export")
+                                        .flex_none()
+                                        .h(px(23.))
+                                        .px(px(10.))
+                                        .flex()
+                                        .items_center()
+                                        .rounded(px(5.))
+                                        .border_1()
+                                        .border_color(paint(palette.edge))
+                                        .text_size(px(12.))
+                                        .font_weight(FontWeight::MEDIUM)
+                                        .text_color(paint(palette.accent))
+                                        .cursor_pointer()
+                                        .hover(|this| {
+                                            this.border_color(paint(palette.accent))
+                                                .bg(paint(palette.band.mix(palette.accent, 0.1)))
+                                        })
+                                        .on_click(cx.listener(|deck, _, window, cx| {
+                                            deck.open_export(window, cx);
+                                        }))
+                                        .child("Export"),
+                                )
+                            }),
                     )
                     .child(
                         div()
@@ -9515,6 +9540,39 @@ mod tests {
                 held.platform || held.control || held.alt,
                 "{} is bound everywhere with no modifier",
                 stroke.unparse()
+            );
+        }
+    }
+
+    #[test]
+    fn tab_and_space_move_and_press_only_on_the_export_sheet() {
+        // The sheet's keyboard path is tab to a control and space to press
+        // it. Bound anywhere else they would act under it, or on the deck;
+        // and no letter is bound on the sheet at all.
+        let every: Vec<_> = bindings()
+            .into_iter()
+            .chain(crate::export_sheet::bindings())
+            .collect();
+        for binding in &every {
+            let key = binding.keystrokes()[0].unparse();
+            let context = binding.predicate().map(|it| it.to_string());
+            if matches!(key.as_str(), "tab" | "shift-tab" | "space") {
+                assert_eq!(context.as_deref(), Some("DeckExport"), "{key}");
+            }
+            if context.as_deref() == Some("DeckExport") {
+                let stroke = &binding.keystrokes()[0];
+                assert!(
+                    stroke.key().chars().count() > 1,
+                    "{key} is a letter on the export sheet"
+                );
+            }
+        }
+        for key in ["tab", "shift-tab", "space"] {
+            assert!(
+                every
+                    .iter()
+                    .any(|binding| binding.keystrokes()[0].unparse() == key),
+                "{key} is bound"
             );
         }
     }

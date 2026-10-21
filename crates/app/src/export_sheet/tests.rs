@@ -352,8 +352,9 @@ fn walk(dir: &Path) -> Vec<PathBuf> {
     out
 }
 
-/// While the sheet is up the only keys are its own, and none of them makes
-/// a file: escape and the two arrows. An export is a click on its button.
+/// While the sheet is up the only keys are its own, and none of them is a
+/// letter or makes a file by itself: escape, the arrows, tab to move, space
+/// to press what has the ring, and return held so it presses nothing.
 #[test]
 fn the_sheet_has_no_key_that_exports() {
     let keys: Vec<String> = bindings()
@@ -370,7 +371,24 @@ fn the_sheet_has_no_key_that_exports() {
                 .collect()
         })
         .collect();
-    assert_eq!(keys, ["escape", "left", "right"]);
+    assert_eq!(
+        keys,
+        [
+            "escape",
+            "left",
+            "right",
+            "tab",
+            "shift-tab",
+            "space",
+            "enter"
+        ]
+    );
+    let actions: Vec<&str> = bindings()
+        .iter()
+        .filter(|binding| binding.keystrokes()[0].unparse() == "enter")
+        .map(|binding| binding.action().name())
+        .collect();
+    assert_eq!(actions, ["deck_export::Hold"], "return does nothing");
 }
 
 #[test]

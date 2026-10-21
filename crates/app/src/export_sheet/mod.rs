@@ -33,6 +33,7 @@ mod preview;
 #[cfg(test)]
 mod tests;
 
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -47,18 +48,57 @@ pub use model::{Choice, Format, Layout, Saved, Theme};
 
 use crate::palette::paint;
 
-gpui_kit::actions!(deck_export, [CloseSheet, NextPage, PrevPage]);
+gpui_kit::actions!(
+    deck_export,
+    [
+        CloseSheet,
+        NextPage,
+        PrevPage,
+        NextControl,
+        PrevControl,
+        Choose,
+        Hold
+    ]
+);
 
 /// The sheet's keys, in the context it claims while it is up: escape puts it
-/// away, and the arrows page through the preview. Nothing else: an export is
-/// a click on its button, never a key pressed on the way to somewhere else.
+/// away, the arrows page through the preview, tab and shift-tab move between
+/// its controls, and space presses the one with the ring.
+///
+/// No letter: an export is chosen, never a key pressed on the way to
+/// somewhere else. Return is held and does nothing, since gpui would
+/// otherwise press whatever control has the focus with it.
 #[must_use]
 pub fn bindings() -> Vec<KeyBinding> {
     vec![
         KeyBinding::new("escape", CloseSheet, Some("DeckExport")),
         KeyBinding::new("left", PrevPage, Some("DeckExport")),
         KeyBinding::new("right", NextPage, Some("DeckExport")),
+        KeyBinding::new("tab", NextControl, Some("DeckExport")),
+        KeyBinding::new("shift-tab", PrevControl, Some("DeckExport")),
+        KeyBinding::new("space", Choose, Some("DeckExport")),
+        KeyBinding::new("enter", Hold, Some("DeckExport")),
     ]
+}
+
+/// A control on the sheet that the keyboard can reach.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+enum Control {
+    Pdf,
+    Html,
+    Portrait,
+    Landscape,
+    Theme,
+    Every,
+    Group(usize),
+    Comments,
+    /// The first click on a secret's *let through*, by its place in the list.
+    Allow(usize),
+    /// The second, which lets it through.
+    AllowSure(usize),
+    /// Changing your mind between the two.
+    AllowCancel(usize),
+    Export,
 }
 
 /// Ask where to save `name`, opening in `start`: the path chosen, `None` for
@@ -201,6 +241,10 @@ pub struct ExportSheet {
     laid: Vec<(Key, Arc<Laid>)>,
     /// Why the pages for an option set could not be laid out.
     unlaid: Option<(Key, String)>,
+    /// Each control's focus, made the first time it is drawn.
+    stops: HashMap<Control, FocusHandle>,
+    /// The controls drawn this frame, in the order tab moves through them.
+    order: Vec<Control>,
     /// The pages last shown, kept up — dimmed, and said to be updating —
     /// while the pages for a changed option are laid out, so the preview
     /// never goes blank between two of them.
@@ -249,6 +293,8 @@ impl ExportSheet {
             confirming: None,
             laid: Vec::new(),
             unlaid: None,
+            stops: HashMap::new(),
+            order: Vec::new(),
             last: None,
             drawings: Arc::new(preview::Drawings::new()),
             thumbs: ScrollHandle::new(),
@@ -659,6 +705,127 @@ impl ExportSheet {
         THEME_NAME.get().cloned().flatten()
     }
 
+    /// The controls the sheet shows as it stands, in the order they are
+    /// drawn, top to bottom: the order tab moves through them.
+    fn tab_order(&self) -> Vec<Control> {
+        let mut order = vec![Control::Pdf, Control::Html];
+        if self.choice.format == Format::Pdf {
+            order.extend([Control::Portrait, Control::Landscape]);
+        }
+        order.extend([Control::Theme, Control::Every]);
+        order.extend((0..self.source.titles.len()).map(Control::Group));
+        order.push(Control::Comments);
+        if let Scan::Found(hits) = &self.scan {
+            for (ix, hit) in hits.iter().enumerate() {
+                if self.confirming.as_deref() == Some(hit.fingerprint.as_str()) {
+                    order.extend([Control::AllowSure(ix), Control::AllowCancel(ix)]);
+                } else {
+                    order.push(Control::Allow(ix));
+                }
+            }
+        }
+        if !matches!(self.phase, Phase::Saved(_)) {
+            order.push(Control::Export);
+        }
+        order
+    }
+
+    /// `control`'s focus, made if it has none yet.
+    fn stop(&mut self, control: Control, cx: &mut Context<Self>) -> FocusHandle {
+        self.stops
+            .entry(control)
+            .or_insert_with(|| cx.focus_handle())
+            .clone()
+    }
+
+    /// The control that has the focus, if one does.
+    fn focused(&self, window: &Window) -> Option<Control> {
+        self.order.iter().copied().find(|control| {
+            self.stops
+                .get(control)
+                .is_some_and(|stop| stop.is_focused(window))
+        })
+    }
+
+    /// Tab, or shift-tab: the next control, or the one before, round from
+    /// the last to the first, so the focus never leaves the sheet.
+    fn step_focus(&mut self, by: isize, window: &mut Window, cx: &mut Context<Self>) {
+        let count = isize::try_from(self.order.len()).unwrap_or(0);
+        if count == 0 {
+            return;
+        }
+        let to = match self
+            .focused(window)
+            .and_then(|at| self.order.iter().position(|c| *c == at))
+        {
+            Some(at) => (isize::try_from(at).unwrap_or(0) + by).rem_euclid(count),
+            None if by > 0 => 0,
+            None => count - 1,
+        };
+        let control = self.order[usize::try_from(to).unwrap_or(0)];
+        self.stop(control, cx).focus(window, cx);
+        cx.notify();
+    }
+
+    /// What a click on `control` does, and space while it has the ring.
+    fn press(&mut self, control: Control, window: &mut Window, cx: &mut Context<Self>) {
+        let fingerprint = |sheet: &Self, ix: usize| match &sheet.scan {
+            Scan::Found(hits) => hits.get(ix).map(|hit| hit.fingerprint.clone()),
+            _ => None,
+        };
+        match control {
+            Control::Pdf | Control::Html => {
+                self.choice.format = if control == Control::Pdf {
+                    Format::Pdf
+                } else {
+                    Format::Html
+                };
+                self.changed(false, cx);
+            }
+            Control::Portrait | Control::Landscape => {
+                self.choice.layout = if control == Control::Portrait {
+                    Layout::Portrait
+                } else {
+                    Layout::Landscape
+                };
+                self.changed(false, cx);
+            }
+            Control::Theme => self.next_theme(cx),
+            Control::Every => {
+                let every = self.choice.chosen() == self.choice.groups.len();
+                self.choice.groups.fill(!every);
+                self.changed(true, cx);
+            }
+            Control::Group(ix) => {
+                if let Some(on) = self.choice.groups.get_mut(ix) {
+                    *on = !*on;
+                }
+                self.changed(true, cx);
+            }
+            Control::Comments => {
+                self.choice.comments = !self.choice.comments;
+                self.changed(false, cx);
+            }
+            Control::Allow(ix) => {
+                self.confirming = fingerprint(self, ix);
+                // The ring follows the link to what it turned into.
+                self.stop(Control::AllowSure(ix), cx).focus(window, cx);
+                cx.notify();
+            }
+            Control::AllowSure(ix) => {
+                if let Some(fingerprint) = fingerprint(self, ix) {
+                    self.let_through(fingerprint, cx);
+                }
+            }
+            Control::AllowCancel(ix) => {
+                self.confirming = None;
+                self.stop(Control::Allow(ix), cx).focus(window, cx);
+                cx.notify();
+            }
+            Control::Export => self.export(window, cx),
+        }
+    }
+
     /// What the theme row says.
     fn theme_label(&self) -> String {
         let own = |dark: bool| format!("Deck's own · {}", if dark { "dark" } else { "light" });
@@ -727,6 +894,22 @@ fn scan_of(scanned: anyhow::Result<Packing>) -> Scan {
 /// Whether what the scanner says leaves Export off.
 fn blocks(scan: &Scan) -> bool {
     !matches!(scan, Scan::Clear)
+}
+
+/// `element` as a stop on the sheet's tab path, ringed when the keyboard
+/// put the focus on it: two points of accent, a point clear of it.
+fn ringed(element: Stateful<Div>, stop: &FocusHandle, palette: &Palette) -> Stateful<Div> {
+    let ring = |colour: Rgb, spread: f32| BoxShadow {
+        color: paint(colour),
+        offset: point(px(0.), px(0.)),
+        blur_radius: px(0.),
+        spread_radius: px(spread),
+        inset: false,
+    };
+    let shadows = vec![ring(palette.accent, 4.), ring(palette.band, 2.)];
+    element
+        .track_focus(stop)
+        .focus_visible(move |style| style.shadow(shadows))
 }
 
 /// A choice's look, on or off or not yet there.
@@ -886,9 +1069,29 @@ impl Render for ExportSheet {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         #[cfg(debug_assertions)]
         self.debug_render(window, cx);
-        #[cfg(not(debug_assertions))]
-        let _ = window;
         let palette = self.palette;
+        self.order = self.tab_order();
+        let stops: HashMap<Control, FocusHandle> = self
+            .order
+            .clone()
+            .into_iter()
+            .map(|control| (control, self.stop(control, cx)))
+            .collect();
+        // A control that had the focus and is gone — the Export button
+        // once a file is saved — leaves it nowhere, and the sheet's own keys
+        // with it: the sheet takes it back.
+        if self
+            .stops
+            .iter()
+            .any(|(control, stop)| !stops.contains_key(control) && stop.is_focused(window))
+        {
+            let focus = self.focus.clone();
+            cx.defer_in(window, move |_, window, cx| focus.focus(window, cx));
+        }
+        let ring = |element: Stateful<Div>, control: Control| match stops.get(&control) {
+            Some(stop) => ringed(element, stop, &palette),
+            None => element,
+        };
         #[cfg(debug_assertions)]
         let badge = self.debug_badge(&palette);
         #[cfg(not(debug_assertions))]
@@ -926,31 +1129,35 @@ impl Render for ExportSheet {
                     .items_stretch()
                     .gap(px(6.))
                     .child(
-                        choice(
-                            "x-pdf",
-                            "PDF",
-                            "to send, print, attach",
-                            pdf,
-                            false,
-                            &palette,
+                        ring(
+                            choice(
+                                "x-pdf",
+                                "PDF",
+                                "to send, print, attach",
+                                pdf,
+                                false,
+                                &palette,
+                            ),
+                            Control::Pdf,
                         )
-                        .on_click(cx.listener(|sheet, _, _, cx| {
-                            sheet.choice.format = Format::Pdf;
-                            sheet.changed(false, cx);
+                        .on_click(cx.listener(|sheet, _, window, cx| {
+                            sheet.press(Control::Pdf, window, cx);
                         })),
                     )
                     .child(
-                        choice(
-                            "x-html",
-                            "HTML",
-                            "one file, plays in a browser",
-                            !pdf,
-                            false,
-                            &palette,
+                        ring(
+                            choice(
+                                "x-html",
+                                "HTML",
+                                "one file, plays in a browser",
+                                !pdf,
+                                false,
+                                &palette,
+                            ),
+                            Control::Html,
                         )
-                        .on_click(cx.listener(|sheet, _, _, cx| {
-                            sheet.choice.format = Format::Html;
-                            sheet.changed(false, cx);
+                        .on_click(cx.listener(|sheet, _, window, cx| {
+                            sheet.press(Control::Html, window, cx);
                         })),
                     ),
             )
@@ -971,39 +1178,42 @@ impl Render for ExportSheet {
             .items_stretch()
             .gap(px(6.))
             .child(
-                choice(
-                    "x-portrait",
-                    "Portrait",
-                    "a cover, a group a page",
-                    portrait,
-                    false,
-                    &palette,
+                ring(
+                    choice(
+                        "x-portrait",
+                        "Portrait",
+                        "a cover, a group a page",
+                        portrait,
+                        false,
+                        &palette,
+                    ),
+                    Control::Portrait,
                 )
-                .on_click(cx.listener(|sheet, _, _, cx| {
-                    sheet.choice.layout = Layout::Portrait;
-                    sheet.changed(false, cx);
+                .on_click(cx.listener(|sheet, _, window, cx| {
+                    sheet.press(Control::Portrait, window, cx);
                 })),
             )
             .child(
-                choice(
-                    "x-landscape",
-                    "Landscape",
-                    "each page is the window",
-                    !portrait,
-                    false,
-                    &palette,
+                ring(
+                    choice(
+                        "x-landscape",
+                        "Landscape",
+                        "each page is the window",
+                        !portrait,
+                        false,
+                        &palette,
+                    ),
+                    Control::Landscape,
                 )
-                .on_click(cx.listener(|sheet, _, _, cx| {
-                    sheet.choice.layout = Layout::Landscape;
-                    sheet.changed(false, cx);
+                .on_click(cx.listener(|sheet, _, window, cx| {
+                    sheet.press(Control::Landscape, window, cx);
                 })),
             );
         let theme = div()
             .v_flex()
             .gap(px(7.))
             .child(
-                div()
-                    .id("x-theme")
+                ring(div().id("x-theme"), Control::Theme)
                     .h_flex()
                     .justify_between()
                     .items_center()
@@ -1016,7 +1226,9 @@ impl Render for ExportSheet {
                     .bg(paint(palette.wash))
                     .cursor_pointer()
                     .when(self.choice.light_cut, |this| this.opacity(0.55))
-                    .on_click(cx.listener(|sheet, _, _, cx| sheet.next_theme(cx)))
+                    .on_click(cx.listener(|sheet, _, window, cx| {
+                        sheet.press(Control::Theme, window, cx);
+                    }))
                     .child(
                         div()
                             .min_w_0()
@@ -1069,17 +1281,16 @@ impl Render for ExportSheet {
             .child({
                 let chosen = self.choice.chosen();
                 let every = chosen == self.choice.groups.len();
-                div()
-                    .id("x-every")
+                ring(div().id("x-every"), Control::Every)
                     .h_flex()
                     .gap(px(9.))
                     .items_start()
+                    .rounded(px(4.))
                     .cursor_pointer()
                     .text_size(px(12.5))
                     .line_height(px(17.5))
-                    .on_click(cx.listener(move |sheet, _, _, cx| {
-                        sheet.choice.groups.fill(!every);
-                        sheet.changed(true, cx);
+                    .on_click(cx.listener(|sheet, _, window, cx| {
+                        sheet.press(Control::Every, window, cx);
                     }))
                     .child(tick_some(
                         if every {
@@ -1096,19 +1307,16 @@ impl Render for ExportSheet {
             .children(self.source.titles.iter().enumerate().map(|(ix, title)| {
                 let on = self.choice.groups.get(ix).copied().unwrap_or(false);
                 let said = self.said.get(ix).copied().unwrap_or(0);
-                div()
-                    .id(("x-group", ix))
+                ring(div().id(("x-group", ix)), Control::Group(ix))
                     .h_flex()
                     .gap(px(9.))
                     .items_start()
+                    .rounded(px(4.))
                     .cursor_pointer()
                     .text_size(px(12.5))
                     .line_height(px(17.5))
-                    .on_click(cx.listener(move |sheet, _, _, cx| {
-                        if let Some(on) = sheet.choice.groups.get_mut(ix) {
-                            *on = !*on;
-                        }
-                        sheet.changed(true, cx);
+                    .on_click(cx.listener(move |sheet, _, window, cx| {
+                        sheet.press(Control::Group(ix), window, cx);
                     }))
                     .child(tick(on, &palette))
                     .child(
@@ -1127,17 +1335,16 @@ impl Render for ExportSheet {
                         )
                     })
             }));
-        let comments = div()
-            .id("x-comments")
+        let comments = ring(div().id("x-comments"), Control::Comments)
             .h_flex()
             .gap(px(9.))
             .items_start()
+            .rounded(px(4.))
             .cursor_pointer()
             .text_size(px(12.5))
             .line_height(px(17.5))
-            .on_click(cx.listener(|sheet, _, _, cx| {
-                sheet.choice.comments = !sheet.choice.comments;
-                sheet.changed(false, cx);
+            .on_click(cx.listener(|sheet, _, window, cx| {
+                sheet.press(Control::Comments, window, cx);
             }))
             .child(tick(self.choice.comments, &palette))
             .child(
@@ -1193,17 +1400,19 @@ impl Render for ExportSheet {
                         deck_cli::pack::LET_THROUGH
                     )))
                     .children(hits.iter().enumerate().map(|(ix, hit)| {
-                        let fingerprint = hit.fingerprint.clone();
-                        let link = |id: (&'static str, usize)| {
-                            div()
-                                .id(id)
+                        let link = |id: (&'static str, usize), control: Control| {
+                            ring(div().id(id), control)
+                                .rounded(px(3.))
                                 .cursor_pointer()
                                 .text_color(paint(palette.accent))
                                 .hover(|this| this.text_color(paint(palette.fg)))
+                                .on_click(cx.listener(move |sheet, _, window, cx| {
+                                    sheet.press(control, window, cx);
+                                }))
                         };
                         // Two clicks, the second saying it was looked at: one
                         // click near the button should never send a secret.
-                        if self.confirming.as_deref() == Some(fingerprint.as_str()) {
+                        if self.confirming.as_deref() == Some(hit.fingerprint.as_str()) {
                             div()
                                 .mt(px(3.))
                                 .h_flex()
@@ -1211,28 +1420,17 @@ impl Render for ExportSheet {
                                 .gap(px(12.))
                                 .child(format!("{}:", hit.fingerprint))
                                 .child(
-                                    link(("x-allow-sure", ix))
-                                        .on_click(cx.listener(move |sheet, _, _, cx| {
-                                            sheet.let_through(fingerprint.clone(), cx);
-                                        }))
+                                    link(("x-allow-sure", ix), Control::AllowSure(ix))
                                         .child("Let it through — I checked it"),
                                 )
                                 .child(
-                                    link(("x-allow-cancel", ix))
-                                        .on_click(cx.listener(|sheet, _, _, cx| {
-                                            sheet.confirming = None;
-                                            cx.notify();
-                                        }))
+                                    link(("x-allow-cancel", ix), Control::AllowCancel(ix))
                                         .child("Cancel"),
                                 )
                                 .into_any_element()
                         } else {
-                            link(("x-allow", ix))
+                            link(("x-allow", ix), Control::Allow(ix))
                                 .mt(px(3.))
-                                .on_click(cx.listener(move |sheet, _, _, cx| {
-                                    sheet.confirming = Some(fingerprint.clone());
-                                    cx.notify();
-                                }))
                                 .child(format!("Let {} through", hit.fingerprint))
                                 .into_any_element()
                         }
@@ -1352,8 +1550,7 @@ impl Render for ExportSheet {
                     )
             }
             _ => div().v_flex().gap(px(8.)).child(
-                div()
-                    .id("x-export")
+                ring(div().id("x-export"), Control::Export)
                     .h_flex()
                     .justify_between()
                     .items_center()
@@ -1362,11 +1559,13 @@ impl Render for ExportSheet {
                     .rounded(px(8.))
                     .text_size(px(13.5))
                     .font_weight(FontWeight::SEMIBOLD)
+                    .on_click(cx.listener(|sheet, _, window, cx| {
+                        sheet.press(Control::Export, window, cx);
+                    }))
                     .when(ready, |this| {
                         this.bg(paint(palette.accent))
                             .text_color(paint(palette.on_accent))
                             .cursor_pointer()
-                            .on_click(cx.listener(|sheet, _, window, cx| sheet.export(window, cx)))
                     })
                     .when(!ready, |this| {
                         this.bg(paint(palette.edge))
@@ -1655,7 +1854,7 @@ impl Render for ExportSheet {
                     .font_family(mono.clone())
                     .text_size(px(11.))
                     .text_color(paint(palette.muted))
-                    .child("esc close · ← → page"),
+                    .child("esc close · ← → page · tab move · space choose"),
             );
 
         div()
@@ -1665,6 +1864,18 @@ impl Render for ExportSheet {
             .on_action(cx.listener(|sheet, _: &CloseSheet, _, cx| sheet.escape(cx)))
             .on_action(cx.listener(|sheet, _: &NextPage, _, cx| sheet.turn_page(1, cx)))
             .on_action(cx.listener(|sheet, _: &PrevPage, _, cx| sheet.turn_page(-1, cx)))
+            .on_action(cx.listener(|sheet, _: &NextControl, window, cx| {
+                sheet.step_focus(1, window, cx);
+            }))
+            .on_action(cx.listener(|sheet, _: &PrevControl, window, cx| {
+                sheet.step_focus(-1, window, cx);
+            }))
+            .on_action(cx.listener(|sheet, _: &Choose, window, cx| {
+                if let Some(control) = sheet.focused(window) {
+                    sheet.press(control, window, cx);
+                }
+            }))
+            .on_action(cx.listener(|_, _: &Hold, _, _| {}))
             .occlude()
             .on_mouse_down(
                 MouseButton::Left,
