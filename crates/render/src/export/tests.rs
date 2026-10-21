@@ -73,6 +73,7 @@ fn deck_of(groups: &[&str], review: Option<&str>) -> Bundle {
                 commit: Some("a1b2c3d4e5".to_string()),
                 state: snap::State::Clean,
                 kept,
+                lines: None,
             },
             snap::File {
                 path: "src/store.ts".to_string(),
@@ -81,6 +82,7 @@ fn deck_of(groups: &[&str], review: Option<&str>) -> Bundle {
                 commit: Some("a1b2c3d4e5".to_string()),
                 state: snap::State::Clean,
                 kept: store_kept,
+                lines: None,
             },
         ],
     };
