@@ -1140,13 +1140,21 @@ pub(crate) fn export_packing(
 /// `packing` with only the scanner hits an export of `groups` would carry.
 ///
 /// Choosing groups is choosing what to share, and the file carries only
-/// what [`deck_render::export::only`] keeps of them: a token in a context
-/// line around group three is not in an export of groups one and two, and
+/// what [`deck_render::export::only`] keeps of them: a token in a file only
+/// group three points at is not in an export of groups one and two, and
 /// refusing that export would be refusing over something it does not hold.
-/// What is kept is scanned again, and a hit stands when its fingerprint is
-/// in there too. The hits themselves are the ones the whole deck was
-/// scanned for, so each is still placed where its author can find it —
-/// `deck/g3.json`, not the `deck/g2.json` it is renumbered to inside.
+///
+/// A hit in a snapshot goes only when no part of its source file is kept.
+/// Scanning the kept lines again would not do: a rule can match one line of
+/// a secret that runs over several — a private key's `BEGIN` line — and a
+/// window kept around another group's lines can leave that line out and
+/// carry the key's body. A hit anywhere else is in a string of the deck's
+/// own files, which goes whole or not at all, so it stands when the kept
+/// files still hold its fingerprint.
+///
+/// The hits themselves are the ones the whole deck was scanned for, so each
+/// is still placed where its author can find it — `deck/g3.json`, not the
+/// `deck/g2.json` it is renumbered to inside.
 ///
 /// # Errors
 ///
@@ -1159,11 +1167,27 @@ pub(crate) fn carrying(
         return Ok(packing);
     }
     let kept = deck_render::export::only(&packing.bundle, groups).map_err(anyhow::Error::msg)?;
+    let index = |bundle: &deck_core::bundle::Bundle| {
+        bundle
+            .files
+            .get("snap/index.json")
+            .and_then(|bytes| serde_json::from_slice::<deck_core::bundle::snap::Index>(bytes).ok())
+            .map(|index| index.files)
+            .unwrap_or_default()
+    };
+    let snapped = index(&packing.bundle);
+    let carried: std::collections::BTreeSet<String> =
+        index(&kept).into_iter().map(|file| file.path).collect();
     let held: std::collections::BTreeSet<String> = deck_cli::pack::scan_bundle(&kept.files)
         .into_iter()
         .map(|hit| hit.fingerprint)
         .collect();
-    packing.hits.retain(|hit| held.contains(&hit.fingerprint));
+    packing.hits.retain(
+        |hit| match snapped.iter().find(|file| file.entry == hit.entry) {
+            Some(file) => carried.contains(&file.path),
+            None => held.contains(&hit.fingerprint),
+        },
+    );
     Ok(packing)
 }
 
@@ -1213,7 +1237,7 @@ pub(crate) fn written(
 /// one is read and deck's own otherwise, and anything written by hand over
 /// both. Only the machine's light or dark is asked differently — the window
 /// asks the platform once it is up, and an export has no window.
-pub(crate) fn export_theme(
+fn export_theme(
     theme: &str,
 ) -> anyhow::Result<(deck_core::theme::Palette, bool, deck_core::theme::Syntax)> {
     let config = crate::config::read()?;
@@ -2345,16 +2369,162 @@ mod tests {
         assert_eq!(cut.theme(), Theme::Light);
     }
 
-    /// Choosing groups is choosing what to share: a secret in a group left
-    /// out of the export does not stop it, and one in a group sent does.
+    /// Choosing groups is choosing what to share: a secret in a file only a
+    /// group left out points at does not stop the export, and is nowhere in
+    /// what it writes, the `.deck` inside included; a secret in a file a
+    /// group sent still points at stops it, even when the line the scanner
+    /// knows it by is outside the lines that group keeps.
     #[test]
     fn an_export_of_some_groups_is_scanned_for_what_it_carries() {
         let dir = tempfile::tempdir().expect("a temp dir");
+        let lines = |n: u32| -> Vec<String> { (1..=n).map(|n| format!("line {n}")).collect() };
+        // Put together here, so no whole secret is ever in the source.
         let token = format!("ghp_{}", "a1B2".repeat(9));
-        let deck = hand_built(dir.path(), &format!("The token is {token}."), &[]);
-        let packing = export_packing(&deck, &[], false).expect("opens");
-        assert_eq!(carrying(packing.clone(), &[]).unwrap().hits.len(), 1);
-        assert_eq!(carrying(packing, &[1]).unwrap().hits.len(), 1);
+        let mut secret = lines(30);
+        secret[9] = format!("let token = \"{token}\";");
+        let mut key = lines(100);
+        key[4] = format!("-----BEGIN RSA {}-----", "PRIVATE KEY");
+        let body = format!("MIIEpAIBAAKCAQEA{}", "q7Z3".repeat(12));
+        for line in &mut key[5..70] {
+            line.clone_from(&body);
+        }
+        key[70] = format!("-----END RSA {}-----", "PRIVATE KEY");
+        let deck = four_groups(
+            dir.path(),
+            &[
+                ("ok.rs", lines(100)),
+                ("secret.rs", secret),
+                ("key.rs", key),
+            ],
+        );
+        let read = || export_packing(&deck, &[], false).expect("packs");
+
+        // Group 1 points at `ok.rs`, group 2 at `secret.rs`: sent alone,
+        // group 1 carries nothing of the token.
+        assert!(!carrying(read(), &[]).unwrap().hits.is_empty());
+        assert!(carrying(read(), &[1]).unwrap().hits.is_empty());
+        for (out, needle) in [("one.pdf", "pdf"), ("one.html", "html")] {
+            let out = dir.path().join(out);
+            let path = export(&Exporting {
+                groups: Some("1"),
+                ..exporting(&deck, &out)
+            })
+            .unwrap_or_else(|err| panic!("{needle}: {err:#}"));
+            let bytes = std::fs::read(path).unwrap();
+            let inside = if needle == "pdf" {
+                attached(&bytes)
+            } else {
+                carried(&String::from_utf8(bytes.clone()).unwrap())
+            };
+            assert!(inside.files.contains_key("deck/g1.json"), "{needle}");
+            for (name, file) in inside
+                .files
+                .iter()
+                .map(|(n, f)| (n.clone(), f))
+                .chain([(format!("the {needle} itself"), &bytes)])
+            {
+                assert!(
+                    !file.windows(token.len()).any(|w| w == token.as_bytes()),
+                    "{name} holds the token"
+                );
+                assert!(
+                    !file.windows(9).any(|w| w == b"secret.rs"),
+                    "{name} names the file"
+                );
+            }
+        }
+
+        // Group 3 points into the key's body, past the twenty lines kept
+        // either side of what it points at, and group 4 at its BEGIN line.
+        // Sent without group 4, the body still goes: refused.
+        let err = export(&Exporting {
+            groups: Some("3"),
+            ..exporting(&deck, &dir.path().join("three.pdf"))
+        })
+        .expect_err("refused");
+        assert!(err.to_string().contains("private-key"), "{err:#}");
+        assert!(!dir.path().join("three.pdf").exists());
+    }
+
+    /// A deck folder in `dir`, written against a project of `files`: four
+    /// groups, pointing at `ok.rs`, `secret.rs`, the middle of `key.rs` and
+    /// its fifth line.
+    fn four_groups(dir: &std::path::Path, files: &[(&str, Vec<String>)]) -> PathBuf {
+        let project = dir.join("project");
+        std::fs::create_dir_all(&project).expect("a project");
+        for (name, lines) in files {
+            std::fs::write(project.join(name), lines.join("\n") + "\n").expect("written");
+        }
+        let root = dir.join("d-1.deck");
+        std::fs::create_dir_all(&root).expect("a deck folder");
+        let header = serde_json::json!({
+            "v": 1, "id": "d-1", "title": "Some of it", "cwd": project,
+        });
+        std::fs::write(root.join("deck.json"), header.to_string()).expect("a header");
+        for (n, (file, first, last)) in [
+            ("ok.rs", 40, 42),
+            ("secret.rs", 9, 11),
+            ("key.rs", 60, 62),
+            ("key.rs", 4, 6),
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            let group = serde_json::json!({
+                "id": format!("g{}", n + 1),
+                "ord": n + 1,
+                "say": "look",
+                "refs": [{ "id": format!("g{}r1", n + 1), "file": file, "range": [first, last] }],
+            });
+            std::fs::write(root.join(format!("g{}.json", n + 1)), group.to_string())
+                .expect("a group");
+        }
+        root
+    }
+
+    /// The `.deck` an HTML export carries, taken back out of it.
+    fn carried(html: &str) -> deck_core::bundle::Bundle {
+        let open = "<script type=\"application/x-deck\" id=\"deck\">";
+        let start = html.find(open).expect("the deck is embedded") + open.len();
+        let end = start + html[start..].find("</script>").expect("closed");
+        let value = |c: u8| match c {
+            b'A'..=b'Z' => c - b'A',
+            b'a'..=b'z' => c - b'a' + 26,
+            b'0'..=b'9' => c - b'0' + 52,
+            b'+' => 62,
+            b'/' => 63,
+            _ => panic!("not base64: {c}"),
+        };
+        let clean: Vec<u8> = html[start..end].bytes().filter(|&c| c != b'=').collect();
+        let mut zip = Vec::new();
+        for chunk in clean.chunks(4) {
+            let mut word = 0u32;
+            for (ix, &c) in chunk.iter().enumerate() {
+                word |= u32::from(value(c)) << (18 - 6 * ix);
+            }
+            zip.extend_from_slice(&word.to_be_bytes()[1..chunk.len()]);
+        }
+        deck_core::bundle::Bundle::open(&zip)
+            .expect("the embedded deck opens")
+            .0
+    }
+
+    /// The `.deck` a PDF carries: stored uncompressed, it is the zip from
+    /// its first local header to the end of its stream.
+    fn attached(pdf: &[u8]) -> deck_core::bundle::Bundle {
+        let start = pdf
+            .windows(4)
+            .position(|w| w == b"PK\x03\x04")
+            .expect("a zip in the PDF");
+        let end = start
+            + pdf[start..]
+                .windows(9)
+                .position(|w| w == b"endstream")
+                .expect("the stream ends");
+        let zip = pdf[start..end].trim_ascii_end();
+        deck_core::bundle::Bundle::open(zip)
+            .expect("the attached deck opens")
+            .0
     }
 
     /// A `.deck` file written by hand, holding `say` as its one group's
