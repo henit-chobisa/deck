@@ -36,7 +36,9 @@ pub mod vscode;
 pub mod zed;
 
 /// An editor deck can borrow a palette from.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, Default, serde::Serialize, serde::Deserialize,
+)]
 #[serde(rename_all = "lowercase", from = "String")]
 pub enum Editor {
     /// Deck's own palette. Nothing is read.
@@ -189,6 +191,7 @@ pub fn themes(editor: Editor) -> Vec<String> {
         Editor::Vscode => vscode::installed(vscode::CODE, &home),
         Editor::Cursor => vscode::installed(vscode::CURSOR, &home),
         Editor::Windsurf => vscode::installed(vscode::WINDSURF, &home),
-        Editor::Zed | Editor::Nvim | Editor::None => Vec::new(),
+        Editor::Zed => zed::themes(&home),
+        Editor::Nvim | Editor::None => Vec::new(),
     }
 }
