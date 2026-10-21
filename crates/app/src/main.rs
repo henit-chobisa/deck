@@ -20,6 +20,7 @@ mod cli;
 mod config;
 mod conversation;
 mod draft;
+mod export_sheet;
 mod hook;
 mod icon;
 mod keys;
@@ -183,6 +184,7 @@ fn show(decks: Vec<Deck>, opening: &cli::Opening) {
             icon::wear_the_mark();
 
             cx.bind_keys(view::bindings());
+            cx.bind_keys(export_sheet::bindings());
 
             // A deck is one window at a time. Closing the last one ends the
             // command rather than leaving a headless process behind for the
@@ -235,6 +237,12 @@ fn show(decks: Vec<Deck>, opening: &cli::Opening) {
                     None
                 }
             };
+            // What the sheet says the export is painted in, when it is the
+            // window's: the theme asked for by name, or the editor it came
+            // from.
+            export_sheet::name_theme(
+                imported.map(|_| named.clone().unwrap_or_else(|| editor.name().to_string())),
+            );
             palette::choose(palette::Chosen {
                 paper,
                 imported,

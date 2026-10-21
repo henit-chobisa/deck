@@ -21,7 +21,7 @@ use serde::Serialize;
 use crate::text::{self, Weight};
 
 /// The shape of the pages.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Format {
     /// A4 upright, in points: a cover, then each group stacked down its own

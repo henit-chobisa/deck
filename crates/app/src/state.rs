@@ -1,6 +1,7 @@
 //! What the deck remembers between runs.
 //!
-//! The window's shape, and which way the reader last turned the page. A deck is
+//! The window's shape, which way the reader last turned the page, and the
+//! folder they last saved an export in. A deck is
 //! opened by an agent rather than by the reader, so the reader never gets to
 //! place the window or arrange it before it appears — the only way it can
 //! arrive the way they want it is to arrive the way they last left it.
@@ -18,7 +19,7 @@ use gpui_kit::{Bounds, Pixels, Point, Size, point, px, size};
 use serde::{Deserialize, Serialize};
 
 /// What was last left behind.
-#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Placement {
     /// The window's shape, in logical pixels.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -32,11 +33,15 @@ pub struct Placement {
     /// Which quarter turn the page was on. See `view::quarter`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     turn: Option<u8>,
+    /// The folder the last export was saved in, where the save dialog opens
+    /// next time. See [`remember_export_dir`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    export_dir: Option<PathBuf>,
 }
 
 impl Placement {
     /// The shape, if all four numbers were written.
-    fn bounds(self) -> Option<Bounds<Pixels>> {
+    fn bounds(&self) -> Option<Bounds<Pixels>> {
         Some(Bounds {
             origin: Point {
                 x: px(self.x?),
@@ -72,6 +77,30 @@ pub fn remembered() -> Option<Bounds<Pixels>> {
 #[must_use]
 pub fn remembered_turn() -> Option<u8> {
     path().and_then(|path| read_from(&path).turn)
+}
+
+/// The folder the last export was saved in, when it is still there.
+///
+/// Gone is the same as never remembered: a dialog opened on a folder that
+/// was deleted since opens somewhere the platform picks, which is worse than
+/// the deck's own guess.
+#[must_use]
+pub fn remembered_export_dir() -> Option<PathBuf> {
+    path()
+        .and_then(|path| read_from(&path).export_dir)
+        .filter(|dir| dir.is_dir())
+}
+
+/// Remember the folder an export was just saved in.
+///
+/// The folder the reader chose in the save dialog, never one deck chose for
+/// them: there is no folder exports go to, only the last one somebody picked.
+pub fn remember_export_dir(dir: &std::path::Path) {
+    if let Some(path) = path() {
+        let mut placement = read_from(&path);
+        placement.export_dir = Some(dir.to_path_buf());
+        write_placement(&path, &placement);
+    }
 }
 
 /// Everything in the file, or nothing if it will not read.
@@ -118,8 +147,12 @@ fn write_to(path: &std::path::Path, bounds: Option<Bounds<Pixels>>, turn: Option
     if turn.is_some() {
         placement.turn = turn;
     }
+    write_placement(path, &placement);
+}
 
-    let Ok(json) = serde_json::to_string_pretty(&placement) else {
+/// `placement` written over the file, quietly: see [`write_to`].
+fn write_placement(path: &std::path::Path, placement: &Placement) {
+    let Ok(json) = serde_json::to_string_pretty(placement) else {
         return;
     };
     if let Some(dir) = path.parent() {

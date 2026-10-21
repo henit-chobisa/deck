@@ -584,6 +584,22 @@ fn group_number(name: &str) -> Option<u32> {
         .and_then(|n| n.parse().ok())
 }
 
+/// How many things the scanner found, said the one way deck says it: `one
+/// thing looks like a secret`, `3 things look like secrets`. The refusal
+/// `deck pack` and `deck export` print, and the export sheet's notice, all
+/// start from these words.
+#[must_use]
+pub fn looks_like(hits: usize) -> String {
+    match hits {
+        1 => "one thing looks like a secret".to_string(),
+        n => format!("{n} things look like secrets"),
+    }
+}
+
+/// What letting a hit through comes to, in the refusal's words and the
+/// export sheet's: the file says somebody looked and let it go.
+pub const LET_THROUGH: &str = "the manifest will say you did";
+
 impl Packing {
     /// Scan every entry, and sort the hits into those let through and those
     /// not.
@@ -632,23 +648,7 @@ impl Packing {
             why.push(said);
         }
         if !self.hits.is_empty() {
-            let mut said = format!(
-                "refusing to pack: {} in it {} like {}.\n",
-                match self.hits.len() {
-                    1 => "one thing".to_string(),
-                    n => format!("{n} things"),
-                },
-                if self.hits.len() == 1 {
-                    "looks"
-                } else {
-                    "look"
-                },
-                if self.hits.len() == 1 {
-                    "a secret"
-                } else {
-                    "secrets"
-                },
-            );
+            let mut said = format!("refusing to pack: {}.\n", looks_like(self.hits.len()));
             for hit in &self.hits {
                 said.push_str(&format!("\n  {hit}"));
             }
@@ -661,7 +661,7 @@ impl Packing {
             said.push_str(&format!(
                 "\n\nTake it out of the deck and pack again. Or, for each one you \
                  have looked at and know is safe, pass its fingerprint — {} — and \
-                 the manifest will say you did.",
+                 {LET_THROUGH}.",
                 flags.join(" ")
             ));
             why.push(said);

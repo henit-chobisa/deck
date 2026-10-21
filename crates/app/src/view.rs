@@ -44,7 +44,8 @@ gpui_kit::actions!(
         Leave,
         Unlight,
         AddToReview,
-        Help
+        Help,
+        Export
     ]
 );
 
@@ -95,6 +96,10 @@ pub fn bindings() -> Vec<KeyBinding> {
         // `?`, typed: shift and the slash on most keyboards, matched on the
         // character it makes.
         KeyBinding::new("?", Help, Some("Deck")),
+        // The export sheet. Its own keys — escape, the arrows, return — are
+        // bound in the context it claims while it is up: see
+        // `export_sheet::bindings`.
+        KeyBinding::new("e", Export, Some("Deck")),
         // Escape is bound in the composer too, for discarding a remark. That
         // context is deeper than this one, so while somebody is writing it
         // takes the key and this never runs.
@@ -862,6 +867,12 @@ pub struct DeckView {
     notes_fade: crate::pane::Fade,
     /// The same, for the warning before quitting.
     quit_fade: crate::pane::Fade,
+    /// The export sheet, while it is up, and the window's hold on its
+    /// asking to be put away.
+    export: Option<(Entity<crate::export_sheet::ExportSheet>, Subscription)>,
+    /// Whether a debug build has opened the sheet it was asked to show at
+    /// start, for the screenshots. See `DECK_DEBUG_SHEET`.
+    export_shown: bool,
     /// The card that says why *Ask now* is off, while it is up.
     ///
     /// Shown when the reader presses the button, or its keys, with no agent
@@ -1157,6 +1168,8 @@ impl DeckView {
             quit_focus: cx.focus_handle(),
             notes_fade: Self::card_fade(),
             quit_fade: Self::card_fade(),
+            export: None,
+            export_shown: false,
             explaining: false,
             asks_carousel: crate::asks::Carousel::default(),
             asks_shown: None,
@@ -3330,6 +3343,64 @@ impl DeckView {
                 )
                 .into_any_element(),
         )
+    }
+
+    /// `e`: the export sheet, over the dimmed window.
+    fn on_export(&mut self, _: &Export, window: &mut Window, cx: &mut Context<Self>) {
+        self.open_export(None, window, cx);
+    }
+
+    /// Lay the export sheet over the window, showing `shown`'s state when a
+    /// debug build was asked for one.
+    ///
+    /// The sheet holds the keyboard while it is up, as the notes card does:
+    /// the deck's own keys must not act under it, and its escape, arrows and
+    /// return must reach it whatever was focused before.
+    fn open_export(&mut self, shown: Option<String>, window: &mut Window, cx: &mut Context<Self>) {
+        if self.export.is_some() || self.deck.groups().is_empty() {
+            return;
+        }
+        let deck = self.deck.packed.as_ref().map_or_else(
+            || self.deck.root.clone(),
+            |packed| packed.origin.file.clone(),
+        );
+        let project = self
+            .deck
+            .header
+            .cwd
+            .clone()
+            .or_else(|| std::env::current_dir().ok());
+        let source = crate::export_sheet::Source {
+            deck,
+            project,
+            title: crate::load::heading(&self.deck.header.title),
+            titles: self.deck.groups().iter().map(row_title).collect(),
+        };
+        let painted = crate::export_sheet::Painted {
+            palette: self.palette,
+            dark: cx.theme().mode.is_dark(),
+            syntax: crate::palette::syntax(),
+        };
+        let palette = self.palette;
+        let sheet =
+            cx.new(|cx| crate::export_sheet::ExportSheet::new(source, palette, painted, shown, cx));
+        let closing = cx.subscribe_in(
+            &sheet,
+            window,
+            |deck, _, _: &crate::export_sheet::Closed, window, cx| {
+                deck.close_export(window, cx);
+            },
+        );
+        sheet.read(cx).focus_handle(cx).focus(window, cx);
+        self.export = Some((sheet, closing));
+        cx.notify();
+    }
+
+    /// Put the export sheet away and give the keyboard back to the deck.
+    fn close_export(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.export = None;
+        self.focus.focus(window, cx);
+        cx.notify();
     }
 
     /// `?`: the help dock, up or away.
@@ -7235,6 +7306,13 @@ impl DeckView {
                     .child(named("n", "next", cx))
                     .child(named("p", "previous", cx))
                     .child(named("c", "comment", cx))
+                    .child(
+                        named("e", "export", cx)
+                            .cursor_pointer()
+                            .on_click(cx.listener(|deck, _, window, cx| {
+                                deck.on_export(&Export, window, cx);
+                            })),
+                    )
                     .child(div().w(px(1.)).h(px(12.)).bg(paint(self.palette.edge)))
                     .child(
                         named(crate::keys::HELP, "keys", cx)
@@ -8480,6 +8558,18 @@ use crate::pane::SPINE;
 impl Render for DeckView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         self.settle_said_light();
+        // For the screenshots of the export sheet, which cannot be taken by
+        // pressing `e`: a debug build asked for one opens it, once, as soon
+        // as the deck has every group. An installed deck has no such branch.
+        if cfg!(debug_assertions)
+            && !self.export_shown
+            && self.deck.sealed()
+            && !self.deck.groups().is_empty()
+            && let Ok(shown) = std::env::var("DECK_DEBUG_SHEET")
+        {
+            self.export_shown = true;
+            self.open_export(Some(shown), window, cx);
+        }
         // The dock, a key's card, and a key lit on the dock all move on their
         // own clock.
         let hit = self
@@ -8915,6 +9005,7 @@ impl Render for DeckView {
             .on_action(cx.listener(Self::on_zoom_in))
             .on_action(cx.listener(Self::on_zoom_out))
             .on_action(cx.listener(Self::on_zoom_reset))
+            .on_action(cx.listener(Self::on_export))
             // One handler for the whole window, asking the event whether a
             // button is down rather than remembering that it was. A remembered
             // flag is what kept sticking on, and then merely crossing the code
@@ -9046,6 +9137,7 @@ impl Render for DeckView {
             .children(self.render_notes(cx))
             .children(self.render_quitting(cx))
             .children(self.render_unheard(cx))
+            .children(self.export.as_ref().map(|(sheet, _)| sheet.clone()))
     }
 }
 

@@ -1055,33 +1055,16 @@ fn export(asked: &Exporting) -> anyhow::Result<PathBuf> {
         None => Vec::new(),
     };
 
-    // A file is opened and scanned; a directory is packed first, exactly as
-    // `deck pack` packs it. Either way what goes into the page is what would
-    // go into a `.deck`, and it is refused in pack's words.
-    let options = deck_cli::pack::Options {
-        allow: asked.allow.clone(),
-        allow_missing: asked.allow_missing,
-        ..deck_cli::pack::Options::default()
-    };
-    let packing = if asked.deck.is_file() {
-        if asked.allow_missing {
-            eprintln!(
-                "deck: --allow-missing is for a deck directory: a .deck file holds \
-                 whatever it was packed with, and nothing in it can be missing"
-            );
-        }
-        let bytes = std::fs::read(asked.deck)
-            .map_err(|err| anyhow::anyhow!("cannot read {}: {err}", asked.deck.display()))?;
-        let (bundle, ignored) = deck_core::bundle::Bundle::open(&bytes)
-            .map_err(|err| anyhow::anyhow!("{}: {err}", asked.deck.display()))?;
-        for name in &ignored {
-            eprintln!("deck: {name} is from a newer deck, and was left out");
-        }
-        deck_cli::pack::opened(bundle, &options)
-            .map_err(|err| anyhow::anyhow!("{}: {err}", asked.deck.display()))?
-    } else {
-        deck_cli::pack::gather(asked.deck, &options)?
-    };
+    let packing = export_packing(asked.deck, &asked.allow, asked.allow_missing)?;
+    // A group that is not there is a typo, not a request for nothing.
+    let count = packing.bundle.groups().map_err(anyhow::Error::msg)?.len();
+    if let Some(n) = groups
+        .iter()
+        .find(|&&n| usize::try_from(n).is_ok_and(|n| n > count))
+    {
+        anyhow::bail!("`{n}` is not a group: this deck has {count}");
+    }
+    let packing = carrying(packing, &groups)?;
     if let Some(why) = packing.refusal() {
         anyhow::bail!(why);
     }
@@ -1089,14 +1072,6 @@ fn export(asked: &Exporting) -> anyhow::Result<PathBuf> {
         eprintln!("deck: {note}");
     }
     let (bundle, name) = (packing.bundle, packing.name);
-    // A group that is not there is a typo, not a request for nothing.
-    let count = bundle.groups().map_err(anyhow::Error::msg)?.len();
-    if let Some(n) = groups
-        .iter()
-        .find(|&&n| usize::try_from(n).is_ok_and(|n| n > count))
-    {
-        anyhow::bail!("`{n}` is not a group: this deck has {count}");
-    }
     let stem = name.trim_end_matches(".deck").to_string();
 
     let (palette, dark, syntax) = export_theme(asked.theme)?;
@@ -1105,35 +1080,17 @@ fn export(asked: &Exporting) -> anyhow::Result<PathBuf> {
         comments: asked.comments,
         dark,
     };
-    let (bytes, file) = match format {
-        Format::Html => (
-            deck_render::export::deck(&bundle, &palette, syntax, &options)
-                .map_err(anyhow::Error::msg)?
-                .into_bytes(),
-            format!("{stem}.html"),
-        ),
-        Format::Pdf => {
-            let shape = if asked.landscape {
-                deck_render::export::Format::Landscape
-            } else {
-                deck_render::export::Format::Portrait
-            };
-            let writing = deck_render::export::Writing {
-                name: name.clone(),
-                // For reviewing the spacing: the 4-point grid and every
-                // box's outline, drawn over the pages.
-                grid: std::env::var("DECK_EXPORT_GRID").as_deref() == Ok("1"),
-            };
-            let (bytes, warnings) =
-                deck_render::export::deck_pdf(&bundle, &palette, syntax, &options, shape, &writing)
-                    .map_err(anyhow::Error::msg)?;
-            // Said before the path, as pack says its notes.
-            for warning in warnings {
-                eprintln!("deck: {warning}");
-            }
-            (bytes, format!("{stem}.pdf"))
-        }
+    let shape = match format {
+        Format::Html => None,
+        Format::Pdf if asked.landscape => Some(deck_render::export::Format::Landscape),
+        Format::Pdf => Some(deck_render::export::Format::Portrait),
     };
+    let (bytes, notices) = written(&bundle, &name, &palette, syntax, &options, shape)?;
+    // Said before the path, as pack says its notes.
+    for notice in notices {
+        eprintln!("deck: {notice}");
+    }
+    let file = format!("{stem}.{}", if shape.is_some() { "pdf" } else { "html" });
     let path = match asked.out {
         Some(out) if out.is_dir() => out.join(&file),
         Some(out) => out.to_path_buf(),
@@ -1141,6 +1098,111 @@ fn export(asked: &Exporting) -> anyhow::Result<PathBuf> {
     };
     deck_cli::pack::write_new(&path, &bytes, asked.force)?;
     Ok(path)
+}
+
+/// What an export of `deck` would carry, packed or opened, scanned, and not
+/// yet refused: the one way to it for `deck export` and the export sheet.
+///
+/// A file is opened and scanned; a directory is packed first, exactly as
+/// `deck pack` packs it. Either way what goes into the page is what would go
+/// into a `.deck`, and it is refused in pack's words.
+pub(crate) fn export_packing(
+    deck: &std::path::Path,
+    allow: &[String],
+    allow_missing: bool,
+) -> anyhow::Result<deck_cli::pack::Packing> {
+    let options = deck_cli::pack::Options {
+        allow: allow.to_vec(),
+        allow_missing,
+        ..deck_cli::pack::Options::default()
+    };
+    if deck.is_file() {
+        if allow_missing {
+            eprintln!(
+                "deck: --allow-missing is for a deck directory: a .deck file holds \
+                 whatever it was packed with, and nothing in it can be missing"
+            );
+        }
+        let bytes = std::fs::read(deck)
+            .map_err(|err| anyhow::anyhow!("cannot read {}: {err}", deck.display()))?;
+        let (bundle, ignored) = deck_core::bundle::Bundle::open(&bytes)
+            .map_err(|err| anyhow::anyhow!("{}: {err}", deck.display()))?;
+        for name in &ignored {
+            eprintln!("deck: {name} is from a newer deck, and was left out");
+        }
+        deck_cli::pack::opened(bundle, &options)
+            .map_err(|err| anyhow::anyhow!("{}: {err}", deck.display()))
+    } else {
+        deck_cli::pack::gather(deck, &options)
+    }
+}
+
+/// `packing` with only the scanner hits an export of `groups` would carry.
+///
+/// Choosing groups is choosing what to share, and the file carries only
+/// what [`deck_render::export::only`] keeps of them: a token in a context
+/// line around group three is not in an export of groups one and two, and
+/// refusing that export would be refusing over something it does not hold.
+/// What is kept is scanned again, and a hit stands when its fingerprint is
+/// in there too. The hits themselves are the ones the whole deck was
+/// scanned for, so each is still placed where its author can find it —
+/// `deck/g3.json`, not the `deck/g2.json` it is renumbered to inside.
+///
+/// # Errors
+///
+/// When a part of the bundle does not parse.
+pub(crate) fn carrying(
+    mut packing: deck_cli::pack::Packing,
+    groups: &[u32],
+) -> anyhow::Result<deck_cli::pack::Packing> {
+    if groups.is_empty() || packing.hits.is_empty() {
+        return Ok(packing);
+    }
+    let kept = deck_render::export::only(&packing.bundle, groups).map_err(anyhow::Error::msg)?;
+    let held: std::collections::BTreeSet<String> = deck_cli::pack::scan_bundle(&kept.files)
+        .into_iter()
+        .map(|hit| hit.fingerprint)
+        .collect();
+    packing.hits.retain(|hit| held.contains(&hit.fingerprint));
+    Ok(packing)
+}
+
+/// `bundle` written as an export: a PDF in `shape`, or the HTML file when
+/// there is none; and what the person exporting should be told about it.
+///
+/// The bytes and nothing else. Where they go is the caller's: `deck export`
+/// names a path on its command line, and the window asks with the system's
+/// own save dialog. Nothing here writes a file.
+///
+/// # Errors
+///
+/// When the bundle does not pack or a part of it does not parse.
+pub(crate) fn written(
+    bundle: &deck_core::bundle::Bundle,
+    name: &str,
+    palette: &deck_core::theme::Palette,
+    syntax: deck_core::theme::Syntax,
+    options: &deck_render::export::Options,
+    shape: Option<deck_render::export::Format>,
+) -> anyhow::Result<(Vec<u8>, Vec<String>)> {
+    match shape {
+        None => Ok((
+            deck_render::export::deck(bundle, palette, syntax, options)
+                .map_err(anyhow::Error::msg)?
+                .into_bytes(),
+            Vec::new(),
+        )),
+        Some(shape) => {
+            let writing = deck_render::export::Writing {
+                name: name.to_string(),
+                // For reviewing the spacing: the 4-point grid and every
+                // box's outline, drawn over the pages.
+                grid: std::env::var("DECK_EXPORT_GRID").as_deref() == Ok("1"),
+            };
+            deck_render::export::deck_pdf(bundle, palette, syntax, options, shape, &writing)
+                .map_err(anyhow::Error::msg)
+        }
+    }
 }
 
 /// The palette an export is painted in, whether it is dark, and the syntax
@@ -1151,7 +1213,7 @@ fn export(asked: &Exporting) -> anyhow::Result<PathBuf> {
 /// one is read and deck's own otherwise, and anything written by hand over
 /// both. Only the machine's light or dark is asked differently — the window
 /// asks the platform once it is up, and an export has no window.
-fn export_theme(
+pub(crate) fn export_theme(
     theme: &str,
 ) -> anyhow::Result<(deck_core::theme::Palette, bool, deck_core::theme::Syntax)> {
     let config = crate::config::read()?;
@@ -2208,6 +2270,91 @@ mod tests {
                 ..
             }
         ));
+    }
+
+    /// Each choice on the export sheet is the `deck export` command line it
+    /// says it is, and hands the exporter what the command would for it.
+    #[test]
+    fn the_export_sheet_is_the_export_command() {
+        use crate::export_sheet::{Choice, Format as Shown, Layout, Theme};
+        let choices = [
+            Choice::new(3),
+            Choice {
+                format: Shown::Html,
+                comments: false,
+                theme: Theme::Dark,
+                ..Choice::new(3)
+            },
+            Choice {
+                layout: Layout::Landscape,
+                groups: vec![true, false, true],
+                light_cut: true,
+                ..Choice::new(3)
+            },
+            Choice {
+                format: Shown::Html,
+                // Landscape means nothing to the HTML, and is not passed.
+                layout: Layout::Landscape,
+                groups: vec![false, true, false],
+                ..Choice::new(3)
+            },
+        ];
+        for choice in choices {
+            let mut line = vec![
+                "deck".to_string(),
+                "export".to_string(),
+                "d.deck".to_string(),
+            ];
+            line.extend(choice.args());
+            let cli = Cli::try_parse_from(&line).expect("parses");
+            let What::Export {
+                format,
+                landscape,
+                theme,
+                groups,
+                no_comments,
+                ..
+            } = cli.what
+            else {
+                panic!("an export");
+            };
+            let dark = theme != "light";
+            let asked = deck_render::export::Options {
+                groups: match groups.as_deref() {
+                    Some(list) => deck_render::export::groups(list).expect("a list"),
+                    None => Vec::new(),
+                },
+                comments: !no_comments,
+                dark,
+            };
+            assert_eq!(choice.options(dark), asked, "{line:?}");
+            let shape = match format {
+                Some(Format::Pdf) if landscape => Some(deck_render::export::Format::Landscape),
+                Some(Format::Pdf) => Some(deck_render::export::Format::Portrait),
+                _ => None,
+            };
+            assert_eq!(choice.shape(), shape, "{line:?}");
+            assert_eq!(theme, choice.theme().flag(), "{line:?}");
+        }
+        // The light cut is `--theme light`, whatever the theme row says.
+        let cut = Choice {
+            light_cut: true,
+            theme: Theme::Window,
+            ..Choice::new(1)
+        };
+        assert_eq!(cut.theme(), Theme::Light);
+    }
+
+    /// Choosing groups is choosing what to share: a secret in a group left
+    /// out of the export does not stop it, and one in a group sent does.
+    #[test]
+    fn an_export_of_some_groups_is_scanned_for_what_it_carries() {
+        let dir = tempfile::tempdir().expect("a temp dir");
+        let token = format!("ghp_{}", "a1B2".repeat(9));
+        let deck = hand_built(dir.path(), &format!("The token is {token}."), &[]);
+        let packing = export_packing(&deck, &[], false).expect("opens");
+        assert_eq!(carrying(packing.clone(), &[]).unwrap().hits.len(), 1);
+        assert_eq!(carrying(packing, &[1]).unwrap().hits.len(), 1);
     }
 
     /// A `.deck` file written by hand, holding `say` as its one group's
