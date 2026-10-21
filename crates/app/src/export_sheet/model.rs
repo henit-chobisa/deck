@@ -16,6 +16,7 @@
 //! ([`start_folder`]).
 
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use deck_render::export;
 
@@ -38,33 +39,105 @@ pub enum Layout {
     Landscape,
 }
 
-/// Which colours the export is painted in: the three `deck export --theme`
-/// knows without being told an editor's theme by name.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+/// Which colours the export is painted in: what `deck export --theme` takes.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Theme {
     /// What the window is painted in, taken from the window as it stands:
-    /// the editor's theme it borrowed, a theme `deck open --theme` tried on,
-    /// or deck's own when it borrowed none. Nearest to `--theme editor`, the
-    /// command's default, but not always the same: the command reads the
-    /// config afresh and has no window to have been told another theme, nor
-    /// the platform's light or dark that the window asks once it is up.
+    /// the editor's theme it borrowed, by name when it knows it, a theme
+    /// `deck open --theme` tried on, or deck's own when it borrowed none.
+    /// Nearest to `--theme editor`, the command's default, but not always the
+    /// same: the command reads the config afresh and has no window to have
+    /// been told another theme, nor the platform's light or dark that the
+    /// window asks once it is up.
     Window,
     /// Deck's own dark. `--theme dark`.
     Dark,
-    /// Deck's own light. `--theme light`.
+    /// Deck's own light, for printing. `--theme light`.
     Light,
+    /// One of an editor's themes, `--theme vscode:Nord`; or, for Neovim,
+    /// which has no names, the scheme it is in, `--theme nvim`.
+    Editor {
+        /// Whose.
+        editor: deck_theme::Editor,
+        /// Which, by the name the editor gives it.
+        name: Option<Arc<str>>,
+    },
+}
+
+/// The editor theme the window borrowed its colours from.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Borrowed {
+    /// The editor.
+    pub editor: deck_theme::Editor,
+    /// The theme, when the reader named one.
+    pub name: Option<String>,
 }
 
 impl Theme {
-    /// The word `--theme` takes for it.
-    #[cfg(test)]
+    /// What `--theme` takes for it. The window's own is named as the theme
+    /// it borrowed, when it borrowed one, so the command paints what the
+    /// window shows rather than whatever the config says today.
     #[must_use]
-    pub fn flag(self) -> &'static str {
+    pub fn flag(&self, window: Option<&Borrowed>) -> String {
         match self {
-            Self::Window => "editor",
-            Self::Dark => "dark",
-            Self::Light => "light",
+            Self::Window => window.map_or_else(
+                || "editor".to_string(),
+                |window| editor_flag(window.editor, window.name.as_deref()),
+            ),
+            Self::Dark => "dark".to_string(),
+            Self::Light => "light".to_string(),
+            Self::Editor { editor, name } => editor_flag(*editor, name.as_deref()),
         }
+    }
+}
+
+/// What the theme field and the list call `theme`: the window's own by the
+/// theme it borrowed, `As the window · koala-hyderabad`, or by deck's own
+/// when it borrowed none.
+#[must_use]
+pub fn label(theme: &Theme, window: Option<&Borrowed>, window_dark: bool) -> String {
+    let own = |dark: bool| if dark { "Deck dark" } else { "Deck light" };
+    match theme {
+        Theme::Window => format!(
+            "As the window · {}",
+            window.map_or_else(
+                || own(window_dark).to_string(),
+                |window| window
+                    .name
+                    .clone()
+                    .unwrap_or_else(|| window.editor.name().to_string()),
+            )
+        ),
+        Theme::Dark => own(true).to_string(),
+        Theme::Light => own(false).to_string(),
+        Theme::Editor {
+            editor,
+            name: Some(name),
+        } => format!("{name} · {}", editor.name()),
+        Theme::Editor { editor, name: None } => format!("{} · the scheme it is in", editor.name()),
+    }
+}
+
+/// `vscode:Nord`, or `nvim` for a theme with no name.
+fn editor_flag(editor: deck_theme::Editor, name: Option<&str>) -> String {
+    match name {
+        Some(name) => format!("{}:{name}", editor.key()),
+        None => editor.key().to_string(),
+    }
+}
+
+/// `word` as a shell reads it back: as it is when nothing in it means
+/// anything to a shell, and in single quotes otherwise.
+#[must_use]
+pub fn quoted(word: &str) -> String {
+    let plain = !word.is_empty()
+        && word
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || "_@%+=:,./-".contains(c));
+    if plain {
+        word.to_string()
+    } else {
+        format!("'{}'", word.replace('\'', "'\\''"))
     }
 }
 
@@ -77,9 +150,6 @@ pub struct Choice {
     pub layout: Layout,
     /// The colours.
     pub theme: Theme,
-    /// Deck's own light, whatever the theme says: for paper, where a dark
-    /// page is a cartridge of ink.
-    pub light_cut: bool,
     /// Each group, ticked or not, in the deck's order.
     pub groups: Vec<bool>,
     /// Whether what was said goes with it.
@@ -96,7 +166,6 @@ impl Choice {
             format: Format::Pdf,
             layout: Layout::Portrait,
             theme: Theme::Window,
-            light_cut: false,
             groups: vec![true; count],
             comments: true,
         }
@@ -122,16 +191,6 @@ impl Choice {
             .filter(|(on, _)| **on)
             .map(|(_, n)| n)
             .collect()
-    }
-
-    /// The colours asked for, once the light cut has had its say.
-    #[must_use]
-    pub fn theme(&self) -> Theme {
-        if self.light_cut {
-            Theme::Light
-        } else {
-            self.theme
-        }
     }
 
     /// The shape of the pages the file is written in: `None` for the HTML
@@ -166,11 +225,11 @@ impl Choice {
     }
 
     /// This choice as the `deck export` command line it stands for, after
-    /// the deck: `--format pdf --landscape --theme light --groups 1,3`.
-    /// What the tests hold [`Self::options`] to.
-    #[cfg(test)]
+    /// the deck: `--format pdf --landscape --theme light --groups 1,3`,
+    /// with the window's own theme named as `window` says. What the tests
+    /// hold [`Self::options`] to.
     #[must_use]
-    pub fn args(&self) -> Vec<String> {
+    pub fn args(&self, window: Option<&Borrowed>) -> Vec<String> {
         let mut args = vec![
             "--format".to_string(),
             match self.format {
@@ -183,7 +242,7 @@ impl Choice {
             args.push("--landscape".to_string());
         }
         args.push("--theme".to_string());
-        args.push(self.theme().flag().to_string());
+        args.push(self.theme.flag(window));
         let numbers = self.numbers();
         if !numbers.is_empty() {
             args.push("--groups".to_string());
@@ -199,6 +258,30 @@ impl Choice {
             args.push("--no-comments".to_string());
         }
         args
+    }
+
+    /// The whole command, for `deck` at `deck`, quoted for a shell to read
+    /// back: `deck export d.deck --format pdf --theme 'vscode:Nord'`. An
+    /// editor's theme is always quoted, since its name is the editor's to
+    /// choose.
+    #[must_use]
+    pub fn command(&self, deck: &Path, window: Option<&Borrowed>) -> String {
+        let mut line = vec![
+            "deck".to_string(),
+            "export".to_string(),
+            quoted(&deck.to_string_lossy()),
+        ];
+        let mut theme_next = false;
+        for arg in self.args(window) {
+            let editor_theme = theme_next && arg.contains(':');
+            theme_next = arg == "--theme";
+            line.push(if editor_theme {
+                format!("'{}'", arg.replace('\'', "'\\''"))
+            } else {
+                quoted(&arg)
+            });
+        }
+        line.join(" ")
     }
 
     /// The extension the file gets.
