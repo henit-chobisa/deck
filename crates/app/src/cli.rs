@@ -461,7 +461,9 @@ enum What {
     },
 
     /// Write a deck out for somebody who does not have deck: one HTML file
-    /// that is the window, a group to a screen, with the `.deck` inside it.
+    /// that is the window, a group to a screen, or a PDF — portrait, a page
+    /// or two to a group, or `--landscape`, the window on paper — with the
+    /// `.deck` inside it either way.
     ///
     /// The file asks for nothing from the network and runs no script; a page
     /// pane is drawn in a frame that can run none either. A deck directory is
@@ -469,16 +471,22 @@ enum What {
     /// scrubbed and scanned for secrets, refused on a hit — so an export
     /// leaves the machine holding what a `.deck` file would and no more.
     ///
-    /// `deck export d-1.deck`, `deck export review.deck -o review.html`,
+    /// `deck export d-1.deck`, `deck export review.deck -o review.pdf`,
+    /// `deck export d-1.deck --format pdf --landscape`,
     /// `deck export d-1.deck --groups 1,3-5 --no-comments`.
     Export {
         /// The `.deck` directory, a directory `deck unpack` made, or a
         /// `.deck` file.
         deck: PathBuf,
-        /// What to write. Only `html` is written yet; the PDF is coming.
-        /// Defaults to what `-o` ends in, and to `html`.
+        /// What to write: `html` or `pdf`. Defaults to what `-o` ends in,
+        /// and to `html`.
         #[arg(long, value_enum)]
         format: Option<Format>,
+        /// A PDF on its side, a page to a group exactly as the window shows
+        /// it, with what was said on a page after it. Portrait is the
+        /// default: a cover, then each group on a page or two of its own.
+        #[arg(long)]
+        landscape: bool,
         /// The colours to paint it in: `editor` (the default) is whatever
         /// `deck open` would paint the window in — your editor's theme if
         /// one is set in `~/.deck/config.toml`, light or dark as it says;
@@ -958,6 +966,7 @@ impl Cli {
             What::Export {
                 deck,
                 format,
+                landscape,
                 theme,
                 groups,
                 no_comments,
@@ -969,6 +978,7 @@ impl Cli {
                 export(&Exporting {
                     deck: &deck,
                     format,
+                    landscape,
                     theme: &theme,
                     groups: groups.as_deref(),
                     comments: !no_comments,
@@ -995,7 +1005,7 @@ impl Cli {
 pub enum Format {
     /// One self-contained HTML file.
     Html,
-    /// A PDF. Not written yet.
+    /// A PDF, portrait unless `--landscape`.
     Pdf,
 }
 
@@ -1003,6 +1013,7 @@ pub enum Format {
 struct Exporting<'a> {
     deck: &'a std::path::Path,
     format: Option<Format>,
+    landscape: bool,
     theme: &'a str,
     groups: Option<&'a str>,
     comments: bool,
@@ -1012,7 +1023,8 @@ struct Exporting<'a> {
     allow_missing: bool,
 }
 
-/// `deck export`: the deck, packed or opened, written as HTML. Returns where.
+/// `deck export`: the deck, packed or opened, written as HTML or a PDF.
+/// Returns where.
 fn export(asked: &Exporting) -> anyhow::Result<PathBuf> {
     // The format is what was asked, or what the file is called; the two
     // disagreeing is a mistake worth saying rather than guessing at.
@@ -1035,8 +1047,8 @@ fn export(asked: &Exporting) -> anyhow::Result<PathBuf> {
     }
     let format = asked.format.or(from_name).unwrap_or(Format::Html);
     anyhow::ensure!(
-        format == Format::Html,
-        "PDF export is not here yet: write HTML with --format html, and print it from a browser if you need paper"
+        !(asked.landscape && format == Format::Html),
+        "--landscape is for a PDF: the HTML export is the window already"
     );
     let groups = match asked.groups {
         Some(list) => deck_render::export::groups(list).map_err(anyhow::Error::msg)?,
@@ -1085,7 +1097,7 @@ fn export(asked: &Exporting) -> anyhow::Result<PathBuf> {
     {
         anyhow::bail!("`{n}` is not a group: this deck has {count}");
     }
-    let name = format!("{}.html", name.trim_end_matches(".deck"));
+    let stem = name.trim_end_matches(".deck").to_string();
 
     let (palette, dark, syntax) = export_theme(asked.theme)?;
     let options = deck_render::export::Options {
@@ -1093,14 +1105,41 @@ fn export(asked: &Exporting) -> anyhow::Result<PathBuf> {
         comments: asked.comments,
         dark,
     };
-    let html = deck_render::export::deck(&bundle, &palette, syntax, &options)
-        .map_err(anyhow::Error::msg)?;
-    let path = match asked.out {
-        Some(out) if out.is_dir() => out.join(&name),
-        Some(out) => out.to_path_buf(),
-        None => PathBuf::from(&name),
+    let (bytes, file) = match format {
+        Format::Html => (
+            deck_render::export::deck(&bundle, &palette, syntax, &options)
+                .map_err(anyhow::Error::msg)?
+                .into_bytes(),
+            format!("{stem}.html"),
+        ),
+        Format::Pdf => {
+            let shape = if asked.landscape {
+                deck_render::export::Format::Landscape
+            } else {
+                deck_render::export::Format::Portrait
+            };
+            let writing = deck_render::export::Writing {
+                name: name.clone(),
+                // For reviewing the spacing: the 4-point grid and every
+                // box's outline, drawn over the pages.
+                grid: std::env::var("DECK_EXPORT_GRID").as_deref() == Ok("1"),
+            };
+            let (bytes, warnings) =
+                deck_render::export::deck_pdf(&bundle, &palette, syntax, &options, shape, &writing)
+                    .map_err(anyhow::Error::msg)?;
+            // Said before the path, as pack says its notes.
+            for warning in warnings {
+                eprintln!("deck: {warning}");
+            }
+            (bytes, format!("{stem}.pdf"))
+        }
     };
-    deck_cli::pack::write_new(&path, html.as_bytes(), asked.force)?;
+    let path = match asked.out {
+        Some(out) if out.is_dir() => out.join(&file),
+        Some(out) => out.to_path_buf(),
+        None => PathBuf::from(&file),
+    };
+    deck_cli::pack::write_new(&path, &bytes, asked.force)?;
     Ok(path)
 }
 
@@ -2202,6 +2241,7 @@ mod tests {
         Exporting {
             deck,
             format: None,
+            landscape: false,
             theme: "dark",
             groups: None,
             comments: true,
@@ -2297,27 +2337,36 @@ mod tests {
         assert_eq!(err.to_string(), "`9` is not a group: this deck has 1");
     }
 
-    /// A PDF is asked for in either of the two ways, and either way it is
-    /// refused before anything is read.
+    /// A PDF is asked for by `--format` or by the file's name, and is a
+    /// PDF carrying its deck; `--landscape` is refused for HTML, which is
+    /// the window already.
     #[test]
-    fn a_pdf_is_not_here_yet() {
-        for (format, out) in [
-            (Some(Format::Pdf), None),
-            (None, Some(std::path::Path::new("review.pdf"))),
-        ] {
-            let err = export(&Exporting {
-                deck: std::path::Path::new("nowhere.deck"),
+    fn a_pdf_is_written_when_asked_for() {
+        let dir = tempfile::tempdir().expect("a temp dir");
+        let deck = hand_built(dir.path(), "Nothing secret here.", &[]);
+        for (format, out) in [(Some(Format::Pdf), "a.out"), (None, "b.pdf")] {
+            let path = export(&Exporting {
                 format,
-                theme: "dark",
-                groups: None,
-                comments: true,
-                out,
-                force: false,
-                allow: Vec::new(),
-                allow_missing: false,
+                ..exporting(&deck, &dir.path().join(out))
             })
-            .expect_err("refused");
-            assert!(err.to_string().contains("not here yet"), "{err}");
+            .expect("written");
+            let bytes = std::fs::read(path).unwrap();
+            assert!(bytes.starts_with(b"%PDF-"));
         }
+        let err = export(&Exporting {
+            landscape: true,
+            ..exporting(&deck, &dir.path().join("c.html"))
+        })
+        .expect_err("refused");
+        assert!(
+            err.to_string().contains("--landscape is for a PDF"),
+            "{err}"
+        );
+        let err = export(&Exporting {
+            format: Some(Format::Html),
+            ..exporting(&deck, &dir.path().join("d.pdf"))
+        })
+        .expect_err("refused");
+        assert!(err.to_string().contains("disagree"), "{err}");
     }
 }

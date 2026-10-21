@@ -1,0 +1,8145 @@
+[
+  {
+    "width": 595.0,
+    "height": 842.0,
+    "scale": 1.0,
+    "kind": {
+      "page": "cover"
+    },
+    "items": [
+      {
+        "item": "ground",
+        "colour": "#282828"
+      },
+      {
+        "item": "text",
+        "x": 48.0,
+        "baseline": 342.5,
+        "text": "Why the batch counter stalls at 63",
+        "face": "semibold",
+        "size": 28.0,
+        "colour": "#ebdbb2"
+      },
+      {
+        "item": "text",
+        "x": 48.0,
+        "baseline": 369.5,
+        "text": "3 groups, one to a page. What was said about each follows it.",
+        "face": "regular",
+        "size": 12.0,
+        "colour": "#999078"
+      },
+      {
+        "item": "rule",
+        "x": 48.0,
+        "y": 400.0,
+        "w": 500.0,
+        "colour": "#4f4f4f"
+      },
+      {
+        "item": "text",
+        "x": 48.0,
+        "baseline": 413.75,
+        "text": "1",
+        "face": "semibold",
+        "size": 10.0,
+        "colour": "#a85d1f"
+      },
+      {
+        "item": "link",
+        "rect": {
+          "x": 48.0,
+          "y": 400.0,
+          "w": 500.0,
+          "h": 20.0
+        },
+        "page": 1
+      },
+      {
+        "item": "text",
+        "x": 533.6,
+        "baseline": 412.88,
+        "text": "p.2",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 500.10397,
+        "baseline": 413.0,
+        "text": "2 said",
+        "face": "regular",
+        "size": 8.0,
+        "colour": "#999078"
+      },
+      {
+        "item": "chip",
+        "rect": {
+          "x": 456.10397,
+          "y": 404.0,
+          "w": 32.0,
+          "h": 12.0
+        },
+        "colour": "#463426"
+      },
+      {
+        "item": "text",
+        "x": 460.10397,
+        "baseline": 412.88,
+        "text": "shown",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#fe8019"
+      },
+      {
+        "item": "chip",
+        "rect": {
+          "x": 424.90396,
+          "y": 404.0,
+          "w": 27.2,
+          "h": 12.0
+        },
+        "colour": "#463426"
+      },
+      {
+        "item": "text",
+        "x": 428.90396,
+        "baseline": 412.88,
+        "text": "path",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#fe8019"
+      },
+      {
+        "item": "chip",
+        "rect": {
+          "x": 388.90396,
+          "y": 404.0,
+          "w": 32.0,
+          "h": 12.0
+        },
+        "colour": "#463426"
+      },
+      {
+        "item": "text",
+        "x": 392.90396,
+        "baseline": 412.88,
+        "text": "batch",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#fe8019"
+      },
+      {
+        "item": "text",
+        "x": 248.10394,
+        "baseline": 413.0,
+        "text": "Medium · read both paths & did not…",
+        "face": "regular",
+        "size": 8.0,
+        "colour": "#f89b47"
+      },
+      {
+        "item": "text",
+        "x": 72.0,
+        "baseline": 413.75,
+        "text": "The error path <script>alert(1…",
+        "face": "semibold",
+        "size": 10.0,
+        "colour": "#ebdbb2"
+      },
+      {
+        "item": "rule",
+        "x": 48.0,
+        "y": 420.0,
+        "w": 500.0,
+        "colour": "#4f4f4f"
+      },
+      {
+        "item": "text",
+        "x": 48.0,
+        "baseline": 433.75,
+        "text": "2",
+        "face": "semibold",
+        "size": 10.0,
+        "colour": "#a85d1f"
+      },
+      {
+        "item": "link",
+        "rect": {
+          "x": 48.0,
+          "y": 420.0,
+          "w": 500.0,
+          "h": 20.0
+        },
+        "page": 3
+      },
+      {
+        "item": "text",
+        "x": 533.6,
+        "baseline": 432.88,
+        "text": "p.4",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#999078"
+      },
+      {
+        "item": "chip",
+        "rect": {
+          "x": 499.19998,
+          "y": 424.0,
+          "w": 22.400002,
+          "h": 12.0
+        },
+        "colour": "#463426"
+      },
+      {
+        "item": "text",
+        "x": 503.19998,
+        "baseline": 432.88,
+        "text": "fix",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#fe8019"
+      },
+      {
+        "item": "text",
+        "x": 72.0,
+        "baseline": 433.75,
+        "text": "Count once",
+        "face": "semibold",
+        "size": 10.0,
+        "colour": "#ebdbb2"
+      },
+      {
+        "item": "rule",
+        "x": 48.0,
+        "y": 440.0,
+        "w": 500.0,
+        "colour": "#4f4f4f"
+      },
+      {
+        "item": "text",
+        "x": 48.0,
+        "baseline": 453.75,
+        "text": "3",
+        "face": "semibold",
+        "size": 10.0,
+        "colour": "#a85d1f"
+      },
+      {
+        "item": "link",
+        "rect": {
+          "x": 48.0,
+          "y": 440.0,
+          "w": 500.0,
+          "h": 20.0
+        },
+        "page": 4
+      },
+      {
+        "item": "text",
+        "x": 533.6,
+        "baseline": 452.88,
+        "text": "p.5",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 500.10397,
+        "baseline": 453.0,
+        "text": "1 said",
+        "face": "regular",
+        "size": 8.0,
+        "colour": "#999078"
+      },
+      {
+        "item": "chip",
+        "rect": {
+          "x": 456.10397,
+          "y": 444.0,
+          "w": 32.0,
+          "h": 12.0
+        },
+        "colour": "#463426"
+      },
+      {
+        "item": "text",
+        "x": 460.10397,
+        "baseline": 452.88,
+        "text": "store",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#fe8019"
+      },
+      {
+        "item": "chip",
+        "rect": {
+          "x": 386.50397,
+          "y": 444.0,
+          "w": 65.600006,
+          "h": 12.0
+        },
+        "colour": "#463426"
+      },
+      {
+        "item": "text",
+        "x": 390.50397,
+        "baseline": 452.88,
+        "text": "src/batch.ts",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#fe8019"
+      },
+      {
+        "item": "text",
+        "x": 72.0,
+        "baseline": 453.75,
+        "text": "Nothing else moves",
+        "face": "semibold",
+        "size": 10.0,
+        "colour": "#ebdbb2"
+      },
+      {
+        "item": "rule",
+        "x": 48.0,
+        "y": 460.0,
+        "w": 500.0,
+        "colour": "#4f4f4f"
+      },
+      {
+        "item": "fill",
+        "rect": {
+          "x": 48.0,
+          "y": 476.0,
+          "w": 96.0,
+          "h": 8.0
+        },
+        "colour": "#4f4f4f"
+      },
+      {
+        "item": "fill",
+        "rect": {
+          "x": 148.0,
+          "y": 476.0,
+          "w": 196.0,
+          "h": 8.0
+        },
+        "colour": "#9e5820"
+      },
+      {
+        "item": "fill",
+        "rect": {
+          "x": 348.0,
+          "y": 476.0,
+          "w": 96.0,
+          "h": 8.0
+        },
+        "colour": "#9e5820"
+      },
+      {
+        "item": "fill",
+        "rect": {
+          "x": 448.0,
+          "y": 476.0,
+          "w": 96.0,
+          "h": 8.0
+        },
+        "colour": "#9e5820"
+      },
+      {
+        "item": "text",
+        "x": 48.0,
+        "baseline": 497.0,
+        "text": "pages: the cover, then 2 · 1 · 1",
+        "face": "regular",
+        "size": 8.0,
+        "colour": "#999078"
+      },
+      {
+        "item": "rule",
+        "x": 48.0,
+        "y": 800.0,
+        "w": 500.0,
+        "colour": "#4f4f4f"
+      },
+      {
+        "item": "fill",
+        "rect": {
+          "x": 48.0,
+          "y": 808.0,
+          "w": 8.0,
+          "h": 8.0
+        },
+        "colour": "#fe8019"
+      },
+      {
+        "item": "text",
+        "x": 60.0,
+        "baseline": 814.8125,
+        "text": "Powered by Deck",
+        "face": "regular",
+        "size": 7.5,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 246.08125,
+        "baseline": 814.8125,
+        "text": "acme/ingest@a1b2c3d · 20 Oct 2026",
+        "face": "regular",
+        "size": 7.5,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 500.69,
+        "baseline": 814.8125,
+        "text": "contents · 1/6",
+        "face": "regular",
+        "size": 7.5,
+        "colour": "#999078"
+      }
+    ]
+  },
+  {
+    "width": 595.0,
+    "height": 842.0,
+    "scale": 1.0,
+    "kind": {
+      "page": "group",
+      "n": 1,
+      "part": 1,
+      "of": 2
+    },
+    "items": [
+      {
+        "item": "ground",
+        "colour": "#282828"
+      },
+      {
+        "item": "fill",
+        "rect": {
+          "x": 48.0,
+          "y": 48.0,
+          "w": 500.0,
+          "h": 148.0
+        },
+        "colour": "#242424"
+      },
+      {
+        "item": "text",
+        "x": 86.8,
+        "baseline": 82.75,
+        "text": "The error path <script>alert(1)</script> counts twice",
+        "face": "semibold",
+        "size": 18.0,
+        "colour": "#ebdbb2"
+      },
+      {
+        "item": "text",
+        "x": 64.0,
+        "baseline": 82.75,
+        "text": "1",
+        "face": "semibold",
+        "size": 18.0,
+        "colour": "#864d1f"
+      },
+      {
+        "item": "text",
+        "x": 86.8,
+        "baseline": 97.0,
+        "text": "Medium",
+        "face": "medium",
+        "size": 8.0,
+        "colour": "#f89b47"
+      },
+      {
+        "item": "text",
+        "x": 116.312004,
+        "baseline": 97.0,
+        "text": " · read both paths & did not run it",
+        "face": "regular",
+        "size": 8.0,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 86.8,
+        "baseline": 119.75,
+        "text": "A write that fails lands in the catch in",
+        "face": "regular",
+        "size": 10.0,
+        "colour": "#bfb393"
+      },
+      {
+        "item": "chip",
+        "rect": {
+          "x": 253.97002,
+          "y": 108.5,
+          "w": 33.32,
+          "h": 15.0
+        },
+        "colour": "#3e2f23"
+      },
+      {
+        "item": "text",
+        "x": 257.97003,
+        "baseline": 119.75,
+        "text": "batch",
+        "face": "regular",
+        "size": 10.0,
+        "colour": "#fe8019"
+      },
+      {
+        "item": "text",
+        "x": 287.29004,
+        "baseline": 119.75,
+        "text": " and takes the counter down.",
+        "face": "regular",
+        "size": 10.0,
+        "colour": "#bfb393"
+      },
+      {
+        "item": "badge",
+        "cx": 424.39,
+        "cy": 116.0,
+        "r": 6.0,
+        "numeral": 1,
+        "fill": "#fe8019",
+        "ink": "#242424"
+      },
+      {
+        "item": "text",
+        "x": 431.89,
+        "baseline": 119.75,
+        "text": " It goes on to the tail",
+        "face": "regular",
+        "size": 10.0,
+        "colour": "#bfb393"
+      },
+      {
+        "item": "text",
+        "x": 86.8,
+        "baseline": 135.75,
+        "text": "and takes it down again.",
+        "face": "regular",
+        "size": 10.0,
+        "colour": "#bfb393"
+      },
+      {
+        "item": "badge",
+        "cx": 202.42001,
+        "cy": 132.0,
+        "r": 6.0,
+        "numeral": 2,
+        "fill": "#fe8019",
+        "ink": "#242424"
+      },
+      {
+        "item": "text",
+        "x": 86.8,
+        "baseline": 159.75,
+        "text": "So every failed write costs",
+        "face": "regular",
+        "size": 10.0,
+        "colour": "#bfb393"
+      },
+      {
+        "item": "text",
+        "x": 206.16002,
+        "baseline": 159.75,
+        "text": "two",
+        "face": "semibold",
+        "size": 10.0,
+        "colour": "#ebdbb2"
+      },
+      {
+        "item": "text",
+        "x": 223.63002,
+        "baseline": 159.75,
+        "text": ".",
+        "face": "regular",
+        "size": 10.0,
+        "colour": "#bfb393"
+      },
+      {
+        "item": "chip",
+        "rect": {
+          "x": 228.71002,
+          "y": 148.5,
+          "w": 28.330002,
+          "h": 15.0
+        },
+        "colour": "#3e2f23"
+      },
+      {
+        "item": "text",
+        "x": 232.71002,
+        "baseline": 159.75,
+        "text": "path",
+        "face": "regular",
+        "size": 10.0,
+        "colour": "#fe8019"
+      },
+      {
+        "item": "text",
+        "x": 257.04004,
+        "baseline": 159.75,
+        "text": " follows one row, and",
+        "face": "regular",
+        "size": 10.0,
+        "colour": "#bfb393"
+      },
+      {
+        "item": "chip",
+        "rect": {
+          "x": 353.97003,
+          "y": 148.5,
+          "w": 46.64,
+          "h": 15.0
+        },
+        "colour": "#262626"
+      },
+      {
+        "item": "text",
+        "x": 357.97003,
+        "baseline": 159.312,
+        "text": "pending",
+        "face": "mono",
+        "size": 9.2,
+        "colour": "#ebdbb2"
+      },
+      {
+        "item": "text",
+        "x": 400.61005,
+        "baseline": 159.75,
+        "text": " is the count. The",
+        "face": "regular",
+        "size": 10.0,
+        "colour": "#bfb393"
+      },
+      {
+        "item": "chip",
+        "rect": {
+          "x": 479.51007,
+          "y": 148.5,
+          "w": 37.460003,
+          "h": 15.0
+        },
+        "colour": "#3e2f23"
+      },
+      {
+        "item": "text",
+        "x": 483.51007,
+        "baseline": 159.75,
+        "text": "shown",
+        "face": "regular",
+        "size": 10.0,
+        "colour": "#fe8019"
+      },
+      {
+        "item": "text",
+        "x": 86.8,
+        "baseline": 175.75,
+        "text": "page is the picture.",
+        "face": "regular",
+        "size": 10.0,
+        "colour": "#bfb393"
+      },
+      {
+        "item": "fill",
+        "rect": {
+          "x": 48.0,
+          "y": 212.0,
+          "w": 500.0,
+          "h": 228.0
+        },
+        "colour": "#262626"
+      },
+      {
+        "item": "text",
+        "x": 60.0,
+        "baseline": 232.88,
+        "text": "batch",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#fe8019"
+      },
+      {
+        "item": "text",
+        "x": 92.0,
+        "baseline": 232.88,
+        "text": "src/batch.ts:6-13",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 60.0,
+        "baseline": 249.0,
+        "text": "the loop <b>body</b>",
+        "face": "regular",
+        "size": 8.0,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 64.8,
+        "baseline": 260.88,
+        "text": "3",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 84.0,
+        "baseline": 260.88,
+        "text": "export",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#ab818c"
+      },
+      {
+        "item": "text",
+        "x": 117.600006,
+        "baseline": 260.88,
+        "text": "async",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#ab818c"
+      },
+      {
+        "item": "text",
+        "x": 146.40001,
+        "baseline": 260.88,
+        "text": "function",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#ab818c"
+      },
+      {
+        "item": "text",
+        "x": 189.60002,
+        "baseline": 260.88,
+        "text": "flush",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#b0882c"
+      },
+      {
+        "item": "text",
+        "x": 213.60002,
+        "baseline": 260.88,
+        "text": "(",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#938c78"
+      },
+      {
+        "item": "text",
+        "x": 218.40002,
+        "baseline": 260.88,
+        "text": "rows:",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#a69c81"
+      },
+      {
+        "item": "text",
+        "x": 247.20003,
+        "baseline": 260.88,
+        "text": "Row",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#739666"
+      },
+      {
+        "item": "text",
+        "x": 261.60004,
+        "baseline": 260.88,
+        "text": "[])",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#938c78"
+      },
+      {
+        "item": "text",
+        "x": 280.80002,
+        "baseline": 260.88,
+        "text": "{",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#938c78"
+      },
+      {
+        "item": "text",
+        "x": 64.8,
+        "baseline": 272.88,
+        "text": "4",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 93.6,
+        "baseline": 272.88,
+        "text": "let",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#ab818c"
+      },
+      {
+        "item": "text",
+        "x": 112.8,
+        "baseline": 272.88,
+        "text": "pending",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#a69c81"
+      },
+      {
+        "item": "text",
+        "x": 151.2,
+        "baseline": 272.88,
+        "text": "=",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#938c78"
+      },
+      {
+        "item": "text",
+        "x": 160.8,
+        "baseline": 272.88,
+        "text": "rows",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#a69c81"
+      },
+      {
+        "item": "text",
+        "x": 180.0,
+        "baseline": 272.88,
+        "text": ".",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#938c78"
+      },
+      {
+        "item": "text",
+        "x": 184.8,
+        "baseline": 272.88,
+        "text": "length",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#a69c81"
+      },
+      {
+        "item": "text",
+        "x": 64.8,
+        "baseline": 284.88,
+        "text": "5",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 93.6,
+        "baseline": 284.88,
+        "text": "for",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#ab818c"
+      },
+      {
+        "item": "text",
+        "x": 112.8,
+        "baseline": 284.88,
+        "text": "(",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#938c78"
+      },
+      {
+        "item": "text",
+        "x": 117.600006,
+        "baseline": 284.88,
+        "text": "const",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#ab818c"
+      },
+      {
+        "item": "text",
+        "x": 146.40001,
+        "baseline": 284.88,
+        "text": "row",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#a69c81"
+      },
+      {
+        "item": "text",
+        "x": 165.6,
+        "baseline": 284.88,
+        "text": "of",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#ab818c"
+      },
+      {
+        "item": "text",
+        "x": 180.00002,
+        "baseline": 284.88,
+        "text": "rows",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#a69c81"
+      },
+      {
+        "item": "text",
+        "x": 199.20001,
+        "baseline": 284.88,
+        "text": ")",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#938c78"
+      },
+      {
+        "item": "text",
+        "x": 208.80002,
+        "baseline": 284.88,
+        "text": "{",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#938c78"
+      },
+      {
+        "item": "fill",
+        "rect": {
+          "x": 48.0,
+          "y": 288.0,
+          "w": 500.0,
+          "h": 12.0
+        },
+        "colour": "#483425"
+      },
+      {
+        "item": "text",
+        "x": 64.8,
+        "baseline": 296.88,
+        "text": "6",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 103.2,
+        "baseline": 296.88,
+        "text": "try",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#d58ca0"
+      },
+      {
+        "item": "text",
+        "x": 122.4,
+        "baseline": 296.88,
+        "text": "{",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#a8a08c"
+      },
+      {
+        "item": "fill",
+        "rect": {
+          "x": 48.0,
+          "y": 300.0,
+          "w": 500.0,
+          "h": 12.0
+        },
+        "colour": "#483425"
+      },
+      {
+        "item": "text",
+        "x": 64.8,
+        "baseline": 308.88,
+        "text": "7",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 112.8,
+        "baseline": 308.88,
+        "text": "await",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#d58ca0"
+      },
+      {
+        "item": "text",
+        "x": 141.6,
+        "baseline": 308.88,
+        "text": "write",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#fabd2f"
+      },
+      {
+        "item": "text",
+        "x": 165.6,
+        "baseline": 308.88,
+        "text": "(",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#a8a08c"
+      },
+      {
+        "item": "text",
+        "x": 170.40001,
+        "baseline": 308.88,
+        "text": "row",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#ebdbb2"
+      },
+      {
+        "item": "text",
+        "x": 184.8,
+        "baseline": 308.88,
+        "text": ")",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#a8a08c"
+      },
+      {
+        "item": "fill",
+        "rect": {
+          "x": 48.0,
+          "y": 312.0,
+          "w": 500.0,
+          "h": 12.0
+        },
+        "colour": "#483425"
+      },
+      {
+        "item": "text",
+        "x": 112.8,
+        "baseline": 320.88,
+        "text": "↳ row ▸ Row { id: \"r63\", … }",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#fe8019"
+      },
+      {
+        "item": "fill",
+        "rect": {
+          "x": 48.0,
+          "y": 324.0,
+          "w": 500.0,
+          "h": 12.0
+        },
+        "colour": "#483425"
+      },
+      {
+        "item": "text",
+        "x": 64.8,
+        "baseline": 332.88,
+        "text": "8",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 103.2,
+        "baseline": 332.88,
+        "text": "}",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#a8a08c"
+      },
+      {
+        "item": "text",
+        "x": 112.8,
+        "baseline": 332.88,
+        "text": "catch",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#d58ca0"
+      },
+      {
+        "item": "text",
+        "x": 141.6,
+        "baseline": 332.88,
+        "text": "(",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#a8a08c"
+      },
+      {
+        "item": "text",
+        "x": 146.40001,
+        "baseline": 332.88,
+        "text": "err",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#ebdbb2"
+      },
+      {
+        "item": "text",
+        "x": 160.8,
+        "baseline": 332.88,
+        "text": ")",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#a8a08c"
+      },
+      {
+        "item": "text",
+        "x": 170.40001,
+        "baseline": 332.88,
+        "text": "{",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#a8a08c"
+      },
+      {
+        "item": "fill",
+        "rect": {
+          "x": 48.0,
+          "y": 336.0,
+          "w": 500.0,
+          "h": 12.0
+        },
+        "colour": "#483425"
+      },
+      {
+        "item": "text",
+        "x": 64.8,
+        "baseline": 344.88,
+        "text": "9",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 112.8,
+        "baseline": 344.88,
+        "text": "log",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#ebdbb2"
+      },
+      {
+        "item": "text",
+        "x": 127.2,
+        "baseline": 344.88,
+        "text": ".",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#a8a08c"
+      },
+      {
+        "item": "text",
+        "x": 132.0,
+        "baseline": 344.88,
+        "text": "error",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#fabd2f"
+      },
+      {
+        "item": "text",
+        "x": 156.0,
+        "baseline": 344.88,
+        "text": "(",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#a8a08c"
+      },
+      {
+        "item": "text",
+        "x": 160.8,
+        "baseline": 344.88,
+        "text": "err",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#ebdbb2"
+      },
+      {
+        "item": "text",
+        "x": 175.2,
+        "baseline": 344.88,
+        "text": ")",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#a8a08c"
+      },
+      {
+        "item": "fill",
+        "rect": {
+          "x": 48.0,
+          "y": 348.0,
+          "w": 500.0,
+          "h": 12.0
+        },
+        "colour": "#483425"
+      },
+      {
+        "item": "fill",
+        "rect": {
+          "x": 48.0,
+          "y": 348.0,
+          "w": 4.0,
+          "h": 12.0
+        },
+        "colour": "#fe8019"
+      },
+      {
+        "item": "badge",
+        "cx": 31.0,
+        "cy": 354.0,
+        "r": 5.0,
+        "numeral": 1,
+        "fill": "#fe8019",
+        "ink": "#282828"
+      },
+      {
+        "item": "text",
+        "x": 60.0,
+        "baseline": 356.88,
+        "text": "10",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#fe8019"
+      },
+      {
+        "item": "text",
+        "x": 112.8,
+        "baseline": 356.88,
+        "text": "pending",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#ebdbb2"
+      },
+      {
+        "item": "text",
+        "x": 151.2,
+        "baseline": 356.88,
+        "text": "63",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#fe8019"
+      },
+      {
+        "item": "text",
+        "x": 170.4,
+        "baseline": 356.88,
+        "text": "-=",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#a8a08c"
+      },
+      {
+        "item": "text",
+        "x": 184.8,
+        "baseline": 356.88,
+        "text": "1",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#d58ca0"
+      },
+      {
+        "item": "fill",
+        "rect": {
+          "x": 48.0,
+          "y": 360.0,
+          "w": 500.0,
+          "h": 12.0
+        },
+        "colour": "#483425"
+      },
+      {
+        "item": "text",
+        "x": 60.0,
+        "baseline": 368.88,
+        "text": "11",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 103.2,
+        "baseline": 368.88,
+        "text": "}",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#a8a08c"
+      },
+      {
+        "item": "fill",
+        "rect": {
+          "x": 48.0,
+          "y": 372.0,
+          "w": 500.0,
+          "h": 12.0
+        },
+        "colour": "#483425"
+      },
+      {
+        "item": "text",
+        "x": 60.0,
+        "baseline": 380.88,
+        "text": "12",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 103.2,
+        "baseline": 380.88,
+        "text": "// every row, failed or not, reaches this",
+        "face": "monoitalic",
+        "size": 8.0,
+        "colour": "#a8a08c"
+      },
+      {
+        "item": "fill",
+        "rect": {
+          "x": 48.0,
+          "y": 384.0,
+          "w": 500.0,
+          "h": 12.0
+        },
+        "colour": "#483425"
+      },
+      {
+        "item": "fill",
+        "rect": {
+          "x": 48.0,
+          "y": 384.0,
+          "w": 4.0,
+          "h": 12.0
+        },
+        "colour": "#fe8019"
+      },
+      {
+        "item": "badge",
+        "cx": 31.0,
+        "cy": 390.0,
+        "r": 5.0,
+        "numeral": 2,
+        "fill": "#fe8019",
+        "ink": "#282828"
+      },
+      {
+        "item": "text",
+        "x": 60.0,
+        "baseline": 392.88,
+        "text": "13",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#fe8019"
+      },
+      {
+        "item": "text",
+        "x": 103.2,
+        "baseline": 392.88,
+        "text": "pending",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#ebdbb2"
+      },
+      {
+        "item": "text",
+        "x": 141.6,
+        "baseline": 392.88,
+        "text": "-=",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#a8a08c"
+      },
+      {
+        "item": "text",
+        "x": 156.00002,
+        "baseline": 392.88,
+        "text": "1",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#d58ca0"
+      },
+      {
+        "item": "text",
+        "x": 165.60002,
+        "baseline": 392.88,
+        "text": "62",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#fe8019"
+      },
+      {
+        "item": "text",
+        "x": 60.0,
+        "baseline": 404.88,
+        "text": "14",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 93.6,
+        "baseline": 404.88,
+        "text": "}",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#938c78"
+      },
+      {
+        "item": "text",
+        "x": 60.0,
+        "baseline": 416.88,
+        "text": "15",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 93.6,
+        "baseline": 416.88,
+        "text": "if",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#ab818c"
+      },
+      {
+        "item": "text",
+        "x": 108.0,
+        "baseline": 416.88,
+        "text": "(",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#938c78"
+      },
+      {
+        "item": "text",
+        "x": 112.8,
+        "baseline": 416.88,
+        "text": "pending",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#a69c81"
+      },
+      {
+        "item": "text",
+        "x": 151.20001,
+        "baseline": 416.88,
+        "text": "===",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#938c78"
+      },
+      {
+        "item": "text",
+        "x": 170.40001,
+        "baseline": 416.88,
+        "text": "0",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#ab818c"
+      },
+      {
+        "item": "text",
+        "x": 175.20001,
+        "baseline": 416.88,
+        "text": ")",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#938c78"
+      },
+      {
+        "item": "text",
+        "x": 184.80002,
+        "baseline": 416.88,
+        "text": "{",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#938c78"
+      },
+      {
+        "item": "text",
+        "x": 60.0,
+        "baseline": 428.88,
+        "text": "16",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 103.2,
+        "baseline": 428.88,
+        "text": "settle",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#b0882c"
+      },
+      {
+        "item": "text",
+        "x": 132.0,
+        "baseline": 428.88,
+        "text": "(",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#938c78"
+      },
+      {
+        "item": "text",
+        "x": 136.8,
+        "baseline": 428.88,
+        "text": "rows",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#a69c81"
+      },
+      {
+        "item": "text",
+        "x": 156.0,
+        "baseline": 428.88,
+        "text": ")",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#938c78"
+      },
+      {
+        "item": "fill",
+        "rect": {
+          "x": 48.0,
+          "y": 456.0,
+          "w": 500.0,
+          "h": 196.0
+        },
+        "colour": "#262626"
+      },
+      {
+        "item": "text",
+        "x": 60.0,
+        "baseline": 476.88,
+        "text": "path",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#fe8019"
+      },
+      {
+        "item": "text",
+        "x": 87.2,
+        "baseline": 476.88,
+        "text": "diagram",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#999078"
+      },
+      {
+        "item": "svg",
+        "rect": {
+          "x": 60.0,
+          "y": 484.0,
+          "w": 476.0,
+          "h": 160.0
+        },
+        "svg": "<svg: 1015 bytes>",
+        "scale": 0.75
+      },
+      {
+        "item": "fill",
+        "rect": {
+          "x": 48.0,
+          "y": 668.0,
+          "w": 500.0,
+          "h": 76.0
+        },
+        "colour": "#262626"
+      },
+      {
+        "item": "text",
+        "x": 60.0,
+        "baseline": 688.88,
+        "text": "shown",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#fe8019"
+      },
+      {
+        "item": "text",
+        "x": 92.0,
+        "baseline": 688.88,
+        "text": "page",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#999078"
+      },
+      {
+        "item": "frame",
+        "rect": {
+          "x": 60.0,
+          "y": 696.0,
+          "w": 476.0,
+          "h": 40.0
+        },
+        "colour": "#4f4f4f"
+      },
+      {
+        "item": "text",
+        "x": 72.0,
+        "baseline": 711.75,
+        "text": "Interactive page: open the HTML export to use it",
+        "face": "regular",
+        "size": 10.0,
+        "colour": "#ebdbb2"
+      },
+      {
+        "item": "text",
+        "x": 72.0,
+        "baseline": 725.0,
+        "text": "shown · page",
+        "face": "regular",
+        "size": 8.0,
+        "colour": "#999078"
+      },
+      {
+        "item": "rule",
+        "x": 48.0,
+        "y": 800.0,
+        "w": 500.0,
+        "colour": "#4f4f4f"
+      },
+      {
+        "item": "fill",
+        "rect": {
+          "x": 48.0,
+          "y": 808.0,
+          "w": 8.0,
+          "h": 8.0
+        },
+        "colour": "#fe8019"
+      },
+      {
+        "item": "text",
+        "x": 60.0,
+        "baseline": 814.8125,
+        "text": "Powered by Deck",
+        "face": "regular",
+        "size": 7.5,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 155.88625,
+        "baseline": 814.8125,
+        "text": "acme/ingest@a1b2c3d · 20 Oct 2026",
+        "face": "regular",
+        "size": 7.5,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 320.3,
+        "baseline": 814.8125,
+        "text": "group 1 · The error path <script>alert(1)</script> counts twice · 2/6",
+        "face": "regular",
+        "size": 7.5,
+        "colour": "#999078"
+      }
+    ]
+  },
+  {
+    "width": 595.0,
+    "height": 842.0,
+    "scale": 1.0,
+    "kind": {
+      "page": "group",
+      "n": 1,
+      "part": 2,
+      "of": 2
+    },
+    "items": [
+      {
+        "item": "ground",
+        "colour": "#282828"
+      },
+      {
+        "item": "text",
+        "x": 48.0,
+        "baseline": 97.0,
+        "text": "THE ARGUMENT · 2",
+        "face": "medium",
+        "size": 8.0,
+        "colour": "#999078"
+      },
+      {
+        "item": "dot",
+        "cx": 52.0,
+        "cy": 118.0,
+        "r": 3.0,
+        "colour": "#fe8019",
+        "filled": true
+      },
+      {
+        "item": "text",
+        "x": 64.0,
+        "baseline": 121.0,
+        "text": "Reader · question · batch, line 10",
+        "face": "regular",
+        "size": 8.0,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 533.6,
+        "baseline": 120.88,
+        "text": "1/2",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 64.0,
+        "baseline": 135.75,
+        "text": "Why not decrement once, in a <finally>?",
+        "face": "regular",
+        "size": 10.0,
+        "colour": "#ebdbb2"
+      },
+      {
+        "item": "fill",
+        "rect": {
+          "x": 64.0,
+          "y": 144.0,
+          "w": 484.0,
+          "h": 12.0
+        },
+        "colour": "#483425"
+      },
+      {
+        "item": "fill",
+        "rect": {
+          "x": 64.0,
+          "y": 144.0,
+          "w": 4.0,
+          "h": 12.0
+        },
+        "colour": "#fe8019"
+      },
+      {
+        "item": "text",
+        "x": 76.0,
+        "baseline": 152.88,
+        "text": "10",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#fe8019"
+      },
+      {
+        "item": "text",
+        "x": 128.8,
+        "baseline": 152.88,
+        "text": "pending",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#ebdbb2"
+      },
+      {
+        "item": "text",
+        "x": 167.2,
+        "baseline": 152.88,
+        "text": "63",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#fe8019"
+      },
+      {
+        "item": "text",
+        "x": 186.4,
+        "baseline": 152.88,
+        "text": "-=",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#a8a08c"
+      },
+      {
+        "item": "text",
+        "x": 200.8,
+        "baseline": 152.88,
+        "text": "1",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#d58ca0"
+      },
+      {
+        "item": "dot",
+        "cx": 52.0,
+        "cy": 174.0,
+        "r": 3.0,
+        "colour": "#fe8019",
+        "filled": false
+      },
+      {
+        "item": "text",
+        "x": 64.0,
+        "baseline": 177.0,
+        "text": "Agent",
+        "face": "regular",
+        "size": 8.0,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 533.6,
+        "baseline": 176.88,
+        "text": "2/2",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 64.0,
+        "baseline": 191.75,
+        "text": "A finally also runs on the retry branch.",
+        "face": "regular",
+        "size": 10.0,
+        "colour": "#ebdbb2"
+      },
+      {
+        "item": "text",
+        "x": 48.0,
+        "baseline": 63.75,
+        "text": "Group 1, continued (2 of 2)",
+        "face": "medium",
+        "size": 10.0,
+        "colour": "#999078"
+      },
+      {
+        "item": "rule",
+        "x": 48.0,
+        "y": 220.0,
+        "w": 500.0,
+        "colour": "#4f4f4f"
+      },
+      {
+        "item": "text",
+        "x": 419.50998,
+        "baseline": 247.75,
+        "text": "Next →",
+        "face": "medium",
+        "size": 10.0,
+        "colour": "#fe8019"
+      },
+      {
+        "item": "text",
+        "x": 459.90997,
+        "baseline": 247.75,
+        "text": "2 · Count once",
+        "face": "medium",
+        "size": 10.0,
+        "colour": "#ebdbb2"
+      },
+      {
+        "item": "text",
+        "x": 533.6,
+        "baseline": 246.88,
+        "text": "p.4",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 48.0,
+        "baseline": 277.0,
+        "text": "WHAT THE CODE HELD",
+        "face": "medium",
+        "size": 8.0,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 48.0,
+        "baseline": 288.88,
+        "text": "row",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#ebdbb2"
+      },
+      {
+        "item": "text",
+        "x": 248.0,
+        "baseline": 288.88,
+        "text": "Row { id: \"r63\", … }",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#fe8019"
+      },
+      {
+        "item": "text",
+        "x": 514.4,
+        "baseline": 288.88,
+        "text": "batch:7",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 48.0,
+        "baseline": 300.88,
+        "text": "pending",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#ebdbb2"
+      },
+      {
+        "item": "text",
+        "x": 248.0,
+        "baseline": 300.88,
+        "text": "63",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#fe8019"
+      },
+      {
+        "item": "text",
+        "x": 509.6,
+        "baseline": 300.88,
+        "text": "batch:10",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 48.0,
+        "baseline": 312.88,
+        "text": "missing",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#ebdbb2"
+      },
+      {
+        "item": "text",
+        "x": 248.0,
+        "baseline": 312.88,
+        "text": "62",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#fe8019"
+      },
+      {
+        "item": "text",
+        "x": 509.6,
+        "baseline": 312.88,
+        "text": "batch:13",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 48.0,
+        "baseline": 341.0,
+        "text": "WHERE THIS SITS",
+        "face": "medium",
+        "size": 8.0,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 48.0,
+        "baseline": 353.0,
+        "text": "1",
+        "face": "medium",
+        "size": 8.0,
+        "colour": "#fe8019"
+      },
+      {
+        "item": "text",
+        "x": 64.0,
+        "baseline": 353.0,
+        "text": "The error path <script>alert(1)</script> counts twice",
+        "face": "regular",
+        "size": 8.0,
+        "colour": "#ebdbb2"
+      },
+      {
+        "item": "text",
+        "x": 48.0,
+        "baseline": 365.0,
+        "text": "2",
+        "face": "medium",
+        "size": 8.0,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 64.0,
+        "baseline": 365.0,
+        "text": "Count once",
+        "face": "regular",
+        "size": 8.0,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 48.0,
+        "baseline": 377.0,
+        "text": "3",
+        "face": "medium",
+        "size": 8.0,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 64.0,
+        "baseline": 377.0,
+        "text": "Nothing else moves",
+        "face": "regular",
+        "size": 8.0,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 48.0,
+        "baseline": 405.0,
+        "text": "YOUR NOTES · GROUP 1",
+        "face": "medium",
+        "size": 8.0,
+        "colour": "#999078"
+      },
+      {
+        "item": "dots",
+        "rect": {
+          "x": 48.0,
+          "y": 412.0,
+          "w": 500.0,
+          "h": 356.0
+        },
+        "colour": "#4f4f4f",
+        "pitch": 12.0
+      },
+      {
+        "item": "rule",
+        "x": 48.0,
+        "y": 800.0,
+        "w": 500.0,
+        "colour": "#4f4f4f"
+      },
+      {
+        "item": "fill",
+        "rect": {
+          "x": 48.0,
+          "y": 808.0,
+          "w": 8.0,
+          "h": 8.0
+        },
+        "colour": "#fe8019"
+      },
+      {
+        "item": "text",
+        "x": 60.0,
+        "baseline": 814.8125,
+        "text": "Powered by Deck",
+        "face": "regular",
+        "size": 7.5,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 155.88625,
+        "baseline": 814.8125,
+        "text": "acme/ingest@a1b2c3d · 20 Oct 2026",
+        "face": "regular",
+        "size": 7.5,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 320.3,
+        "baseline": 814.8125,
+        "text": "group 1 · The error path <script>alert(1)</script> counts twice · 3/6",
+        "face": "regular",
+        "size": 7.5,
+        "colour": "#999078"
+      }
+    ]
+  },
+  {
+    "width": 595.0,
+    "height": 842.0,
+    "scale": 1.0,
+    "kind": {
+      "page": "group",
+      "n": 2,
+      "part": 1,
+      "of": 1
+    },
+    "items": [
+      {
+        "item": "ground",
+        "colour": "#282828"
+      },
+      {
+        "item": "fill",
+        "rect": {
+          "x": 48.0,
+          "y": 48.0,
+          "w": 500.0,
+          "h": 80.0
+        },
+        "colour": "#242424"
+      },
+      {
+        "item": "text",
+        "x": 86.8,
+        "baseline": 82.75,
+        "text": "Count once",
+        "face": "semibold",
+        "size": 18.0,
+        "colour": "#ebdbb2"
+      },
+      {
+        "item": "text",
+        "x": 64.0,
+        "baseline": 82.75,
+        "text": "2",
+        "face": "semibold",
+        "size": 18.0,
+        "colour": "#864d1f"
+      },
+      {
+        "item": "text",
+        "x": 86.8,
+        "baseline": 107.75,
+        "text": "Count once, where the write settles.",
+        "face": "regular",
+        "size": 10.0,
+        "colour": "#bfb393"
+      },
+      {
+        "item": "badge",
+        "cx": 255.53003,
+        "cy": 104.0,
+        "r": 6.0,
+        "numeral": 1,
+        "fill": "#fe8019",
+        "ink": "#242424"
+      },
+      {
+        "item": "fill",
+        "rect": {
+          "x": 48.0,
+          "y": 144.0,
+          "w": 500.0,
+          "h": 132.0
+        },
+        "colour": "#262626"
+      },
+      {
+        "item": "text",
+        "x": 60.0,
+        "baseline": 164.88,
+        "text": "fix",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#fe8019"
+      },
+      {
+        "item": "text",
+        "x": 82.4,
+        "baseline": 164.88,
+        "text": "src/batch.ts:10 · proposed",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 64.8,
+        "baseline": 180.88,
+        "text": "7",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 112.8,
+        "baseline": 180.88,
+        "text": "await",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#ab818c"
+      },
+      {
+        "item": "text",
+        "x": 141.6,
+        "baseline": 180.88,
+        "text": "write",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#b0882c"
+      },
+      {
+        "item": "text",
+        "x": 165.6,
+        "baseline": 180.88,
+        "text": "(",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#938c78"
+      },
+      {
+        "item": "text",
+        "x": 170.40001,
+        "baseline": 180.88,
+        "text": "row",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#a69c81"
+      },
+      {
+        "item": "text",
+        "x": 184.8,
+        "baseline": 180.88,
+        "text": ")",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#938c78"
+      },
+      {
+        "item": "text",
+        "x": 64.8,
+        "baseline": 192.88,
+        "text": "8",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 103.2,
+        "baseline": 192.88,
+        "text": "}",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#938c78"
+      },
+      {
+        "item": "text",
+        "x": 112.8,
+        "baseline": 192.88,
+        "text": "catch",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#ab818c"
+      },
+      {
+        "item": "text",
+        "x": 141.6,
+        "baseline": 192.88,
+        "text": "(",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#938c78"
+      },
+      {
+        "item": "text",
+        "x": 146.40001,
+        "baseline": 192.88,
+        "text": "err",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#a69c81"
+      },
+      {
+        "item": "text",
+        "x": 160.8,
+        "baseline": 192.88,
+        "text": ")",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#938c78"
+      },
+      {
+        "item": "text",
+        "x": 170.40001,
+        "baseline": 192.88,
+        "text": "{",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#938c78"
+      },
+      {
+        "item": "text",
+        "x": 64.8,
+        "baseline": 204.88,
+        "text": "9",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 112.8,
+        "baseline": 204.88,
+        "text": "log",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#a69c81"
+      },
+      {
+        "item": "text",
+        "x": 127.2,
+        "baseline": 204.88,
+        "text": ".",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#938c78"
+      },
+      {
+        "item": "text",
+        "x": 132.0,
+        "baseline": 204.88,
+        "text": "error",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#b0882c"
+      },
+      {
+        "item": "text",
+        "x": 156.0,
+        "baseline": 204.88,
+        "text": "(",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#938c78"
+      },
+      {
+        "item": "text",
+        "x": 160.8,
+        "baseline": 204.88,
+        "text": "err",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#a69c81"
+      },
+      {
+        "item": "text",
+        "x": 175.2,
+        "baseline": 204.88,
+        "text": ")",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#938c78"
+      },
+      {
+        "item": "fill",
+        "rect": {
+          "x": 48.0,
+          "y": 208.0,
+          "w": 500.0,
+          "h": 12.0
+        },
+        "colour": "#3f2b28"
+      },
+      {
+        "item": "text",
+        "x": 60.0,
+        "baseline": 216.88,
+        "text": "10",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 74.4,
+        "baseline": 216.88,
+        "text": "−",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#fc6654"
+      },
+      {
+        "item": "text",
+        "x": 112.8,
+        "baseline": 216.88,
+        "text": "pending",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#ebdbb2"
+      },
+      {
+        "item": "text",
+        "x": 151.20001,
+        "baseline": 216.88,
+        "text": "-=",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#9f9680"
+      },
+      {
+        "item": "text",
+        "x": 165.60002,
+        "baseline": 216.88,
+        "text": "1",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#d3869b"
+      },
+      {
+        "item": "fill",
+        "rect": {
+          "x": 48.0,
+          "y": 220.0,
+          "w": 500.0,
+          "h": 12.0
+        },
+        "colour": "#373727"
+      },
+      {
+        "item": "fill",
+        "rect": {
+          "x": 48.0,
+          "y": 220.0,
+          "w": 4.0,
+          "h": 12.0
+        },
+        "colour": "#fe8019"
+      },
+      {
+        "item": "badge",
+        "cx": 31.0,
+        "cy": 226.0,
+        "r": 5.0,
+        "numeral": 1,
+        "fill": "#fe8019",
+        "ink": "#282828"
+      },
+      {
+        "item": "text",
+        "x": 60.0,
+        "baseline": 228.88,
+        "text": "10",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#fe8019"
+      },
+      {
+        "item": "text",
+        "x": 74.4,
+        "baseline": 228.88,
+        "text": "+",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#b8bb26"
+      },
+      {
+        "item": "text",
+        "x": 112.8,
+        "baseline": 228.88,
+        "text": "// counted at the tail",
+        "face": "monoitalic",
+        "size": 8.0,
+        "colour": "#a59e89"
+      },
+      {
+        "item": "text",
+        "x": 60.0,
+        "baseline": 240.88,
+        "text": "11",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 103.2,
+        "baseline": 240.88,
+        "text": "}",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#938c78"
+      },
+      {
+        "item": "text",
+        "x": 60.0,
+        "baseline": 252.88,
+        "text": "12",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 103.2,
+        "baseline": 252.88,
+        "text": "// every row, failed or not, reaches this",
+        "face": "monoitalic",
+        "size": 8.0,
+        "colour": "#938c7a"
+      },
+      {
+        "item": "text",
+        "x": 60.0,
+        "baseline": 264.88,
+        "text": "13",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 103.2,
+        "baseline": 264.88,
+        "text": "pending",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#a69c81"
+      },
+      {
+        "item": "text",
+        "x": 141.6,
+        "baseline": 264.88,
+        "text": "-=",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#938c78"
+      },
+      {
+        "item": "text",
+        "x": 156.00002,
+        "baseline": 264.88,
+        "text": "1",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#ab818c"
+      },
+      {
+        "item": "rule",
+        "x": 48.0,
+        "y": 300.0,
+        "w": 500.0,
+        "colour": "#4f4f4f"
+      },
+      {
+        "item": "text",
+        "x": 381.56998,
+        "baseline": 327.75,
+        "text": "Next →",
+        "face": "medium",
+        "size": 10.0,
+        "colour": "#fe8019"
+      },
+      {
+        "item": "text",
+        "x": 421.96997,
+        "baseline": 327.75,
+        "text": "3 · Nothing else moves",
+        "face": "medium",
+        "size": 10.0,
+        "colour": "#ebdbb2"
+      },
+      {
+        "item": "text",
+        "x": 533.6,
+        "baseline": 326.88,
+        "text": "p.5",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 48.0,
+        "baseline": 357.0,
+        "text": "WHERE THIS SITS",
+        "face": "medium",
+        "size": 8.0,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 48.0,
+        "baseline": 369.0,
+        "text": "1",
+        "face": "medium",
+        "size": 8.0,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 64.0,
+        "baseline": 369.0,
+        "text": "The error path <script>alert(1)</script> counts twice",
+        "face": "regular",
+        "size": 8.0,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 48.0,
+        "baseline": 381.0,
+        "text": "2",
+        "face": "medium",
+        "size": 8.0,
+        "colour": "#fe8019"
+      },
+      {
+        "item": "text",
+        "x": 64.0,
+        "baseline": 381.0,
+        "text": "Count once",
+        "face": "regular",
+        "size": 8.0,
+        "colour": "#ebdbb2"
+      },
+      {
+        "item": "text",
+        "x": 48.0,
+        "baseline": 393.0,
+        "text": "3",
+        "face": "medium",
+        "size": 8.0,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 64.0,
+        "baseline": 393.0,
+        "text": "Nothing else moves",
+        "face": "regular",
+        "size": 8.0,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 48.0,
+        "baseline": 421.0,
+        "text": "YOUR NOTES · GROUP 2",
+        "face": "medium",
+        "size": 8.0,
+        "colour": "#999078"
+      },
+      {
+        "item": "dots",
+        "rect": {
+          "x": 48.0,
+          "y": 428.0,
+          "w": 500.0,
+          "h": 340.0
+        },
+        "colour": "#4f4f4f",
+        "pitch": 12.0
+      },
+      {
+        "item": "rule",
+        "x": 48.0,
+        "y": 800.0,
+        "w": 500.0,
+        "colour": "#4f4f4f"
+      },
+      {
+        "item": "fill",
+        "rect": {
+          "x": 48.0,
+          "y": 808.0,
+          "w": 8.0,
+          "h": 8.0
+        },
+        "colour": "#fe8019"
+      },
+      {
+        "item": "text",
+        "x": 60.0,
+        "baseline": 814.8125,
+        "text": "Powered by Deck",
+        "face": "regular",
+        "size": 7.5,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 225.895,
+        "baseline": 814.8125,
+        "text": "acme/ingest@a1b2c3d · 20 Oct 2026",
+        "face": "regular",
+        "size": 7.5,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 460.3175,
+        "baseline": 814.8125,
+        "text": "group 2 · Count once · 4/6",
+        "face": "regular",
+        "size": 7.5,
+        "colour": "#999078"
+      }
+    ]
+  },
+  {
+    "width": 595.0,
+    "height": 842.0,
+    "scale": 1.0,
+    "kind": {
+      "page": "group",
+      "n": 3,
+      "part": 1,
+      "of": 1
+    },
+    "items": [
+      {
+        "item": "ground",
+        "colour": "#282828"
+      },
+      {
+        "item": "fill",
+        "rect": {
+          "x": 48.0,
+          "y": 48.0,
+          "w": 500.0,
+          "h": 80.0
+        },
+        "colour": "#242424"
+      },
+      {
+        "item": "text",
+        "x": 86.8,
+        "baseline": 82.75,
+        "text": "Nothing else moves",
+        "face": "semibold",
+        "size": 18.0,
+        "colour": "#ebdbb2"
+      },
+      {
+        "item": "text",
+        "x": 64.0,
+        "baseline": 82.75,
+        "text": "3",
+        "face": "semibold",
+        "size": 18.0,
+        "colour": "#864d1f"
+      },
+      {
+        "item": "text",
+        "x": 86.8,
+        "baseline": 107.75,
+        "text": "The close stays as it is.",
+        "face": "regular",
+        "size": 10.0,
+        "colour": "#bfb393"
+      },
+      {
+        "item": "badge",
+        "cx": 196.38,
+        "cy": 104.0,
+        "r": 6.0,
+        "numeral": 1,
+        "fill": "#fe8019",
+        "ink": "#242424"
+      },
+      {
+        "item": "fill",
+        "rect": {
+          "x": 48.0,
+          "y": 144.0,
+          "w": 500.0,
+          "h": 108.0
+        },
+        "colour": "#262626"
+      },
+      {
+        "item": "text",
+        "x": 60.0,
+        "baseline": 164.88,
+        "text": "src/batch.ts:59-61",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 60.0,
+        "baseline": 180.88,
+        "text": "56",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 84.0,
+        "baseline": 180.88,
+        "text": "// spacer 56",
+        "face": "monoitalic",
+        "size": 8.0,
+        "colour": "#938c7a"
+      },
+      {
+        "item": "text",
+        "x": 60.0,
+        "baseline": 192.88,
+        "text": "57",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 84.0,
+        "baseline": 192.88,
+        "text": "// spacer 57",
+        "face": "monoitalic",
+        "size": 8.0,
+        "colour": "#938c7a"
+      },
+      {
+        "item": "text",
+        "x": 60.0,
+        "baseline": 204.88,
+        "text": "58",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 84.0,
+        "baseline": 204.88,
+        "text": "// spacer 58",
+        "face": "monoitalic",
+        "size": 8.0,
+        "colour": "#938c7a"
+      },
+      {
+        "item": "fill",
+        "rect": {
+          "x": 48.0,
+          "y": 208.0,
+          "w": 500.0,
+          "h": 12.0
+        },
+        "colour": "#483425"
+      },
+      {
+        "item": "text",
+        "x": 60.0,
+        "baseline": 216.88,
+        "text": "59",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 84.0,
+        "baseline": 216.88,
+        "text": "export",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#d58ca0"
+      },
+      {
+        "item": "text",
+        "x": 117.600006,
+        "baseline": 216.88,
+        "text": "function",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#d58ca0"
+      },
+      {
+        "item": "text",
+        "x": 160.8,
+        "baseline": 216.88,
+        "text": "close",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#fabd2f"
+      },
+      {
+        "item": "text",
+        "x": 184.8,
+        "baseline": 216.88,
+        "text": "(",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#a8a08c"
+      },
+      {
+        "item": "text",
+        "x": 189.6,
+        "baseline": 216.88,
+        "text": "batch:",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#ebdbb2"
+      },
+      {
+        "item": "text",
+        "x": 223.20001,
+        "baseline": 216.88,
+        "text": "Batch",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#8ec07c"
+      },
+      {
+        "item": "text",
+        "x": 247.20001,
+        "baseline": 216.88,
+        "text": ")",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#a8a08c"
+      },
+      {
+        "item": "text",
+        "x": 256.80002,
+        "baseline": 216.88,
+        "text": "{",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#a8a08c"
+      },
+      {
+        "item": "fill",
+        "rect": {
+          "x": 48.0,
+          "y": 220.0,
+          "w": 500.0,
+          "h": 12.0
+        },
+        "colour": "#483425"
+      },
+      {
+        "item": "fill",
+        "rect": {
+          "x": 48.0,
+          "y": 220.0,
+          "w": 4.0,
+          "h": 12.0
+        },
+        "colour": "#fe8019"
+      },
+      {
+        "item": "badge",
+        "cx": 31.0,
+        "cy": 226.0,
+        "r": 5.0,
+        "numeral": 1,
+        "fill": "#fe8019",
+        "ink": "#282828"
+      },
+      {
+        "item": "text",
+        "x": 60.0,
+        "baseline": 228.88,
+        "text": "60",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#fe8019"
+      },
+      {
+        "item": "text",
+        "x": 93.6,
+        "baseline": 228.88,
+        "text": "finish",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#fabd2f"
+      },
+      {
+        "item": "text",
+        "x": 122.4,
+        "baseline": 228.88,
+        "text": "(",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#a8a08c"
+      },
+      {
+        "item": "text",
+        "x": 127.200005,
+        "baseline": 228.88,
+        "text": "batch",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#ebdbb2"
+      },
+      {
+        "item": "text",
+        "x": 151.20001,
+        "baseline": 228.88,
+        "text": ")",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#a8a08c"
+      },
+      {
+        "item": "fill",
+        "rect": {
+          "x": 48.0,
+          "y": 232.0,
+          "w": 500.0,
+          "h": 12.0
+        },
+        "colour": "#483425"
+      },
+      {
+        "item": "text",
+        "x": 60.0,
+        "baseline": 240.88,
+        "text": "61",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 84.0,
+        "baseline": 240.88,
+        "text": "}",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#a8a08c"
+      },
+      {
+        "item": "fill",
+        "rect": {
+          "x": 48.0,
+          "y": 268.0,
+          "w": 500.0,
+          "h": 72.0
+        },
+        "colour": "#262626"
+      },
+      {
+        "item": "text",
+        "x": 60.0,
+        "baseline": 288.88,
+        "text": "store",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#fe8019"
+      },
+      {
+        "item": "text",
+        "x": 92.0,
+        "baseline": 288.88,
+        "text": "src/store.ts:2",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 60.0,
+        "baseline": 304.88,
+        "text": "1",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 79.2,
+        "baseline": 304.88,
+        "text": "export",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#ab818c"
+      },
+      {
+        "item": "text",
+        "x": 112.8,
+        "baseline": 304.88,
+        "text": "async",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#ab818c"
+      },
+      {
+        "item": "text",
+        "x": 141.6,
+        "baseline": 304.88,
+        "text": "function",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#ab818c"
+      },
+      {
+        "item": "text",
+        "x": 184.8,
+        "baseline": 304.88,
+        "text": "write",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#b0882c"
+      },
+      {
+        "item": "text",
+        "x": 208.8,
+        "baseline": 304.88,
+        "text": "(",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#938c78"
+      },
+      {
+        "item": "text",
+        "x": 213.6,
+        "baseline": 304.88,
+        "text": "row:",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#a69c81"
+      },
+      {
+        "item": "text",
+        "x": 237.6,
+        "baseline": 304.88,
+        "text": "Row",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#739666"
+      },
+      {
+        "item": "text",
+        "x": 252.0,
+        "baseline": 304.88,
+        "text": ")",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#938c78"
+      },
+      {
+        "item": "text",
+        "x": 261.59998,
+        "baseline": 304.88,
+        "text": "{",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#938c78"
+      },
+      {
+        "item": "fill",
+        "rect": {
+          "x": 48.0,
+          "y": 308.0,
+          "w": 500.0,
+          "h": 12.0
+        },
+        "colour": "#483425"
+      },
+      {
+        "item": "text",
+        "x": 60.0,
+        "baseline": 316.88,
+        "text": "2",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 88.799995,
+        "baseline": 316.88,
+        "text": "await",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#d58ca0"
+      },
+      {
+        "item": "text",
+        "x": 117.6,
+        "baseline": 316.88,
+        "text": "db",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#ebdbb2"
+      },
+      {
+        "item": "text",
+        "x": 127.2,
+        "baseline": 316.88,
+        "text": ".",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#a8a08c"
+      },
+      {
+        "item": "text",
+        "x": 132.0,
+        "baseline": 316.88,
+        "text": "put",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#fabd2f"
+      },
+      {
+        "item": "text",
+        "x": 146.4,
+        "baseline": 316.88,
+        "text": "(",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#a8a08c"
+      },
+      {
+        "item": "text",
+        "x": 151.2,
+        "baseline": 316.88,
+        "text": "row",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#ebdbb2"
+      },
+      {
+        "item": "text",
+        "x": 165.59999,
+        "baseline": 316.88,
+        "text": ".",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#a8a08c"
+      },
+      {
+        "item": "text",
+        "x": 170.4,
+        "baseline": 316.88,
+        "text": "id",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#ebdbb2"
+      },
+      {
+        "item": "text",
+        "x": 180.0,
+        "baseline": 316.88,
+        "text": ",",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#a8a08c"
+      },
+      {
+        "item": "text",
+        "x": 189.6,
+        "baseline": 316.88,
+        "text": "row",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#ebdbb2"
+      },
+      {
+        "item": "text",
+        "x": 204.0,
+        "baseline": 316.88,
+        "text": ".",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#a8a08c"
+      },
+      {
+        "item": "text",
+        "x": 208.8,
+        "baseline": 316.88,
+        "text": "payload",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#ebdbb2"
+      },
+      {
+        "item": "text",
+        "x": 242.40001,
+        "baseline": 316.88,
+        "text": ")",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#a8a08c"
+      },
+      {
+        "item": "text",
+        "x": 60.0,
+        "baseline": 328.88,
+        "text": "3",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 79.2,
+        "baseline": 328.88,
+        "text": "}",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#938c78"
+      },
+      {
+        "item": "text",
+        "x": 48.0,
+        "baseline": 373.0,
+        "text": "THE ARGUMENT · 1",
+        "face": "medium",
+        "size": 8.0,
+        "colour": "#999078"
+      },
+      {
+        "item": "dot",
+        "cx": 52.0,
+        "cy": 394.0,
+        "r": 3.0,
+        "colour": "#fe8019",
+        "filled": true
+      },
+      {
+        "item": "text",
+        "x": 64.0,
+        "baseline": 397.0,
+        "text": "Reader · nit · src/batch.ts, line 60",
+        "face": "regular",
+        "size": 8.0,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 533.6,
+        "baseline": 396.88,
+        "text": "1/1",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 64.0,
+        "baseline": 411.75,
+        "text": "Close it where it opens.",
+        "face": "regular",
+        "size": 10.0,
+        "colour": "#ebdbb2"
+      },
+      {
+        "item": "fill",
+        "rect": {
+          "x": 64.0,
+          "y": 420.0,
+          "w": 484.0,
+          "h": 12.0
+        },
+        "colour": "#483425"
+      },
+      {
+        "item": "fill",
+        "rect": {
+          "x": 64.0,
+          "y": 420.0,
+          "w": 4.0,
+          "h": 12.0
+        },
+        "colour": "#fe8019"
+      },
+      {
+        "item": "text",
+        "x": 76.0,
+        "baseline": 428.88,
+        "text": "60",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#fe8019"
+      },
+      {
+        "item": "text",
+        "x": 109.6,
+        "baseline": 428.88,
+        "text": "finish",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#fabd2f"
+      },
+      {
+        "item": "text",
+        "x": 138.4,
+        "baseline": 428.88,
+        "text": "(",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#a8a08c"
+      },
+      {
+        "item": "text",
+        "x": 143.2,
+        "baseline": 428.88,
+        "text": "batch",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#ebdbb2"
+      },
+      {
+        "item": "text",
+        "x": 167.2,
+        "baseline": 428.88,
+        "text": ")",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#a8a08c"
+      },
+      {
+        "item": "rule",
+        "x": 48.0,
+        "y": 456.0,
+        "w": 500.0,
+        "colour": "#4f4f4f"
+      },
+      {
+        "item": "text",
+        "x": 48.0,
+        "baseline": 481.0,
+        "text": "WHERE THIS SITS",
+        "face": "medium",
+        "size": 8.0,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 48.0,
+        "baseline": 493.0,
+        "text": "1",
+        "face": "medium",
+        "size": 8.0,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 64.0,
+        "baseline": 493.0,
+        "text": "The error path <script>alert(1)</script> counts twice",
+        "face": "regular",
+        "size": 8.0,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 48.0,
+        "baseline": 505.0,
+        "text": "2",
+        "face": "medium",
+        "size": 8.0,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 64.0,
+        "baseline": 505.0,
+        "text": "Count once",
+        "face": "regular",
+        "size": 8.0,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 48.0,
+        "baseline": 517.0,
+        "text": "3",
+        "face": "medium",
+        "size": 8.0,
+        "colour": "#fe8019"
+      },
+      {
+        "item": "text",
+        "x": 64.0,
+        "baseline": 517.0,
+        "text": "Nothing else moves",
+        "face": "regular",
+        "size": 8.0,
+        "colour": "#ebdbb2"
+      },
+      {
+        "item": "text",
+        "x": 48.0,
+        "baseline": 545.0,
+        "text": "YOUR NOTES · GROUP 3",
+        "face": "medium",
+        "size": 8.0,
+        "colour": "#999078"
+      },
+      {
+        "item": "dots",
+        "rect": {
+          "x": 48.0,
+          "y": 552.0,
+          "w": 500.0,
+          "h": 216.0
+        },
+        "colour": "#4f4f4f",
+        "pitch": 12.0
+      },
+      {
+        "item": "rule",
+        "x": 48.0,
+        "y": 800.0,
+        "w": 500.0,
+        "colour": "#4f4f4f"
+      },
+      {
+        "item": "fill",
+        "rect": {
+          "x": 48.0,
+          "y": 808.0,
+          "w": 8.0,
+          "h": 8.0
+        },
+        "colour": "#fe8019"
+      },
+      {
+        "item": "text",
+        "x": 60.0,
+        "baseline": 814.8125,
+        "text": "Powered by Deck",
+        "face": "regular",
+        "size": 7.5,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 211.915,
+        "baseline": 814.8125,
+        "text": "acme/ingest@a1b2c3d · 20 Oct 2026",
+        "face": "regular",
+        "size": 7.5,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 432.35748,
+        "baseline": 814.8125,
+        "text": "group 3 · Nothing else moves · 5/6",
+        "face": "regular",
+        "size": 7.5,
+        "colour": "#999078"
+      }
+    ]
+  },
+  {
+    "width": 595.0,
+    "height": 842.0,
+    "scale": 1.0,
+    "kind": {
+      "page": "said"
+    },
+    "items": [
+      {
+        "item": "ground",
+        "colour": "#282828"
+      },
+      {
+        "item": "text",
+        "x": 48.0,
+        "baseline": 66.75,
+        "text": "What was said about the deck",
+        "face": "semibold",
+        "size": 18.0,
+        "colour": "#ebdbb2"
+      },
+      {
+        "item": "dot",
+        "cx": 52.0,
+        "cy": 94.0,
+        "r": 3.0,
+        "colour": "#fe8019",
+        "filled": false
+      },
+      {
+        "item": "text",
+        "x": 64.0,
+        "baseline": 97.0,
+        "text": "Agent",
+        "face": "regular",
+        "size": 8.0,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 533.6,
+        "baseline": 96.88,
+        "text": "1/1",
+        "face": "mono",
+        "size": 8.0,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 64.0,
+        "baseline": 111.75,
+        "text": "That is everything I had.",
+        "face": "regular",
+        "size": 10.0,
+        "colour": "#ebdbb2"
+      },
+      {
+        "item": "rule",
+        "x": 48.0,
+        "y": 800.0,
+        "w": 500.0,
+        "colour": "#4f4f4f"
+      },
+      {
+        "item": "fill",
+        "rect": {
+          "x": 48.0,
+          "y": 808.0,
+          "w": 8.0,
+          "h": 8.0
+        },
+        "colour": "#fe8019"
+      },
+      {
+        "item": "text",
+        "x": 60.0,
+        "baseline": 814.8125,
+        "text": "Powered by Deck",
+        "face": "regular",
+        "size": 7.5,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 237.09248,
+        "baseline": 814.8125,
+        "text": "acme/ingest@a1b2c3d · 20 Oct 2026",
+        "face": "regular",
+        "size": 7.5,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 482.7125,
+        "baseline": 814.8125,
+        "text": "what was said · 6/6",
+        "face": "regular",
+        "size": 7.5,
+        "colour": "#999078"
+      }
+    ]
+  },
+  {
+    "width": 1123.0,
+    "height": 794.0,
+    "scale": 0.75,
+    "kind": {
+      "page": "group",
+      "n": 1,
+      "part": 1,
+      "of": 1
+    },
+    "items": [
+      {
+        "item": "ground",
+        "colour": "#282828"
+      },
+      {
+        "item": "fill",
+        "rect": {
+          "x": 0.0,
+          "y": 0.0,
+          "w": 819.0,
+          "h": 231.0
+        },
+        "colour": "#242424"
+      },
+      {
+        "item": "fill",
+        "rect": {
+          "x": 0.0,
+          "y": 231.0,
+          "w": 819.0,
+          "h": 1.0
+        },
+        "colour": "#4f4f4f"
+      },
+      {
+        "item": "text",
+        "x": 22.199999,
+        "baseline": 46.5,
+        "text": "1",
+        "face": "regular",
+        "size": 36.0,
+        "colour": "#864d1f"
+      },
+      {
+        "item": "text",
+        "x": 62.0,
+        "baseline": 27.3125,
+        "text": "Why the batch counter stalls at 63",
+        "face": "regular",
+        "size": 11.5,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 62.0,
+        "baseline": 48.25,
+        "text": "The error path <script>alert(1)</script> counts twice",
+        "face": "semibold",
+        "size": 14.0,
+        "colour": "#ebdbb2"
+      },
+      {
+        "item": "text",
+        "x": 415.85403,
+        "baseline": 47.125,
+        "text": "Medium · read both paths & did not run it",
+        "face": "regular",
+        "size": 11.0,
+        "colour": "#f89b47"
+      },
+      {
+        "item": "fill",
+        "rect": {
+          "x": 33.0,
+          "y": 55.0,
+          "w": 1.0,
+          "h": 51.0
+        },
+        "colour": "#625f59"
+      },
+      {
+        "item": "text",
+        "x": 62.0,
+        "baseline": 73.4375,
+        "text": "A write that fails lands in the catch in",
+        "face": "regular",
+        "size": 12.5,
+        "colour": "#bfb393"
+      },
+      {
+        "item": "chip",
+        "rect": {
+          "x": 270.96252,
+          "y": 59.375,
+          "w": 41.65,
+          "h": 18.75
+        },
+        "colour": "#3e2f23"
+      },
+      {
+        "item": "text",
+        "x": 275.96252,
+        "baseline": 73.4375,
+        "text": "batch",
+        "face": "regular",
+        "size": 12.5,
+        "colour": "#fe8019"
+      },
+      {
+        "item": "text",
+        "x": 312.61252,
+        "baseline": 73.4375,
+        "text": " and takes the counter down.",
+        "face": "regular",
+        "size": 12.5,
+        "colour": "#bfb393"
+      },
+      {
+        "item": "badge",
+        "cx": 483.9875,
+        "cy": 68.75,
+        "r": 7.5000005,
+        "numeral": 1,
+        "fill": "#fe8019",
+        "ink": "#242424"
+      },
+      {
+        "item": "text",
+        "x": 493.3625,
+        "baseline": 73.4375,
+        "text": " It goes on to the tail and takes it down again.",
+        "face": "regular",
+        "size": 12.5,
+        "colour": "#bfb393"
+      },
+      {
+        "item": "badge",
+        "cx": 755.775,
+        "cy": 68.75,
+        "r": 7.5000005,
+        "numeral": 2,
+        "fill": "#fe8019",
+        "ink": "#242424"
+      },
+      {
+        "item": "text",
+        "x": 62.0,
+        "baseline": 99.9375,
+        "text": "So every failed write costs",
+        "face": "regular",
+        "size": 12.5,
+        "colour": "#bfb393"
+      },
+      {
+        "item": "text",
+        "x": 211.20001,
+        "baseline": 99.9375,
+        "text": "two",
+        "face": "semibold",
+        "size": 12.5,
+        "colour": "#ebdbb2"
+      },
+      {
+        "item": "text",
+        "x": 233.0375,
+        "baseline": 99.9375,
+        "text": ".",
+        "face": "regular",
+        "size": 12.5,
+        "colour": "#bfb393"
+      },
+      {
+        "item": "chip",
+        "rect": {
+          "x": 239.38751,
+          "y": 85.875,
+          "w": 35.412502,
+          "h": 18.75
+        },
+        "colour": "#3e2f23"
+      },
+      {
+        "item": "text",
+        "x": 244.38751,
+        "baseline": 99.9375,
+        "text": "path",
+        "face": "regular",
+        "size": 12.5,
+        "colour": "#fe8019"
+      },
+      {
+        "item": "text",
+        "x": 274.80002,
+        "baseline": 99.9375,
+        "text": " follows one row, and",
+        "face": "regular",
+        "size": 12.5,
+        "colour": "#bfb393"
+      },
+      {
+        "item": "chip",
+        "rect": {
+          "x": 395.96252,
+          "y": 85.875,
+          "w": 58.3,
+          "h": 18.75
+        },
+        "colour": "#262626"
+      },
+      {
+        "item": "text",
+        "x": 400.96252,
+        "baseline": 99.39,
+        "text": "pending",
+        "face": "mono",
+        "size": 11.5,
+        "colour": "#ebdbb2"
+      },
+      {
+        "item": "text",
+        "x": 454.2625,
+        "baseline": 99.9375,
+        "text": " is the count. The",
+        "face": "regular",
+        "size": 12.5,
+        "colour": "#bfb393"
+      },
+      {
+        "item": "chip",
+        "rect": {
+          "x": 552.8875,
+          "y": 85.875,
+          "w": 46.825005,
+          "h": 18.75
+        },
+        "colour": "#3e2f23"
+      },
+      {
+        "item": "text",
+        "x": 557.8875,
+        "baseline": 99.9375,
+        "text": "shown",
+        "face": "regular",
+        "size": 12.5,
+        "colour": "#fe8019"
+      },
+      {
+        "item": "text",
+        "x": 599.7125,
+        "baseline": 99.9375,
+        "text": " page is the picture.",
+        "face": "regular",
+        "size": 12.5,
+        "colour": "#bfb393"
+      },
+      {
+        "item": "fill",
+        "rect": {
+          "x": 0.0,
+          "y": 232.0,
+          "w": 819.0,
+          "h": 532.0
+        },
+        "colour": "#262626"
+      },
+      {
+        "item": "text",
+        "x": 16.0,
+        "baseline": 255.64,
+        "text": "batch",
+        "face": "mono",
+        "size": 11.5,
+        "colour": "#fe8019"
+      },
+      {
+        "item": "text",
+        "x": 58.5,
+        "baseline": 255.64,
+        "text": "src/batch.ts:6-13",
+        "face": "mono",
+        "size": 11.5,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 16.0,
+        "baseline": 275.625,
+        "text": "the loop <b>body</b>",
+        "face": "regular",
+        "size": 11.0,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 45.2,
+        "baseline": 299.81998,
+        "text": "3",
+        "face": "mono",
+        "size": 12.0,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 78.0,
+        "baseline": 299.81998,
+        "text": "export",
+        "face": "mono",
+        "size": 12.0,
+        "colour": "#ab818c"
+      },
+      {
+        "item": "text",
+        "x": 128.4,
+        "baseline": 299.81998,
+        "text": "async",
+        "face": "mono",
+        "size": 12.0,
+        "colour": "#ab818c"
+      },
+      {
+        "item": "text",
+        "x": 171.59999,
+        "baseline": 299.81998,
+        "text": "function",
+        "face": "mono",
+        "size": 12.0,
+        "colour": "#ab818c"
+      },
+      {
+        "item": "text",
+        "x": 66.0,
+        "baseline": 318.46,
+        "text": "↪",
+        "face": "mono",
+        "size": 11.0,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 92.4,
+        "baseline": 318.81998,
+        "text": "flush",
+        "face": "mono",
+        "size": 12.0,
+        "colour": "#b0882c"
+      },
+      {
+        "item": "text",
+        "x": 128.4,
+        "baseline": 318.81998,
+        "text": "(",
+        "face": "mono",
+        "size": 12.0,
+        "colour": "#938c78"
+      },
+      {
+        "item": "text",
+        "x": 135.59999,
+        "baseline": 318.81998,
+        "text": "rows:",
+        "face": "mono",
+        "size": 12.0,
+        "colour": "#a69c81"
+      },
+      {
+        "item": "text",
+        "x": 178.79999,
+        "baseline": 318.81998,
+        "text": "Row",
+        "face": "mono",
+        "size": 12.0,
+        "colour": "#739666"
+      },
+      {
+        "item": "text",
+        "x": 200.4,
+        "baseline": 318.81998,
+        "text": "[])",
+        "face": "mono",
+        "size": 12.0,
+        "colour": "#938c78"
+      },
+      {
+        "item": "text",
+        "x": 229.2,
+        "baseline": 318.81998,
+        "text": "{",
+        "face": "mono",
+        "size": 12.0,
+        "colour": "#938c78"
+      },
+      {
+        "item": "text",
+        "x": 45.2,
+        "baseline": 337.81998,
+        "text": "4",
+        "face": "mono",
+        "size": 12.0,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 92.4,
+        "baseline": 337.81998,
+        "text": "let",
+        "face": "mono",
+        "size": 12.0,
+        "colour": "#ab818c"
+      },
+      {
+        "item": "text",
+        "x": 121.2,
+        "baseline": 337.81998,
+        "text": "pending",
+        "face": "mono",
+        "size": 12.0,
+        "colour": "#a69c81"
+      },
+      {
+        "item": "text",
+        "x": 178.8,
+        "baseline": 337.81998,
+        "text": "=",
+        "face": "mono",
+        "size": 12.0,
+        "colour": "#938c78"
+      },
+      {
+        "item": "text",
+        "x": 193.2,
+        "baseline": 337.81998,
+        "text": "rows",
+        "face": "mono",
+        "size": 12.0,
+        "colour": "#a69c81"
+      },
+      {
+        "item": "text",
+        "x": 222.0,
+        "baseline": 337.81998,
+        "text": ".",
+        "face": "mono",
+        "size": 12.0,
+        "colour": "#938c78"
+      },
+      {
+        "item": "text",
+        "x": 229.2,
+        "baseline": 337.81998,
+        "text": "length",
+        "face": "mono",
+        "size": 12.0,
+        "colour": "#a69c81"
+      },
+      {
+        "item": "text",
+        "x": 45.2,
+        "baseline": 356.81998,
+        "text": "5",
+        "face": "mono",
+        "size": 12.0,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 92.4,
+        "baseline": 356.81998,
+        "text": "for",
+        "face": "mono",
+        "size": 12.0,
+        "colour": "#ab818c"
+      },
+      {
+        "item": "text",
+        "x": 121.2,
+        "baseline": 356.81998,
+        "text": "(",
+        "face": "mono",
+        "size": 12.0,
+        "colour": "#938c78"
+      },
+      {
+        "item": "text",
+        "x": 128.4,
+        "baseline": 356.81998,
+        "text": "const",
+        "face": "mono",
+        "size": 12.0,
+        "colour": "#ab818c"
+      },
+      {
+        "item": "text",
+        "x": 171.59999,
+        "baseline": 356.81998,
+        "text": "row",
+        "face": "mono",
+        "size": 12.0,
+        "colour": "#a69c81"
+      },
+      {
+        "item": "text",
+        "x": 200.4,
+        "baseline": 356.81998,
+        "text": "of",
+        "face": "mono",
+        "size": 12.0,
+        "colour": "#ab818c"
+      },
+      {
+        "item": "text",
+        "x": 221.99998,
+        "baseline": 356.81998,
+        "text": "rows",
+        "face": "mono",
+        "size": 12.0,
+        "colour": "#a69c81"
+      },
+      {
+        "item": "text",
+        "x": 250.79999,
+        "baseline": 356.81998,
+        "text": ")",
+        "face": "mono",
+        "size": 12.0,
+        "colour": "#938c78"
+      },
+      {
+        "item": "text",
+        "x": 265.2,
+        "baseline": 356.81998,
+        "text": "{",
+        "face": "mono",
+        "size": 12.0,
+        "colour": "#938c78"
+      },
+      {
+        "item": "fill",
+        "rect": {
+          "x": 0.0,
+          "y": 362.0,
+          "w": 321.0,
+          "h": 19.0
+        },
+        "colour": "#483425"
+      },
+      {
+        "item": "fill",
+        "rect": {
+          "x": 29.0,
+          "y": 362.0,
+          "w": 3.0,
+          "h": 19.0
+        },
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 45.2,
+        "baseline": 375.81998,
+        "text": "6",
+        "face": "mono",
+        "size": 12.0,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 106.8,
+        "baseline": 375.81998,
+        "text": "try",
+        "face": "mono",
+        "size": 12.0,
+        "colour": "#d58ca0"
+      },
+      {
+        "item": "text",
+        "x": 135.6,
+        "baseline": 375.81998,
+        "text": "{",
+        "face": "mono",
+        "size": 12.0,
+        "colour": "#a8a08c"
+      },
+      {
+        "item": "fill",
+        "rect": {
+          "x": 0.0,
+          "y": 381.0,
+          "w": 321.0,
+          "h": 19.0
+        },
+        "colour": "#483425"
+      },
+      {
+        "item": "fill",
+        "rect": {
+          "x": 29.0,
+          "y": 381.0,
+          "w": 3.0,
+          "h": 19.0
+        },
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 45.2,
+        "baseline": 394.81998,
+        "text": "7",
+        "face": "mono",
+        "size": 12.0,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 121.2,
+        "baseline": 394.81998,
+        "text": "await",
+        "face": "mono",
+        "size": 12.0,
+        "colour": "#d58ca0"
+      },
+      {
+        "item": "text",
+        "x": 164.4,
+        "baseline": 394.81998,
+        "text": "write",
+        "face": "mono",
+        "size": 12.0,
+        "colour": "#fabd2f"
+      },
+      {
+        "item": "text",
+        "x": 200.4,
+        "baseline": 394.81998,
+        "text": "(",
+        "face": "mono",
+        "size": 12.0,
+        "colour": "#a8a08c"
+      },
+      {
+        "item": "text",
+        "x": 207.59999,
+        "baseline": 394.81998,
+        "text": "row",
+        "face": "mono",
+        "size": 12.0,
+        "colour": "#ebdbb2"
+      },
+      {
+        "item": "text",
+        "x": 229.2,
+        "baseline": 394.81998,
+        "text": ")",
+        "face": "mono",
+        "size": 12.0,
+        "colour": "#a8a08c"
+      },
+      {
+        "item": "fill",
+        "rect": {
+          "x": 0.0,
+          "y": 400.0,
+          "w": 321.0,
+          "h": 19.0
+        },
+        "colour": "#483425"
+      },
+      {
+        "item": "text",
+        "x": 121.2,
+        "baseline": 413.46,
+        "text": "↳ row ▸ Row { id: \"r63\", … }",
+        "face": "mono",
+        "size": 11.0,
+        "colour": "#fe8019"
+      },
+      {
+        "item": "fill",
+        "rect": {
+          "x": 0.0,
+          "y": 419.0,
+          "w": 321.0,
+          "h": 19.0
+        },
+        "colour": "#483425"
+      },
+      {
+        "item": "fill",
+        "rect": {
+          "x": 29.0,
+          "y": 419.0,
+          "w": 3.0,
+          "h": 19.0
+        },
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 45.2,
+        "baseline": 432.81998,
+        "text": "8",
+        "face": "mono",
+        "size": 12.0,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 106.8,
+        "baseline": 432.81998,
+        "text": "}",
+        "face": "mono",
+        "size": 12.0,
+        "colour": "#a8a08c"
+      },
+      {
+        "item": "text",
+        "x": 121.2,
+        "baseline": 432.81998,
+        "text": "catch",
+        "face": "mono",
+        "size": 12.0,
+        "colour": "#d58ca0"
+      },
+      {
+        "item": "text",
+        "x": 164.4,
+        "baseline": 432.81998,
+        "text": "(",
+        "face": "mono",
+        "size": 12.0,
+        "colour": "#a8a08c"
+      },
+      {
+        "item": "text",
+        "x": 171.59999,
+        "baseline": 432.81998,
+        "text": "err",
+        "face": "mono",
+        "size": 12.0,
+        "colour": "#ebdbb2"
+      },
+      {
+        "item": "text",
+        "x": 193.2,
+        "baseline": 432.81998,
+        "text": ")",
+        "face": "mono",
+        "size": 12.0,
+        "colour": "#a8a08c"
+      },
+      {
+        "item": "text",
+        "x": 207.59999,
+        "baseline": 432.81998,
+        "text": "{",
+        "face": "mono",
+        "size": 12.0,
+        "colour": "#a8a08c"
+      },
+      {
+        "item": "fill",
+        "rect": {
+          "x": 0.0,
+          "y": 438.0,
+          "w": 321.0,
+          "h": 19.0
+        },
+        "colour": "#483425"
+      },
+      {
+        "item": "fill",
+        "rect": {
+          "x": 29.0,
+          "y": 438.0,
+          "w": 3.0,
+          "h": 19.0
+        },
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 45.2,
+        "baseline": 451.81998,
+        "text": "9",
+        "face": "mono",
+        "size": 12.0,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 121.2,
+        "baseline": 451.81998,
+        "text": "log",
+        "face": "mono",
+        "size": 12.0,
+        "colour": "#ebdbb2"
+      },
+      {
+        "item": "text",
+        "x": 142.8,
+        "baseline": 451.81998,
+        "text": ".",
+        "face": "mono",
+        "size": 12.0,
+        "colour": "#a8a08c"
+      },
+      {
+        "item": "text",
+        "x": 150.0,
+        "baseline": 451.81998,
+        "text": "error",
+        "face": "mono",
+        "size": 12.0,
+        "colour": "#fabd2f"
+      },
+      {
+        "item": "text",
+        "x": 186.0,
+        "baseline": 451.81998,
+        "text": "(",
+        "face": "mono",
+        "size": 12.0,
+        "colour": "#a8a08c"
+      },
+      {
+        "item": "text",
+        "x": 193.2,
+        "baseline": 451.81998,
+        "text": "err",
+        "face": "mono",
+        "size": 12.0,
+        "colour": "#ebdbb2"
+      },
+      {
+        "item": "text",
+        "x": 214.8,
+        "baseline": 451.81998,
+        "text": ")",
+        "face": "mono",
+        "size": 12.0,
+        "colour": "#a8a08c"
+      },
+      {
+        "item": "fill",
+        "rect": {
+          "x": 0.0,
+          "y": 457.0,
+          "w": 321.0,
+          "h": 19.0
+        },
+        "colour": "#483425"
+      },
+      {
+        "item": "fill",
+        "rect": {
+          "x": 29.0,
+          "y": 457.0,
+          "w": 3.0,
+          "h": 19.0
+        },
+        "colour": "#fe8019"
+      },
+      {
+        "item": "badge",
+        "cx": 18.0,
+        "cy": 466.5,
+        "r": 7.5,
+        "numeral": 1,
+        "fill": "#fe8019",
+        "ink": "#483425"
+      },
+      {
+        "item": "text",
+        "x": 38.0,
+        "baseline": 470.81998,
+        "text": "10",
+        "face": "mono",
+        "size": 12.0,
+        "colour": "#fe8019"
+      },
+      {
+        "item": "text",
+        "x": 121.2,
+        "baseline": 470.81998,
+        "text": "pending",
+        "face": "mono",
+        "size": 12.0,
+        "colour": "#ebdbb2"
+      },
+      {
+        "item": "text",
+        "x": 178.8,
+        "baseline": 470.81998,
+        "text": "63",
+        "face": "mono",
+        "size": 12.0,
+        "colour": "#fe8019"
+      },
+      {
+        "item": "text",
+        "x": 207.6,
+        "baseline": 470.81998,
+        "text": "-=",
+        "face": "mono",
+        "size": 12.0,
+        "colour": "#a8a08c"
+      },
+      {
+        "item": "text",
+        "x": 229.2,
+        "baseline": 470.81998,
+        "text": "1",
+        "face": "mono",
+        "size": 12.0,
+        "colour": "#d58ca0"
+      },
+      {
+        "item": "fill",
+        "rect": {
+          "x": 0.0,
+          "y": 476.0,
+          "w": 321.0,
+          "h": 19.0
+        },
+        "colour": "#483425"
+      },
+      {
+        "item": "fill",
+        "rect": {
+          "x": 29.0,
+          "y": 476.0,
+          "w": 3.0,
+          "h": 19.0
+        },
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 38.0,
+        "baseline": 489.81998,
+        "text": "11",
+        "face": "mono",
+        "size": 12.0,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 106.8,
+        "baseline": 489.81998,
+        "text": "}",
+        "face": "mono",
+        "size": 12.0,
+        "colour": "#a8a08c"
+      },
+      {
+        "item": "fill",
+        "rect": {
+          "x": 0.0,
+          "y": 495.0,
+          "w": 321.0,
+          "h": 19.0
+        },
+        "colour": "#483425"
+      },
+      {
+        "item": "fill",
+        "rect": {
+          "x": 29.0,
+          "y": 495.0,
+          "w": 3.0,
+          "h": 19.0
+        },
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 38.0,
+        "baseline": 508.81998,
+        "text": "12",
+        "face": "mono",
+        "size": 12.0,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 106.8,
+        "baseline": 508.81998,
+        "text": "// every row, failed or",
+        "face": "monoitalic",
+        "size": 12.0,
+        "colour": "#a8a08c"
+      },
+      {
+        "item": "fill",
+        "rect": {
+          "x": 0.0,
+          "y": 514.0,
+          "w": 321.0,
+          "h": 19.0
+        },
+        "colour": "#483425"
+      },
+      {
+        "item": "fill",
+        "rect": {
+          "x": 29.0,
+          "y": 514.0,
+          "w": 3.0,
+          "h": 19.0
+        },
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 66.0,
+        "baseline": 527.45996,
+        "text": "↪",
+        "face": "mono",
+        "size": 11.0,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 121.2,
+        "baseline": 527.82,
+        "text": "not, reaches this",
+        "face": "monoitalic",
+        "size": 12.0,
+        "colour": "#a8a08c"
+      },
+      {
+        "item": "fill",
+        "rect": {
+          "x": 0.0,
+          "y": 533.0,
+          "w": 321.0,
+          "h": 19.0
+        },
+        "colour": "#483425"
+      },
+      {
+        "item": "fill",
+        "rect": {
+          "x": 29.0,
+          "y": 533.0,
+          "w": 3.0,
+          "h": 19.0
+        },
+        "colour": "#fe8019"
+      },
+      {
+        "item": "badge",
+        "cx": 18.0,
+        "cy": 542.5,
+        "r": 7.5,
+        "numeral": 2,
+        "fill": "#fe8019",
+        "ink": "#483425"
+      },
+      {
+        "item": "text",
+        "x": 38.0,
+        "baseline": 546.82,
+        "text": "13",
+        "face": "mono",
+        "size": 12.0,
+        "colour": "#fe8019"
+      },
+      {
+        "item": "text",
+        "x": 106.8,
+        "baseline": 546.82,
+        "text": "pending",
+        "face": "mono",
+        "size": 12.0,
+        "colour": "#ebdbb2"
+      },
+      {
+        "item": "text",
+        "x": 164.4,
+        "baseline": 546.82,
+        "text": "-=",
+        "face": "mono",
+        "size": 12.0,
+        "colour": "#a8a08c"
+      },
+      {
+        "item": "text",
+        "x": 185.99998,
+        "baseline": 546.82,
+        "text": "1",
+        "face": "mono",
+        "size": 12.0,
+        "colour": "#d58ca0"
+      },
+      {
+        "item": "text",
+        "x": 200.39998,
+        "baseline": 546.82,
+        "text": "62",
+        "face": "mono",
+        "size": 12.0,
+        "colour": "#fe8019"
+      },
+      {
+        "item": "text",
+        "x": 38.0,
+        "baseline": 565.82,
+        "text": "14",
+        "face": "mono",
+        "size": 12.0,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 92.4,
+        "baseline": 565.82,
+        "text": "}",
+        "face": "mono",
+        "size": 12.0,
+        "colour": "#938c78"
+      },
+      {
+        "item": "text",
+        "x": 38.0,
+        "baseline": 584.82,
+        "text": "15",
+        "face": "mono",
+        "size": 12.0,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 92.4,
+        "baseline": 584.82,
+        "text": "if",
+        "face": "mono",
+        "size": 12.0,
+        "colour": "#ab818c"
+      },
+      {
+        "item": "text",
+        "x": 114.0,
+        "baseline": 584.82,
+        "text": "(",
+        "face": "mono",
+        "size": 12.0,
+        "colour": "#938c78"
+      },
+      {
+        "item": "text",
+        "x": 121.2,
+        "baseline": 584.82,
+        "text": "pending",
+        "face": "mono",
+        "size": 12.0,
+        "colour": "#a69c81"
+      },
+      {
+        "item": "text",
+        "x": 178.8,
+        "baseline": 584.82,
+        "text": "===",
+        "face": "mono",
+        "size": 12.0,
+        "colour": "#938c78"
+      },
+      {
+        "item": "text",
+        "x": 207.6,
+        "baseline": 584.82,
+        "text": "0",
+        "face": "mono",
+        "size": 12.0,
+        "colour": "#ab818c"
+      },
+      {
+        "item": "text",
+        "x": 214.8,
+        "baseline": 584.82,
+        "text": ")",
+        "face": "mono",
+        "size": 12.0,
+        "colour": "#938c78"
+      },
+      {
+        "item": "text",
+        "x": 229.2,
+        "baseline": 584.82,
+        "text": "{",
+        "face": "mono",
+        "size": 12.0,
+        "colour": "#938c78"
+      },
+      {
+        "item": "text",
+        "x": 38.0,
+        "baseline": 603.82,
+        "text": "16",
+        "face": "mono",
+        "size": 12.0,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 106.8,
+        "baseline": 603.82,
+        "text": "settle",
+        "face": "mono",
+        "size": 12.0,
+        "colour": "#b0882c"
+      },
+      {
+        "item": "text",
+        "x": 150.0,
+        "baseline": 603.82,
+        "text": "(",
+        "face": "mono",
+        "size": 12.0,
+        "colour": "#938c78"
+      },
+      {
+        "item": "text",
+        "x": 157.2,
+        "baseline": 603.82,
+        "text": "rows",
+        "face": "mono",
+        "size": 12.0,
+        "colour": "#a69c81"
+      },
+      {
+        "item": "text",
+        "x": 186.0,
+        "baseline": 603.82,
+        "text": ")",
+        "face": "mono",
+        "size": 12.0,
+        "colour": "#938c78"
+      },
+      {
+        "item": "fill",
+        "rect": {
+          "x": 321.0,
+          "y": 232.0,
+          "w": 1.0,
+          "h": 532.0
+        },
+        "colour": "#4f4f4f"
+      },
+      {
+        "item": "text",
+        "x": 338.0,
+        "baseline": 255.64,
+        "text": "path",
+        "face": "mono",
+        "size": 11.5,
+        "colour": "#fe8019"
+      },
+      {
+        "item": "text",
+        "x": 373.6,
+        "baseline": 255.64,
+        "text": "diagram",
+        "face": "mono",
+        "size": 11.5,
+        "colour": "#999078"
+      },
+      {
+        "item": "svg",
+        "rect": {
+          "x": 340.0,
+          "y": 269.0,
+          "w": 211.0,
+          "h": 205.1389
+        },
+        "svg": "<svg: 1015 bytes>",
+        "scale": 0.9768519
+      },
+      {
+        "item": "fill",
+        "rect": {
+          "x": 569.0,
+          "y": 232.0,
+          "w": 1.0,
+          "h": 532.0
+        },
+        "colour": "#4f4f4f"
+      },
+      {
+        "item": "text",
+        "x": 586.0,
+        "baseline": 255.64,
+        "text": "shown",
+        "face": "mono",
+        "size": 11.5,
+        "colour": "#fe8019"
+      },
+      {
+        "item": "text",
+        "x": 628.5,
+        "baseline": 255.64,
+        "text": "page",
+        "face": "mono",
+        "size": 11.5,
+        "colour": "#999078"
+      },
+      {
+        "item": "frame",
+        "rect": {
+          "x": 586.0,
+          "y": 273.0,
+          "w": 217.0,
+          "h": 84.0
+        },
+        "colour": "#4f4f4f"
+      },
+      {
+        "item": "text",
+        "x": 602.0,
+        "baseline": 299.875,
+        "text": "Interactive page: open the",
+        "face": "regular",
+        "size": 13.0,
+        "colour": "#ebdbb2"
+      },
+      {
+        "item": "text",
+        "x": 602.0,
+        "baseline": 319.875,
+        "text": "HTML export to use it",
+        "face": "regular",
+        "size": 13.0,
+        "colour": "#ebdbb2"
+      },
+      {
+        "item": "text",
+        "x": 602.0,
+        "baseline": 339.125,
+        "text": "shown · page",
+        "face": "regular",
+        "size": 11.0,
+        "colour": "#999078"
+      },
+      {
+        "item": "fill",
+        "rect": {
+          "x": 819.0,
+          "y": 0.0,
+          "w": 304.0,
+          "h": 764.0
+        },
+        "colour": "#242424"
+      },
+      {
+        "item": "fill",
+        "rect": {
+          "x": 819.0,
+          "y": 0.0,
+          "w": 1.0,
+          "h": 764.0
+        },
+        "colour": "#4f4f4f"
+      },
+      {
+        "item": "text",
+        "x": 841.0,
+        "baseline": 37.125,
+        "text": "CONTENTS",
+        "face": "medium",
+        "size": 11.0,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 1068.517,
+        "baseline": 37.125,
+        "text": "1 OF 3",
+        "face": "medium",
+        "size": 11.0,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 841.0,
+        "baseline": 67.375,
+        "text": "1",
+        "face": "medium",
+        "size": 12.2,
+        "colour": "#fe8019"
+      },
+      {
+        "item": "text",
+        "x": 865.0,
+        "baseline": 67.375,
+        "text": "The error path <script>alert(1)</script>",
+        "face": "regular",
+        "size": 12.2,
+        "colour": "#ebdbb2"
+      },
+      {
+        "item": "text",
+        "x": 865.0,
+        "baseline": 84.975,
+        "text": "counts twice",
+        "face": "regular",
+        "size": 12.2,
+        "colour": "#ebdbb2"
+      },
+      {
+        "item": "link",
+        "rect": {
+          "x": 841.0,
+          "y": 54.0,
+          "w": 260.0,
+          "h": 35.199997
+        },
+        "page": 0
+      },
+      {
+        "item": "text",
+        "x": 865.0,
+        "baseline": 101.325,
+        "text": "the argument · 2",
+        "face": "regular",
+        "size": 11.0,
+        "colour": "#999078"
+      },
+      {
+        "item": "link",
+        "rect": {
+          "x": 865.0,
+          "y": 89.2,
+          "w": 236.0,
+          "h": 16.0
+        },
+        "page": 1
+      },
+      {
+        "item": "text",
+        "x": 841.0,
+        "baseline": 127.575,
+        "text": "2",
+        "face": "medium",
+        "size": 12.2,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 865.0,
+        "baseline": 127.575,
+        "text": "Count once",
+        "face": "regular",
+        "size": 12.2,
+        "colour": "#999078"
+      },
+      {
+        "item": "link",
+        "rect": {
+          "x": 841.0,
+          "y": 114.2,
+          "w": 260.0,
+          "h": 17.600006
+        },
+        "page": 2
+      },
+      {
+        "item": "text",
+        "x": 841.0,
+        "baseline": 154.175,
+        "text": "3",
+        "face": "medium",
+        "size": 12.2,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 865.0,
+        "baseline": 154.175,
+        "text": "Nothing else moves",
+        "face": "regular",
+        "size": 12.2,
+        "colour": "#999078"
+      },
+      {
+        "item": "link",
+        "rect": {
+          "x": 841.0,
+          "y": 140.8,
+          "w": 260.0,
+          "h": 17.600006
+        },
+        "page": 3
+      },
+      {
+        "item": "text",
+        "x": 865.0,
+        "baseline": 170.52501,
+        "text": "the argument · 1",
+        "face": "regular",
+        "size": 11.0,
+        "colour": "#999078"
+      },
+      {
+        "item": "link",
+        "rect": {
+          "x": 865.0,
+          "y": 158.40001,
+          "w": 236.0,
+          "h": 16.0
+        },
+        "page": 4
+      },
+      {
+        "item": "fill",
+        "rect": {
+          "x": 0.0,
+          "y": 764.0,
+          "w": 1123.0,
+          "h": 30.0
+        },
+        "colour": "#242424"
+      },
+      {
+        "item": "fill",
+        "rect": {
+          "x": 0.0,
+          "y": 764.0,
+          "w": 1123.0,
+          "h": 1.0
+        },
+        "colour": "#4f4f4f"
+      },
+      {
+        "item": "fill",
+        "rect": {
+          "x": 14.0,
+          "y": 774.5,
+          "w": 9.0,
+          "h": 9.0
+        },
+        "colour": "#fe8019"
+      },
+      {
+        "item": "text",
+        "x": 29.0,
+        "baseline": 782.78,
+        "text": "Powered by Deck",
+        "face": "mono",
+        "size": 10.5,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 137.5,
+        "baseline": 782.78,
+        "text": "group 1/3",
+        "face": "mono",
+        "size": 10.5,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 1039.7,
+        "baseline": 782.78,
+        "text": "page 1 of 6",
+        "face": "mono",
+        "size": 10.5,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 956.39996,
+        "baseline": 782.78,
+        "text": "20 Oct 2026",
+        "face": "mono",
+        "size": 10.5,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 822.69995,
+        "baseline": 782.78,
+        "text": "acme/ingest@a1b2c3d",
+        "face": "mono",
+        "size": 10.5,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 208.2,
+        "baseline": 782.78,
+        "text": "Why the batch counter stalls at 63",
+        "face": "mono",
+        "size": 10.5,
+        "colour": "#999078"
+      }
+    ]
+  },
+  {
+    "width": 1123.0,
+    "height": 794.0,
+    "scale": 0.75,
+    "kind": {
+      "page": "argument",
+      "n": 1,
+      "part": 1,
+      "of": 1
+    },
+    "items": [
+      {
+        "item": "ground",
+        "colour": "#282828"
+      },
+      {
+        "item": "fill",
+        "rect": {
+          "x": 0.0,
+          "y": 0.0,
+          "w": 819.0,
+          "h": 60.0
+        },
+        "colour": "#242424"
+      },
+      {
+        "item": "fill",
+        "rect": {
+          "x": 0.0,
+          "y": 60.0,
+          "w": 819.0,
+          "h": 1.0
+        },
+        "colour": "#4f4f4f"
+      },
+      {
+        "item": "text",
+        "x": 761.4,
+        "baseline": 33.96,
+        "text": "2 said",
+        "face": "mono",
+        "size": 11.0,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 18.0,
+        "baseline": 41.25,
+        "text": "1",
+        "face": "regular",
+        "size": 30.0,
+        "colour": "#864d1f"
+      },
+      {
+        "item": "text",
+        "x": 62.0,
+        "baseline": 35.25,
+        "text": "The error path <script>alert(1)</script> counts twice",
+        "face": "semibold",
+        "size": 14.0,
+        "colour": "#ebdbb2"
+      },
+      {
+        "item": "text",
+        "x": 405.85403,
+        "baseline": 35.25,
+        "text": " — the argument",
+        "face": "regular",
+        "size": 14.0,
+        "colour": "#999078"
+      },
+      {
+        "item": "fill",
+        "rect": {
+          "x": 409.5,
+          "y": 84.0,
+          "w": 1.0,
+          "h": 656.0
+        },
+        "colour": "#4f4f4f"
+      },
+      {
+        "item": "dot",
+        "cx": 34.0,
+        "cy": 92.0,
+        "r": 4.0,
+        "colour": "#fe8019",
+        "filled": true
+      },
+      {
+        "item": "text",
+        "x": 48.0,
+        "baseline": 95.9375,
+        "text": "Reader · question · batch, line 10",
+        "face": "regular",
+        "size": 10.5,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 373.6,
+        "baseline": 95.78,
+        "text": "1/2",
+        "face": "mono",
+        "size": 10.5,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 48.0,
+        "baseline": 116.875,
+        "text": "Why not decrement once, in a <finally>?",
+        "face": "regular",
+        "size": 13.0,
+        "colour": "#ebdbb2"
+      },
+      {
+        "item": "fill",
+        "rect": {
+          "x": 48.0,
+          "y": 128.0,
+          "w": 344.5,
+          "h": 19.0
+        },
+        "colour": "#483425"
+      },
+      {
+        "item": "fill",
+        "rect": {
+          "x": 48.0,
+          "y": 128.0,
+          "w": 3.0,
+          "h": 19.0
+        },
+        "colour": "#fe8019"
+      },
+      {
+        "item": "text",
+        "x": 58.0,
+        "baseline": 141.64,
+        "text": "10",
+        "face": "mono",
+        "size": 11.5,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 133.4,
+        "baseline": 141.64,
+        "text": "pending",
+        "face": "mono",
+        "size": 11.5,
+        "colour": "#ebdbb2"
+      },
+      {
+        "item": "text",
+        "x": 188.6,
+        "baseline": 141.64,
+        "text": "63",
+        "face": "mono",
+        "size": 11.5,
+        "colour": "#fe8019"
+      },
+      {
+        "item": "text",
+        "x": 216.20001,
+        "baseline": 141.64,
+        "text": "-=",
+        "face": "mono",
+        "size": 11.5,
+        "colour": "#a8a08c"
+      },
+      {
+        "item": "text",
+        "x": 236.90001,
+        "baseline": 141.64,
+        "text": "1",
+        "face": "mono",
+        "size": 11.5,
+        "colour": "#d58ca0"
+      },
+      {
+        "item": "dot",
+        "cx": 430.5,
+        "cy": 92.0,
+        "r": 4.0,
+        "colour": "#fe8019",
+        "filled": false
+      },
+      {
+        "item": "text",
+        "x": 444.5,
+        "baseline": 95.9375,
+        "text": "Agent",
+        "face": "regular",
+        "size": 10.5,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 770.1,
+        "baseline": 95.78,
+        "text": "2/2",
+        "face": "mono",
+        "size": 10.5,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 444.5,
+        "baseline": 116.875,
+        "text": "A finally also runs on the retry branch.",
+        "face": "regular",
+        "size": 13.0,
+        "colour": "#ebdbb2"
+      },
+      {
+        "item": "fill",
+        "rect": {
+          "x": 819.0,
+          "y": 0.0,
+          "w": 304.0,
+          "h": 764.0
+        },
+        "colour": "#242424"
+      },
+      {
+        "item": "fill",
+        "rect": {
+          "x": 819.0,
+          "y": 0.0,
+          "w": 1.0,
+          "h": 764.0
+        },
+        "colour": "#4f4f4f"
+      },
+      {
+        "item": "text",
+        "x": 841.0,
+        "baseline": 37.125,
+        "text": "CONTENTS",
+        "face": "medium",
+        "size": 11.0,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 1068.517,
+        "baseline": 37.125,
+        "text": "1 OF 3",
+        "face": "medium",
+        "size": 11.0,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 841.0,
+        "baseline": 67.375,
+        "text": "1",
+        "face": "medium",
+        "size": 12.2,
+        "colour": "#fe8019"
+      },
+      {
+        "item": "text",
+        "x": 865.0,
+        "baseline": 67.375,
+        "text": "The error path <script>alert(1)</script>",
+        "face": "regular",
+        "size": 12.2,
+        "colour": "#ebdbb2"
+      },
+      {
+        "item": "text",
+        "x": 865.0,
+        "baseline": 84.975,
+        "text": "counts twice",
+        "face": "regular",
+        "size": 12.2,
+        "colour": "#ebdbb2"
+      },
+      {
+        "item": "link",
+        "rect": {
+          "x": 841.0,
+          "y": 54.0,
+          "w": 260.0,
+          "h": 35.199997
+        },
+        "page": 0
+      },
+      {
+        "item": "text",
+        "x": 865.0,
+        "baseline": 101.325,
+        "text": "the argument · 2",
+        "face": "regular",
+        "size": 11.0,
+        "colour": "#fe8019"
+      },
+      {
+        "item": "link",
+        "rect": {
+          "x": 865.0,
+          "y": 89.2,
+          "w": 236.0,
+          "h": 16.0
+        },
+        "page": 1
+      },
+      {
+        "item": "text",
+        "x": 841.0,
+        "baseline": 127.575,
+        "text": "2",
+        "face": "medium",
+        "size": 12.2,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 865.0,
+        "baseline": 127.575,
+        "text": "Count once",
+        "face": "regular",
+        "size": 12.2,
+        "colour": "#999078"
+      },
+      {
+        "item": "link",
+        "rect": {
+          "x": 841.0,
+          "y": 114.2,
+          "w": 260.0,
+          "h": 17.600006
+        },
+        "page": 2
+      },
+      {
+        "item": "text",
+        "x": 841.0,
+        "baseline": 154.175,
+        "text": "3",
+        "face": "medium",
+        "size": 12.2,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 865.0,
+        "baseline": 154.175,
+        "text": "Nothing else moves",
+        "face": "regular",
+        "size": 12.2,
+        "colour": "#999078"
+      },
+      {
+        "item": "link",
+        "rect": {
+          "x": 841.0,
+          "y": 140.8,
+          "w": 260.0,
+          "h": 17.600006
+        },
+        "page": 3
+      },
+      {
+        "item": "text",
+        "x": 865.0,
+        "baseline": 170.52501,
+        "text": "the argument · 1",
+        "face": "regular",
+        "size": 11.0,
+        "colour": "#999078"
+      },
+      {
+        "item": "link",
+        "rect": {
+          "x": 865.0,
+          "y": 158.40001,
+          "w": 236.0,
+          "h": 16.0
+        },
+        "page": 4
+      },
+      {
+        "item": "fill",
+        "rect": {
+          "x": 0.0,
+          "y": 764.0,
+          "w": 1123.0,
+          "h": 30.0
+        },
+        "colour": "#242424"
+      },
+      {
+        "item": "fill",
+        "rect": {
+          "x": 0.0,
+          "y": 764.0,
+          "w": 1123.0,
+          "h": 1.0
+        },
+        "colour": "#4f4f4f"
+      },
+      {
+        "item": "fill",
+        "rect": {
+          "x": 14.0,
+          "y": 774.5,
+          "w": 9.0,
+          "h": 9.0
+        },
+        "colour": "#fe8019"
+      },
+      {
+        "item": "text",
+        "x": 29.0,
+        "baseline": 782.78,
+        "text": "Powered by Deck",
+        "face": "mono",
+        "size": 10.5,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 137.5,
+        "baseline": 782.78,
+        "text": "group 1/3 · the argument",
+        "face": "mono",
+        "size": 10.5,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 1039.7,
+        "baseline": 782.78,
+        "text": "page 2 of 6",
+        "face": "mono",
+        "size": 10.5,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 956.39996,
+        "baseline": 782.78,
+        "text": "20 Oct 2026",
+        "face": "mono",
+        "size": 10.5,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 822.69995,
+        "baseline": 782.78,
+        "text": "acme/ingest@a1b2c3d",
+        "face": "mono",
+        "size": 10.5,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 302.7,
+        "baseline": 782.78,
+        "text": "Why the batch counter stalls at 63",
+        "face": "mono",
+        "size": 10.5,
+        "colour": "#999078"
+      }
+    ]
+  },
+  {
+    "width": 1123.0,
+    "height": 794.0,
+    "scale": 0.75,
+    "kind": {
+      "page": "group",
+      "n": 2,
+      "part": 1,
+      "of": 1
+    },
+    "items": [
+      {
+        "item": "ground",
+        "colour": "#282828"
+      },
+      {
+        "item": "fill",
+        "rect": {
+          "x": 0.0,
+          "y": 0.0,
+          "w": 819.0,
+          "h": 231.0
+        },
+        "colour": "#242424"
+      },
+      {
+        "item": "fill",
+        "rect": {
+          "x": 0.0,
+          "y": 231.0,
+          "w": 819.0,
+          "h": 1.0
+        },
+        "colour": "#4f4f4f"
+      },
+      {
+        "item": "text",
+        "x": 22.199999,
+        "baseline": 46.5,
+        "text": "2",
+        "face": "regular",
+        "size": 36.0,
+        "colour": "#864d1f"
+      },
+      {
+        "item": "text",
+        "x": 62.0,
+        "baseline": 27.3125,
+        "text": "Why the batch counter stalls at 63",
+        "face": "regular",
+        "size": 11.5,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 62.0,
+        "baseline": 48.25,
+        "text": "Count once",
+        "face": "semibold",
+        "size": 14.0,
+        "colour": "#ebdbb2"
+      },
+      {
+        "item": "fill",
+        "rect": {
+          "x": 33.0,
+          "y": 55.0,
+          "w": 1.0,
+          "h": 24.5
+        },
+        "colour": "#625f59"
+      },
+      {
+        "item": "text",
+        "x": 62.0,
+        "baseline": 73.4375,
+        "text": "Count once, where the write settles.",
+        "face": "regular",
+        "size": 12.5,
+        "colour": "#bfb393"
+      },
+      {
+        "item": "badge",
+        "cx": 272.91254,
+        "cy": 68.75,
+        "r": 7.5000005,
+        "numeral": 1,
+        "fill": "#fe8019",
+        "ink": "#242424"
+      },
+      {
+        "item": "fill",
+        "rect": {
+          "x": 0.0,
+          "y": 232.0,
+          "w": 819.0,
+          "h": 532.0
+        },
+        "colour": "#262626"
+      },
+      {
+        "item": "text",
+        "x": 16.0,
+        "baseline": 255.64,
+        "text": "fix",
+        "face": "mono",
+        "size": 11.5,
+        "colour": "#fe8019"
+      },
+      {
+        "item": "text",
+        "x": 44.7,
+        "baseline": 255.64,
+        "text": "src/batch.ts:10 · proposed",
+        "face": "mono",
+        "size": 11.5,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 45.2,
+        "baseline": 282.81998,
+        "text": "7",
+        "face": "mono",
+        "size": 12.0,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 121.2,
+        "baseline": 282.81998,
+        "text": "await",
+        "face": "mono",
+        "size": 12.0,
+        "colour": "#ab818c"
+      },
+      {
+        "item": "text",
+        "x": 164.4,
+        "baseline": 282.81998,
+        "text": "write",
+        "face": "mono",
+        "size": 12.0,
+        "colour": "#b0882c"
+      },
+      {
+        "item": "text",
+        "x": 200.4,
+        "baseline": 282.81998,
+        "text": "(",
+        "face": "mono",
+        "size": 12.0,
+        "colour": "#938c78"
+      },
+      {
+        "item": "text",
+        "x": 207.59999,
+        "baseline": 282.81998,
+        "text": "row",
+        "face": "mono",
+        "size": 12.0,
+        "colour": "#a69c81"
+      },
+      {
+        "item": "text",
+        "x": 229.2,
+        "baseline": 282.81998,
+        "text": ")",
+        "face": "mono",
+        "size": 12.0,
+        "colour": "#938c78"
+      },
+      {
+        "item": "text",
+        "x": 45.2,
+        "baseline": 301.81998,
+        "text": "8",
+        "face": "mono",
+        "size": 12.0,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 106.8,
+        "baseline": 301.81998,
+        "text": "}",
+        "face": "mono",
+        "size": 12.0,
+        "colour": "#938c78"
+      },
+      {
+        "item": "text",
+        "x": 121.2,
+        "baseline": 301.81998,
+        "text": "catch",
+        "face": "mono",
+        "size": 12.0,
+        "colour": "#ab818c"
+      },
+      {
+        "item": "text",
+        "x": 164.4,
+        "baseline": 301.81998,
+        "text": "(",
+        "face": "mono",
+        "size": 12.0,
+        "colour": "#938c78"
+      },
+      {
+        "item": "text",
+        "x": 171.59999,
+        "baseline": 301.81998,
+        "text": "err",
+        "face": "mono",
+        "size": 12.0,
+        "colour": "#a69c81"
+      },
+      {
+        "item": "text",
+        "x": 193.2,
+        "baseline": 301.81998,
+        "text": ")",
+        "face": "mono",
+        "size": 12.0,
+        "colour": "#938c78"
+      },
+      {
+        "item": "text",
+        "x": 207.59999,
+        "baseline": 301.81998,
+        "text": "{",
+        "face": "mono",
+        "size": 12.0,
+        "colour": "#938c78"
+      },
+      {
+        "item": "text",
+        "x": 45.2,
+        "baseline": 320.81998,
+        "text": "9",
+        "face": "mono",
+        "size": 12.0,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 121.2,
+        "baseline": 320.81998,
+        "text": "log",
+        "face": "mono",
+        "size": 12.0,
+        "colour": "#a69c81"
+      },
+      {
+        "item": "text",
+        "x": 142.8,
+        "baseline": 320.81998,
+        "text": ".",
+        "face": "mono",
+        "size": 12.0,
+        "colour": "#938c78"
+      },
+      {
+        "item": "text",
+        "x": 150.0,
+        "baseline": 320.81998,
+        "text": "error",
+        "face": "mono",
+        "size": 12.0,
+        "colour": "#b0882c"
+      },
+      {
+        "item": "text",
+        "x": 186.0,
+        "baseline": 320.81998,
+        "text": "(",
+        "face": "mono",
+        "size": 12.0,
+        "colour": "#938c78"
+      },
+      {
+        "item": "text",
+        "x": 193.2,
+        "baseline": 320.81998,
+        "text": "err",
+        "face": "mono",
+        "size": 12.0,
+        "colour": "#a69c81"
+      },
+      {
+        "item": "text",
+        "x": 214.8,
+        "baseline": 320.81998,
+        "text": ")",
+        "face": "mono",
+        "size": 12.0,
+        "colour": "#938c78"
+      },
+      {
+        "item": "fill",
+        "rect": {
+          "x": 0.0,
+          "y": 326.0,
+          "w": 819.0,
+          "h": 19.0
+        },
+        "colour": "#3f2b28"
+      },
+      {
+        "item": "text",
+        "x": 26.0,
+        "baseline": 339.81998,
+        "text": "−",
+        "face": "mono",
+        "size": 12.0,
+        "colour": "#fc6654"
+      },
+      {
+        "item": "text",
+        "x": 38.0,
+        "baseline": 339.81998,
+        "text": "10",
+        "face": "mono",
+        "size": 12.0,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 121.2,
+        "baseline": 339.81998,
+        "text": "pending",
+        "face": "mono",
+        "size": 12.0,
+        "colour": "#ebdbb2"
+      },
+      {
+        "item": "text",
+        "x": 178.8,
+        "baseline": 339.81998,
+        "text": "-=",
+        "face": "mono",
+        "size": 12.0,
+        "colour": "#9f9680"
+      },
+      {
+        "item": "text",
+        "x": 200.4,
+        "baseline": 339.81998,
+        "text": "1",
+        "face": "mono",
+        "size": 12.0,
+        "colour": "#d3869b"
+      },
+      {
+        "item": "fill",
+        "rect": {
+          "x": 0.0,
+          "y": 345.0,
+          "w": 819.0,
+          "h": 19.0
+        },
+        "colour": "#373727"
+      },
+      {
+        "item": "text",
+        "x": 26.0,
+        "baseline": 358.81998,
+        "text": "+",
+        "face": "mono",
+        "size": 12.0,
+        "colour": "#b8bb26"
+      },
+      {
+        "item": "badge",
+        "cx": 18.0,
+        "cy": 354.5,
+        "r": 7.5,
+        "numeral": 1,
+        "fill": "#fe8019",
+        "ink": "#373727"
+      },
+      {
+        "item": "text",
+        "x": 38.0,
+        "baseline": 358.81998,
+        "text": "10",
+        "face": "mono",
+        "size": 12.0,
+        "colour": "#fe8019"
+      },
+      {
+        "item": "text",
+        "x": 121.2,
+        "baseline": 358.81998,
+        "text": "// counted at the tail",
+        "face": "monoitalic",
+        "size": 12.0,
+        "colour": "#a59e89"
+      },
+      {
+        "item": "text",
+        "x": 38.0,
+        "baseline": 377.81998,
+        "text": "11",
+        "face": "mono",
+        "size": 12.0,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 106.8,
+        "baseline": 377.81998,
+        "text": "}",
+        "face": "mono",
+        "size": 12.0,
+        "colour": "#938c78"
+      },
+      {
+        "item": "text",
+        "x": 38.0,
+        "baseline": 396.81998,
+        "text": "12",
+        "face": "mono",
+        "size": 12.0,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 106.8,
+        "baseline": 396.81998,
+        "text": "// every row, failed or not, reaches this",
+        "face": "monoitalic",
+        "size": 12.0,
+        "colour": "#938c7a"
+      },
+      {
+        "item": "text",
+        "x": 38.0,
+        "baseline": 415.81998,
+        "text": "13",
+        "face": "mono",
+        "size": 12.0,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 106.8,
+        "baseline": 415.81998,
+        "text": "pending",
+        "face": "mono",
+        "size": 12.0,
+        "colour": "#a69c81"
+      },
+      {
+        "item": "text",
+        "x": 164.4,
+        "baseline": 415.81998,
+        "text": "-=",
+        "face": "mono",
+        "size": 12.0,
+        "colour": "#938c78"
+      },
+      {
+        "item": "text",
+        "x": 185.99998,
+        "baseline": 415.81998,
+        "text": "1",
+        "face": "mono",
+        "size": 12.0,
+        "colour": "#ab818c"
+      },
+      {
+        "item": "fill",
+        "rect": {
+          "x": 819.0,
+          "y": 0.0,
+          "w": 304.0,
+          "h": 764.0
+        },
+        "colour": "#242424"
+      },
+      {
+        "item": "fill",
+        "rect": {
+          "x": 819.0,
+          "y": 0.0,
+          "w": 1.0,
+          "h": 764.0
+        },
+        "colour": "#4f4f4f"
+      },
+      {
+        "item": "text",
+        "x": 841.0,
+        "baseline": 37.125,
+        "text": "CONTENTS",
+        "face": "medium",
+        "size": 11.0,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 1068.517,
+        "baseline": 37.125,
+        "text": "2 OF 3",
+        "face": "medium",
+        "size": 11.0,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 841.0,
+        "baseline": 67.375,
+        "text": "1",
+        "face": "medium",
+        "size": 12.2,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 865.0,
+        "baseline": 67.375,
+        "text": "The error path <script>alert(1)</script>",
+        "face": "regular",
+        "size": 12.2,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 865.0,
+        "baseline": 84.975,
+        "text": "counts twice",
+        "face": "regular",
+        "size": 12.2,
+        "colour": "#999078"
+      },
+      {
+        "item": "link",
+        "rect": {
+          "x": 841.0,
+          "y": 54.0,
+          "w": 260.0,
+          "h": 35.199997
+        },
+        "page": 0
+      },
+      {
+        "item": "text",
+        "x": 865.0,
+        "baseline": 101.325,
+        "text": "the argument · 2",
+        "face": "regular",
+        "size": 11.0,
+        "colour": "#999078"
+      },
+      {
+        "item": "link",
+        "rect": {
+          "x": 865.0,
+          "y": 89.2,
+          "w": 236.0,
+          "h": 16.0
+        },
+        "page": 1
+      },
+      {
+        "item": "text",
+        "x": 841.0,
+        "baseline": 127.575,
+        "text": "2",
+        "face": "medium",
+        "size": 12.2,
+        "colour": "#fe8019"
+      },
+      {
+        "item": "text",
+        "x": 865.0,
+        "baseline": 127.575,
+        "text": "Count once",
+        "face": "regular",
+        "size": 12.2,
+        "colour": "#ebdbb2"
+      },
+      {
+        "item": "link",
+        "rect": {
+          "x": 841.0,
+          "y": 114.2,
+          "w": 260.0,
+          "h": 17.600006
+        },
+        "page": 2
+      },
+      {
+        "item": "text",
+        "x": 841.0,
+        "baseline": 154.175,
+        "text": "3",
+        "face": "medium",
+        "size": 12.2,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 865.0,
+        "baseline": 154.175,
+        "text": "Nothing else moves",
+        "face": "regular",
+        "size": 12.2,
+        "colour": "#999078"
+      },
+      {
+        "item": "link",
+        "rect": {
+          "x": 841.0,
+          "y": 140.8,
+          "w": 260.0,
+          "h": 17.600006
+        },
+        "page": 3
+      },
+      {
+        "item": "text",
+        "x": 865.0,
+        "baseline": 170.52501,
+        "text": "the argument · 1",
+        "face": "regular",
+        "size": 11.0,
+        "colour": "#999078"
+      },
+      {
+        "item": "link",
+        "rect": {
+          "x": 865.0,
+          "y": 158.40001,
+          "w": 236.0,
+          "h": 16.0
+        },
+        "page": 4
+      },
+      {
+        "item": "fill",
+        "rect": {
+          "x": 0.0,
+          "y": 764.0,
+          "w": 1123.0,
+          "h": 30.0
+        },
+        "colour": "#242424"
+      },
+      {
+        "item": "fill",
+        "rect": {
+          "x": 0.0,
+          "y": 764.0,
+          "w": 1123.0,
+          "h": 1.0
+        },
+        "colour": "#4f4f4f"
+      },
+      {
+        "item": "fill",
+        "rect": {
+          "x": 14.0,
+          "y": 774.5,
+          "w": 9.0,
+          "h": 9.0
+        },
+        "colour": "#fe8019"
+      },
+      {
+        "item": "text",
+        "x": 29.0,
+        "baseline": 782.78,
+        "text": "Powered by Deck",
+        "face": "mono",
+        "size": 10.5,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 137.5,
+        "baseline": 782.78,
+        "text": "group 2/3",
+        "face": "mono",
+        "size": 10.5,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 1039.7,
+        "baseline": 782.78,
+        "text": "page 3 of 6",
+        "face": "mono",
+        "size": 10.5,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 956.39996,
+        "baseline": 782.78,
+        "text": "20 Oct 2026",
+        "face": "mono",
+        "size": 10.5,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 822.69995,
+        "baseline": 782.78,
+        "text": "acme/ingest@a1b2c3d",
+        "face": "mono",
+        "size": 10.5,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 208.2,
+        "baseline": 782.78,
+        "text": "Why the batch counter stalls at 63",
+        "face": "mono",
+        "size": 10.5,
+        "colour": "#999078"
+      }
+    ]
+  },
+  {
+    "width": 1123.0,
+    "height": 794.0,
+    "scale": 0.75,
+    "kind": {
+      "page": "group",
+      "n": 3,
+      "part": 1,
+      "of": 1
+    },
+    "items": [
+      {
+        "item": "ground",
+        "colour": "#282828"
+      },
+      {
+        "item": "fill",
+        "rect": {
+          "x": 0.0,
+          "y": 0.0,
+          "w": 819.0,
+          "h": 231.0
+        },
+        "colour": "#242424"
+      },
+      {
+        "item": "fill",
+        "rect": {
+          "x": 0.0,
+          "y": 231.0,
+          "w": 819.0,
+          "h": 1.0
+        },
+        "colour": "#4f4f4f"
+      },
+      {
+        "item": "text",
+        "x": 22.199999,
+        "baseline": 46.5,
+        "text": "3",
+        "face": "regular",
+        "size": 36.0,
+        "colour": "#864d1f"
+      },
+      {
+        "item": "text",
+        "x": 62.0,
+        "baseline": 27.3125,
+        "text": "Why the batch counter stalls at 63",
+        "face": "regular",
+        "size": 11.5,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 62.0,
+        "baseline": 48.25,
+        "text": "Nothing else moves",
+        "face": "semibold",
+        "size": 14.0,
+        "colour": "#ebdbb2"
+      },
+      {
+        "item": "fill",
+        "rect": {
+          "x": 33.0,
+          "y": 55.0,
+          "w": 1.0,
+          "h": 24.5
+        },
+        "colour": "#625f59"
+      },
+      {
+        "item": "text",
+        "x": 62.0,
+        "baseline": 73.4375,
+        "text": "The close stays as it is.",
+        "face": "regular",
+        "size": 12.5,
+        "colour": "#bfb393"
+      },
+      {
+        "item": "badge",
+        "cx": 198.975,
+        "cy": 68.75,
+        "r": 7.5000005,
+        "numeral": 1,
+        "fill": "#fe8019",
+        "ink": "#242424"
+      },
+      {
+        "item": "fill",
+        "rect": {
+          "x": 0.0,
+          "y": 232.0,
+          "w": 819.0,
+          "h": 532.0
+        },
+        "colour": "#262626"
+      },
+      {
+        "item": "text",
+        "x": 16.0,
+        "baseline": 255.64,
+        "text": "src/batch.ts:59-61",
+        "face": "mono",
+        "size": 11.5,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 38.0,
+        "baseline": 282.81998,
+        "text": "56",
+        "face": "mono",
+        "size": 12.0,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 78.0,
+        "baseline": 282.81998,
+        "text": "// spacer 56",
+        "face": "monoitalic",
+        "size": 12.0,
+        "colour": "#938c7a"
+      },
+      {
+        "item": "text",
+        "x": 38.0,
+        "baseline": 301.81998,
+        "text": "57",
+        "face": "mono",
+        "size": 12.0,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 78.0,
+        "baseline": 301.81998,
+        "text": "// spacer 57",
+        "face": "monoitalic",
+        "size": 12.0,
+        "colour": "#938c7a"
+      },
+      {
+        "item": "text",
+        "x": 38.0,
+        "baseline": 320.81998,
+        "text": "58",
+        "face": "mono",
+        "size": 12.0,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 78.0,
+        "baseline": 320.81998,
+        "text": "// spacer 58",
+        "face": "monoitalic",
+        "size": 12.0,
+        "colour": "#938c7a"
+      },
+      {
+        "item": "fill",
+        "rect": {
+          "x": 0.0,
+          "y": 326.0,
+          "w": 408.0,
+          "h": 19.0
+        },
+        "colour": "#483425"
+      },
+      {
+        "item": "fill",
+        "rect": {
+          "x": 29.0,
+          "y": 326.0,
+          "w": 3.0,
+          "h": 19.0
+        },
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 38.0,
+        "baseline": 339.81998,
+        "text": "59",
+        "face": "mono",
+        "size": 12.0,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 78.0,
+        "baseline": 339.81998,
+        "text": "export",
+        "face": "mono",
+        "size": 12.0,
+        "colour": "#d58ca0"
+      },
+      {
+        "item": "text",
+        "x": 128.4,
+        "baseline": 339.81998,
+        "text": "function",
+        "face": "mono",
+        "size": 12.0,
+        "colour": "#d58ca0"
+      },
+      {
+        "item": "text",
+        "x": 193.2,
+        "baseline": 339.81998,
+        "text": "close",
+        "face": "mono",
+        "size": 12.0,
+        "colour": "#fabd2f"
+      },
+      {
+        "item": "text",
+        "x": 229.2,
+        "baseline": 339.81998,
+        "text": "(",
+        "face": "mono",
+        "size": 12.0,
+        "colour": "#a8a08c"
+      },
+      {
+        "item": "text",
+        "x": 236.4,
+        "baseline": 339.81998,
+        "text": "batch:",
+        "face": "mono",
+        "size": 12.0,
+        "colour": "#ebdbb2"
+      },
+      {
+        "item": "text",
+        "x": 286.8,
+        "baseline": 339.81998,
+        "text": "Batch",
+        "face": "mono",
+        "size": 12.0,
+        "colour": "#8ec07c"
+      },
+      {
+        "item": "text",
+        "x": 322.8,
+        "baseline": 339.81998,
+        "text": ")",
+        "face": "mono",
+        "size": 12.0,
+        "colour": "#a8a08c"
+      },
+      {
+        "item": "text",
+        "x": 337.2,
+        "baseline": 339.81998,
+        "text": "{",
+        "face": "mono",
+        "size": 12.0,
+        "colour": "#a8a08c"
+      },
+      {
+        "item": "fill",
+        "rect": {
+          "x": 0.0,
+          "y": 345.0,
+          "w": 408.0,
+          "h": 19.0
+        },
+        "colour": "#483425"
+      },
+      {
+        "item": "fill",
+        "rect": {
+          "x": 29.0,
+          "y": 345.0,
+          "w": 3.0,
+          "h": 19.0
+        },
+        "colour": "#fe8019"
+      },
+      {
+        "item": "badge",
+        "cx": 18.0,
+        "cy": 354.5,
+        "r": 7.5,
+        "numeral": 1,
+        "fill": "#fe8019",
+        "ink": "#483425"
+      },
+      {
+        "item": "text",
+        "x": 38.0,
+        "baseline": 358.81998,
+        "text": "60",
+        "face": "mono",
+        "size": 12.0,
+        "colour": "#fe8019"
+      },
+      {
+        "item": "text",
+        "x": 92.4,
+        "baseline": 358.81998,
+        "text": "finish",
+        "face": "mono",
+        "size": 12.0,
+        "colour": "#fabd2f"
+      },
+      {
+        "item": "text",
+        "x": 135.6,
+        "baseline": 358.81998,
+        "text": "(",
+        "face": "mono",
+        "size": 12.0,
+        "colour": "#a8a08c"
+      },
+      {
+        "item": "text",
+        "x": 142.8,
+        "baseline": 358.81998,
+        "text": "batch",
+        "face": "mono",
+        "size": 12.0,
+        "colour": "#ebdbb2"
+      },
+      {
+        "item": "text",
+        "x": 178.8,
+        "baseline": 358.81998,
+        "text": ")",
+        "face": "mono",
+        "size": 12.0,
+        "colour": "#a8a08c"
+      },
+      {
+        "item": "fill",
+        "rect": {
+          "x": 0.0,
+          "y": 364.0,
+          "w": 408.0,
+          "h": 19.0
+        },
+        "colour": "#483425"
+      },
+      {
+        "item": "fill",
+        "rect": {
+          "x": 29.0,
+          "y": 364.0,
+          "w": 3.0,
+          "h": 19.0
+        },
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 38.0,
+        "baseline": 377.81998,
+        "text": "61",
+        "face": "mono",
+        "size": 12.0,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 78.0,
+        "baseline": 377.81998,
+        "text": "}",
+        "face": "mono",
+        "size": 12.0,
+        "colour": "#a8a08c"
+      },
+      {
+        "item": "fill",
+        "rect": {
+          "x": 408.0,
+          "y": 232.0,
+          "w": 1.0,
+          "h": 532.0
+        },
+        "colour": "#4f4f4f"
+      },
+      {
+        "item": "text",
+        "x": 425.0,
+        "baseline": 255.64,
+        "text": "store",
+        "face": "mono",
+        "size": 11.5,
+        "colour": "#fe8019"
+      },
+      {
+        "item": "text",
+        "x": 467.5,
+        "baseline": 255.64,
+        "text": "src/store.ts:2",
+        "face": "mono",
+        "size": 11.5,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 447.0,
+        "baseline": 282.81998,
+        "text": "1",
+        "face": "mono",
+        "size": 12.0,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 487.0,
+        "baseline": 282.81998,
+        "text": "export",
+        "face": "mono",
+        "size": 12.0,
+        "colour": "#ab818c"
+      },
+      {
+        "item": "text",
+        "x": 537.4,
+        "baseline": 282.81998,
+        "text": "async",
+        "face": "mono",
+        "size": 12.0,
+        "colour": "#ab818c"
+      },
+      {
+        "item": "text",
+        "x": 580.60004,
+        "baseline": 282.81998,
+        "text": "function",
+        "face": "mono",
+        "size": 12.0,
+        "colour": "#ab818c"
+      },
+      {
+        "item": "text",
+        "x": 645.4,
+        "baseline": 282.81998,
+        "text": "write",
+        "face": "mono",
+        "size": 12.0,
+        "colour": "#b0882c"
+      },
+      {
+        "item": "text",
+        "x": 681.4,
+        "baseline": 282.81998,
+        "text": "(",
+        "face": "mono",
+        "size": 12.0,
+        "colour": "#938c78"
+      },
+      {
+        "item": "text",
+        "x": 688.60004,
+        "baseline": 282.81998,
+        "text": "row:",
+        "face": "mono",
+        "size": 12.0,
+        "colour": "#a69c81"
+      },
+      {
+        "item": "text",
+        "x": 724.60004,
+        "baseline": 282.81998,
+        "text": "Row",
+        "face": "mono",
+        "size": 12.0,
+        "colour": "#739666"
+      },
+      {
+        "item": "text",
+        "x": 746.2,
+        "baseline": 282.81998,
+        "text": ")",
+        "face": "mono",
+        "size": 12.0,
+        "colour": "#938c78"
+      },
+      {
+        "item": "text",
+        "x": 760.60004,
+        "baseline": 282.81998,
+        "text": "{",
+        "face": "mono",
+        "size": 12.0,
+        "colour": "#938c78"
+      },
+      {
+        "item": "fill",
+        "rect": {
+          "x": 409.0,
+          "y": 288.0,
+          "w": 410.0,
+          "h": 19.0
+        },
+        "colour": "#483425"
+      },
+      {
+        "item": "fill",
+        "rect": {
+          "x": 438.0,
+          "y": 288.0,
+          "w": 3.0,
+          "h": 19.0
+        },
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 447.0,
+        "baseline": 301.81998,
+        "text": "2",
+        "face": "mono",
+        "size": 12.0,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 501.4,
+        "baseline": 301.81998,
+        "text": "await",
+        "face": "mono",
+        "size": 12.0,
+        "colour": "#d58ca0"
+      },
+      {
+        "item": "text",
+        "x": 544.60004,
+        "baseline": 301.81998,
+        "text": "db",
+        "face": "mono",
+        "size": 12.0,
+        "colour": "#ebdbb2"
+      },
+      {
+        "item": "text",
+        "x": 559.0,
+        "baseline": 301.81998,
+        "text": ".",
+        "face": "mono",
+        "size": 12.0,
+        "colour": "#a8a08c"
+      },
+      {
+        "item": "text",
+        "x": 566.2,
+        "baseline": 301.81998,
+        "text": "put",
+        "face": "mono",
+        "size": 12.0,
+        "colour": "#fabd2f"
+      },
+      {
+        "item": "text",
+        "x": 587.8,
+        "baseline": 301.81998,
+        "text": "(",
+        "face": "mono",
+        "size": 12.0,
+        "colour": "#a8a08c"
+      },
+      {
+        "item": "text",
+        "x": 595.0,
+        "baseline": 301.81998,
+        "text": "row",
+        "face": "mono",
+        "size": 12.0,
+        "colour": "#ebdbb2"
+      },
+      {
+        "item": "text",
+        "x": 616.6,
+        "baseline": 301.81998,
+        "text": ".",
+        "face": "mono",
+        "size": 12.0,
+        "colour": "#a8a08c"
+      },
+      {
+        "item": "text",
+        "x": 623.8,
+        "baseline": 301.81998,
+        "text": "id",
+        "face": "mono",
+        "size": 12.0,
+        "colour": "#ebdbb2"
+      },
+      {
+        "item": "text",
+        "x": 638.2,
+        "baseline": 301.81998,
+        "text": ",",
+        "face": "mono",
+        "size": 12.0,
+        "colour": "#a8a08c"
+      },
+      {
+        "item": "text",
+        "x": 652.60004,
+        "baseline": 301.81998,
+        "text": "row",
+        "face": "mono",
+        "size": 12.0,
+        "colour": "#ebdbb2"
+      },
+      {
+        "item": "text",
+        "x": 674.2,
+        "baseline": 301.81998,
+        "text": ".",
+        "face": "mono",
+        "size": 12.0,
+        "colour": "#a8a08c"
+      },
+      {
+        "item": "text",
+        "x": 681.4,
+        "baseline": 301.81998,
+        "text": "payload",
+        "face": "mono",
+        "size": 12.0,
+        "colour": "#ebdbb2"
+      },
+      {
+        "item": "text",
+        "x": 731.80005,
+        "baseline": 301.81998,
+        "text": ")",
+        "face": "mono",
+        "size": 12.0,
+        "colour": "#a8a08c"
+      },
+      {
+        "item": "text",
+        "x": 447.0,
+        "baseline": 320.81998,
+        "text": "3",
+        "face": "mono",
+        "size": 12.0,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 487.0,
+        "baseline": 320.81998,
+        "text": "}",
+        "face": "mono",
+        "size": 12.0,
+        "colour": "#938c78"
+      },
+      {
+        "item": "fill",
+        "rect": {
+          "x": 819.0,
+          "y": 0.0,
+          "w": 304.0,
+          "h": 764.0
+        },
+        "colour": "#242424"
+      },
+      {
+        "item": "fill",
+        "rect": {
+          "x": 819.0,
+          "y": 0.0,
+          "w": 1.0,
+          "h": 764.0
+        },
+        "colour": "#4f4f4f"
+      },
+      {
+        "item": "text",
+        "x": 841.0,
+        "baseline": 37.125,
+        "text": "CONTENTS",
+        "face": "medium",
+        "size": 11.0,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 1068.517,
+        "baseline": 37.125,
+        "text": "3 OF 3",
+        "face": "medium",
+        "size": 11.0,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 841.0,
+        "baseline": 67.375,
+        "text": "1",
+        "face": "medium",
+        "size": 12.2,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 865.0,
+        "baseline": 67.375,
+        "text": "The error path <script>alert(1)</script>",
+        "face": "regular",
+        "size": 12.2,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 865.0,
+        "baseline": 84.975,
+        "text": "counts twice",
+        "face": "regular",
+        "size": 12.2,
+        "colour": "#999078"
+      },
+      {
+        "item": "link",
+        "rect": {
+          "x": 841.0,
+          "y": 54.0,
+          "w": 260.0,
+          "h": 35.199997
+        },
+        "page": 0
+      },
+      {
+        "item": "text",
+        "x": 865.0,
+        "baseline": 101.325,
+        "text": "the argument · 2",
+        "face": "regular",
+        "size": 11.0,
+        "colour": "#999078"
+      },
+      {
+        "item": "link",
+        "rect": {
+          "x": 865.0,
+          "y": 89.2,
+          "w": 236.0,
+          "h": 16.0
+        },
+        "page": 1
+      },
+      {
+        "item": "text",
+        "x": 841.0,
+        "baseline": 127.575,
+        "text": "2",
+        "face": "medium",
+        "size": 12.2,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 865.0,
+        "baseline": 127.575,
+        "text": "Count once",
+        "face": "regular",
+        "size": 12.2,
+        "colour": "#999078"
+      },
+      {
+        "item": "link",
+        "rect": {
+          "x": 841.0,
+          "y": 114.2,
+          "w": 260.0,
+          "h": 17.600006
+        },
+        "page": 2
+      },
+      {
+        "item": "text",
+        "x": 841.0,
+        "baseline": 154.175,
+        "text": "3",
+        "face": "medium",
+        "size": 12.2,
+        "colour": "#fe8019"
+      },
+      {
+        "item": "text",
+        "x": 865.0,
+        "baseline": 154.175,
+        "text": "Nothing else moves",
+        "face": "regular",
+        "size": 12.2,
+        "colour": "#ebdbb2"
+      },
+      {
+        "item": "link",
+        "rect": {
+          "x": 841.0,
+          "y": 140.8,
+          "w": 260.0,
+          "h": 17.600006
+        },
+        "page": 3
+      },
+      {
+        "item": "text",
+        "x": 865.0,
+        "baseline": 170.52501,
+        "text": "the argument · 1",
+        "face": "regular",
+        "size": 11.0,
+        "colour": "#999078"
+      },
+      {
+        "item": "link",
+        "rect": {
+          "x": 865.0,
+          "y": 158.40001,
+          "w": 236.0,
+          "h": 16.0
+        },
+        "page": 4
+      },
+      {
+        "item": "fill",
+        "rect": {
+          "x": 0.0,
+          "y": 764.0,
+          "w": 1123.0,
+          "h": 30.0
+        },
+        "colour": "#242424"
+      },
+      {
+        "item": "fill",
+        "rect": {
+          "x": 0.0,
+          "y": 764.0,
+          "w": 1123.0,
+          "h": 1.0
+        },
+        "colour": "#4f4f4f"
+      },
+      {
+        "item": "fill",
+        "rect": {
+          "x": 14.0,
+          "y": 774.5,
+          "w": 9.0,
+          "h": 9.0
+        },
+        "colour": "#fe8019"
+      },
+      {
+        "item": "text",
+        "x": 29.0,
+        "baseline": 782.78,
+        "text": "Powered by Deck",
+        "face": "mono",
+        "size": 10.5,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 137.5,
+        "baseline": 782.78,
+        "text": "group 3/3",
+        "face": "mono",
+        "size": 10.5,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 1039.7,
+        "baseline": 782.78,
+        "text": "page 4 of 6",
+        "face": "mono",
+        "size": 10.5,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 956.39996,
+        "baseline": 782.78,
+        "text": "20 Oct 2026",
+        "face": "mono",
+        "size": 10.5,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 822.69995,
+        "baseline": 782.78,
+        "text": "acme/ingest@a1b2c3d",
+        "face": "mono",
+        "size": 10.5,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 208.2,
+        "baseline": 782.78,
+        "text": "Why the batch counter stalls at 63",
+        "face": "mono",
+        "size": 10.5,
+        "colour": "#999078"
+      }
+    ]
+  },
+  {
+    "width": 1123.0,
+    "height": 794.0,
+    "scale": 0.75,
+    "kind": {
+      "page": "argument",
+      "n": 3,
+      "part": 1,
+      "of": 1
+    },
+    "items": [
+      {
+        "item": "ground",
+        "colour": "#282828"
+      },
+      {
+        "item": "fill",
+        "rect": {
+          "x": 0.0,
+          "y": 0.0,
+          "w": 819.0,
+          "h": 60.0
+        },
+        "colour": "#242424"
+      },
+      {
+        "item": "fill",
+        "rect": {
+          "x": 0.0,
+          "y": 60.0,
+          "w": 819.0,
+          "h": 1.0
+        },
+        "colour": "#4f4f4f"
+      },
+      {
+        "item": "text",
+        "x": 761.4,
+        "baseline": 33.96,
+        "text": "1 said",
+        "face": "mono",
+        "size": 11.0,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 18.0,
+        "baseline": 41.25,
+        "text": "3",
+        "face": "regular",
+        "size": 30.0,
+        "colour": "#864d1f"
+      },
+      {
+        "item": "text",
+        "x": 62.0,
+        "baseline": 35.25,
+        "text": "Nothing else moves",
+        "face": "semibold",
+        "size": 14.0,
+        "colour": "#ebdbb2"
+      },
+      {
+        "item": "text",
+        "x": 188.63,
+        "baseline": 35.25,
+        "text": " — the argument",
+        "face": "regular",
+        "size": 14.0,
+        "colour": "#999078"
+      },
+      {
+        "item": "fill",
+        "rect": {
+          "x": 409.5,
+          "y": 84.0,
+          "w": 1.0,
+          "h": 656.0
+        },
+        "colour": "#4f4f4f"
+      },
+      {
+        "item": "dot",
+        "cx": 34.0,
+        "cy": 92.0,
+        "r": 4.0,
+        "colour": "#fe8019",
+        "filled": true
+      },
+      {
+        "item": "text",
+        "x": 48.0,
+        "baseline": 95.9375,
+        "text": "Reader · nit · src/batch.ts, line 60",
+        "face": "regular",
+        "size": 10.5,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 373.6,
+        "baseline": 95.78,
+        "text": "1/1",
+        "face": "mono",
+        "size": 10.5,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 48.0,
+        "baseline": 116.875,
+        "text": "Close it where it opens.",
+        "face": "regular",
+        "size": 13.0,
+        "colour": "#ebdbb2"
+      },
+      {
+        "item": "fill",
+        "rect": {
+          "x": 48.0,
+          "y": 128.0,
+          "w": 344.5,
+          "h": 19.0
+        },
+        "colour": "#483425"
+      },
+      {
+        "item": "fill",
+        "rect": {
+          "x": 48.0,
+          "y": 128.0,
+          "w": 3.0,
+          "h": 19.0
+        },
+        "colour": "#fe8019"
+      },
+      {
+        "item": "text",
+        "x": 58.0,
+        "baseline": 141.64,
+        "text": "60",
+        "face": "mono",
+        "size": 11.5,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 105.8,
+        "baseline": 141.64,
+        "text": "finish",
+        "face": "mono",
+        "size": 11.5,
+        "colour": "#fabd2f"
+      },
+      {
+        "item": "text",
+        "x": 147.20001,
+        "baseline": 141.64,
+        "text": "(",
+        "face": "mono",
+        "size": 11.5,
+        "colour": "#a8a08c"
+      },
+      {
+        "item": "text",
+        "x": 154.1,
+        "baseline": 141.64,
+        "text": "batch",
+        "face": "mono",
+        "size": 11.5,
+        "colour": "#ebdbb2"
+      },
+      {
+        "item": "text",
+        "x": 188.6,
+        "baseline": 141.64,
+        "text": ")",
+        "face": "mono",
+        "size": 11.5,
+        "colour": "#a8a08c"
+      },
+      {
+        "item": "fill",
+        "rect": {
+          "x": 819.0,
+          "y": 0.0,
+          "w": 304.0,
+          "h": 764.0
+        },
+        "colour": "#242424"
+      },
+      {
+        "item": "fill",
+        "rect": {
+          "x": 819.0,
+          "y": 0.0,
+          "w": 1.0,
+          "h": 764.0
+        },
+        "colour": "#4f4f4f"
+      },
+      {
+        "item": "text",
+        "x": 841.0,
+        "baseline": 37.125,
+        "text": "CONTENTS",
+        "face": "medium",
+        "size": 11.0,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 1068.517,
+        "baseline": 37.125,
+        "text": "3 OF 3",
+        "face": "medium",
+        "size": 11.0,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 841.0,
+        "baseline": 67.375,
+        "text": "1",
+        "face": "medium",
+        "size": 12.2,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 865.0,
+        "baseline": 67.375,
+        "text": "The error path <script>alert(1)</script>",
+        "face": "regular",
+        "size": 12.2,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 865.0,
+        "baseline": 84.975,
+        "text": "counts twice",
+        "face": "regular",
+        "size": 12.2,
+        "colour": "#999078"
+      },
+      {
+        "item": "link",
+        "rect": {
+          "x": 841.0,
+          "y": 54.0,
+          "w": 260.0,
+          "h": 35.199997
+        },
+        "page": 0
+      },
+      {
+        "item": "text",
+        "x": 865.0,
+        "baseline": 101.325,
+        "text": "the argument · 2",
+        "face": "regular",
+        "size": 11.0,
+        "colour": "#999078"
+      },
+      {
+        "item": "link",
+        "rect": {
+          "x": 865.0,
+          "y": 89.2,
+          "w": 236.0,
+          "h": 16.0
+        },
+        "page": 1
+      },
+      {
+        "item": "text",
+        "x": 841.0,
+        "baseline": 127.575,
+        "text": "2",
+        "face": "medium",
+        "size": 12.2,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 865.0,
+        "baseline": 127.575,
+        "text": "Count once",
+        "face": "regular",
+        "size": 12.2,
+        "colour": "#999078"
+      },
+      {
+        "item": "link",
+        "rect": {
+          "x": 841.0,
+          "y": 114.2,
+          "w": 260.0,
+          "h": 17.600006
+        },
+        "page": 2
+      },
+      {
+        "item": "text",
+        "x": 841.0,
+        "baseline": 154.175,
+        "text": "3",
+        "face": "medium",
+        "size": 12.2,
+        "colour": "#fe8019"
+      },
+      {
+        "item": "text",
+        "x": 865.0,
+        "baseline": 154.175,
+        "text": "Nothing else moves",
+        "face": "regular",
+        "size": 12.2,
+        "colour": "#ebdbb2"
+      },
+      {
+        "item": "link",
+        "rect": {
+          "x": 841.0,
+          "y": 140.8,
+          "w": 260.0,
+          "h": 17.600006
+        },
+        "page": 3
+      },
+      {
+        "item": "text",
+        "x": 865.0,
+        "baseline": 170.52501,
+        "text": "the argument · 1",
+        "face": "regular",
+        "size": 11.0,
+        "colour": "#fe8019"
+      },
+      {
+        "item": "link",
+        "rect": {
+          "x": 865.0,
+          "y": 158.40001,
+          "w": 236.0,
+          "h": 16.0
+        },
+        "page": 4
+      },
+      {
+        "item": "fill",
+        "rect": {
+          "x": 0.0,
+          "y": 764.0,
+          "w": 1123.0,
+          "h": 30.0
+        },
+        "colour": "#242424"
+      },
+      {
+        "item": "fill",
+        "rect": {
+          "x": 0.0,
+          "y": 764.0,
+          "w": 1123.0,
+          "h": 1.0
+        },
+        "colour": "#4f4f4f"
+      },
+      {
+        "item": "fill",
+        "rect": {
+          "x": 14.0,
+          "y": 774.5,
+          "w": 9.0,
+          "h": 9.0
+        },
+        "colour": "#fe8019"
+      },
+      {
+        "item": "text",
+        "x": 29.0,
+        "baseline": 782.78,
+        "text": "Powered by Deck",
+        "face": "mono",
+        "size": 10.5,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 137.5,
+        "baseline": 782.78,
+        "text": "group 3/3 · the argument",
+        "face": "mono",
+        "size": 10.5,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 1039.7,
+        "baseline": 782.78,
+        "text": "page 5 of 6",
+        "face": "mono",
+        "size": 10.5,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 956.39996,
+        "baseline": 782.78,
+        "text": "20 Oct 2026",
+        "face": "mono",
+        "size": 10.5,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 822.69995,
+        "baseline": 782.78,
+        "text": "acme/ingest@a1b2c3d",
+        "face": "mono",
+        "size": 10.5,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 302.7,
+        "baseline": 782.78,
+        "text": "Why the batch counter stalls at 63",
+        "face": "mono",
+        "size": 10.5,
+        "colour": "#999078"
+      }
+    ]
+  },
+  {
+    "width": 1123.0,
+    "height": 794.0,
+    "scale": 0.75,
+    "kind": {
+      "page": "said"
+    },
+    "items": [
+      {
+        "item": "ground",
+        "colour": "#282828"
+      },
+      {
+        "item": "fill",
+        "rect": {
+          "x": 0.0,
+          "y": 0.0,
+          "w": 819.0,
+          "h": 60.0
+        },
+        "colour": "#242424"
+      },
+      {
+        "item": "fill",
+        "rect": {
+          "x": 0.0,
+          "y": 60.0,
+          "w": 819.0,
+          "h": 1.0
+        },
+        "colour": "#4f4f4f"
+      },
+      {
+        "item": "text",
+        "x": 761.4,
+        "baseline": 33.96,
+        "text": "1 said",
+        "face": "mono",
+        "size": 11.0,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 18.0,
+        "baseline": 35.25,
+        "text": "Why the batch counter stalls at 63",
+        "face": "semibold",
+        "size": 14.0,
+        "colour": "#ebdbb2"
+      },
+      {
+        "item": "text",
+        "x": 239.42401,
+        "baseline": 35.25,
+        "text": " — what was said about the deck",
+        "face": "regular",
+        "size": 14.0,
+        "colour": "#999078"
+      },
+      {
+        "item": "fill",
+        "rect": {
+          "x": 409.5,
+          "y": 84.0,
+          "w": 1.0,
+          "h": 656.0
+        },
+        "colour": "#4f4f4f"
+      },
+      {
+        "item": "dot",
+        "cx": 34.0,
+        "cy": 92.0,
+        "r": 4.0,
+        "colour": "#fe8019",
+        "filled": false
+      },
+      {
+        "item": "text",
+        "x": 48.0,
+        "baseline": 95.9375,
+        "text": "Agent",
+        "face": "regular",
+        "size": 10.5,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 373.6,
+        "baseline": 95.78,
+        "text": "1/1",
+        "face": "mono",
+        "size": 10.5,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 48.0,
+        "baseline": 116.875,
+        "text": "That is everything I had.",
+        "face": "regular",
+        "size": 13.0,
+        "colour": "#ebdbb2"
+      },
+      {
+        "item": "fill",
+        "rect": {
+          "x": 819.0,
+          "y": 0.0,
+          "w": 304.0,
+          "h": 764.0
+        },
+        "colour": "#242424"
+      },
+      {
+        "item": "fill",
+        "rect": {
+          "x": 819.0,
+          "y": 0.0,
+          "w": 1.0,
+          "h": 764.0
+        },
+        "colour": "#4f4f4f"
+      },
+      {
+        "item": "text",
+        "x": 841.0,
+        "baseline": 37.125,
+        "text": "CONTENTS",
+        "face": "medium",
+        "size": 11.0,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 841.0,
+        "baseline": 67.375,
+        "text": "1",
+        "face": "medium",
+        "size": 12.2,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 865.0,
+        "baseline": 67.375,
+        "text": "The error path <script>alert(1)</script>",
+        "face": "regular",
+        "size": 12.2,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 865.0,
+        "baseline": 84.975,
+        "text": "counts twice",
+        "face": "regular",
+        "size": 12.2,
+        "colour": "#999078"
+      },
+      {
+        "item": "link",
+        "rect": {
+          "x": 841.0,
+          "y": 54.0,
+          "w": 260.0,
+          "h": 35.199997
+        },
+        "page": 0
+      },
+      {
+        "item": "text",
+        "x": 865.0,
+        "baseline": 101.325,
+        "text": "the argument · 2",
+        "face": "regular",
+        "size": 11.0,
+        "colour": "#999078"
+      },
+      {
+        "item": "link",
+        "rect": {
+          "x": 865.0,
+          "y": 89.2,
+          "w": 236.0,
+          "h": 16.0
+        },
+        "page": 1
+      },
+      {
+        "item": "text",
+        "x": 841.0,
+        "baseline": 127.575,
+        "text": "2",
+        "face": "medium",
+        "size": 12.2,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 865.0,
+        "baseline": 127.575,
+        "text": "Count once",
+        "face": "regular",
+        "size": 12.2,
+        "colour": "#999078"
+      },
+      {
+        "item": "link",
+        "rect": {
+          "x": 841.0,
+          "y": 114.2,
+          "w": 260.0,
+          "h": 17.600006
+        },
+        "page": 2
+      },
+      {
+        "item": "text",
+        "x": 841.0,
+        "baseline": 154.175,
+        "text": "3",
+        "face": "medium",
+        "size": 12.2,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 865.0,
+        "baseline": 154.175,
+        "text": "Nothing else moves",
+        "face": "regular",
+        "size": 12.2,
+        "colour": "#999078"
+      },
+      {
+        "item": "link",
+        "rect": {
+          "x": 841.0,
+          "y": 140.8,
+          "w": 260.0,
+          "h": 17.600006
+        },
+        "page": 3
+      },
+      {
+        "item": "text",
+        "x": 865.0,
+        "baseline": 170.52501,
+        "text": "the argument · 1",
+        "face": "regular",
+        "size": 11.0,
+        "colour": "#999078"
+      },
+      {
+        "item": "link",
+        "rect": {
+          "x": 865.0,
+          "y": 158.40001,
+          "w": 236.0,
+          "h": 16.0
+        },
+        "page": 4
+      },
+      {
+        "item": "fill",
+        "rect": {
+          "x": 0.0,
+          "y": 764.0,
+          "w": 1123.0,
+          "h": 30.0
+        },
+        "colour": "#242424"
+      },
+      {
+        "item": "fill",
+        "rect": {
+          "x": 0.0,
+          "y": 764.0,
+          "w": 1123.0,
+          "h": 1.0
+        },
+        "colour": "#4f4f4f"
+      },
+      {
+        "item": "fill",
+        "rect": {
+          "x": 14.0,
+          "y": 774.5,
+          "w": 9.0,
+          "h": 9.0
+        },
+        "colour": "#fe8019"
+      },
+      {
+        "item": "text",
+        "x": 29.0,
+        "baseline": 782.78,
+        "text": "Powered by Deck",
+        "face": "mono",
+        "size": 10.5,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 137.5,
+        "baseline": 782.78,
+        "text": "the deck",
+        "face": "mono",
+        "size": 10.5,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 1039.7,
+        "baseline": 782.78,
+        "text": "page 6 of 6",
+        "face": "mono",
+        "size": 10.5,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 956.39996,
+        "baseline": 782.78,
+        "text": "20 Oct 2026",
+        "face": "mono",
+        "size": 10.5,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 822.69995,
+        "baseline": 782.78,
+        "text": "acme/ingest@a1b2c3d",
+        "face": "mono",
+        "size": 10.5,
+        "colour": "#999078"
+      },
+      {
+        "item": "text",
+        "x": 201.9,
+        "baseline": 782.78,
+        "text": "Why the batch counter stalls at 63",
+        "face": "mono",
+        "size": 10.5,
+        "colour": "#999078"
+      }
+    ]
+  }
+]

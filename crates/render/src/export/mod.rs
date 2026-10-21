@@ -8,14 +8,23 @@
 //! the `.deck` file itself, so the person it was sent to can open it in deck
 //! and answer.
 //!
-//! HTML is the first format. The PDF follows it, from the same document.
+//! Two formats: one HTML file, which is the window a group to a screen, and
+//! a PDF, portrait or landscape, laid out by [`layout`] into pages of placed
+//! boxes and drawn by [`pdf()`].
 
 mod face;
 mod html;
+mod landscape;
+mod layout;
+mod pdf;
+mod portrait;
 
 pub use html::html;
+pub use layout::{Face, Format, Item, Kind, Page, Rect, layout};
+pub use pdf::{Writing, pdf};
 
 use deck_core::bundle::Bundle;
+use deck_core::document::Document;
 use deck_core::theme::{Palette, Syntax};
 
 /// How an export is to be written.
@@ -84,6 +93,68 @@ pub fn deck(
     let document = crate::document::build(&bundle, palette, options.dark, syntax)
         .map_err(|err| err.to_string())?;
     Ok(html(&document, &bytes, options))
+}
+
+/// `bundle` as a PDF in `format`, painted in `palette` with the window's
+/// highlighter, carrying the same `.deck` the HTML export would, and what
+/// the person exporting should be told about it: a group that ran past two
+/// pages, a pane that could not show every line.
+///
+/// # Errors
+///
+/// When the bundle does not pack, a part of it does not parse, or the PDF
+/// cannot be written.
+pub fn deck_pdf(
+    bundle: &Bundle,
+    palette: &Palette,
+    syntax: Syntax,
+    options: &Options,
+    format: Format,
+    writing: &Writing,
+) -> Result<(Vec<u8>, Vec<String>), String> {
+    let mut bundle = bundle.clone();
+    if !options.comments {
+        bundle.files.remove("review.json");
+    }
+    let carried = only(&bundle, &options.groups)?;
+    let bytes = carried.pack()?;
+    let document = crate::document::build(&bundle, palette, options.dark, syntax)
+        .map_err(|err| err.to_string())?;
+    let document = shown(&document, options);
+    let pages = layout(&document, format);
+    let warnings = pages
+        .iter()
+        .flat_map(|page| page.warnings.iter().cloned())
+        .collect();
+    Ok((pdf(&document, &pages, &bytes, writing)?, warnings))
+}
+
+/// `document` as an export shows it: only the groups asked for, keeping
+/// their numbers, and nothing that was said when the comments are left out.
+///
+/// The contents go with the groups. A page of group two that listed the
+/// titles of groups one and three would share what choosing groups was
+/// meant to keep back; and what was said about the deck as a whole goes only
+/// with every group, since it may be about any of them.
+#[must_use]
+pub fn shown(document: &Document, options: &Options) -> Document {
+    let mut shown = document.clone();
+    shown.groups.retain(|group| options.shows(group.n));
+    shown.contents.retain(|entry| options.shows(entry.n));
+    let every = shown.groups.len() == document.groups.len();
+    if !options.comments || !every {
+        shown.general.clear();
+    }
+    if !options.comments {
+        for group in &mut shown.groups {
+            group.argument.clear();
+        }
+        for entry in &mut shown.contents {
+            entry.remarks = 0;
+            entry.answers = 0;
+        }
+    }
+    shown
 }
 
 /// `bundle` holding only the groups numbered in `chosen`, or all of it when

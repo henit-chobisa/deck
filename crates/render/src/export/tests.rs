@@ -592,3 +592,5 @@ fn the_fixture_deck_is_the_page_it_was() {
         "the page moved; if that was meant, run with UPDATE_GOLDEN=1"
     );
 }
+
+mod pdf;

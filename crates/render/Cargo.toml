@@ -8,6 +8,7 @@ repository.workspace = true
 
 [dependencies]
 deck-core = { path = "../core" }
+serde = { workspace = true }
 serde_json = { workspace = true }
 # Shaping, kerning included, and advance widths, from the embedded faces, for
 # breaking lines the way the window does without a window. Already in the tree.
@@ -18,6 +19,15 @@ rustybuzz = "0.20"
 # `export::face`, which depends on exactly which tables it keeps. Without its
 # variable-font support, which pulls in a second font stack nothing here uses.
 subsetter = { version = "=0.2.6", default-features = false }
+# The PDF writer, and its SVG half for diagrams. Pure Rust, MIT or Apache-2.0,
+# with real text: it shapes, subsets and embeds the faces it is given, so a
+# PDF's words and code can be selected and searched. Pinned, as a PDF's bytes
+# are part of what a golden test checks.
+krilla = "=0.8.2"
+krilla-svg = "=0.8.1"
+# The SVG tree krilla-svg draws, at the version it is built against, so a
+# diagram is read with Plex in its font database.
+usvg = "=0.47.0"
 gpui-kit = { version = "0.6", features = [
     # Syntax highlighting is not on by default, and a grammar is only compiled
     # in if it is named. Every language deck can highlight is listed here, and
