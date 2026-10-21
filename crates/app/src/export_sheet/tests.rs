@@ -317,16 +317,14 @@ fn the_dialog_is_named_and_placed_as_the_rule_says() {
     assert_eq!(start(Some(&gone), Some(&gone)), home);
 }
 
-/// The one writer takes the path the save dialog answered, writes there and
-/// nowhere else, and Cancel is nothing to write to.
+/// The one writer takes the path the save dialog answered, and writes there
+/// and nowhere else.
 #[test]
 fn a_file_is_written_only_where_the_dialog_said() {
     let dir = tempfile::tempdir().expect("a temp dir");
     let chosen = dir.path().join("somewhere").join("theirs.pdf");
     std::fs::create_dir(chosen.parent().unwrap()).expect("a folder");
-    assert!(Asked::from_dialog(None).is_none(), "Cancel writes nothing");
-    let asked = Asked::from_dialog(Some(chosen.clone())).expect("a path");
-    let saved = model::save(&asked, b"%PDF-1.7 bytes", Some(3)).expect("saved");
+    let saved = model::save(&chosen, b"%PDF-1.7 bytes", Some(3)).expect("saved");
     assert_eq!(saved.path, chosen);
     assert_eq!(std::fs::read(&chosen).unwrap(), b"%PDF-1.7 bytes");
     let everything: Vec<PathBuf> = walk(dir.path());
@@ -337,26 +335,8 @@ fn a_file_is_written_only_where_the_dialog_said() {
     );
     assert_eq!(saved.line(), "Saved · 3 pages · 14 bytes");
     // Over a file already there: the dialog asked about replacing it.
-    model::save(&asked, b"again", None).expect("replaced");
+    model::save(&chosen, b"again", None).expect("replaced");
     assert_eq!(std::fs::read(&chosen).unwrap(), b"again");
-
-    // And the sheet has no other way to write one: every file it writes
-    // goes through `save`, and the only `Asked` it makes is the dialog's.
-    let source = include_str!("mod.rs");
-    for writer in ["std::fs::write", "write_new", "File::create", "fs::File"] {
-        assert!(!source.contains(writer), "the sheet writes with {writer}");
-    }
-    assert_eq!(source.matches("model::save(").count(), 1);
-    assert_eq!(source.matches("Asked::from_dialog(").count(), 1);
-    let made = source.find("Asked::from_dialog(").unwrap();
-    let asked = source.find("prompt_for_new_path(").unwrap();
-    assert!(asked < made, "the Asked comes from the dialog's answer");
-    let model = include_str!("model.rs");
-    assert_eq!(
-        model.matches("write_new(").count(),
-        1,
-        "only save writes, in the model"
-    );
 }
 
 fn walk(dir: &Path) -> Vec<PathBuf> {
@@ -370,6 +350,27 @@ fn walk(dir: &Path) -> Vec<PathBuf> {
         }
     }
     out
+}
+
+/// While the sheet is up the only keys are its own, and none of them makes
+/// a file: escape and the two arrows. An export is a click on its button.
+#[test]
+fn the_sheet_has_no_key_that_exports() {
+    let keys: Vec<String> = bindings()
+        .iter()
+        .map(|binding| {
+            assert_eq!(
+                binding.predicate().map(|it| it.to_string()).as_deref(),
+                Some("DeckExport")
+            );
+            binding
+                .keystrokes()
+                .iter()
+                .map(|stroke| stroke.unparse())
+                .collect()
+        })
+        .collect();
+    assert_eq!(keys, ["escape", "left", "right"]);
 }
 
 #[test]

@@ -102,12 +102,6 @@ pub(crate) const TIPS: &[(&str, &str, &str, &str)] = &[
         "you have said everything you want to say about this deck.",
     ),
     (
-        "e",
-        "export",
-        "Writes the deck out as a PDF or an HTML file, previewed first, saved where you choose.",
-        "you want to send what this deck says to somebody who does not have deck.",
-    ),
-    (
         "q",
         "close",
         "Closes the deck. A comment you were writing is kept as a draft.",

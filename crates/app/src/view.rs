@@ -44,8 +44,7 @@ gpui_kit::actions!(
         Leave,
         Unlight,
         AddToReview,
-        Help,
-        Export
+        Help
     ]
 );
 
@@ -96,10 +95,6 @@ pub fn bindings() -> Vec<KeyBinding> {
         // `?`, typed: shift and the slash on most keyboards, matched on the
         // character it makes.
         KeyBinding::new("?", Help, Some("Deck")),
-        // The export sheet. Its own keys — escape, the arrows, return — are
-        // bound in the context it claims while it is up: see
-        // `export_sheet::bindings`.
-        KeyBinding::new("e", Export, Some("Deck")),
         // Escape is bound in the composer too, for discarding a remark. That
         // context is deeper than this one, so while somebody is writing it
         // takes the key and this never runs.
@@ -871,7 +866,8 @@ pub struct DeckView {
     /// asking to be put away.
     export: Option<(Entity<crate::export_sheet::ExportSheet>, Subscription)>,
     /// Whether a debug build has opened the sheet it was asked to show at
-    /// start, for the screenshots. See `DECK_DEBUG_SHEET`.
+    /// start, for the screenshots. See `debug_sheet`.
+    #[cfg(debug_assertions)]
     export_shown: bool,
     /// The card that says why *Ask now* is off, while it is up.
     ///
@@ -1169,6 +1165,7 @@ impl DeckView {
             notes_fade: Self::card_fade(),
             quit_fade: Self::card_fade(),
             export: None,
+            #[cfg(debug_assertions)]
             export_shown: false,
             explaining: false,
             asks_carousel: crate::asks::Carousel::default(),
@@ -3345,18 +3342,14 @@ impl DeckView {
         )
     }
 
-    /// `e`: the export sheet, over the dimmed window.
-    fn on_export(&mut self, _: &Export, window: &mut Window, cx: &mut Context<Self>) {
-        self.open_export(None, window, cx);
-    }
-
-    /// Lay the export sheet over the window, showing `shown`'s state when a
-    /// debug build was asked for one.
+    /// Lay the export sheet over the window.
     ///
     /// The sheet holds the keyboard while it is up, as the notes card does:
-    /// the deck's own keys must not act under it, and its escape, arrows and
-    /// return must reach it whatever was focused before.
-    fn open_export(&mut self, shown: Option<String>, window: &mut Window, cx: &mut Context<Self>) {
+    /// the deck's own keys must not act under it, and its escape and arrows
+    /// must reach it whatever was focused before.
+    // Only the debug snapshot opens it until the export button does.
+    #[cfg_attr(not(debug_assertions), allow(dead_code))]
+    fn open_export(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if self.export.is_some() || self.deck.groups().is_empty() {
             return;
         }
@@ -3383,7 +3376,7 @@ impl DeckView {
         };
         let palette = self.palette;
         let sheet =
-            cx.new(|cx| crate::export_sheet::ExportSheet::new(source, palette, painted, shown, cx));
+            cx.new(|cx| crate::export_sheet::ExportSheet::new(source, palette, painted, cx));
         let closing = cx.subscribe_in(
             &sheet,
             window,
@@ -3394,6 +3387,24 @@ impl DeckView {
         sheet.read(cx).focus_handle(cx).focus(window, cx);
         self.export = Some((sheet, closing));
         cx.notify();
+    }
+
+    /// For the screenshots of the export sheet: a debug build started with
+    /// `DECK_DEBUG_SHEET` opens it, once, in the state it names, as soon as
+    /// the deck has every group.
+    #[cfg(debug_assertions)]
+    fn debug_sheet(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.export_shown || !self.deck.sealed() || self.deck.groups().is_empty() {
+            return;
+        }
+        let Ok(asked) = std::env::var("DECK_DEBUG_SHEET") else {
+            return;
+        };
+        self.export_shown = true;
+        self.open_export(window, cx);
+        if let Some((sheet, _)) = &self.export {
+            sheet.update(cx, |sheet, cx| sheet.snapshot(&asked, cx));
+        }
     }
 
     /// Put the export sheet away and give the keyboard back to the deck.
@@ -7306,13 +7317,6 @@ impl DeckView {
                     .child(named("n", "next", cx))
                     .child(named("p", "previous", cx))
                     .child(named("c", "comment", cx))
-                    .child(
-                        named("e", "export", cx)
-                            .cursor_pointer()
-                            .on_click(cx.listener(|deck, _, window, cx| {
-                                deck.on_export(&Export, window, cx);
-                            })),
-                    )
                     .child(div().w(px(1.)).h(px(12.)).bg(paint(self.palette.edge)))
                     .child(
                         named(crate::keys::HELP, "keys", cx)
@@ -8558,18 +8562,8 @@ use crate::pane::SPINE;
 impl Render for DeckView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         self.settle_said_light();
-        // For the screenshots of the export sheet, which cannot be taken by
-        // pressing `e`: a debug build asked for one opens it, once, as soon
-        // as the deck has every group. An installed deck has no such branch.
-        if cfg!(debug_assertions)
-            && !self.export_shown
-            && self.deck.sealed()
-            && !self.deck.groups().is_empty()
-            && let Ok(shown) = std::env::var("DECK_DEBUG_SHEET")
-        {
-            self.export_shown = true;
-            self.open_export(Some(shown), window, cx);
-        }
+        #[cfg(debug_assertions)]
+        self.debug_sheet(window, cx);
         // The dock, a key's card, and a key lit on the dock all move on their
         // own clock.
         let hit = self
@@ -8957,11 +8951,16 @@ impl Render for DeckView {
             // element on mouse down. So the keys come back exactly when the
             // caret leaves the box, and go away exactly when it returns.
             //
-            // Nor while the notes are up. They are a card over the deck, and a
-            // key matched up the focus chain would otherwise reach through it:
-            // `s` sent the review, `c` opened a comment under the card.
+            // Nor while the notes or the export sheet are up. They are cards
+            // over the deck, and a key matched up the focus chain would
+            // otherwise reach through them: `s` sent the review, `c` opened a
+            // comment under the card.
             .when(
-                !typing && !self.notes_fade.on() && !self.quitting && !self.explaining,
+                !typing
+                    && !self.notes_fade.on()
+                    && !self.quitting
+                    && !self.explaining
+                    && self.export.is_none(),
                 |this| this.key_context("Deck"),
             )
             .on_action(cx.listener(Self::on_next))
@@ -8983,6 +8982,7 @@ impl Render for DeckView {
                 if deck.notes_fade.on()
                     || deck.quitting
                     || deck.explaining
+                    || deck.export.is_some()
                     || deck.typing(window, cx)
                 {
                     return;
@@ -9005,7 +9005,6 @@ impl Render for DeckView {
             .on_action(cx.listener(Self::on_zoom_in))
             .on_action(cx.listener(Self::on_zoom_out))
             .on_action(cx.listener(Self::on_zoom_reset))
-            .on_action(cx.listener(Self::on_export))
             // One handler for the whole window, asking the event whether a
             // button is down rather than remembering that it was. A remembered
             // flag is what kept sticking on, and then merely crossing the code
@@ -9498,6 +9497,26 @@ mod tests {
             Some("deck::Close"),
             "{quit} never refuses"
         );
+    }
+
+    #[test]
+    fn a_bare_key_acts_only_where_the_deck_claims_the_keyboard() {
+        // The root gives up its context under a card or the export sheet, and
+        // that only holds the deck's keys back if every key bound outside a
+        // context is a chord: a bare letter bound with none would reach
+        // through anything.
+        for binding in bindings() {
+            if binding.predicate().is_some() {
+                continue;
+            }
+            let stroke = binding.keystrokes().first().expect("a keystroke");
+            let held = stroke.modifiers();
+            assert!(
+                held.platform || held.control || held.alt,
+                "{} is bound everywhere with no modifier",
+                stroke.unparse()
+            );
+        }
     }
 
     #[test]

@@ -1,5 +1,5 @@
-//! The export sheet: `e` in a deck, and the deck written out as a PDF or an
-//! HTML file for somebody who does not have deck.
+//! The export sheet: the deck written out as a PDF or an HTML file for
+//! somebody who does not have deck.
 //!
 //! A sheet over the dimmed window, in two columns. On the left, what to
 //! write — the format, which way up, the colours, which groups, whether what
@@ -18,18 +18,21 @@
 //! - **The preview is the file.** The pages are laid out by the export and
 //!   painted box for box ([`preview`]), not drawn to look like them, and they
 //!   are laid out again the moment an option changes: unticking a group
-//!   takes it out of the pages, the counts, and the `.deck` inside.
+//!   takes it out of the pages, the counts, and the `.deck` inside. The
+//!   HTML file is the exception: a browser sets it, so it is shown as the
+//!   landscape pages, a group to a screen, and the sheet says so.
 //! - **Where it goes is the reader's.** Export opens the system's own save
 //!   dialog, named and placed by [`model::file_name`] and
-//!   [`model::start_folder`], and writes only where it answers
-//!   ([`model::Asked`]). There is no folder exports go to.
+//!   [`model::start_folder`], and writes only where it answers. There is
+//!   no folder exports go to.
 
+#[cfg(debug_assertions)]
+mod debug;
 mod model;
 mod preview;
 #[cfg(test)]
 mod tests;
 
-use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -40,32 +43,30 @@ use gpui_kit::component::*;
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 
-pub use model::{Asked, Choice, Format, Layout, Saved, Theme};
+pub use model::{Choice, Format, Layout, Saved, Theme};
 
 use crate::palette::paint;
 
-gpui_kit::actions!(deck_export, [CloseSheet, NextPage, PrevPage, ExportNow]);
+gpui_kit::actions!(deck_export, [CloseSheet, NextPage, PrevPage]);
 
 /// The sheet's keys, in the context it claims while it is up: escape puts it
-/// away, the arrows page through the preview, and return exports.
+/// away, and the arrows page through the preview. Nothing else: an export is
+/// a click on its button, never a key pressed on the way to somewhere else.
 #[must_use]
 pub fn bindings() -> Vec<KeyBinding> {
     vec![
         KeyBinding::new("escape", CloseSheet, Some("DeckExport")),
         KeyBinding::new("left", PrevPage, Some("DeckExport")),
         KeyBinding::new("right", NextPage, Some("DeckExport")),
-        KeyBinding::new("enter", ExportNow, Some("DeckExport")),
     ]
 }
 
 /// Ask where to save `name`, opening in `start`: the path chosen, `None` for
 /// Cancel, or why no dialog could be shown.
 ///
-/// On a Mac the save panel hangs from the deck's own window as a sheet
-/// ([`crate::mac::save_panel`]): the deck floats above ordinary windows,
-/// and the free-standing panel gpui opens came up behind it, where nobody
-/// could see it. Elsewhere it is gpui's `prompt_for_new_path`, whose dialog
-/// on Windows is owned by the deck's window and so stands above it.
+/// On a Mac the panel hangs from the deck's own window as a sheet
+/// ([`crate::mac::save_panel`]), since the deck floats above gpui's
+/// free-standing panel; elsewhere it is gpui's `prompt_for_new_path`.
 fn ask_where(
     start: &std::path::Path,
     name: &str,
@@ -169,6 +170,11 @@ type Laying = (Vec<Page>, Vec<String>, Vec<String>);
 /// What a set of pages is known by: everything that changes them.
 type Key = (export::Format, Theme, Vec<u32>, bool, Format);
 
+/// How many option sets' pages are kept laid out: enough to click back and
+/// forth between a few without waiting, few enough that a long session of
+/// clicking does not hold every layout it ever made.
+const LAID_KEPT: usize = 6;
+
 /// The sheet.
 pub struct ExportSheet {
     focus: FocusHandle,
@@ -188,7 +194,13 @@ pub struct ExportSheet {
     remarks: usize,
     answers: usize,
     scan: Scan,
-    laid: HashMap<Key, Arc<Laid>>,
+    /// A secret's fingerprint whose *let through* was clicked once, waiting
+    /// on the second click that says it was checked.
+    confirming: Option<String>,
+    /// The last few option sets' pages, oldest first.
+    laid: Vec<(Key, Arc<Laid>)>,
+    /// Why the pages for an option set could not be laid out.
+    unlaid: Option<(Key, String)>,
     /// The pages last shown, kept up — dimmed, and said to be updating —
     /// while the pages for a changed option are laid out, so the preview
     /// never goes blank between two of them.
@@ -202,10 +214,9 @@ pub struct ExportSheet {
     laying: Task<()>,
     scanning: Task<()>,
     writing: Task<()>,
-    /// A state to show at once, for the screenshots: debug builds only.
-    shown: Option<String>,
-    /// Whether `asking` has opened its dialog yet.
-    asked_once: bool,
+    /// The state it is held in for a screenshot.
+    #[cfg(debug_assertions)]
+    debug: Option<debug::Snapshot>,
 }
 
 impl EventEmitter<Closed> for ExportSheet {}
@@ -220,13 +231,7 @@ impl ExportSheet {
     /// A sheet for `source`, painted in `palette`, exporting by default in
     /// the colours the window is `painted` in. It starts reading the deck at
     /// once: packing a folder reads every file it points at.
-    pub fn new(
-        source: Source,
-        palette: Palette,
-        painted: Painted,
-        shown: Option<String>,
-        cx: &mut Context<Self>,
-    ) -> Self {
+    pub fn new(source: Source, palette: Palette, painted: Painted, cx: &mut Context<Self>) -> Self {
         preview::embed_faces(cx);
         let mut sheet = Self {
             focus: cx.focus_handle(),
@@ -241,7 +246,9 @@ impl ExportSheet {
             remarks: 0,
             answers: 0,
             scan: Scan::Reading,
-            laid: HashMap::new(),
+            confirming: None,
+            laid: Vec::new(),
+            unlaid: None,
             last: None,
             drawings: Arc::new(preview::Drawings::new()),
             thumbs: ScrollHandle::new(),
@@ -250,52 +257,11 @@ impl ExportSheet {
             laying: Task::ready(()),
             scanning: Task::ready(()),
             writing: Task::ready(()),
-            shown: None,
-            asked_once: false,
+            #[cfg(debug_assertions)]
+            debug: None,
         };
-        if cfg!(debug_assertions)
-            && let Some(asked) = shown
-        {
-            sheet.show(&asked);
-        }
         sheet.read(cx);
         sheet
-    }
-
-    /// The sheet in the state `asked` names, for taking its picture without
-    /// pressing anything: `ready:pdf-landscape`, `ready:html:groups=1,3`,
-    /// `done:pdf-portrait:light`, and `loading`, which holds the pages from
-    /// being laid out so the sheet can be seen waiting for them. A debug build's hook, set from
-    /// `DECK_DEBUG_SHEET`; an installed deck never reads it.
-    fn show(&mut self, asked: &str) {
-        for part in asked.split(':') {
-            match part {
-                "pdf-portrait" => {
-                    self.choice.format = Format::Pdf;
-                    self.choice.layout = Layout::Portrait;
-                }
-                "pdf-landscape" => {
-                    self.choice.format = Format::Pdf;
-                    self.choice.layout = Layout::Landscape;
-                }
-                "html" => self.choice.format = Format::Html,
-                "light" => self.choice.light_cut = true,
-                "nocomments" => self.choice.comments = false,
-                _ => {
-                    if let Some(list) = part.strip_prefix("groups=")
-                        && let Ok(numbers) = export::groups(list)
-                    {
-                        for (ix, on) in self.choice.groups.iter_mut().enumerate() {
-                            *on = u32::try_from(ix + 1).is_ok_and(|n| numbers.contains(&n));
-                        }
-                    }
-                    if let Some(n) = part.strip_prefix("page=") {
-                        self.page = n.parse::<usize>().unwrap_or(1).saturating_sub(1);
-                    }
-                }
-            }
-        }
-        self.shown = Some(asked.to_string());
     }
 
     /// Pack or open the deck, as `deck export` does, with whatever has been
@@ -389,17 +355,12 @@ impl ExportSheet {
         let Some(packing) = self.packing.clone() else {
             return;
         };
-        // For the picture of the sheet still laying out: held there.
-        if cfg!(debug_assertions)
-            && self
-                .shown
-                .as_deref()
-                .is_some_and(|shown| shown.starts_with("loading"))
-        {
+        #[cfg(debug_assertions)]
+        if self.debug_holds_pages() {
             return;
         }
         let key = self.key();
-        if self.laid.contains_key(&key) {
+        if self.laid.iter().any(|(laid, _)| *laid == key) {
             self.settle_page();
             return;
         }
@@ -426,73 +387,24 @@ impl ExportSheet {
                             sheet.drawings = Arc::new(all);
                         }
                         let pages = pages.into_iter().map(Arc::new).collect();
-                        sheet.laid.insert(
+                        if sheet.laid.len() >= LAID_KEPT {
+                            sheet.laid.remove(0);
+                        }
+                        sheet.laid.push((
                             key,
                             Arc::new(Laid {
                                 pages,
                                 labels,
                                 notices,
                             }),
-                        );
+                        ));
                         sheet.settle_page();
                         sheet.thumbs.scroll_to_item(sheet.page);
-                        sheet.debug_done(cx);
+                        #[cfg(debug_assertions)]
+                        sheet.debug_laid(cx);
                     }
-                    Err(err) => sheet.phase = Phase::Failed(err),
+                    Err(err) => sheet.unlaid = Some((key, err)),
                 }
-                cx.notify();
-            })
-            .ok();
-        });
-    }
-
-    /// For the screenshots of a saved export: the line a real one shows,
-    /// from the real bytes, at the path the dialog would have offered.
-    /// Nothing is written.
-    fn debug_done(&mut self, cx: &mut Context<Self>) {
-        if !cfg!(debug_assertions) {
-            return;
-        }
-        let Some(asked) = self.shown.as_deref() else {
-            return;
-        };
-        if !asked.starts_with("done") || !matches!(self.phase, Phase::Ready) {
-            return;
-        }
-        let (Some(packing), Some(laid)) = (self.packing.clone(), self.current()) else {
-            return;
-        };
-        let painted = self.painted(self.choice.theme());
-        let options = self.choice.options(painted.dark);
-        let shape = self.choice.shape();
-        let pages = shape.map(|_| laid.pages.len());
-        let path = model::start_folder(
-            crate::state::remembered_export_dir(),
-            self.source.project.as_deref(),
-            deck_core::home::home(),
-        )
-        .join(model::file_name(&packing.name, &self.choice));
-        self.phase = Phase::Writing;
-        self.writing = cx.spawn(async move |this, cx| {
-            let bytes = cx
-                .background_executor()
-                .spawn(async move {
-                    crate::cli::written(
-                        &packing.bundle,
-                        &packing.name,
-                        &painted.palette,
-                        painted.syntax,
-                        &options,
-                        shape,
-                    )
-                    .map(|(bytes, _)| bytes.len())
-                })
-                .await;
-            this.update(cx, |sheet, cx| {
-                sheet.phase = match bytes {
-                    Ok(bytes) => Phase::Saved(Saved { path, bytes, pages }),
-                    Err(err) => Phase::Failed(format!("{err:#}")),
-                };
                 cx.notify();
             })
             .ok();
@@ -506,6 +418,10 @@ impl ExportSheet {
             return;
         };
         let groups = self.choice.numbers();
+        // Export stays off until this scan lands: the last one was of
+        // other groups.
+        self.scan = Scan::Reading;
+        self.confirming = None;
         self.scanning = cx.spawn(async move |this, cx| {
             let scanned = cx
                 .background_executor()
@@ -525,13 +441,26 @@ impl ExportSheet {
         if !self.allow.contains(&fingerprint) {
             self.allow.push(fingerprint);
         }
+        self.confirming = None;
         self.scan = Scan::Reading;
         self.read(cx);
         cx.notify();
     }
 
     fn current(&self) -> Option<Arc<Laid>> {
-        self.laid.get(&self.key()).cloned()
+        let key = self.key();
+        self.laid
+            .iter()
+            .find(|(laid, _)| *laid == key)
+            .map(|(_, laid)| laid.clone())
+    }
+
+    /// Why the pages for what is asked now could not be laid out.
+    fn unlaid(&self) -> Option<&str> {
+        self.unlaid
+            .as_ref()
+            .filter(|(key, _)| *key == self.key())
+            .map(|(_, why)| why.as_str())
     }
 
     fn settle_page(&mut self) {
@@ -563,7 +492,7 @@ impl ExportSheet {
             Some("Reading the deck…")
         } else if matches!(self.scan, Scan::Reading) {
             Some("Scanning for secrets…")
-        } else if self.packing.is_some() && self.current().is_none() {
+        } else if self.packing.is_some() && self.current().is_none() && self.unlaid().is_none() {
             Some("Laying out the pages…")
         } else {
             match self.phase {
@@ -582,18 +511,8 @@ impl ExportSheet {
         model::button(&self.choice, pages, blocked)
     }
 
-    /// Return, or the button: ask where, then write it there.
+    /// The button: ask where, then write it there.
     fn export(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        // A sheet opened for its picture is a picture: a click that lands on
-        // it while it is being taken opens no dialog. The one exception is
-        // the picture of the dialog itself, `asking`.
-        if self
-            .shown
-            .as_deref()
-            .is_some_and(|shown| !shown.starts_with("asking"))
-        {
-            return;
-        }
         let (_, ready) = self.button();
         let (Some(packing), Some(laid)) = (self.packing.clone(), self.current()) else {
             return;
@@ -615,7 +534,7 @@ impl ExportSheet {
         let answer = ask_where(&start, &name, window, cx);
         self.writing = cx.spawn(async move |this, cx| {
             let asked = match answer.await {
-                Ok(path) => Asked::from_dialog(path),
+                Ok(path) => path,
                 Err(err) => {
                     this.update(cx, |sheet, cx| {
                         sheet.phase = Phase::Failed(err);
@@ -680,20 +599,28 @@ impl ExportSheet {
         cx.emit(Closed);
     }
 
+    /// Whether a file is being asked for or written: the sheet stays up
+    /// until it says how that went, since putting it away drops the task.
+    fn busy(&self) -> bool {
+        matches!(self.phase, Phase::Asking | Phase::Writing)
+    }
+
     /// Escape: out of waiting for a save dialog that never answered, back to
-    /// the sheet as it was; otherwise, the sheet put away. A dialog that is
-    /// up holds the keyboard itself, so this is reached while "Choosing
-    /// where…" only when there is no dialog to be seen, and the export must
-    /// not sit on it for ever.
+    /// the sheet as it was; nothing while a file is being written; otherwise,
+    /// the sheet put away. A dialog that is up holds the keyboard itself, so
+    /// this is reached while "Choosing where…" only when there is no dialog
+    /// to be seen, and the export must not sit on it for ever.
     fn escape(&mut self, cx: &mut Context<Self>) {
-        if matches!(self.phase, Phase::Asking) {
-            // The wait is dropped with its task; an answer arriving after
-            // this goes nowhere and writes nothing.
-            self.writing = Task::ready(());
-            self.phase = Phase::Ready;
-            cx.notify();
-        } else {
-            self.close(cx);
+        match self.phase {
+            Phase::Asking => {
+                // The wait is dropped with its task; an answer arriving after
+                // this goes nowhere and writes nothing.
+                self.writing = Task::ready(());
+                self.phase = Phase::Ready;
+                cx.notify();
+            }
+            Phase::Writing => {}
+            _ => self.close(cx),
         }
     }
 
@@ -803,7 +730,6 @@ fn blocks(scan: &Scan) -> bool {
 }
 
 /// A choice's look, on or off or not yet there.
-#[allow(clippy::too_many_arguments)]
 fn choice(
     id: &'static str,
     title: &'static str,
@@ -958,21 +884,15 @@ fn notice(tone: Rgb, palette: &Palette) -> Div {
 impl Render for ExportSheet {
     #[allow(clippy::too_many_lines)]
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        // For the picture of the save dialog in front of the deck: asked
-        // once the sheet could export, without anything being pressed.
-        if cfg!(debug_assertions)
-            && !self.asked_once
-            && self
-                .shown
-                .as_deref()
-                .is_some_and(|shown| shown.starts_with("asking"))
-            && matches!(self.scan, Scan::Clear)
-            && self.current().is_some()
-        {
-            self.asked_once = true;
-            cx.defer_in(window, |sheet, window, cx| sheet.export(window, cx));
-        }
+        #[cfg(debug_assertions)]
+        self.debug_render(window, cx);
+        #[cfg(not(debug_assertions))]
+        let _ = window;
         let palette = self.palette;
+        #[cfg(debug_assertions)]
+        let badge = self.debug_badge(&palette);
+        #[cfg(not(debug_assertions))]
+        let badge: Option<Div> = None;
         let mono = cx.theme().mono_font_family.clone();
         let warn = crate::keys::level_colour(deck_core::protocol::Level::Medium, &palette);
         let bad = palette.del;
@@ -982,9 +902,15 @@ impl Render for ExportSheet {
             self.last.clone_from(&fresh);
         }
         // What the preview shows: the pages for what is asked, or the last
-        // ones while those are laid out.
-        let stale = fresh.is_none() && self.last.is_some();
-        let laid = fresh.clone().or_else(|| self.last.clone());
+        // ones while those are laid out. Not when they could not be: the
+        // last pages are of something else, and would pass for these.
+        let unlaid = self.unlaid().map(str::to_string);
+        let stale = fresh.is_none() && self.last.is_some() && unlaid.is_none();
+        let laid = if unlaid.is_some() {
+            None
+        } else {
+            fresh.clone().or_else(|| self.last.clone())
+        };
         let waiting = self.waiting();
         let count = self.choice.groups.len();
         let (says, ready) = self.button();
@@ -1268,16 +1194,48 @@ impl Render for ExportSheet {
                     )))
                     .children(hits.iter().enumerate().map(|(ix, hit)| {
                         let fingerprint = hit.fingerprint.clone();
-                        div()
-                            .id(("x-allow", ix))
-                            .mt(px(3.))
-                            .cursor_pointer()
-                            .text_color(paint(palette.accent))
-                            .hover(|this| this.text_color(paint(palette.fg)))
-                            .on_click(cx.listener(move |sheet, _, _, cx| {
-                                sheet.let_through(fingerprint.clone(), cx);
-                            }))
-                            .child(format!("Let {} through", hit.fingerprint))
+                        let link = |id: (&'static str, usize)| {
+                            div()
+                                .id(id)
+                                .cursor_pointer()
+                                .text_color(paint(palette.accent))
+                                .hover(|this| this.text_color(paint(palette.fg)))
+                        };
+                        // Two clicks, the second saying it was looked at: one
+                        // click near the button should never send a secret.
+                        if self.confirming.as_deref() == Some(fingerprint.as_str()) {
+                            div()
+                                .mt(px(3.))
+                                .h_flex()
+                                .flex_wrap()
+                                .gap(px(12.))
+                                .child(format!("{}:", hit.fingerprint))
+                                .child(
+                                    link(("x-allow-sure", ix))
+                                        .on_click(cx.listener(move |sheet, _, _, cx| {
+                                            sheet.let_through(fingerprint.clone(), cx);
+                                        }))
+                                        .child("Let it through — I checked it"),
+                                )
+                                .child(
+                                    link(("x-allow-cancel", ix))
+                                        .on_click(cx.listener(|sheet, _, _, cx| {
+                                            sheet.confirming = None;
+                                            cx.notify();
+                                        }))
+                                        .child("Cancel"),
+                                )
+                                .into_any_element()
+                        } else {
+                            link(("x-allow", ix))
+                                .mt(px(3.))
+                                .on_click(cx.listener(move |sheet, _, _, cx| {
+                                    sheet.confirming = Some(fingerprint.clone());
+                                    cx.notify();
+                                }))
+                                .child(format!("Let {} through", hit.fingerprint))
+                                .into_any_element()
+                        }
                     })),
             ),
             Scan::Refused(why) => Some(
@@ -1417,14 +1375,7 @@ impl Render for ExportSheet {
                     .child(match waiting {
                         Some(doing) => breathing("x-working", doing, &palette).into_any_element(),
                         None => div().child(says).into_any_element(),
-                    })
-                    .child(
-                        div()
-                            .font_family(mono.clone())
-                            .text_size(px(11.))
-                            .opacity(0.8)
-                            .child("⏎"),
-                    ),
+                    }),
             ),
         };
 
@@ -1538,7 +1489,7 @@ impl Render for ExportSheet {
             .unwrap_or_else(|| "laying it out".to_string());
         let unit = if pdf { "page" } else { "view" };
         let meta = match self.choice.shape() {
-            None => "one HTML file · 1123×794 per group",
+            None => "HTML · shown as landscape pages, a browser sets the file",
             Some(export::Format::Portrait) => "portrait · A4",
             Some(export::Format::Landscape) => "landscape · A4",
         };
@@ -1596,7 +1547,7 @@ impl Render for ExportSheet {
                             .child(preview::page(page, drawings))
                     }))
                     // Nothing laid out yet: the shape of a page, breathing,
-                    // and what it is waiting on.
+                    // and what it is waiting on; or why it could not be.
                     .when(laid.is_none(), |this| {
                         let (w, h) = match self.choice.previewed() {
                             export::Format::Portrait => (300., 424.),
@@ -1622,11 +1573,28 @@ impl Render for ExportSheet {
                                         .flex()
                                         .items_center()
                                         .justify_center()
-                                        .child(breathing(
-                                            "x-loading",
-                                            waiting.unwrap_or("Laying out the pages…"),
-                                            &palette,
-                                        )),
+                                        .child(match unlaid {
+                                            Some(why) => notice(bad, &palette)
+                                                .m(px(16.))
+                                                .child(
+                                                    div()
+                                                        .font_weight(FontWeight::SEMIBOLD)
+                                                        .text_color(paint(bad))
+                                                        .child(
+                                                            "These pages could not be laid \
+                                                             out, so there is nothing to \
+                                                             export yet.",
+                                                        ),
+                                                )
+                                                .child(div().child(sentence(&why)))
+                                                .into_any_element(),
+                                            None => breathing(
+                                                "x-loading",
+                                                waiting.unwrap_or("Laying out the pages…"),
+                                                &palette,
+                                            )
+                                            .into_any_element(),
+                                        }),
                                 ),
                         )
                     })
@@ -1687,7 +1655,7 @@ impl Render for ExportSheet {
                     .font_family(mono.clone())
                     .text_size(px(11.))
                     .text_color(paint(palette.muted))
-                    .child("esc close · ← → page · ⏎ export"),
+                    .child("esc close · ← → page"),
             );
 
         div()
@@ -1697,11 +1665,14 @@ impl Render for ExportSheet {
             .on_action(cx.listener(|sheet, _: &CloseSheet, _, cx| sheet.escape(cx)))
             .on_action(cx.listener(|sheet, _: &NextPage, _, cx| sheet.turn_page(1, cx)))
             .on_action(cx.listener(|sheet, _: &PrevPage, _, cx| sheet.turn_page(-1, cx)))
-            .on_action(cx.listener(|sheet, _: &ExportNow, window, cx| sheet.export(window, cx)))
             .occlude()
             .on_mouse_down(
                 MouseButton::Left,
-                cx.listener(|sheet, _, _, cx| sheet.close(cx)),
+                cx.listener(|sheet, _, _, cx| {
+                    if !sheet.busy() {
+                        sheet.close(cx);
+                    }
+                }),
             )
             .absolute()
             .top_0()
@@ -1736,24 +1707,6 @@ impl Render for ExportSheet {
                     .child(options)
                     .child(preview),
             )
-            // A sheet opened for its picture takes no pointer at all: a
-            // click or a scroll that lands on the window while it is being
-            // taken would otherwise change what the picture shows.
-            .when(
-                self.shown
-                    .as_deref()
-                    .is_some_and(|shown| !shown.starts_with("asking")),
-                |this| {
-                    this.child(
-                        div()
-                            .id("export-picture")
-                            .absolute()
-                            .inset_0()
-                            .occlude()
-                            .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-                            .on_scroll_wheel(|_, _, cx| cx.stop_propagation()),
-                    )
-                },
-            )
+            .children(badge)
     }
 }

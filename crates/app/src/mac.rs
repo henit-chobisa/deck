@@ -212,16 +212,11 @@ pub fn step_back() {
     before.activateWithOptions(NSApplicationActivationOptions::empty());
 }
 
-/// Ask where to save a file, with the system's save panel on `window`
-/// itself: `name` offered, opening in `directory`. The answer arrives on the
-/// receiver — the path chosen, or `None` for Cancel.
+/// Ask where to save a file, with the system's save panel run as a sheet on
+/// `window`: `name` offered, opening in `directory`. The answer arrives on
+/// the receiver — the path chosen, or `None` for Cancel.
 ///
-/// Not gpui's `prompt_for_new_path`. That opens a free-standing panel at the
-/// ordinary window level, and the deck's window floats above that level — so
-/// the panel opened behind the deck, out of sight, and Export sat on
-/// "Choosing where…" with nothing anywhere to answer. A panel run as a sheet
-/// belongs to the window it hangs from: it comes down from the deck's own
-/// title edge, at the deck's own level, and holds the keyboard while it is
+/// A sheet is at the deck's own level and holds the keyboard while it is
 /// there. Deck is brought forward first, so the sheet is in front of
 /// whatever the reader was in.
 ///
@@ -258,8 +253,14 @@ pub fn save_panel(
             let _ = answer.send(path);
         }
     });
-    NSRunningApplication::currentApplication()
-        .activateWithOptions(NSApplicationActivationOptions::empty());
+    // `activate` is macOS 14's, and the old way is deprecated there.
+    let app = NSApplication::sharedApplication(main);
+    if app.respondsToSelector(sel!(activate)) {
+        app.activate();
+    } else {
+        NSRunningApplication::currentApplication()
+            .activateWithOptions(NSApplicationActivationOptions::empty());
+    }
     parent.makeKeyAndOrderFront(None);
     panel.beginSheetModalForWindow_completionHandler(&parent, &handler);
     Some(answered)

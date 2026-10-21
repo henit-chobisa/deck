@@ -11,9 +11,9 @@
 //!
 //! What it does not share with the command is where the file goes. The
 //! command names a path; the window never does. It asks, with the system's
-//! own save dialog, and [`save`] writes only to a path that dialog gave back
-//! ([`Asked`]). There is no folder exports go to: only the last one somebody
-//! chose ([`start_folder`]).
+//! own save dialog, and [`save`] writes only to the path that dialog gave
+//! back. There is no folder exports go to: only the last one somebody chose
+//! ([`start_folder`]).
 
 use std::path::{Path, PathBuf};
 
@@ -30,7 +30,7 @@ pub enum Format {
 
 /// Which way up a PDF's pages are. Only a PDF has one: the HTML is the
 /// window already.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Layout {
     /// A cover, then each group on a page or two of its own.
     Portrait,
@@ -65,7 +65,7 @@ impl Theme {
 }
 
 /// Everything the sheet has been asked.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Choice {
     /// PDF or HTML.
     pub format: Format,
@@ -278,28 +278,6 @@ pub fn size(bytes: usize) -> String {
     }
 }
 
-/// A path the save dialog gave back, and the only thing [`save`] writes to.
-///
-/// Made in one place, from the dialog's answer, so no other path can reach
-/// the writer: a fixed folder, a name worked out from the title, a path left
-/// over from last time — none of them is an `Asked`.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Asked(PathBuf);
-
-impl Asked {
-    /// What the save dialog answered: a path, or `None` for Cancel.
-    #[must_use]
-    pub fn from_dialog(answer: Option<PathBuf>) -> Option<Self> {
-        answer.map(Self)
-    }
-
-    /// Where.
-    #[must_use]
-    pub fn path(&self) -> &Path {
-        &self.0
-    }
-}
-
 /// A file the sheet wrote, for the line that says so.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Saved {
@@ -324,7 +302,7 @@ impl Saved {
     }
 }
 
-/// `bytes` written at the path the save dialog gave back.
+/// `bytes` written at `path`, which the save dialog gave back.
 ///
 /// Over a file already there: the dialog has asked the reader whether to
 /// replace it, and they said yes. The folder it is in is remembered by the
@@ -333,10 +311,10 @@ impl Saved {
 /// # Errors
 ///
 /// When the file cannot be written.
-pub fn save(asked: &Asked, bytes: &[u8], pages: Option<usize>) -> anyhow::Result<Saved> {
-    deck_cli::pack::write_new(asked.path(), bytes, true)?;
+pub fn save(path: &Path, bytes: &[u8], pages: Option<usize>) -> anyhow::Result<Saved> {
+    deck_cli::pack::write_new(path, bytes, true)?;
     Ok(Saved {
-        path: asked.path().to_path_buf(),
+        path: path.to_path_buf(),
         bytes: bytes.len(),
         pages,
     })
