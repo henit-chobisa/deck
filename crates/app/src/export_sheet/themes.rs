@@ -538,7 +538,8 @@ impl ExportSheet {
         let panel = div()
             .id("x-themes")
             .occlude()
-            .w(px(440.))
+            // As wide as the field it drops from, so it stays in the options column.
+            .w(field.size.width)
             .v_flex()
             .rounded(px(10.))
             .border_1()
