@@ -71,20 +71,26 @@ const FALL: std::time::Duration = std::time::Duration::from_millis(760);
 /// Leaving is not the same act as being replaced. Out of the way, and quickly.
 const HAND_OVER: std::time::Duration = std::time::Duration::from_millis(200);
 
+/// How long a value takes to open: the code below glides down to make room,
+/// and the value's words come up into it.
+///
+/// Rows appearing at once pushed the rest of the file down in a jump, and a
+/// jump is the reader losing their place — so it moves. But not slowly. A
+/// value opens because a sentence reached it, at the same moment the pointed
+/// lines light, and those take 520ms. A whole second here left the reader
+/// looking at lit lines and an empty gap, waiting for the thing the sentence
+/// was about. Under the point light, so the value is there when the light is.
+pub(crate) const UNFOLD: std::time::Duration = std::time::Duration::from_millis(450);
+/// How long it takes to close, a little quicker than it opened, so a value
+/// put away is out of the way before the next sentence needs the room.
+pub(crate) const REFOLD: std::time::Duration = std::time::Duration::from_millis(320);
+
 /// How long a light the reader raised takes to come up.
 ///
 /// Every timing above this one answers to a voice, and a voice is slow on
 /// purpose. A light that answers a hand is a different thing: the reader
 /// already knows what they did, and anything that takes half a second to agree
 /// with them reads as the window thinking about it.
-/// How long a value takes to open: the code below glides down to make room.
-///
-/// Slow on purpose. Rows appearing at once pushed the rest of the file down in
-/// a jump, and a jump is the reader losing their place.
-pub(crate) const UNFOLD: std::time::Duration = std::time::Duration::from_millis(1000);
-/// How long it takes to close, a little quicker than it opened.
-pub(crate) const REFOLD: std::time::Duration = std::time::Duration::from_millis(820);
-
 pub(crate) const HAND_RISE: std::time::Duration = std::time::Duration::from_millis(150);
 
 /// And how long it takes to go out.
@@ -1895,19 +1901,22 @@ impl Pane {
         // much higher while it opens, so the code glides down to make room
         // rather than jumping; the keys under it are covered and uncovered as
         // it goes.
-        // Two steps, not one. The code slides down first and leaves an empty
-        // gap, and only then does what goes in it come in; going away runs the
-        // other way. Moving and appearing at once was two things competing for
-        // the same glance.
-        // The slide eases in and out the same way both directions, and the
-        // fade comes after it, straight. An ease-out run backwards for a close
-        // sped up into its end and stopped hard; the room appears empty and
-        // only then fills, so nothing is seen swelling.
+        // Room first, words after, but not one and then the other. The code
+        // slides down over the first two thirds and the words come up from a
+        // third of the way in, so by the time they are anything to look at the
+        // gap is most of the way open; going away runs the other way. Moving
+        // and appearing at exactly once was two things competing for the same
+        // glance — and the two strictly in turn, the words waiting for the room
+        // to finish, made a value the slowest thing on the screen.
+        // Both eased in and out, the same curve a light uses, so a value comes
+        // up the way a pointed line does. An ease-out run backwards for a
+        // close sped up into its end and stopped hard, and words fading in
+        // straight arrived with a corner at the end of them.
         let slide = |x: f32| {
             let x = x.clamp(0., 1.);
             x * x * (3. - 2. * x)
         };
-        let steps = move |t: f32| (slide(t / 0.6), ((t - 0.6) / 0.4).clamp(0., 1.));
+        let steps = move |t: f32| (slide(t / 0.65), slide((t - 0.35) / 0.65));
         // Each stretch of rows in motion: its first and last row, how far the
         // room for it has opened, and how far its words are in.
         let mut blocks: Vec<(usize, usize, f32, f32)> = Vec::new();
@@ -3605,6 +3614,15 @@ mod tests {
             inlay: Vec::new(),
             extra: None,
         }
+    }
+
+    #[test]
+    fn a_value_is_open_by_the_time_its_line_is_lit() {
+        // A value opens at the same moment the sentence lights its line. Any
+        // longer than the light and the reader is left looking at lit code
+        // and an empty gap, waiting for the thing the sentence is about.
+        assert!(UNFOLD <= RISE, "{UNFOLD:?} against {RISE:?}");
+        assert!(REFOLD < UNFOLD);
     }
 
     /// What a pane's rows say, one word per row: the number of a line, or the
