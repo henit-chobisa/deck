@@ -532,3 +532,43 @@ fn the_list_holds_what_is_installed_and_nothing_else() {
         "and nothing can be picked before it is read"
     );
 }
+
+/// A group's row says how much was said about it in whole words, and `1`
+/// is not plural.
+#[test]
+fn a_group_row_counts_its_comments() {
+    assert_eq!(model::comments(1), "1 comment");
+    assert_eq!(model::comments(2), "2 comments");
+    assert_eq!(model::comments(12), "12 comments");
+}
+
+/// A saved sheet is not a dead end: *Export again* goes back to ready, and
+/// so does a failure. A dialog or a write under way is left alone.
+#[test]
+fn export_again_goes_back_to_ready() {
+    let saved = Saved {
+        path: PathBuf::from("/tmp/a.pdf"),
+        bytes: 14,
+        pages: Some(3),
+    };
+    assert!(matches!(Phase::Saved(saved).again(), Phase::Ready));
+    assert!(matches!(
+        Phase::Failed("no".to_string()).again(),
+        Phase::Ready
+    ));
+    assert!(matches!(Phase::Writing.again(), Phase::Writing));
+    assert!(matches!(Phase::Asking.again(), Phase::Asking));
+}
+
+/// A small page that is neither chosen nor under the pointer is dimmed; one
+/// that is either is whole.
+#[test]
+fn a_small_page_is_dimmed_until_it_is_lit() {
+    let light = Thumb::new();
+    assert!((light.opacity() - DIMMED).abs() < f32::EPSILON);
+    let mut chosen = Thumb::new();
+    chosen.chosen = feedback();
+    chosen.chosen.set(true);
+    assert!(chosen.chosen.moving());
+    assert!(chosen.opacity() >= DIMMED);
+}

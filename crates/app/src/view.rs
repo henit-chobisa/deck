@@ -3538,7 +3538,22 @@ impl DeckView {
     }
 
     /// Put the export sheet away and give the keyboard back to the deck.
+    ///
+    /// Not at once: the sheet fades out first, and is let go of — its
+    /// drawings forgotten, the keyboard handed back — only once it has. Until
+    /// then it keeps the keys, so nothing reaches the deck from under a sheet
+    /// that is still on the screen. The sheet says when it is out by closing
+    /// again, so this is asked for the start of the fade and then for the end
+    /// of it.
     fn close_export(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some((sheet, _)) = &self.export else {
+            return;
+        };
+        sheet.update(cx, |sheet, cx| sheet.leave(cx));
+        if !sheet.read(cx).gone() {
+            cx.notify();
+            return;
+        }
         if let Some((sheet, _)) = self.export.take() {
             sheet.read(cx).forget_drawings(window);
         }

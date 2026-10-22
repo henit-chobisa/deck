@@ -416,6 +416,17 @@ pub fn size(bytes: usize) -> String {
     }
 }
 
+/// How many comments a group has, as its row says it: `1 comment`, `3
+/// comments`.
+#[must_use]
+pub fn comments(n: usize) -> String {
+    if n == 1 {
+        "1 comment".to_string()
+    } else {
+        format!("{n} comments")
+    }
+}
+
 /// A file the sheet wrote, for the line that says so.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Saved {
