@@ -1350,7 +1350,19 @@ impl Render for ExportSheet {
         let theme = div()
             .on_prepaint(move |bounds, _, cx| {
                 if bounds != field {
-                    this.update(cx, |sheet, _| sheet.field = bounds).ok();
+                    // The list hangs from the field, and was drawn this frame
+                    // from where the field was last frame. Moved while the
+                    // list is open — the sheet resized, the options scrolled —
+                    // the list has to be drawn again to follow it, or it sits
+                    // where the field used to be until something else asks for
+                    // a frame.
+                    this.update(cx, |sheet, cx| {
+                        sheet.field = bounds;
+                        if sheet.picking.is_some() {
+                            cx.notify();
+                        }
+                    })
+                    .ok();
                 }
             })
             .child(
