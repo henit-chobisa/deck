@@ -49,20 +49,22 @@ pub struct Writing {
     pub grid: bool,
 }
 
-/// What text is drawn with: the embedded faces, the machine's where they
-/// lack a character ([`super::fallback`]), and what nothing could draw.
+/// What text is drawn with: the embedded faces, and the machine's where they
+/// lack a character ([`super::fallback`]).
+///
+/// What nothing could draw is not kept here: [`coverage`] works it out from
+/// the pages before anything is written, so that `deck export` and the
+/// sheet can say so, and the writing has nothing left to tell.
 struct Pen {
     faces: Faces,
     machine: HashMap<usvg::fontdb::ID, Font>,
-    missing: BTreeSet<char>,
 }
 
 impl Pen {
-    /// Whether a diagram has words Plex cannot set, noting what nothing on
-    /// the machine can.
-    fn diagram_needs_machine(&mut self, svg: &str) -> bool {
+    /// Whether a diagram has words Plex cannot set.
+    fn diagram_needs_machine(&self, svg: &str) -> bool {
         let words: String = svg.chars().filter(|ch| !ch.is_ascii()).collect();
-        fallback::runs(Face::Regular, &words, &mut self.missing)
+        fallback::runs(Face::Regular, &words, &mut BTreeSet::new())
             .iter()
             .any(|(source, _)| matches!(source, Source::Machine(_)))
     }
@@ -102,7 +104,7 @@ fn write(surface: &mut Surface, pen: &mut Pen, face: Face, size: f32, at: Point,
         .filter_map(|feature| feature.parse().ok())
         .collect();
     let mut x = at.x;
-    for (source, range) in fallback::runs(face, text, &mut pen.missing) {
+    for (source, range) in fallback::runs(face, text, &mut BTreeSet::new()) {
         let piece = &text[range];
         let drawn = match source {
             Source::Own => fallback::own(face).map(|shaper| {
@@ -275,7 +277,6 @@ pub fn pdf(
     let mut pen = Pen {
         faces,
         machine: HashMap::new(),
-        missing: BTreeSet::new(),
     };
     let mut pdf = Pdf::new();
     let date = date(&document.created);
