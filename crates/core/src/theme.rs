@@ -291,6 +291,10 @@ pub struct Palette {
     pub comment: Rgb,
     /// Labels, line numbers, anything said quietly.
     pub muted: Rgb,
+    /// The colour code's punctuation, operators and attributes are drawn in:
+    /// muted as the theme gave it. It is kept apart because muted is lifted
+    /// for reading, and code must keep the colours it was drawn in.
+    pub punctuation: Rgb,
     /// Hairlines: the edge of the card, the rule between panes, the border of
     /// a key. Deeper than any surface, because it has to read against all of
     /// them.
@@ -435,6 +439,7 @@ impl Overrides {
         over(&mut palette.fresh, self.fresh);
         over(&mut palette.comment, self.comment);
         over(&mut palette.muted, self.muted);
+        over(&mut palette.punctuation, self.muted);
         over(&mut palette.edge, self.edge);
         over(&mut palette.ground, self.ground);
     }
@@ -523,7 +528,7 @@ pub fn derive(imported: Imported) -> Palette {
     let marks_del =
         del.unwrap_or_else(|| toward(bg, Rgb::new(0x9d, 0x00, 0x06), Rgb::new(0xfb, 0x49, 0x34)));
 
-    Palette {
+    let mut palette = Palette {
         bg,
         fg,
         wash: recede(bg, WASH),
@@ -551,11 +556,29 @@ pub fn derive(imported: Imported) -> Palette {
             .unwrap_or_else(|| toward(bg, Rgb::new(0x42, 0x7b, 0x58), Rgb::new(0x8e, 0xc0, 0x7c))),
         // Text pulled back toward the page until it reads as an aside.
         muted: fg.mix(bg, 0.42),
+        punctuation: fg.mix(bg, 0.42),
         edge: hairline(bg),
         // The desk always goes down. It is what the deck lies *on*, and on a
         // page too dark to darken it simply stops moving — which is fine once
         // the surfaces above it have lifted.
         ground: bg.mix(Rgb::new(0, 0, 0), GROUND),
+    };
+    readable(&mut palette);
+    palette
+}
+
+/// Muted text lifted until it reads on every surface it is drawn on.
+///
+/// Muted is the ink stepped toward the page, a fixed step, and on many themes
+/// that step went too far: the strip, the review column, the line numbers and
+/// the sheet's labels came out near 3:1 on a dark theme and under it on a
+/// light one. A secondary line is still a line somebody reads. So it keeps its
+/// hue and is moved by the least that reads at [`LEGIBLE`] on the page, the
+/// pane and the band. A colour written by hand is applied after this and is
+/// left as the reader wrote it.
+pub fn readable(palette: &mut Palette) {
+    for ground in [palette.bg, palette.wash, palette.band] {
+        palette.muted = legible(palette.muted, ground, LEGIBLE);
     }
 }
 
@@ -1176,6 +1199,38 @@ mod tests {
         let ground = Rgb::from_hex("#777777").unwrap();
         let made = legible(Rgb::from_hex("#802020").unwrap(), ground, 7.0);
         assert!(made == Rgb::new(0, 0, 0) || made == Rgb::new(255, 255, 255));
+    }
+
+    #[test]
+    fn muted_text_reads_on_every_surface_without_lifting() {
+        // The window draws muted as it is, with no lift at paint time, so the
+        // palette itself has to read: on the page, the pane and the band.
+        let themes = [
+            light(),
+            dark(),
+            Imported::plain(
+                Rgb::new(0x0d, 0x11, 0x17),
+                Rgb::new(0xe6, 0xed, 0xf3),
+                Rgb::new(0x2f, 0x81, 0xf7),
+            ),
+            Imported::plain(
+                Rgb::new(0xfd, 0xf6, 0xe3),
+                Rgb::new(0x65, 0x7b, 0x83),
+                Rgb::new(0xb5, 0x89, 0x00),
+            ),
+        ];
+        for theme in themes {
+            let p = derive(theme);
+            for ground in [p.bg, p.wash, p.band] {
+                assert!(
+                    p.muted.contrast(ground) >= LEGIBLE - 0.01,
+                    "muted {:?} on {:?} is {:.2}",
+                    p.muted,
+                    ground,
+                    p.muted.contrast(ground)
+                );
+            }
+        }
     }
 
     #[test]

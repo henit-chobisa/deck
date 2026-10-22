@@ -106,6 +106,7 @@ pub fn current_on(dark: bool, paper: Paper) -> Palette {
             del: hex("#fb4934"),
             comment: hex("#a89984"),
             muted: hex("#a89984"),
+            punctuation: hex("#a89984"),
             edge: hex("#3a3735"),
             ground: hex("#0d0e0e"),
             gone: Rgb::new(0, 0, 0),
@@ -131,6 +132,7 @@ pub fn current_on(dark: bool, paper: Paper) -> Palette {
             del: hex("#9d0006"),
             comment: hex("#7c6f64"),
             muted: hex("#7c6f64"),
+            punctuation: hex("#7c6f64"),
             edge: hex("#a9a7a3"),
             ground: hex("#b4b2ae"),
             gone: Rgb::new(0, 0, 0),
@@ -198,6 +200,7 @@ pub fn current_on(dark: bool, paper: Paper) -> Palette {
     // matched weight barely moved, so a pointed arriving line looked the same
     // as an unpointed one.
     palette.fresh_deep = tint(palette.bg, green, matched * 3.4);
+    deck_core::theme::readable(&mut palette);
     palette
 }
 
@@ -324,6 +327,24 @@ fn first_installed(names: &[&str], cx: &App) -> Option<SharedString> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn deck_own_palettes_read_muted_text_on_every_surface() {
+        // The strip, the review column and the sheet's labels are muted text
+        // on the band; light grey used to land at 2.85:1 there.
+        for dark in [true, false] {
+            for paper in [Paper::Grey, Paper::Warm] {
+                let p = current_on(dark, paper);
+                for ground in [p.bg, p.wash, p.band] {
+                    let got = p.muted.contrast(ground);
+                    assert!(
+                        got >= deck_core::theme::LEGIBLE - 0.01,
+                        "dark {dark} {paper:?}: muted on {ground:?} is {got:.2}"
+                    );
+                }
+            }
+        }
+    }
 
     #[test]
     fn a_pointed_line_deepens_into_its_own_colour() {
