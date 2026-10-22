@@ -3316,10 +3316,15 @@ impl DeckView {
                                                     })
                                                     .on_click(move |_, _window, cx| {
                                                         cx.write_to_clipboard(
-                                                            ClipboardItem::new_string(id.to_string()),
+                                                            ClipboardItem::new_string(
+                                                                id.to_string(),
+                                                            ),
                                                         );
                                                     })
-                                                    .child(format!("{} · copy", self.deck.header.id)),
+                                                    .child(format!(
+                                                        "{} · copy",
+                                                        self.deck.header.id
+                                                    )),
                                             )
                                         })
                                         .when(!running && !waiting, |this| {
@@ -7386,7 +7391,11 @@ impl DeckView {
                                 .on_click(cx.listener(|deck, _, window, cx| {
                                     deck.open_export(window, cx);
                                 }))
-                                .child(crate::keys::cap("↓", &self.palette, cx.theme().mono_font_family.clone()))
+                                .child(crate::keys::cap(
+                                    "↓",
+                                    &self.palette,
+                                    cx.theme().mono_font_family.clone(),
+                                ))
                                 .child("export"),
                         )
                     })
@@ -7451,7 +7460,7 @@ impl DeckView {
                                     .bg(paint(self.palette.accent)),
                             )
                             .child(format!("{newer} available"))
-                    }))
+                    })),
             )
     }
 
