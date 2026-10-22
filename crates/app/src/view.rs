@@ -710,6 +710,13 @@ pub struct DeckView {
     /// *doing* line or the comment box shortened the rail, the bottom moved
     /// away from a reader who had not, and the rail stopped following (#19).
     rail_pinned: std::cell::Cell<bool>,
+    /// How far up the "↓ Latest" chip is: on while the rail is away from its
+    /// newest turn. A cell because the rail is drawn from `&self`, where the
+    /// scroll position that decides it is also read.
+    latest_fade: std::cell::Cell<crate::pane::Fade>,
+    /// Where each turn's age was heading, and the fade getting it there, by
+    /// place in the transcript. See [`DeckView::aged`].
+    ages: std::cell::RefCell<std::collections::HashMap<usize, (f32, f32, crate::pane::Fade)>>,
     /// The reader turned the wheel over the rail since it was last drawn, so
     /// whether it is pinned is read from where they left it.
     rail_wheeled: std::cell::Cell<bool>,
@@ -1053,7 +1060,7 @@ impl DeckView {
             // reader could see, which looks exactly like nothing having been
             // kept at all.
             if conversation.transcript.is_empty() {
-                conversation.transcript = held.transcript;
+                conversation.restore(held.transcript);
             } else {
                 // The remarks came back onto a transcript they were not written
                 // against, so their places in it mean nothing. Better a mark
@@ -1164,6 +1171,8 @@ impl DeckView {
             conversation,
             rail_scroll,
             rail_pinned: std::cell::Cell::new(true),
+            latest_fade: std::cell::Cell::new(Self::card_fade()),
+            ages: std::cell::RefCell::new(std::collections::HashMap::new()),
             rail_wheeled: std::cell::Cell::new(false),
             picked_said,
             said_from: None,
@@ -2991,7 +3000,7 @@ impl DeckView {
                                     div()
                                         .text_size(px(11.))
                                         .text_color(paint(palette.muted))
-                                        .child("ask now is off"),
+                                        .child("Ask now is off"),
                                 )
                                 .child(
                                     div()
@@ -3009,8 +3018,8 @@ impl DeckView {
                                 .pt(px(16.))
                                 .child(para(
                                     "Deck's skill asks your agent to keep listening for what \
-                                     you say here, but no waiter process is running for this \
-                                     deck. A question sent now would reach nobody.",
+                                     you say here, but your agent isn't waiting on this deck \
+                                     any more. A question sent now would reach nobody.",
                                 ))
                                 .child(para(
                                     "Add it to the review instead. It goes back with \
@@ -7049,15 +7058,17 @@ impl DeckView {
         let (about, state, _) = self.composing.as_ref()?;
         let where_at = match about {
             About::Lines { file, range, .. } => {
-                format!("comment on {}:{range}", file.display())
+                // The name, not the path, the way a turn in the thread says
+                // it: the full path is long, and the rail is narrow.
+                let name = file.file_name().map_or_else(
+                    || file.display().to_string(),
+                    |name| name.to_string_lossy().to_string(),
+                );
+                format!("comment on {name}:{range}")
             }
             About::Drawn { quote, .. } => format!("comment on {quote}"),
             About::Claim { .. } => "comment on this group".to_string(),
         };
-        let ref_id = Some(match about {
-            About::Lines { ref_id, .. } | About::Drawn { ref_id, .. } => ref_id.clone(),
-            About::Claim { group, .. } => group.clone(),
-        });
 
         Some(
             div()
@@ -7089,8 +7100,7 @@ impl DeckView {
                         .text_color(paint(self.palette.muted))
                         // Cut short with an ellipsis when the rail is narrow,
                         // rather than running out past the window's edge.
-                        .child(div().flex_1().min_w_0().truncate().child(where_at))
-                        .children(ref_id.map(|id| div().flex_none().child(id))),
+                        .child(div().flex_1().min_w_0().truncate().child(where_at)),
                 )
                 // Sized against the narration it answers, not against the
                 // labels around it. What the reader types here is prose, and
@@ -7894,7 +7904,8 @@ impl DeckView {
                 // and context as black as the sentence in front of you is
                 // context you have to read past.
                 #[allow(clippy::cast_precision_loss)]
-                let age = ((last - place) as f32 / 6.).clamp(0., 1.) * 0.55;
+                let target = ((last - place) as f32 / 6.).clamp(0., 1.) * 0.30;
+                let age = self.aged(ix, target);
                 let sunk = |tone: deck_core::theme::Rgb| tone.mix(palette.band, age);
                 let reacted = moment.what == deck_core::What::Reacted;
                 let moved = moment.what == deck_core::What::Shown;
@@ -7929,11 +7940,25 @@ impl DeckView {
                             .map_or(name.clone(), |range| format!("{name}:{range}")),
                     )
                 });
+                // The strip counts groups from one, so the thread does too: the
+                // id the deck file gave a group is not what the reader sees
+                // anywhere else.
+                let place_in_deck = || {
+                    let id = moment.group.as_ref()?;
+                    let at = self
+                        .deck
+                        .groups()
+                        .iter()
+                        .position(|group| &group.id == id)?;
+                    Some(format!("group {}", at + 1))
+                };
                 let meta = format!(
                     "{who} · {}{}",
-                    at.unwrap_or_else(|| moment.group.clone().unwrap_or_else(|| "walk".into())),
+                    at.or_else(place_in_deck)
+                        .unwrap_or_else(|| moment.group.clone().unwrap_or_else(|| "walk".into())),
+                    // Pressing Ask now is what makes a turn an interrupt.
                     if moment.when == deck_core::When::Interrupt {
-                        " · interrupted"
+                        " · asked"
                     } else {
                         ""
                     },
@@ -8089,7 +8114,7 @@ impl DeckView {
                                     // Who and where, in the reading face: set
                                     // in mono, a label looked like code.
                                     .text_size(px(11.))
-                                    .text_color(paint(sunk(palette.muted)))
+                                    .text_color(paint(palette.muted))
                                     .child(
                                         div().min_w_0().truncate().child(SharedString::from(meta)),
                                     )
@@ -8108,10 +8133,17 @@ impl DeckView {
                                                 this.child(
                                                     div()
                                                         .id(("again", ix))
+                                                        .size(px(18.))
+                                                        .rounded(px(4.))
+                                                        .flex()
+                                                        .items_center()
+                                                        .justify_center()
                                                         .cursor_pointer()
                                                         .text_color(paint(palette.muted))
                                                         .hover(|style| {
-                                                            style.text_color(paint(palette.accent))
+                                                            style
+                                                                .bg(paint(palette.wash))
+                                                                .text_color(paint(palette.accent))
                                                         })
                                                         .on_click(cx.listener(
                                                             move |deck, _, _window, cx| {
@@ -8193,7 +8225,9 @@ impl DeckView {
                                                 .items_center()
                                                 .justify_center()
                                                 .cursor_pointer()
-                                                .text_size(px(13.))
+                                                .border_1()
+                                                .border_color(paint(palette.edge))
+                                                .text_size(px(12.))
                                                 .text_color(paint(palette.muted))
                                                 .hover(|style| style.bg(paint(palette.wash)))
                                                 .on_click(cx.listener(|deck, _, window, cx| {
@@ -8220,9 +8254,11 @@ impl DeckView {
                                         )
                                         .child(
                                             div()
-                                                .font_family(mono.clone())
-                                                .text_size(px(9.5))
-                                                .text_color(paint(palette.fg))
+                                                // The house small-caps label: the
+                                                // reading face, not mono.
+                                                .text_size(px(10.5))
+                                                .font_weight(FontWeight::SEMIBOLD)
+                                                .text_color(paint(palette.muted))
                                                 .child("CHAT"),
                                         )
                                         // How much of this is going back with
@@ -8292,9 +8328,7 @@ impl DeckView {
                                                 // nothing could draw and it came out upright.
                                                 .font_family(mono.clone())
                                                 .italic()
-                                                .text_color(paint(
-                                                    palette.muted.mix(palette.band, 0.35),
-                                                ))
+                                                .text_color(paint(palette.muted))
                                                 .child(self.nothing_yet()),
                                         )
                                 }))
@@ -8311,21 +8345,43 @@ impl DeckView {
                                 .h_flex()
                                 .items_center()
                                 .gap(px(8.))
-                                .child(
+                                .child({
+                                    // Only while the rail is away from the
+                                    // newest turn; at the bottom the control
+                                    // has nothing to say. It keeps its room
+                                    // and fades, so nothing below it moves
+                                    // when it comes or goes, and it takes no
+                                    // clicks while it is not there.
+                                    let mut fade = self.latest_fade.get();
+                                    fade.set(!self.rail_pinned.get());
+                                    self.latest_fade.set(fade);
                                     div()
                                         .id("latest-reply")
                                         .flex_none()
-                                        .py(px(5.))
+                                        .my(px(5.))
+                                        .px(px(8.))
+                                        .py(px(3.))
+                                        .rounded(px(6.))
+                                        .border_1()
+                                        .border_color(paint(palette.edge))
                                         .text_size(px(10.))
                                         .text_color(paint(palette.muted))
-                                        .cursor_pointer()
-                                        .on_click(cx.listener(|deck, _, _window, cx| {
-                                            deck.rail_pinned.set(true);
-                                            deck.rail_scroll.scroll_to_bottom();
-                                            cx.notify();
-                                        }))
-                                        .child("Latest ↓"),
-                                )
+                                        .opacity(fade.level())
+                                        .when(fade.on(), |this| {
+                                            this.cursor_pointer()
+                                                .hover(|style| {
+                                                    style
+                                                        .bg(paint(palette.wash))
+                                                        .text_color(paint(palette.fg))
+                                                })
+                                                .on_click(cx.listener(|deck, _, _window, cx| {
+                                                    deck.rail_pinned.set(true);
+                                                    deck.rail_scroll.scroll_to_bottom();
+                                                    cx.notify();
+                                                }))
+                                        })
+                                        .child("↓ Latest")
+                                })
                                 .children(self.render_pulse()),
                         )
                         .children(self.render_invite(cx))
@@ -8347,6 +8403,28 @@ impl DeckView {
 }
 
 impl DeckView {
+    /// How far turn `ix` has sunk into the page, given where it is heading.
+    ///
+    /// A turn's age steps each time a newer one arrives. Drawn as given, every
+    /// older turn in the rail would lighten by a shade in one frame, which
+    /// reads as a flicker. So each turn remembers where it was and eases to the
+    /// new value over the layout pace. A turn seen for the first time, such as
+    /// one restored from a draft, simply starts where it belongs.
+    fn aged(&self, ix: usize, target: f32) -> f32 {
+        let mut ages = self.ages.borrow_mut();
+        let entry = ages
+            .entry(ix)
+            .or_insert((target, target, crate::pane::Fade::default()));
+        let now = entry.0 + (entry.1 - entry.0) * entry.2.level();
+        if (entry.1 - target).abs() > f32::EPSILON {
+            let mut fade = crate::pane::Fade::default();
+            fade.set(true);
+            *entry = (now, target, fade);
+            return now;
+        }
+        now
+    }
+
     /// Say one of the agent's turns again.
     ///
     /// The words as they were written, so the beats and the pointing come back
@@ -8421,6 +8499,7 @@ impl DeckView {
                     .border_color(paint(palette.edge))
                     .text_size(px(12.))
                     .text_color(paint(palette.muted))
+                    .hover(|style| style.bg(paint(palette.wash)))
                     .child("‹"),
             )
             .child(
@@ -8780,6 +8859,12 @@ impl Render for DeckView {
                 .flatten()
                 .any(|(_, light)| light.moving())
             || self.rail_open.moving()
+            || self.latest_fade.get().moving()
+            || self
+                .ages
+                .borrow()
+                .values()
+                .any(|(_, _, fade)| fade.moving())
             || self.notes_fade.moving()
             || self.quit_fade.moving()
             || self.explain_fade.moving()

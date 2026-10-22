@@ -584,7 +584,7 @@ impl Paper {
                         .flex()
                         .justify_center()
                         .text_size(px(8.))
-                        .child("\u{21ba}"),
+                        .child("\u{21bb}"),
                 )
                 .on_click(move |_, _window, cx| {
                     view.update(cx, |deck, cx| deck.play_page_again(pane_ix, cx))
