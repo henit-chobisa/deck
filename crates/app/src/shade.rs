@@ -476,16 +476,18 @@ use gpui_kit::App;
 
 pub use sheets::{behind, on};
 
-/// One frame of the fade, at about sixty a second.
+/// How often the fade looks at the clock, at about sixty a second. It only
+/// sets how often a new level is drawn: how far along the fade is comes from
+/// the time that has passed, so a busy frame or a 120Hz screen changes the
+/// smoothness and never the pace.
 const STEP: Duration = Duration::from_millis(16);
 
-/// How many of those the lights take to go down — a little under a third of a
-/// second.
-const DOWN: u32 = 18;
+/// How long the lights take to go down. The light and layout pace.
+const DOWN: Duration = Duration::from_millis(760);
 
 /// And to come back up. Quicker: going dark is something a reader settles into,
 /// and coming back is something they are waiting on.
-const UP: u32 = 11;
+const UP: Duration = Duration::from_millis(520);
 
 /// Turn the lights off, or back on. Returns whether they ended up off.
 pub fn toggle(dim: f32, blur: bool, cx: &mut App) -> bool {
@@ -514,7 +516,7 @@ pub fn lights_on(cx: &mut App) {
     fade(0., UP, cx);
 }
 
-/// Walk the sheets from where they are to `to`, a frame at a time.
+/// Walk the sheets from where they are to `to`, a step at a time.
 ///
 /// Stepped here rather than handed to AppKit's animator, which is the obvious
 /// way and does not work: the animator proxy wants a window it is allowed to
@@ -529,10 +531,10 @@ pub fn lights_on(cx: &mut App) {
 /// the bar keeps that alive.
 ///
 /// One at a time. A fade that has been overtaken stops: the lights going
-/// down take eighteen frames and coming up eleven, so `z` pressed twice in a
+/// down take 760ms and coming up 520ms, so `z` pressed twice in a
 /// hurry left the slower one to finish last, and the screen stayed dark with
 /// the lights nominally on.
-fn fade(to: f64, frames: u32, cx: &mut App) {
+fn fade(to: f64, over: Duration, cx: &mut App) {
     use std::sync::atomic::{AtomicU64, Ordering};
     static LATEST: AtomicU64 = AtomicU64::new(0);
     let this = LATEST.fetch_add(1, Ordering::Relaxed) + 1;
@@ -548,16 +550,20 @@ fn fade(to: f64, frames: u32, cx: &mut App) {
     }
 
     cx.spawn(async move |cx| {
-        for frame in 1..=frames {
+        let began = std::time::Instant::now();
+        loop {
             cx.background_executor().timer(STEP).await;
             if LATEST.load(Ordering::Relaxed) != this {
                 return;
             }
             // Smoothstep, so it leaves and arrives slowly. A linear fade to
             // black reads as a shutter coming down.
-            let much = f64::from(frame) / f64::from(frames);
+            let much = (began.elapsed().as_secs_f64() / over.as_secs_f64()).min(1.);
             let eased = much * much * (3. - 2. * much);
             cx.update(|_| sheets::set_alpha(from + (to - from) * eased));
+            if much >= 1. {
+                break;
+            }
         }
         // Up, and nothing has asked for them down again: the sheets can go.
         if to <= 0. {

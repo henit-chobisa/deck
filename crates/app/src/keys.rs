@@ -22,13 +22,16 @@ use crate::palette::paint;
 pub(crate) const REST: Duration = Duration::from_millis(150);
 pub(crate) const LEAVE: Duration = Duration::from_millis(150);
 
-/// How long a key's card takes to come in, and to go.
-pub(crate) const TIP_RISE: Duration = Duration::from_millis(180);
-pub(crate) const TIP_FALL: Duration = Duration::from_millis(150);
+/// How long a key's card takes to come in, and to go. A card is a surface, and
+/// surfaces come in at 200 and go at 160 wherever they are in the window.
+pub(crate) const TIP_RISE: Duration = Duration::from_millis(200);
+pub(crate) const TIP_FALL: Duration = Duration::from_millis(160);
 
-/// How long the help dock takes to come up, and to go.
-pub(crate) const DOCK_RISE: Duration = Duration::from_millis(350);
-pub(crate) const DOCK_FALL: Duration = Duration::from_millis(260);
+/// How long the help dock takes to come up, and to go. The dock is a surface
+/// like the card, so it keeps the card's pace rather than a slower one of its
+/// own.
+pub(crate) const DOCK_RISE: Duration = Duration::from_millis(200);
+pub(crate) const DOCK_FALL: Duration = Duration::from_millis(160);
 
 /// How long the help dock stays once nobody is looking at it. Never while the
 /// pointer is on it: it is help that stays beside you while you try, and it
@@ -82,6 +85,12 @@ pub(crate) const TIPS: &[(&str, &str, &str, &str)] = &[
         "clear",
         "Puts out the lights you made: picked lines and sentences.",
         "the window is lit up and you want to see what the agent is pointing at.",
+    ),
+    (
+        "f",
+        "follow",
+        "Hands the deck back to the agent, so it moves you along as it shows things.",
+        "you stopped the agent by scrolling or picking, and want to follow it again.",
     ),
     (
         "z",
@@ -184,7 +193,7 @@ pub(crate) fn card(
             .px(px(13.))
             .pt(px(11.))
             .pb(px(12.))
-            .rounded(px(11.))
+            .rounded(px(12.))
             .bg(paint(palette.band.mix(palette.fg, 0.05)))
             .border_1()
             .border_color(paint(palette.edge.mix(palette.fg, 0.06)))
@@ -306,7 +315,7 @@ pub(crate) fn confidence_card(
         .px(px(13.))
         .pt(px(11.))
         .pb(px(12.))
-        .rounded(px(11.))
+        .rounded(px(12.))
         .bg(paint(palette.band.mix(palette.fg, 0.05)))
         .border_1()
         .border_color(paint(palette.edge.mix(palette.fg, 0.06)))
