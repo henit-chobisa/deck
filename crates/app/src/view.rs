@@ -261,6 +261,10 @@ impl Divide {
 /// lines of prose, which is what most groups carry.
 const BAND_NATURAL: f32 = 168.;
 
+/// How long the glow on a key of the help dock takes to go out after the
+/// key is pressed: the pace of every light going out on its own.
+const GLOW: std::time::Duration = std::time::Duration::from_millis(760);
+
 // The group's number and the line that hangs from it, the band's padding and
 // its type, the rail and the strip: measured once, in `deck_render::metrics`,
 // so a page an export prints is the band this draws.
@@ -759,6 +763,10 @@ pub struct DeckView {
     helping: Task<()>,
     /// The key last pressed while the dock was up, and when, so it lights.
     help_hit: Option<(&'static str, std::time::Instant)>,
+    /// The strip's export item coming and going: it joins the strip the moment
+    /// the deck is sealed, and a thing that appears in one frame, pushing the
+    /// keys beside it, reads as a glitch.
+    export_fade: crate::pane::Fade,
     /// The key whose card is up, or coming up, and where that key is: the
     /// same key sits in the strip and on the dock, and only the one under the
     /// pointer has a card.
@@ -1224,6 +1232,11 @@ impl DeckView {
                 .paced(crate::keys::DOCK_RISE, crate::keys::DOCK_FALL),
             helping: Task::ready(()),
             help_hit: None,
+            // Surface pace, as the cards and tips have.
+            export_fade: crate::pane::Fade::default().paced(
+                std::time::Duration::from_millis(200),
+                std::time::Duration::from_millis(160),
+            ),
             tip: None,
             tip_fade: crate::pane::Fade::default()
                 .paced(crate::keys::TIP_RISE, crate::keys::TIP_FALL),
@@ -2983,10 +2996,10 @@ impl DeckView {
                         .w(px(460.))
                         .max_w(relative(0.9))
                         .v_flex()
-                        .rounded(px(10.))
+                        .rounded(px(12.))
                         .border_1()
                         .border_color(paint(palette.edge))
-                        .bg(paint(palette.bg))
+                        .bg(paint(palette.band))
                         .shadow_lg()
                         .on_mouse_down(MouseButton::Left, |_, _window, cx| cx.stop_propagation())
                         .child(
@@ -3067,7 +3080,9 @@ impl DeckView {
                                         .border_1()
                                         .border_color(paint(palette.edge))
                                         .text_color(paint(palette.fg))
-                                        .hover(|style| style.bg(paint(palette.wash)))
+                                        .hover(|style| {
+                                            style.bg(paint(palette.band.mix(palette.fg, 0.10)))
+                                        })
                                         .child("Keep writing")
                                         .child(
                                             div()
@@ -3090,6 +3105,9 @@ impl DeckView {
                                         .text_size(px(11.5))
                                         .bg(paint(palette.accent))
                                         .text_color(paint(palette.on_accent))
+                                        .hover(|style| {
+                                            style.bg(paint(palette.accent.mix(palette.fg, 0.16)))
+                                        })
                                         .child("Add to review")
                                         .on_click(cx.listener(|deck, _, window, cx| {
                                             deck.explaining = false;
@@ -3113,12 +3131,13 @@ impl DeckView {
                                 .text_size(px(13.))
                                 .text_color(paint(palette.muted))
                                 .hover(|this| {
-                                    this.bg(paint(palette.wash)).text_color(paint(palette.fg))
+                                    this.bg(paint(palette.band.mix(palette.fg, 0.10)))
+                                        .text_color(paint(palette.fg))
                                 })
                                 .on_click(
                                     cx.listener(|deck, _, window, cx| deck.understood(window, cx)),
                                 )
-                                .child("✕"),
+                                .child("×"),
                         ),
                 )
                 .into_any_element(),
@@ -3154,12 +3173,13 @@ impl DeckView {
                 .when(primary, |this| {
                     this.bg(paint(palette.accent))
                         .text_color(paint(palette.on_accent))
+                        .hover(|style| style.bg(paint(palette.accent.mix(palette.fg, 0.16))))
                 })
                 .when(!primary, |this| {
                     this.border_1()
                         .border_color(paint(palette.edge))
                         .text_color(paint(palette.fg))
-                        .hover(|style| style.bg(paint(palette.wash)))
+                        .hover(|style| style.bg(paint(palette.band.mix(palette.fg, 0.10))))
                 })
                 .child(label)
                 .child(
@@ -3201,10 +3221,10 @@ impl DeckView {
                         .w(px(440.))
                         .max_w(relative(0.9))
                         .v_flex()
-                        .rounded(px(10.))
+                        .rounded(px(12.))
                         .border_1()
                         .border_color(paint(palette.edge))
-                        .bg(paint(palette.bg))
+                        .bg(paint(palette.band))
                         .shadow_lg()
                         .on_mouse_down(MouseButton::Left, |_, _window, cx| cx.stop_propagation())
                         .child(
@@ -3276,10 +3296,11 @@ impl DeckView {
                                 .text_size(px(13.))
                                 .text_color(paint(palette.muted))
                                 .hover(|this| {
-                                    this.bg(paint(palette.wash)).text_color(paint(palette.fg))
+                                    this.bg(paint(palette.band.mix(palette.fg, 0.10)))
+                                        .text_color(paint(palette.fg))
                                 })
                                 .on_click(cx.listener(|deck, _, window, cx| deck.stay(window, cx)))
-                                .child("✕"),
+                                .child("×"),
                         ),
                 )
                 .into_any_element(),
@@ -3332,10 +3353,10 @@ impl DeckView {
                         .max_w(relative(0.9))
                         .max_h(relative(0.8))
                         .v_flex()
-                        .rounded(px(10.))
+                        .rounded(px(12.))
                         .border_1()
                         .border_color(paint(palette.edge))
-                        .bg(paint(palette.bg))
+                        .bg(paint(palette.band))
                         .shadow_lg()
                         .on_mouse_down(MouseButton::Left, |_, _window, cx| cx.stop_propagation())
                         .child(
@@ -3442,12 +3463,13 @@ impl DeckView {
                                 .text_size(px(13.))
                                 .text_color(paint(palette.muted))
                                 .hover(|this| {
-                                    this.bg(paint(palette.wash)).text_color(paint(palette.fg))
+                                    this.bg(paint(palette.band.mix(palette.fg, 0.10)))
+                                        .text_color(paint(palette.fg))
                                 })
                                 .on_click(cx.listener(|deck, _, window, cx| {
                                     deck.hide_notes(window, cx);
                                 }))
-                                .child("✕"),
+                                .child("×"),
                         ),
                 )
                 .into_any_element(),
@@ -3624,7 +3646,11 @@ impl DeckView {
         if over {
             if self.tip_fade.on() && self.tip != Some(key) {
                 // Already reading cards: the next one comes straight away.
+                // Its words and place change in one frame, so the card dips
+                // to a little under full before it rises again: the change
+                // is seen as a soft one, not a cut.
                 self.tip = Some(key);
+                self.tip_fade.dip(0.6);
                 self.tipping = Task::ready(());
                 cx.notify();
                 return;
@@ -3721,10 +3747,14 @@ impl DeckView {
         let palette = &self.palette;
         let mono = cx.theme().mono_font_family.clone();
         let ready = crate::speech::asked(cx).offered();
+        // The dock's own ground. The glow ends exactly on it, and the keys
+        // are lit and put out against it, so it is one value in one place.
+        let ground = palette.band;
         let lit = |key: &str| {
             self.help_hit.and_then(|(hit, at)| {
-                let t = at.elapsed().as_secs_f32() / crate::keys::HIT.as_secs_f32();
-                (hit == key && t < 1.).then_some(1. - t)
+                let t = (at.elapsed().as_secs_f32() / GLOW.as_secs_f32()).clamp(0., 1.);
+                // Smoothstep, as every other light in the window goes out.
+                (hit == key && t < 1.).then_some(1. - t * t * (3. - 2. * t))
             })
         };
         let keys = crate::keys::TIPS
@@ -3746,7 +3776,7 @@ impl DeckView {
                         .py(px(5.))
                         .rounded(px(8.))
                         .when(glow > 0., |this| {
-                            this.bg(paint(palette.band.mix(palette.accent, 0.28 * glow)))
+                            this.bg(paint(ground.mix(palette.accent, 0.28 * glow)))
                         })
                         .child(crate::keys::cap(key, palette, mono.clone()))
                         .child(*name)
@@ -3754,7 +3784,7 @@ impl DeckView {
                         // knowing a key, so hide is pressed here as well.
                         .when(*key == "h", |this| {
                             this.cursor_pointer()
-                                .hover(|this| this.bg(paint(palette.wash)))
+                                .hover(|this| this.bg(paint(palette.band.mix(palette.fg, 0.10))))
                                 .on_click(cx.listener(|deck, _, window, cx| {
                                     deck.on_hide(&Hide, window, cx);
                                 }))
@@ -3772,12 +3802,17 @@ impl DeckView {
                 .size(px(24.))
                 .ml(px(4.))
                 .h_flex()
+                .items_center()
                 .justify_center()
-                .rounded(px(7.))
+                .rounded(px(6.))
                 .cursor_pointer()
-                .text_size(px(16.))
+                .text_size(px(13.))
                 .text_color(paint(palette.muted))
-                .hover(|style| style.bg(paint(palette.wash)).text_color(paint(palette.fg)))
+                .hover(|style| {
+                    style
+                        .bg(paint(palette.band.mix(palette.fg, 0.10)))
+                        .text_color(paint(palette.fg))
+                })
                 .on_click(cx.listener(|deck, _, _, cx| deck.close_help(cx)))
                 .child("×"),
             cx,
@@ -3813,7 +3848,7 @@ impl DeckView {
                         .pr(px(8.))
                         .py(px(7.))
                         .rounded(px(12.))
-                        .bg(paint(palette.band.mix(palette.fg, 0.03)))
+                        .bg(paint(ground))
                         .border_1()
                         .border_color(paint(palette.edge.mix(palette.fg, 0.06)))
                         .shadow_lg()
@@ -5717,10 +5752,16 @@ impl DeckView {
         // the group changed (a step, a click, the agent jumping): its
         // badge may not exist on the next one, and nothing would ever say the
         // pointer left it.
+        //
+        // It goes out on its normal fall rather than vanishing in the frame
+        // the group changes. The tip is not cleared here: a card is drawn
+        // only while its fade is above nought, so once the fall has reached
+        // nought the key it names draws nothing, which is the same as it
+        // being cleared. It is left set as a card that went out by the
+        // pointer leaving is, and the next rest on a badge replaces it.
         if self.tip.is_some_and(|(_, place)| place == "band") {
             self.tipping = Task::ready(());
             self.tip_fade.set(false);
-            self.tip = None;
         }
         // A deck still waiting on its first group has none to look at.
         if self.group().is_some() {
@@ -6255,14 +6296,22 @@ impl DeckView {
                 .py(px(2.))
                 .rounded(px(6.))
                 .cursor_pointer()
-                .hover(|style| style.bg(paint(palette.wash)))
+                // The group on screen has a quiet ground of its own, which
+                // reads as chosen where the hover on the others reads as
+                // passing; the pointer over it changes nothing.
+                .when(here, |this| {
+                    this.bg(paint(palette.band.mix(palette.accent, 0.06)))
+                })
+                .when(!here, |this| {
+                    this.hover(|style| style.bg(paint(palette.wash)))
+                })
                 .on_click(cx.listener(move |deck, _, _, cx| deck.go_to(ix, cx)))
                 .text_size(px(12.))
                 .line_height(px(17.))
                 .text_color(paint(if here {
                     palette.fg
                 } else if been {
-                    palette.muted.mix(palette.band, 0.2)
+                    palette.muted.mix(palette.band, 0.1)
                 } else {
                     palette.muted
                 }))
@@ -6273,7 +6322,7 @@ impl DeckView {
                         .flex_none()
                         .w(px(10.))
                         .text_size(px(10.))
-                        .font_weight(FontWeight::BOLD)
+                        .font_weight(FontWeight::SEMIBOLD)
                         .text_color(paint(palette.accent.mix(palette.band, 0.25)))
                         .when(been, |this| this.child("✓")),
                 )
@@ -6283,11 +6332,7 @@ impl DeckView {
                         .w(px(14.))
                         .font_family(mono.clone())
                         .text_size(px(11.))
-                        .text_color(paint(if here {
-                            palette.accent
-                        } else {
-                            palette.muted.mix(palette.band, 0.3)
-                        }))
+                        .text_color(paint(if here { palette.accent } else { palette.muted }))
                         .child(format!("{}", ix + 1)),
                 )
                 .child(div().flex_1().min_w_0().child(row_title(group)))
@@ -6297,7 +6342,7 @@ impl DeckView {
                             .flex_none()
                             .font_family(mono.clone())
                             .text_size(px(10.5))
-                            .text_color(paint(palette.muted.mix(palette.band, 0.3)))
+                            .text_color(paint(palette.muted))
                             .child(format!("✎ {said}")),
                     )
                 })
@@ -6361,9 +6406,9 @@ impl DeckView {
                             .items_center()
                             .child(
                                 div()
-                                    .text_size(px(10.))
+                                    .text_size(px(10.5))
                                     .font_weight(FontWeight::SEMIBOLD)
-                                    .text_color(paint(palette.muted.mix(palette.band, 0.3)))
+                                    .text_color(paint(palette.muted))
                                     .child("YOUR REVIEW"),
                             )
                             .child(
@@ -6388,7 +6433,14 @@ impl DeckView {
                                     .on_scroll_wheel(cx.listener(|_, _, _, cx| cx.notify()))
                                     .v_flex()
                                     .gap(px(5.))
-                                    .py(px(6.))
+                                    .pt(px(6.))
+                                    // Room under the last row for the "more"
+                                    // pill to sit in, so that it never covers
+                                    // a title. Always, not only while rows
+                                    // are below: padding that came and went
+                                    // with the scroll would move the list
+                                    // under the reader's hand.
+                                    .pb(px(24.))
                                     .children(rows),
                             )
                             // The edges fade where the list goes on, and only there:
@@ -7285,7 +7337,7 @@ impl DeckView {
                             .font_family(mono.clone())
                             .text_size(px(8.))
                             .line_height(px(8.))
-                            .font_weight(FontWeight::BOLD)
+                            .font_weight(FontWeight::SEMIBOLD)
                             .text_color(paint(palette.accent))
                             .child("i"),
                     )
@@ -7330,10 +7382,11 @@ impl DeckView {
                     .items_center()
                     .gap(px(14.))
                     // The side that gives way. The right side holds what the
-                    // reader acts on — the comment count, the version, the way
-                    // out — and a narrow window used to push it off the edge,
-                    // out of reach, while this side kept its room. Now this
-                    // side shrinks, and the caution at its end is cut short.
+                    // reader acts on — export, once the deck is sealed, and
+                    // the version — and a narrow window used to push it off
+                    // the edge, out of reach, while this side kept its room.
+                    // Now this side shrinks, and the caution at its end is
+                    // cut short.
                     .flex_1()
                     .min_w_0()
                     .overflow_hidden()
@@ -7474,7 +7527,7 @@ impl DeckView {
                     .min_w_0()
                     .overflow_hidden()
                     .whitespace_nowrap()
-                    .gap(px(12.))
+                    .gap(px(STRIP_GAP))
                     .child(named("n", "next", cx))
                     .child(named("p", "previous", cx))
                     .child(named("c", "comment", cx))
@@ -7494,7 +7547,7 @@ impl DeckView {
             .child(
                 div()
                     .h_flex()
-                    .gap_4()
+                    .gap(px(STRIP_GAP))
                     .flex_none()
                     .whitespace_nowrap()
                     // Export, once there is a whole deck to export. It takes
@@ -7503,21 +7556,28 @@ impl DeckView {
                     // Not a key cap, because no key opens it, and a cap that
                     // nothing answers to is a promise the strip cannot keep.
                     // The id is in the card the version opens.
-                    .when(self.exportable(), |this| {
-                        this.child(
-                            div()
-                                .id("strip-export")
-                                .flex_none()
-                                .h_flex()
-                                .items_center()
-                                .gap(px(6.))
-                                .cursor_pointer()
-                                .hover(|this| this.text_color(paint(self.palette.fg)))
-                                .on_click(cx.listener(|deck, _, window, cx| {
-                                    deck.open_export(window, cx);
-                                }))
-                                .child("export"),
-                        )
+                    //
+                    // Always drawn, sealed or not, so that its width is held
+                    // and the words beside it do not shift when it becomes
+                    // available. Until then it is invisible and inert: its
+                    // opacity follows the fade (nought), and it has no
+                    // handler, hover or pointer cursor, so it takes no
+                    // clicks. Once there is a deck to export it comes in on
+                    // the surface fade rather than in one frame.
+                    .child({
+                        let live = self.exportable();
+                        div()
+                            .id("strip-export")
+                            .flex_none()
+                            .opacity(self.export_fade.level())
+                            .when(live, |this| {
+                                this.cursor_pointer()
+                                    .hover(|this| this.text_color(paint(self.palette.fg)))
+                                    .on_click(cx.listener(|deck, _, window, cx| {
+                                        deck.open_export(window, cx);
+                                    }))
+                            })
+                            .child("export")
                     })
                     // Which deck is running. Asked for because there was no way
                     // to tell from inside the window, and the first thing
@@ -8801,7 +8861,8 @@ impl Render for DeckView {
         let hit = self
             .help_hit
             .is_some_and(|(_, at)| at.elapsed() < crate::keys::HIT);
-        if self.help.moving() || self.tip_fade.moving() || hit {
+        self.export_fade.set(self.exportable());
+        if self.help.moving() || self.tip_fade.moving() || self.export_fade.moving() || hit {
             window.request_animation_frame();
         }
         if std::mem::take(&mut self.review_settle) {

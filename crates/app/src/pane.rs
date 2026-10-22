@@ -162,6 +162,17 @@ impl Fade {
         true
     }
 
+    /// Stay on, but start rising again from no higher than `to`.
+    ///
+    /// For a light whose content changes in one frame while it is up: dipping
+    /// it a little and letting it rise on its normal fade makes the change
+    /// something seen rather than a cut.
+    pub(crate) fn dip(&mut self, to: f32) {
+        self.from = self.level().min(to);
+        self.on = true;
+        self.since = Some(std::time::Instant::now());
+    }
+
     /// Give this light its own pace.
     ///
     /// The narration's timings answer to a voice. A light that answers to a
