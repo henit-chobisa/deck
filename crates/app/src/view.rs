@@ -3300,6 +3300,28 @@ impl DeckView {
                                                 .on_click(move |_, _window, cx| cx.open_url(&page))
                                                 .child("on GitHub ↗"),
                                         )
+                                        // Which deck this is, for a bug report:
+                                        // the strip no longer shows it, so it
+                                        // is here beside the version, a click
+                                        // from the clipboard.
+                                        .when(running, |this| {
+                                            let id = self.deck.header.id.clone();
+                                            this.child(
+                                                div()
+                                                    .id("notes-deck-id")
+                                                    .font_family(mono.clone())
+                                                    .cursor_pointer()
+                                                    .hover(|this| {
+                                                        this.text_color(paint(palette.accent))
+                                                    })
+                                                    .on_click(move |_, _window, cx| {
+                                                        cx.write_to_clipboard(
+                                                            ClipboardItem::new_string(id.to_string()),
+                                                        );
+                                                    })
+                                                    .child(format!("{} · copy", self.deck.header.id)),
+                                            )
+                                        })
                                         .when(!running && !waiting, |this| {
                                             this.child(
                                                 div()
@@ -3605,7 +3627,16 @@ impl DeckView {
                             this.bg(paint(palette.band.mix(palette.accent, 0.28 * glow)))
                         })
                         .child(crate::keys::cap(key, palette, mono.clone()))
-                        .child(*name),
+                        .child(*name)
+                        // Putting the deck away has to be reachable without
+                        // knowing a key, so hide is pressed here as well.
+                        .when(*key == "h", |this| {
+                            this.cursor_pointer()
+                                .hover(|this| this.bg(paint(palette.wash)))
+                                .on_click(cx.listener(|deck, _, window, cx| {
+                                    deck.on_hide(&Hide, window, cx);
+                                }))
+                        }),
                     cx,
                 )
             })
@@ -6059,6 +6090,7 @@ impl DeckView {
         let palette = &self.palette;
         let mono = cx.theme().mono_font_family.clone();
         let groups = self.deck.groups();
+        let seen = self.seen.len().min(groups.len());
         let ground = paint(palette.band);
         let mut clear = ground;
         clear.a = 0.;
@@ -6207,35 +6239,13 @@ impl DeckView {
                                     .text_color(paint(palette.muted.mix(palette.band, 0.3)))
                                     .child("YOUR REVIEW"),
                             )
-                            // Export, once there is a whole deck to export: an
-                            // outline that lights on hover, so it never
-                            // speaks over the narration beside it.
-                            .when(self.exportable(), |this| {
-                                this.child(
-                                    div()
-                                        .id("band-export")
-                                        .flex_none()
-                                        .h(px(23.))
-                                        .px(px(10.))
-                                        .flex()
-                                        .items_center()
-                                        .rounded(px(5.))
-                                        .border_1()
-                                        .border_color(paint(palette.edge))
-                                        .text_size(px(12.))
-                                        .font_weight(FontWeight::MEDIUM)
-                                        .text_color(paint(palette.accent))
-                                        .cursor_pointer()
-                                        .hover(|this| {
-                                            this.border_color(paint(palette.accent))
-                                                .bg(paint(palette.band.mix(palette.accent, 0.1)))
-                                        })
-                                        .on_click(cx.listener(|deck, _, window, cx| {
-                                            deck.open_export(window, cx);
-                                        }))
-                                        .child("Export"),
-                                )
-                            }),
+                            .child(
+                                div()
+                                    .font_family(mono.clone())
+                                    .text_size(px(10.5))
+                                    .text_color(paint(palette.muted))
+                                    .child(format!("{seen} of {}", groups.len())),
+                            ),
                     )
                     .child(
                         div()
@@ -7158,7 +7168,6 @@ impl DeckView {
     /// The strip along the bottom: what is still coming, and which deck this
     /// is. Quiet, and always in the same place.
     fn render_strip(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        let said = self.remarks.len();
         // How much of the story can be read right now.
         let here = u32::try_from(self.deck.groups().len()).unwrap_or(1);
         let total = self.deck.header.total.unwrap_or(here).max(here).max(1);
@@ -7203,8 +7212,7 @@ impl DeckView {
                     .whitespace_nowrap()
                     // Where you are lives down here with the other counts,
                     // rather than beside the title. The title says what the
-                    // group is about; the strip says where you are in the deck
-                    // and what you have said so far, and those belong together.
+                    // group is about; the strip says where you are in the deck.
                     .child(format!("group {}/{}", self.group_ix + 1, total))
                     .when(walking, |this| {
                         this.child(
@@ -7361,11 +7369,27 @@ impl DeckView {
                     .gap_4()
                     .flex_none()
                     .whitespace_nowrap()
-                    .child(format!(
-                        "{said} comment{}",
-                        if said == 1 { "" } else { "s" }
-                    ))
-                    .child(self.deck.header.id.clone())
+                    // Export, once there is a whole deck to export. It takes
+                    // the place the deck id had, and is drawn as the keys
+                    // beside it are: a cap and a name, so the strip reads as
+                    // one row. The id is in the card the version opens.
+                    .when(self.exportable(), |this| {
+                        this.child(
+                            div()
+                                .id("strip-export")
+                                .flex_none()
+                                .h_flex()
+                                .items_center()
+                                .gap(px(6.))
+                                .cursor_pointer()
+                                .hover(|this| this.text_color(paint(self.palette.fg)))
+                                .on_click(cx.listener(|deck, _, window, cx| {
+                                    deck.open_export(window, cx);
+                                }))
+                                .child(crate::keys::cap("↓", &self.palette, cx.theme().mono_font_family.clone()))
+                                .child("export"),
+                        )
+                    })
                     // Which deck is running. Asked for because there was no way
                     // to tell from inside the window, and the first thing
                     // anybody reporting a bug has to answer is which version
@@ -7428,26 +7452,6 @@ impl DeckView {
                             )
                             .child(format!("{newer} available"))
                     }))
-                    // Putting the deck away has to be reachable without
-                    // knowing a key. It sits at the quiet end of the strip
-                    // rather than as a control in the header: it is a way out,
-                    // not something to be tempted by.
-                    .child(
-                        div()
-                            .id("hide")
-                            .px(px(6.))
-                            .py(px(2.))
-                            .rounded(px(4.))
-                            .text_color(paint(self.palette.muted))
-                            .hover(|this| {
-                                this.bg(paint(self.palette.wash))
-                                    .text_color(paint(self.palette.fg))
-                            })
-                            .on_click(cx.listener(|deck, _, window, cx| {
-                                deck.on_hide(&Hide, window, cx);
-                            }))
-                            .child("hide"),
-                    ),
             )
     }
 
