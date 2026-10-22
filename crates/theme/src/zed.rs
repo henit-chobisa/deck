@@ -91,9 +91,66 @@ pub fn read(named: Option<&str>, dark: bool) -> anyhow::Result<Option<Imported>>
     // the same appearance, because that is what Zed itself would show.
     match find(&wanted, &home) {
         Some(theme) => from_theme(&theme).map(Some),
+        // Zed's own two are always there, inside the binary.
+        None if wanted == ONE_DARK => Ok(Some(one(true))),
+        None if wanted == ONE_LIGHT => Ok(Some(one(false))),
         None if named.is_some() => Err(anyhow::anyhow!("no theme called `{wanted}` is installed")),
         None => Ok(Some(one(dark))),
     }
+}
+
+/// What Zed calls its own dark theme, which is not a file.
+const ONE_DARK: &str = "One Dark";
+/// And its own light one.
+const ONE_LIGHT: &str = "One Light";
+
+/// Every theme Zed could show, by name: the ones installed as files, then
+/// its own One Dark and One Light, which are always there.
+#[must_use]
+pub fn themes(home: &Path) -> Vec<String> {
+    let mut names = themes_in(&places(home));
+    for own in [ONE_DARK, ONE_LIGHT] {
+        if !names.iter().any(|name| name == own) {
+            names.push(own.to_string());
+        }
+    }
+    names
+}
+
+/// The names of the themes in theme files under `places`, each once, in the
+/// order they are found.
+fn themes_in(places: &[PathBuf]) -> Vec<String> {
+    let mut names: Vec<String> = Vec::new();
+    for family in places.iter().flat_map(|place| families(place)) {
+        for theme in family.themes {
+            if !names.contains(&theme.name) {
+                names.push(theme.name);
+            }
+        }
+    }
+    names
+}
+
+/// Where theme files are kept: the reader's own, extensions', and the ones
+/// the application ships.
+fn places(home: &Path) -> Vec<PathBuf> {
+    let mut places = vec![settings_dir(home).join("themes")];
+    places.extend(home::config().map(|at| at.join("Zed/extensions/installed")));
+    places.extend(home::applications().into_iter().flat_map(|at| {
+        [
+            at.join("Zed.app/Contents/Resources/themes"),
+            at.join("zed/themes"),
+        ]
+    }));
+    places
+}
+
+/// Every theme file under `place` that reads.
+fn families(place: &Path) -> impl Iterator<Item = Family> {
+    files_under(place).into_iter().filter_map(|file| {
+        let text = std::fs::read_to_string(&file).ok()?;
+        serde_json::from_str::<Family>(&text).ok()
+    })
 }
 
 /// The theme named in `settings`.
@@ -119,29 +176,10 @@ fn chosen(settings: &str) -> Option<String> {
 
 /// The theme called `name`, wherever it is installed.
 fn find(name: &str, home: &Path) -> Option<Theme> {
-    let mut places = vec![settings_dir(home).join("themes")];
-    places.extend(home::config().map(|at| at.join("Zed/extensions/installed")));
-    places.extend(home::applications().into_iter().flat_map(|at| {
-        [
-            at.join("Zed.app/Contents/Resources/themes"),
-            at.join("zed/themes"),
-        ]
-    }));
-
-    for place in places {
-        for file in files_under(&place) {
-            let Ok(text) = std::fs::read_to_string(&file) else {
-                continue;
-            };
-            let Ok(family) = serde_json::from_str::<Family>(&text) else {
-                continue;
-            };
-            if let Some(theme) = family.themes.into_iter().find(|theme| theme.name == name) {
-                return Some(theme);
-            }
-        }
-    }
-    None
+    places(home)
+        .iter()
+        .flat_map(|place| families(place))
+        .find_map(|family| family.themes.into_iter().find(|theme| theme.name == name))
 }
 
 /// Every JSON file under `at`, one directory deep.
@@ -306,6 +344,40 @@ mod tests {
             one(true).syntax.keyword.is_some(),
             "and it is a whole theme"
         );
+    }
+
+    #[test]
+    fn the_themes_on_disk_are_listed_once_each() {
+        let at = std::env::temp_dir().join(format!("deck-zed-themes-{}", std::process::id()));
+        let own = at.join("themes");
+        let extension = at.join("extensions/catppuccin/themes");
+        std::fs::create_dir_all(&own).unwrap();
+        std::fs::create_dir_all(&extension).unwrap();
+        let family = |names: &[&str]| {
+            let themes: Vec<String> = names
+                .iter()
+                .map(|name| format!(r#"{{ "name": "{name}", "style": {{}} }}"#))
+                .collect();
+            format!(r#"{{ "name": "x", "themes": [{}] }}"#, themes.join(","))
+        };
+        std::fs::write(own.join("a.json"), family(&["Nord", "Nord Light"])).unwrap();
+        std::fs::write(own.join("broken.json"), "{ not json").unwrap();
+        std::fs::write(
+            extension.join("c.json"),
+            family(&["Catppuccin Mocha", "Nord"]),
+        )
+        .unwrap();
+        let names = themes_in(&[own, at.join("extensions")]);
+        let _ = std::fs::remove_dir_all(&at);
+        assert_eq!(names, ["Nord", "Nord Light", "Catppuccin Mocha"]);
+    }
+
+    #[test]
+    fn zeds_own_two_are_always_offered_and_always_read() {
+        let nowhere = std::env::temp_dir().join("deck-zed-nowhere");
+        let names = themes(&nowhere);
+        assert!(names.iter().any(|name| name == ONE_DARK), "{names:?}");
+        assert!(names.iter().any(|name| name == ONE_LIGHT), "{names:?}");
     }
 
     #[test]

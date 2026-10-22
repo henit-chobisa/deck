@@ -37,7 +37,7 @@ impl ExportSheet {
                     self.choice.layout = Layout::Landscape;
                 }
                 "html" => self.choice.format = Format::Html,
-                "light" => self.choice.light_cut = true,
+                "light" => self.choice.theme = Theme::Light,
                 "nocomments" => self.choice.comments = false,
                 _ => {
                     if let Some(list) = part.strip_prefix("groups=")
@@ -94,7 +94,7 @@ impl ExportSheet {
         let (Some(packing), Some(laid)) = (self.packing.clone(), self.current()) else {
             return;
         };
-        let painted = self.painted(self.choice.theme());
+        let painted = self.painted(&self.choice.theme);
         let options = self.choice.options(painted.dark);
         let shape = self.choice.shape();
         let pages = shape.map(|_| laid.pages.len());

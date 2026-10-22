@@ -29,6 +29,8 @@
 //! - **VS Code** keeps them as JSON too, but its syntax colours are TextMate
 //!   scopes, which have to be mapped. See [`vscode`].
 
+use std::path::PathBuf;
+
 use deck_core::theme::Imported;
 
 pub mod nvim;
@@ -36,7 +38,9 @@ pub mod vscode;
 pub mod zed;
 
 /// An editor deck can borrow a palette from.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, Default, serde::Serialize, serde::Deserialize,
+)]
 #[serde(rename_all = "lowercase", from = "String")]
 pub enum Editor {
     /// Deck's own palette. Nothing is read.
@@ -182,13 +186,86 @@ pub fn read(editor: Editor, named: Option<&str>, dark: bool) -> anyhow::Result<O
 /// the ones installed are whatever the reader's config happens to require.
 #[must_use]
 pub fn themes(editor: Editor) -> Vec<String> {
+    listed(editor).into_iter().map(|theme| theme.name).collect()
+}
+
+/// One theme of an editor's, as [`listed`] found it: its name, and enough to
+/// read it again without looking for it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Listed {
+    /// The editor it belongs to.
+    pub editor: Editor,
+    /// What the editor calls it.
+    pub name: String,
+    /// The file it is in, when finding it means a search worth doing once.
+    ///
+    /// VS Code's, whose names are only found by reading every extension's
+    /// manifest. Zed's are read by name, since its own two are not files.
+    file: Option<PathBuf>,
+}
+
+impl Listed {
+    /// Its colours.
+    ///
+    /// The same answer [`read`] gives for this name, without the search: a
+    /// list of a few hundred themes read one by one through [`read`] scanned
+    /// every extension once per theme.
+    ///
+    /// # Errors
+    ///
+    /// As [`read`].
+    pub fn read(&self, dark: bool) -> anyhow::Result<Option<Imported>> {
+        match &self.file {
+            Some(file) => vscode::read_file(file).map(Some),
+            None => read(self.editor, Some(&self.name), dark),
+        }
+    }
+}
+
+/// Every theme `editor` could show, each ready to read.
+///
+/// Empty for Neovim, as [`themes`].
+#[must_use]
+pub fn listed(editor: Editor) -> Vec<Listed> {
     let Some(home) = deck_core::home::home() else {
         return Vec::new();
     };
+    let on_shelf = |flavour| {
+        vscode::shelf(flavour, &home)
+            .into_iter()
+            .map(|(name, file)| Listed {
+                editor,
+                name,
+                file: Some(file),
+            })
+            .collect()
+    };
     match editor {
-        Editor::Vscode => vscode::installed(vscode::CODE, &home),
-        Editor::Cursor => vscode::installed(vscode::CURSOR, &home),
-        Editor::Windsurf => vscode::installed(vscode::WINDSURF, &home),
-        Editor::Zed | Editor::Nvim | Editor::None => Vec::new(),
+        Editor::Vscode => on_shelf(vscode::CODE),
+        Editor::Cursor => on_shelf(vscode::CURSOR),
+        Editor::Windsurf => on_shelf(vscode::WINDSURF),
+        Editor::Zed => zed::themes(&home)
+            .into_iter()
+            .map(|name| Listed {
+                editor,
+                name,
+                file: None,
+            })
+            .collect(),
+        Editor::Nvim | Editor::None => Vec::new(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn zeds_one_dark_always_reads() {
+        // Listed whatever is on the machine, so it has to read whatever is on
+        // the machine: from a file when One Dark is installed as one, from the
+        // copy compiled in when it is not.
+        let got = read(Editor::Zed, Some("One Dark"), true).expect("One Dark reads");
+        assert!(got.is_some());
     }
 }

@@ -12,7 +12,12 @@
 //! and would be wrong in exactly the interesting cases.
 
 use std::collections::HashMap;
+use std::io::Read;
 use std::path::PathBuf;
+use std::process::{Command, Stdio};
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::mpsc;
+use std::time::{Duration, Instant};
 
 use deck_core::theme::{Imported, Rgb, Syntax, pick_accent};
 
@@ -68,14 +73,45 @@ struct Group {
     bg: Option<String>,
 }
 
-/// Read the reader's Neovim colours.
+/// How long [`read`] waits for nvim before giving up on it.
+///
+/// Generous, because this is the limit for `deck open` and the command line,
+/// where the reader is waiting on deck anyway and a config that installs its
+/// plugins on first start can take a while. A sheet that wants an answer
+/// sooner asks [`read_within`] with its own.
+pub const PATIENCE: Duration = Duration::from_secs(30);
+
+/// Read the reader's Neovim colours, waiting at most [`PATIENCE`].
 ///
 /// # Errors
 ///
-/// When nvim is not installed, will not start, or answers with something that
-/// is not the JSON this asked for.
+/// As [`read_within`].
 pub fn read() -> anyhow::Result<Imported> {
-    let script = std::env::temp_dir().join("deck-ask-nvim.lua");
+    read_within(PATIENCE)
+}
+
+/// Read the reader's Neovim colours, giving nvim `limit` to answer.
+///
+/// A config can hang — a plugin waiting on the network, a prompt nobody will
+/// ever see in a headless editor — and an nvim that never answers used to be a
+/// process that never ended and a thread that never came back. So it is
+/// stopped when the time is up, and waited on, and the error says so in words
+/// the reader can act on.
+///
+/// # Errors
+///
+/// When nvim is not installed, will not start, does not answer within `limit`,
+/// or answers with something that is not the JSON this asked for.
+pub fn read_within(limit: Duration) -> anyhow::Result<Imported> {
+    // A file of its own each time. Two reads at once — a sheet asking while
+    // the window is still starting, or two decks — would otherwise write the
+    // same file and remove it from under each other.
+    static ASKED: AtomicU64 = AtomicU64::new(0);
+    let script = std::env::temp_dir().join(format!(
+        "deck-ask-nvim-{}-{}.lua",
+        std::process::id(),
+        ASKED.fetch_add(1, Ordering::Relaxed)
+    ));
     std::fs::write(&script, ASK)?;
 
     // The config named outright, not left to nvim to find.
@@ -84,24 +120,103 @@ pub fn read() -> anyhow::Result<Imported> {
     // back with the built-in scheme — which was how this first reported a dark
     // page for a reader whose editor is light. Naming the file is what makes it
     // the reader's colours rather than nvim's.
-    let mut asking = std::process::Command::new("nvim");
+    let mut asking = Command::new("nvim");
     if let Some(init) = init() {
         asking.arg("-u").arg(init);
     }
-    let asked = asking
-        .args(["--headless", "-l"])
-        .arg(&script)
-        .output()
-        .map_err(|err| anyhow::anyhow!("cannot run nvim: {err}"))?;
+    asking.args(["--headless", "-l"]).arg(&script);
+    let answered = answer_within(asking, limit);
     let _ = std::fs::remove_file(&script);
+
+    let stdout = match answered {
+        Ok(Some(stdout)) => stdout,
+        Ok(None) => anyhow::bail!("Neovim did not answer in {}", seconds(limit)),
+        Err(err) => anyhow::bail!("cannot run nvim: {err}"),
+    };
 
     // `-l` writes the script's own output to stdout and nvim's chatter to
     // stderr, so the two do not have to be told apart afterwards.
-    let text = String::from_utf8_lossy(&asked.stdout);
+    let text = String::from_utf8_lossy(&stdout);
     let groups: HashMap<String, Group> = serde_json::from_str(text.trim())
         .map_err(|err| anyhow::anyhow!("nvim answered with something else: {err}"))?;
 
     from_groups(&groups)
+}
+
+/// `limit` the way a person says it: "5 seconds", "1 second".
+fn seconds(limit: Duration) -> String {
+    match limit.as_secs() {
+        1 => "1 second".to_string(),
+        whole => format!("{whole} seconds"),
+    }
+}
+
+/// Run `command` and collect what it writes to stdout, giving it `limit` to
+/// finish; `None` when it did not, and it has been stopped.
+///
+/// Stdout is read on a thread of its own while this one watches the clock.
+/// Reading it here instead would mean the clock is not looked at until the
+/// child writes or closes, which is exactly what a hung child never does; and
+/// only waiting, without reading, lets a child that writes more than a pipe
+/// holds block on the write and look hung when it is not.
+///
+/// The thread is not joined. A child can hand its stdout to something it
+/// starts — a language server, a plugin's job — and that can outlive it, so
+/// the pipe may stay open after the child has gone. The answer is taken from a
+/// channel with what is left of the time instead, and the thread ends on its
+/// own when the last holder of the pipe lets go.
+///
+/// On time running out the child is killed *and* waited on, so it does not
+/// linger as a zombie for the rest of deck's life.
+///
+/// # Errors
+///
+/// When the command cannot be started.
+fn answer_within(mut command: Command, limit: Duration) -> std::io::Result<Option<Vec<u8>>> {
+    let deadline = Instant::now() + limit;
+    let mut child = command
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()?;
+
+    let (said, heard) = mpsc::channel();
+    if let Some(mut stdout) = child.stdout.take() {
+        std::thread::spawn(move || {
+            let mut bytes = Vec::new();
+            let _ = stdout.read_to_end(&mut bytes);
+            let _ = said.send(bytes);
+        });
+    }
+
+    // Short naps rather than one long wait: the standard library has no wait
+    // with a deadline, and a tenth of the limit's worth of latency is not
+    // something anyone waiting on an editor to start will notice.
+    loop {
+        match child.try_wait() {
+            Ok(Some(_)) => break,
+            Ok(None) => {}
+            // Not knowing whether it has finished is no reason to leave it
+            // running: stopped and waited on like one that ran over, so the
+            // error does not leave a process or a zombie behind it.
+            Err(err) => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Err(err);
+            }
+        }
+        if Instant::now() >= deadline {
+            let _ = child.kill();
+            let _ = child.wait();
+            return Ok(None);
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    }
+
+    // Finished in time; what it wrote, if the pipe closes before the time is
+    // up. A pipe held open by something the child started counts as no answer.
+    let left = deadline.saturating_duration_since(Instant::now());
+    Ok(heard.recv_timeout(left).ok())
 }
 
 /// Turn nvim's highlight groups into what deck imports.
@@ -233,6 +348,40 @@ mod tests {
         let got = from_groups(&answered(REAL)).unwrap();
         assert_eq!(got.add, None);
         assert_eq!(got.del, None);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_command_that_does_not_finish_in_time_is_stopped() {
+        // The hung nvim, stood in for by something that is certain to hang
+        // for longer than it is given. It has to come back near the limit,
+        // not after the full ten seconds — which is what waiting on it
+        // unstopped would take.
+        let started = Instant::now();
+        let mut sleeping = Command::new("sleep");
+        sleeping.arg("10");
+        let got = answer_within(sleeping, Duration::from_millis(300)).expect("sleep starts");
+        assert_eq!(got, None);
+        assert!(
+            started.elapsed() < Duration::from_secs(5),
+            "took {:?}",
+            started.elapsed()
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_command_that_finishes_in_time_is_heard() {
+        let mut saying = Command::new("echo");
+        saying.arg("{}");
+        let got = answer_within(saying, Duration::from_secs(5)).expect("echo starts");
+        assert_eq!(got.as_deref(), Some(&b"{}\n"[..]));
+    }
+
+    #[test]
+    fn the_limit_reads_the_way_a_person_says_it() {
+        assert_eq!(seconds(Duration::from_secs(5)), "5 seconds");
+        assert_eq!(seconds(Duration::from_secs(1)), "1 second");
     }
 
     #[test]

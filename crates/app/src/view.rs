@@ -3409,6 +3409,10 @@ impl DeckView {
             project,
             title: crate::load::heading(&self.deck.header.title),
             titles: self.deck.groups().iter().map(row_title).collect(),
+            machine_dark: matches!(
+                window.appearance(),
+                WindowAppearance::Dark | WindowAppearance::VibrantDark
+            ),
         };
         let painted = crate::export_sheet::Painted {
             palette: self.palette,

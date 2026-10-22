@@ -32,6 +32,7 @@ mod model;
 mod preview;
 #[cfg(test)]
 mod tests;
+mod themes;
 
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -44,7 +45,9 @@ use gpui_kit::component::*;
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 
-pub use model::{Choice, Format, Layout, Saved, Theme};
+#[cfg(test)]
+pub use model::quoted;
+pub use model::{Borrowed, Choice, Format, Layout, Look, Saved, Theme};
 
 use crate::palette::paint;
 
@@ -89,11 +92,15 @@ enum Control {
     Portrait,
     Landscape,
     Theme,
-    /// The light cut, for printing.
-    Light,
     Every,
     Group(usize),
     Comments,
+    /// The filter over the theme list.
+    Filter,
+    /// One of deck's own themes in the list: the window's, dark, light.
+    Own(usize),
+    /// An editor's theme in the list, by its place among them.
+    Row(usize),
     /// The first click on a secret's *let through*, by its place in the list.
     Allow(usize),
     /// The second, which lets it through.
@@ -139,14 +146,29 @@ fn ask_where(
     (answer, None)
 }
 
-/// What the theme the window is painted in is called, said once at start.
-static THEME_NAME: std::sync::OnceLock<Option<String>> = std::sync::OnceLock::new();
+/// How the window is painted, said once at start.
+static WINDOW_LOOK: std::sync::OnceLock<Look> = std::sync::OnceLock::new();
 
-/// Say what the editor's theme the window borrowed is called: the theme the
-/// reader named, or the editor's own name when they named none. `None` when
-/// nothing was borrowed and the window is in deck's own palette.
-pub fn name_theme(name: Option<String>) {
-    let _ = THEME_NAME.set(name);
+/// What a window that never said is taken to be in: deck's own colours, the
+/// machine's mode, grey paper — the config's defaults.
+static UNTOLD: Look = Look {
+    borrowed: None,
+    mode: deck_core::theme::Mode::Auto,
+    paper: deck_core::theme::Paper::Grey,
+};
+
+/// Say how the window is painted: which editor's theme it borrowed, `None`
+/// when it is in deck's own palette, and the mode and paper it was opened in.
+pub fn name_theme(look: Look) {
+    let _ = WINDOW_LOOK.set(look);
+}
+
+fn window_look() -> &'static Look {
+    WINDOW_LOOK.get().unwrap_or(&UNTOLD)
+}
+
+fn window_theme() -> Option<&'static Borrowed> {
+    window_look().borrowed.as_ref()
 }
 
 /// The deck to export, as the window knows it.
@@ -166,9 +188,12 @@ pub struct Source {
     pub title: String,
     /// Each group's title, in order.
     pub titles: Vec<String>,
+    /// Whether the machine is set to dark, which decides an editor's theme
+    /// when it has one for each.
+    pub machine_dark: bool,
 }
 
-/// The colours the window is painted in, which `Theme::Window` exports in.
+/// The colours a page is painted in.
 #[derive(Debug, Clone, Copy)]
 pub struct Painted {
     /// The palette.
@@ -260,6 +285,23 @@ pub struct ExportSheet {
     stops: HashMap<Control, FocusHandle>,
     /// The controls drawn this frame, in the order tab moves through them.
     order: Vec<Control>,
+    /// The `[theme]` the config says, which an export is painted under.
+    config: deck_core::config::Theme,
+    /// Every editor's theme on this machine, as far as it has been read.
+    editors: Vec<themes::Row>,
+    /// The theme list, while it is open.
+    picking: Option<themes::Picking>,
+    /// Where the theme field is, for the list to hang from.
+    field: Bounds<Pixels>,
+    /// Whether the command line under the preview has just been copied.
+    copied: bool,
+    discovering: Task<()>,
+    asking_nvim: Task<()>,
+    /// Whether Neovim's answer, when it comes, is to be chosen: set when its
+    /// row is clicked, and cleared when the list shuts, by a pick or not. A
+    /// theme picked while Neovim was still starting is the reader's later
+    /// word, and an answer that arrives after it must not take it back.
+    nvim_on_answer: bool,
     /// The pages last shown, kept up — dimmed, and said to be updating —
     /// while the pages for a changed option are laid out, so the preview
     /// never goes blank between two of them.
@@ -291,8 +333,11 @@ impl Focusable for ExportSheet {
 
 impl ExportSheet {
     /// A sheet for `source`, painted in `palette`, exporting by default in
-    /// the colours the window is `painted` in. It starts reading the deck at
-    /// once: packing a folder reads every file it points at.
+    /// the colours the window is `painted` in — exactly those, which "As the
+    /// window" paints the preview and the file in, rather than working them
+    /// out again from the config the window may have been told to go over.
+    /// It starts reading the deck at once: packing a folder reads every file
+    /// it points at.
     pub fn new(source: Source, palette: Palette, painted: Painted, cx: &mut Context<Self>) -> Self {
         preview::embed_faces(cx);
         let mut sheet = Self {
@@ -313,6 +358,14 @@ impl ExportSheet {
             unlaid: None,
             stops: HashMap::new(),
             order: Vec::new(),
+            config: deck_core::config::Theme::default(),
+            editors: Vec::new(),
+            picking: None,
+            field: Bounds::default(),
+            copied: false,
+            discovering: Task::ready(()),
+            asking_nvim: Task::ready(()),
+            nvim_on_answer: false,
             last: None,
             drawings: Arc::new(preview::Drawings::new()),
             thumbs: ScrollHandle::new(),
@@ -326,6 +379,7 @@ impl ExportSheet {
             debug: None,
         };
         sheet.read(cx);
+        sheet.discover(cx);
         sheet
     }
 
@@ -355,12 +409,21 @@ impl ExportSheet {
                         .iter()
                         .map(|entry| (entry.n, entry.remarks, entry.answers))
                         .collect();
-                    anyhow::Ok((packing, said))
+                    // What the command would paint under: read here, off
+                    // the window's thread, like the deck.
+                    let config = crate::config::read()
+                        .map(|config| config.theme)
+                        .unwrap_or_else(|err| {
+                            eprintln!("deck: {err:#}");
+                            deck_core::config::Theme::default()
+                        });
+                    anyhow::Ok((packing, said, config))
                 })
                 .await;
             this.update(cx, |sheet, cx| {
                 match read {
-                    Ok((packing, said)) => {
+                    Ok((packing, said, config)) => {
+                        sheet.config = config;
                         sheet.said = vec![0; sheet.choice.groups.len()];
                         for (n, remarks, answers) in &said {
                             if let Some(slot) = usize::try_from(*n)
@@ -384,29 +447,32 @@ impl ExportSheet {
         });
     }
 
-    /// The palette, darkness and syntax `theme` paints in: the window's own,
-    /// or deck's own dark or light, as `deck export --theme` paints them.
-    fn painted(&self, theme: Theme) -> Painted {
-        match theme {
-            Theme::Window => self.window,
-            Theme::Dark | Theme::Light => {
-                let dark = theme == Theme::Dark;
-                let chosen = crate::palette::asked();
-                let mut palette = crate::palette::current_on(dark, chosen.paper);
-                chosen.colors.apply(&mut palette);
-                Painted {
-                    palette,
-                    dark,
-                    syntax: Syntax::default(),
-                }
-            }
+    /// The palette, darkness and syntax `theme` paints in, as `deck export
+    /// --theme` paints them ([`crate::cli::painted_for`]), from colours
+    /// already read: painting never waits on a disk or a process.
+    ///
+    /// The window's own is the window's palette itself, not the config's
+    /// answer for the theme it borrowed. The two part whenever the window was
+    /// opened with `--mode` or `--paper` over the config — a `deck open --mode
+    /// dark` on a machine whose config says light would otherwise preview
+    /// and export light under a label that says dark. The command line it
+    /// copies carries the same flags ([`Choice::args`]), so it paints this too.
+    fn painted(&self, theme: &Theme) -> Painted {
+        if *theme == Theme::Window {
+            return self.window;
         }
+        crate::cli::painted_for(
+            &theme.flag(window_theme()),
+            &self.config,
+            self.source.machine_dark,
+            |editor, name, _| self.imported(editor, name),
+        )
     }
 
     fn key(&self) -> Key {
         (
             self.choice.previewed(),
-            self.choice.theme(),
+            self.choice.theme.clone(),
             self.choice.numbers(),
             self.choice.comments,
             self.choice.format,
@@ -430,7 +496,7 @@ impl ExportSheet {
             self.settle_page();
             return;
         }
-        let painted = self.painted(self.choice.theme());
+        let painted = self.painted(&self.choice.theme);
         let choice = self.choice.clone();
         let titles = self.source.titles.clone();
         self.laying = cx.spawn(async move |this, cx| {
@@ -546,6 +612,7 @@ impl ExportSheet {
         if matches!(self.phase, Phase::Saved(_) | Phase::Failed(_)) {
             self.phase = Phase::Ready;
         }
+        self.copied = false;
         self.page = 0;
         self.lay_out(cx);
         if carried {
@@ -595,7 +662,7 @@ impl ExportSheet {
             self.source.project.as_deref(),
             deck_core::home::home(),
         );
-        let painted = self.painted(self.choice.theme());
+        let painted = self.painted(&self.choice.theme);
         let options = self.choice.options(painted.dark);
         let shape = self.choice.shape();
         let pages = shape.map(|_| laid.pages.len());
@@ -694,8 +761,9 @@ impl ExportSheet {
         matches!(self.phase, Phase::Asking | Phase::Writing)
     }
 
-    /// Escape, or a click on the shade: the sheet put away — but not while
-    /// it is waiting on a save dialog or writing a file.
+    /// Escape, or a click on the shade: the theme list shut first, when it
+    /// is up, since it is over the sheet; then the sheet put away — but not
+    /// while it is waiting on a save dialog or writing a file.
     ///
     /// While a dialog is asked for, it stops the waiting instead, and the
     /// sheet stays up, ready to export again. This can only reach the sheet
@@ -709,7 +777,11 @@ impl ExportSheet {
     ///
     /// While a file is being written, nothing: the write is the reader's
     /// answer already, and what came of it is said on the sheet when it ends.
-    fn escape(&mut self, cx: &mut Context<Self>) {
+    fn escape(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.picking.is_some() {
+            self.close_themes(window, cx);
+            return;
+        }
         match self.phase {
             Phase::Asking => {
                 self.writing = Task::ready(());
@@ -736,37 +808,17 @@ impl ExportSheet {
         cx.notify();
     }
 
-    /// The next of the themes the sheet knows: the window's, then deck's own
-    /// dark and light, leaving out one the window already is.
-    fn next_theme(&mut self, cx: &mut Context<Self>) {
-        let order: Vec<Theme> = [Theme::Window, Theme::Dark, Theme::Light]
-            .into_iter()
-            .filter(|theme| {
-                *theme == Theme::Window
-                    || self.theme_name().is_some()
-                    || (*theme == Theme::Dark) != self.window.dark
-            })
-            .collect();
-        let at = order
-            .iter()
-            .position(|theme| *theme == self.choice.theme)
-            .unwrap_or(0);
-        self.choice.theme = order[(at + 1) % order.len()];
-        self.changed(false, cx);
-    }
-
-    fn theme_name(&self) -> Option<String> {
-        THEME_NAME.get().cloned().flatten()
-    }
-
     /// The controls the sheet shows as it stands, in the order they are
     /// drawn, top to bottom: the order tab moves through them.
-    fn tab_order(&self) -> Vec<Control> {
+    fn tab_order(&self, cx: &App) -> Vec<Control> {
+        if self.picking.is_some() {
+            return self.theme_order(cx);
+        }
         let mut order = vec![Control::Pdf, Control::Html];
         if self.choice.format == Format::Pdf {
             order.extend([Control::Portrait, Control::Landscape]);
         }
-        order.extend([Control::Theme, Control::Light, Control::Every]);
+        order.extend([Control::Theme, Control::Every]);
         order.extend((0..self.source.titles.len()).map(Control::Group));
         order.push(Control::Comments);
         if let Scan::Found(hits) = &self.scan {
@@ -852,11 +904,15 @@ impl ExportSheet {
                 };
                 self.changed(false, cx);
             }
-            Control::Theme => self.next_theme(cx),
-            Control::Light => {
-                self.choice.light_cut = !self.choice.light_cut;
-                self.changed(false, cx);
+            Control::Theme => {
+                if self.picking.is_some() {
+                    self.close_themes(window, cx);
+                } else {
+                    self.open_themes(window, cx);
+                }
             }
+            Control::Filter => {}
+            Control::Own(_) | Control::Row(_) => self.press_theme(control, window, cx),
             Control::Every => {
                 let every = self.choice.chosen() == self.choice.groups.len();
                 self.choice.groups.fill(!every);
@@ -899,17 +955,9 @@ impl ExportSheet {
         }
     }
 
-    /// What the theme row says.
-    fn theme_label(&self) -> String {
-        let own = |dark: bool| format!("Deck's own · {}", if dark { "dark" } else { "light" });
-        match self.choice.theme {
-            Theme::Window => match self.theme_name() {
-                Some(name) => format!("Your editor's · {name}"),
-                None => format!("{}, as the window", own(self.window.dark)),
-            },
-            Theme::Dark => own(true),
-            Theme::Light => own(false),
-        }
+    /// What `theme` is called on the field and in the list.
+    fn label_of(&self, theme: &Theme) -> String {
+        model::label(theme, window_theme(), self.window.dark)
     }
 }
 
@@ -1157,7 +1205,7 @@ impl Render for ExportSheet {
         #[cfg(debug_assertions)]
         self.debug_render(window, cx);
         let palette = self.palette;
-        self.order = self.tab_order();
+        self.order = self.tab_order(cx);
         let stops: HashMap<Control, FocusHandle> = self
             .order
             .clone()
@@ -1296,9 +1344,27 @@ impl Render for ExportSheet {
                     sheet.press(Control::Landscape, window, cx);
                 })),
             );
+        let shown = self.painted(&self.choice.theme).palette;
+        let field = self.field;
+        let this = cx.entity().downgrade();
         let theme = div()
-            .v_flex()
-            .gap(px(7.))
+            .on_prepaint(move |bounds, _, cx| {
+                if bounds != field {
+                    // The list hangs from the field, and was drawn this frame
+                    // from where the field was last frame. Moved while the
+                    // list is open — the sheet resized, the options scrolled —
+                    // the list has to be drawn again to follow it, or it sits
+                    // where the field used to be until something else asks for
+                    // a frame.
+                    this.update(cx, |sheet, cx| {
+                        sheet.field = bounds;
+                        if sheet.picking.is_some() {
+                            cx.notify();
+                        }
+                    })
+                    .ok();
+                }
+            })
             .child(
                 ring(div().id("x-theme"), Control::Theme)
                     .h_flex()
@@ -1309,52 +1375,57 @@ impl Render for ExportSheet {
                     .py(px(8.))
                     .rounded(px(7.))
                     .border_1()
-                    .border_color(paint(palette.edge))
+                    .border_color(paint(if self.picking.is_some() {
+                        palette.accent
+                    } else {
+                        palette.edge
+                    }))
                     .bg(paint(palette.wash))
                     .cursor_pointer()
-                    .when(self.choice.light_cut, |this| this.opacity(0.55))
-                    .on_click(cx.listener(|sheet, _, window, cx| {
-                        sheet.press(Control::Theme, window, cx);
-                    }))
+                    // On the way down, so the list's own click-outside does
+                    // not shut it only for this to open it again.
+                    .on_mouse_down(
+                        MouseButton::Left,
+                        cx.listener(|sheet, _, window, cx| {
+                            cx.stop_propagation();
+                            sheet.press(Control::Theme, window, cx);
+                        }),
+                    )
                     .child(
                         div()
                             .min_w_0()
-                            .overflow_hidden()
-                            .text_ellipsis()
-                            .whitespace_nowrap()
-                            .text_size(px(13.))
-                            .child(self.theme_label()),
+                            .h_flex()
+                            .items_center()
+                            .gap(px(9.))
+                            .child(div().flex_none().h_flex().gap(px(3.)).children(
+                                [shown.bg, shown.fg, shown.accent].map(|colour| {
+                                    div()
+                                        .size(px(12.))
+                                        .rounded(px(3.))
+                                        .border_1()
+                                        .border_color(paint(palette.edge))
+                                        .bg(paint(colour))
+                                }),
+                            ))
+                            .child(
+                                div()
+                                    .min_w_0()
+                                    .overflow_hidden()
+                                    .text_ellipsis()
+                                    .whitespace_nowrap()
+                                    .text_size(px(13.))
+                                    .child(self.label_of(&self.choice.theme)),
+                            ),
                     )
                     .child(
                         div()
                             .flex_none()
                             .text_size(px(11.5))
                             .text_color(paint(palette.accent))
-                            .child("change"),
+                            .child("▾"),
                     ),
-            )
-            // The window has no theme picker of its own to open, so
-            // *change* steps through the themes it knows, and says so.
-            .child(
-                div()
-                    .text_size(px(11.))
-                    .text_color(paint(palette.muted))
-                    .child("Change steps through the themes deck knows."),
-            )
-            .child(
-                ring(div().id("x-light"), Control::Light)
-                    .h_flex()
-                    .gap(px(9.))
-                    .items_start()
-                    .rounded(px(4.))
-                    .cursor_pointer()
-                    .text_size(px(12.5))
-                    .on_click(cx.listener(|sheet, _, window, cx| {
-                        sheet.press(Control::Light, window, cx);
-                    }))
-                    .child(tick(self.choice.light_cut, &palette))
-                    .child("Light cut, for printing"),
             );
+        let list = self.theme_list(&stops, cx);
         let groups = div()
             .id("x-groups")
             .v_flex()
@@ -1932,6 +2003,50 @@ impl Render for ExportSheet {
                             }))
                             .child(preview::page(page.clone(), self.drawings.clone()))
                     })),
+            );
+        // The command that makes the same file, to copy: the sheet is `deck
+        // export`, and this says which one.
+        let command = self
+            .choice
+            .command(&self.source.deck, window_look(), &self.config);
+        let preview = preview
+            .child(
+                div()
+                    .id("x-command")
+                    .flex_none()
+                    .h_flex()
+                    .gap(px(10.))
+                    .px(px(10.))
+                    .py(px(6.))
+                    .rounded(px(6.))
+                    .bg(paint(palette.wash))
+                    .font_family(mono.clone())
+                    .text_size(px(11.))
+                    .text_color(paint(palette.muted))
+                    .cursor_pointer()
+                    .on_click(cx.listener({
+                        let command = command.clone();
+                        move |sheet, _, _, cx| {
+                            cx.write_to_clipboard(ClipboardItem::new_string(command.clone()));
+                            sheet.copied = true;
+                            cx.notify();
+                        }
+                    }))
+                    .child(
+                        div()
+                            .flex_1()
+                            .min_w_0()
+                            .overflow_hidden()
+                            .text_ellipsis()
+                            .whitespace_nowrap()
+                            .child(command),
+                    )
+                    .child(
+                        div()
+                            .flex_none()
+                            .text_color(paint(palette.accent))
+                            .child(if self.copied { "copied" } else { "copy" }),
+                    ),
             )
             .child(
                 div()
@@ -1947,7 +2062,9 @@ impl Render for ExportSheet {
             .id("export-shade")
             .track_focus(&self.focus)
             .key_context("DeckExport")
-            .on_action(cx.listener(|sheet, _: &CloseSheet, _, cx| sheet.escape(cx)))
+            .on_action(cx.listener(|sheet, _: &CloseSheet, window, cx| {
+                sheet.escape(window, cx);
+            }))
             .on_action(cx.listener(|sheet, _: &NextPage, _, cx| sheet.turn_page(1, cx)))
             .on_action(cx.listener(|sheet, _: &PrevPage, _, cx| sheet.turn_page(-1, cx)))
             .on_action(cx.listener(|sheet, _: &NextControl, window, cx| {
@@ -1957,7 +2074,10 @@ impl Render for ExportSheet {
                 sheet.step_focus(-1, window, cx);
             }))
             .on_action(cx.listener(|sheet, _: &Choose, window, cx| {
-                if let Some(control) = sheet.focused(window) {
+                // A space typed into the theme filter is a space.
+                if sheet.typing(window, cx) {
+                    cx.propagate();
+                } else if let Some(control) = sheet.focused(window) {
                     sheet.press(control, window, cx);
                 }
             }))
@@ -1965,7 +2085,7 @@ impl Render for ExportSheet {
             .occlude()
             .on_mouse_down(
                 MouseButton::Left,
-                cx.listener(|sheet, _, _, cx| sheet.escape(cx)),
+                cx.listener(|sheet, _, window, cx| sheet.escape(window, cx)),
             )
             .absolute()
             .top_0()
@@ -2001,5 +2121,6 @@ impl Render for ExportSheet {
                     .child(preview),
             )
             .children(badge)
+            .children(list)
     }
 }

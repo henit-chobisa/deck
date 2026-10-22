@@ -455,7 +455,80 @@ fn a_notice_reads_as_a_sentence() {
 fn space_twice_lets_no_secret_through() {
     assert_eq!(ring_after(Control::Allow(2)), Some(Control::AllowCancel(2)));
     assert_eq!(ring_after(Control::AllowCancel(2)), Some(Control::Allow(2)));
-    for control in [Control::AllowSure(2), Control::Light, Control::Export] {
+    for control in [Control::AllowSure(2), Control::Export] {
         assert_eq!(ring_after(control), None, "{control:?} keeps the ring");
     }
+}
+
+/// The default names the theme the window really borrowed, and deck's own
+/// when it borrowed none.
+#[test]
+fn as_the_window_names_the_real_theme() {
+    let borrowed = Borrowed {
+        editor: deck_theme::Editor::Nvim,
+        name: Some("koala-hyderabad".to_string()),
+    };
+    assert_eq!(Choice::new(1).theme, Theme::Window, "the default");
+    assert_eq!(
+        model::label(&Theme::Window, Some(&borrowed), true),
+        "As the window · koala-hyderabad"
+    );
+    let unnamed = Borrowed {
+        editor: deck_theme::Editor::Zed,
+        name: None,
+    };
+    assert_eq!(
+        model::label(&Theme::Window, Some(&unnamed), true),
+        "As the window · Zed"
+    );
+    assert_eq!(
+        model::label(&Theme::Window, None, false),
+        "As the window · Deck light"
+    );
+    assert_eq!(model::label(&Theme::Light, None, true), "Deck light");
+}
+
+/// Only installed editors are listed, in the list's order, with only the
+/// themes they have; Neovim is one row that waits to be clicked, so opening
+/// the sheet never starts it.
+#[test]
+fn the_list_holds_what_is_installed_and_nothing_else() {
+    use deck_theme::Editor;
+    let installed = |editor: Editor| matches!(editor, Editor::Zed | Editor::Vscode | Editor::Nvim);
+    let asked = std::cell::RefCell::new(Vec::new());
+    let rows = themes::listed(installed, |editor| {
+        asked.borrow_mut().push(editor);
+        match editor {
+            Editor::Vscode => vec!["Nord".to_string(), "One Dark Pro".to_string()],
+            Editor::Zed => vec!["One Dark".to_string(), "One Light".to_string()],
+            _ => Vec::new(),
+        }
+    });
+    let seen: Vec<(Editor, Option<&str>)> = rows
+        .iter()
+        .map(|row| (row.editor, row.name.as_deref()))
+        .collect();
+    assert_eq!(
+        seen,
+        [
+            (Editor::Vscode, Some("Nord")),
+            (Editor::Vscode, Some("One Dark Pro")),
+            (Editor::Zed, Some("One Dark")),
+            (Editor::Zed, Some("One Light")),
+            (Editor::Nvim, None),
+        ]
+    );
+    assert_eq!(
+        *asked.borrow(),
+        [Editor::Vscode, Editor::Zed],
+        "Neovim is never asked for a list"
+    );
+    assert!(matches!(rows[4].swatch, themes::Swatch::OnClick));
+    assert_eq!(rows[4].title(), "The scheme it is in");
+    assert!(
+        rows[..4]
+            .iter()
+            .all(|row| matches!(row.swatch, themes::Swatch::Reading)),
+        "and nothing can be picked before it is read"
+    );
 }
