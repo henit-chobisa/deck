@@ -261,16 +261,61 @@ pub fn read_from(
 /// Every theme this flavour could show, by name.
 #[must_use]
 pub fn installed(flavour: Flavour, home: &Path) -> Vec<String> {
+    shelf(flavour, home)
+        .into_iter()
+        .map(|(name, _)| name)
+        .collect()
+}
+
+/// Every theme this flavour could show, by name, with the file it is in.
+///
+/// One pass over the manifests for the lot. Looking each name up afterwards
+/// with [`find`] reads every manifest again per theme, and with a few hundred
+/// themes and a few hundred extensions that is the difference between a list
+/// that fills in at once and one that takes its time.
+///
+/// Sorted by name, and a name two extensions both claim is kept once, with the
+/// file of whichever was found first — the same one [`find`] would answer.
+#[must_use]
+pub fn shelf(flavour: Flavour, home: &Path) -> Vec<(String, PathBuf)> {
+    let mut out: Vec<(String, PathBuf)> = declared(flavour, home)
+        .into_iter()
+        .filter_map(|theme| Some((theme.name?, theme.file)))
+        .collect();
+    // Stable, so of two with the same name the first found stays first.
+    out.sort_by(|a, b| a.0.cmp(&b.0));
+    out.dedup_by(|later, first| later.0 == first.0);
+    out
+}
+
+/// Read the theme in `file`, as [`shelf`] gives it.
+///
+/// # Errors
+///
+/// When the file cannot be read, is not a theme, or has no page or text.
+pub fn read_file(file: &Path) -> anyhow::Result<Imported> {
+    from_theme(&load(file)?)
+}
+
+/// One theme an extension declares: what it is called, its id, and its file.
+struct Shelved {
+    name: Option<String>,
+    id: Option<String>,
+    file: PathBuf,
+}
+
+/// Every theme every manifest declares, in the order the manifests are found.
+fn declared(flavour: Flavour, home: &Path) -> Vec<Shelved> {
     let mut out = Vec::new();
     for (at, manifest) in manifests(flavour, home) {
         for theme in manifest.contributes.map(|c| c.themes).unwrap_or_default() {
-            if let Some(name) = name_of(&theme, &at) {
-                out.push(name);
-            }
+            out.push(Shelved {
+                name: name_of(&theme, &at),
+                file: at.join(theme.path.trim_start_matches("./")),
+                id: theme.id,
+            });
         }
     }
-    out.sort();
-    out.dedup();
     out
 }
 
@@ -352,18 +397,13 @@ pub(crate) fn strip_comments(text: &str) -> String {
 ///
 /// Every extension declares its themes by label, so this reads manifests until
 /// one claims the name. There are a few hundred at most and each is a small
-/// file; a cache would be a second thing to invalidate.
+/// file; a cache would be a second thing to invalidate. Fine for one name — a
+/// list of them goes through [`shelf`] instead.
 fn find(label: &str, flavour: Flavour, home: &Path) -> Option<PathBuf> {
-    for (at, manifest) in manifests(flavour, home) {
-        for theme in manifest.contributes.map(|c| c.themes).unwrap_or_default() {
-            let named = name_of(&theme, &at).as_deref() == Some(label)
-                || theme.id.as_deref() == Some(label);
-            if named {
-                return Some(at.join(theme.path.trim_start_matches("./")));
-            }
-        }
-    }
-    None
+    declared(flavour, home)
+        .into_iter()
+        .find(|theme| theme.name.as_deref() == Some(label) || theme.id.as_deref() == Some(label))
+        .map(|theme| theme.file)
 }
 
 /// The theme this flavour shows when nobody has chosen one.
@@ -713,5 +753,45 @@ mod tests {
     #[test]
     fn a_scope_nobody_claims_is_nothing() {
         assert_eq!(scope(&theme(), "markup.heading"), None);
+    }
+
+    #[test]
+    fn the_shelf_finds_each_theme_where_find_does_and_it_reads() {
+        // One extension with two themes, in a home of its own. The flavour's
+        // bundled themes come along too when it is installed, so only these
+        // two are looked at.
+        let home = std::env::temp_dir().join(format!("deck-vscode-shelf-{}", std::process::id()));
+        let at = home.join(CODE.extensions).join("someone.nord");
+        std::fs::create_dir_all(at.join("themes")).unwrap();
+        std::fs::write(
+            at.join("package.json"),
+            r#"{ "contributes": { "themes": [
+                { "label": "Shelf Nord", "path": "./themes/nord.json" },
+                { "label": "Shelf Nord Light", "path": "./themes/light.json" }
+            ] } }"#,
+        )
+        .unwrap();
+        std::fs::write(
+            at.join("themes/nord.json"),
+            r##"{ "colors": { "editor.background": "#2e3440", "editor.foreground": "#d8dee9" } }"##,
+        )
+        .unwrap();
+
+        let shelf = shelf(CODE, &home);
+        let ours: Vec<&(String, PathBuf)> = shelf
+            .iter()
+            .filter(|(name, _)| name.starts_with("Shelf Nord"))
+            .collect();
+        let found = find("Shelf Nord", CODE, &home);
+        let read = read_file(&ours[0].1);
+        let _ = std::fs::remove_dir_all(&home);
+
+        assert_eq!(ours.len(), 2, "{ours:?}");
+        assert_eq!(ours[0].0, "Shelf Nord");
+        assert_eq!(Some(ours[0].1.clone()), found);
+        assert_eq!(
+            read.expect("the file is a theme").bg,
+            Rgb::from_hex("#2e3440").unwrap()
+        );
     }
 }

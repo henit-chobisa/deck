@@ -78,7 +78,7 @@ impl Row {
 /// editor with nothing to list left out.
 pub(super) fn listed(
     installed: impl Fn(Editor) -> bool,
-    themes: impl Fn(Editor) -> Vec<String>,
+    mut themes: impl FnMut(Editor) -> Vec<String>,
 ) -> Vec<Row> {
     let mut rows = Vec::new();
     for editor in ORDER.into_iter().filter(|editor| installed(*editor)) {
@@ -157,15 +157,38 @@ impl ExportSheet {
     pub(super) fn discover(&mut self, cx: &mut Context<Self>) {
         let dark = self.source.machine_dark;
         self.discovering = cx.spawn(async move |this, cx| {
-            let rows = cx
+            // Each editor's themes are found with where they live, once, and
+            // read from there: looking each one up again by name would scan
+            // every extension per theme, which with a few hundred of each is
+            // most of the time the list takes to fill in.
+            let (rows, mut shelf) = cx
                 .background_executor()
-                .spawn(async move { listed(Editor::installed, deck_theme::themes) })
+                .spawn(async move {
+                    let mut shelf: HashMap<(Editor, String), deck_theme::Listed> = HashMap::new();
+                    let rows = listed(Editor::installed, |editor| {
+                        let found = deck_theme::listed(editor);
+                        let names = found.iter().map(|theme| theme.name.clone()).collect();
+                        shelf.extend(
+                            found
+                                .into_iter()
+                                .map(|theme| ((theme.editor, theme.name.clone()), theme)),
+                        );
+                        names
+                    });
+                    (rows, shelf)
+                })
                 .await;
-            let reading: Vec<(usize, Editor, Option<Arc<str>>)> = rows
+            let reading: Vec<_> = rows
                 .iter()
                 .enumerate()
                 .filter(|(_, row)| matches!(row.swatch, Swatch::Reading))
-                .map(|(ix, row)| (ix, row.editor, row.name.clone()))
+                .map(|(ix, row)| {
+                    let listed = row
+                        .name
+                        .as_deref()
+                        .and_then(|name| shelf.remove(&(row.editor, name.to_string())));
+                    (ix, row.editor, row.name.clone(), listed)
+                })
                 .collect();
             if this
                 .update(cx, |sheet, cx| {
@@ -176,12 +199,13 @@ impl ExportSheet {
             {
                 return;
             }
-            for (ix, editor, name) in reading {
+            for (ix, editor, name, listed) in reading {
                 let got = cx
                     .background_executor()
                     .spawn(async move {
-                        read(editor, name.as_deref(), || {
-                            deck_theme::read(editor, name.as_deref(), dark)
+                        read(editor, name.as_deref(), || match &listed {
+                            Some(listed) => listed.read(dark),
+                            None => deck_theme::read(editor, name.as_deref(), dark),
                         })
                     })
                     .await;
