@@ -1985,7 +1985,15 @@ impl Pane {
         // arrive; a warm flash that settles into the diff colour is one nobody
         // misses.
         let flash = palette.focus.mix(palette.accent, 0.3);
-        let gutter_fg = palette.fg.mix(palette.wash, 0.6);
+        // Quiet, but never so quiet it cannot be read: on a light editor
+        // theme the fixed mix landed near 1.6:1. Lifted by the least that
+        // reads at 3:1 on the pane and the page, which keeps it well behind
+        // the code it numbers.
+        let gutter_fg = deck_core::theme::legible(
+            deck_core::theme::legible(palette.fg.mix(palette.wash, 0.6), palette.wash, 3.0),
+            palette.bg,
+            3.0,
+        );
         let held = self.held;
         // A comment covers a range, so its bar covers the range: a mark on the
         // first line alone leaves the reader guessing how far down the remark
@@ -2964,6 +2972,16 @@ fn same(a: &str, b: &str) -> bool {
     a.trim() == b.trim()
 }
 
+/// A header's label cut where the file's name begins: the folders, ending in
+/// their slash, and the name with its range. A label with no slash is all
+/// name, and has no folders.
+fn split_path(label: &str) -> (String, String) {
+    match label.rfind('/') {
+        Some(at) => (label[..=at].to_string(), label[at + 1..].to_string()),
+        None => (String::new(), label.to_string()),
+    }
+}
+
 /// A pane folded down to its spine at the window's edge.
 ///
 /// `title` is what the prose calls it, `under` whatever says which one it is
@@ -3110,7 +3128,24 @@ pub fn chrome(
                                 .text_color(paint(palette.accent))
                                 .child(name)
                         }))
-                        .children(label.map(|label| div().min_w_0().truncate().child(label))),
+                        // The folders give way and the file never does: a path
+                        // cut from its end lost the file's name and its range,
+                        // the two things a reader looks up here for. A label
+                        // with no folders is cut from its end, as before.
+                        .children(label.map(|label| {
+                            let (folders, file) = split_path(&label);
+                            if folders.is_empty() {
+                                div().min_w_0().truncate().child(file).into_any_element()
+                            } else {
+                                div()
+                                    .h_flex()
+                                    .min_w_0()
+                                    .overflow_hidden()
+                                    .child(div().min_w_0().truncate().child(folders))
+                                    .child(div().flex_none().whitespace_nowrap().child(file))
+                                    .into_any_element()
+                            }
+                        })),
                 )
                 .children(
                     note.as_deref()
@@ -3422,10 +3457,17 @@ fn row_content(
                         .text_size(small)
                         .cursor_pointer()
                         .child(
+                            // A fixed box, so the preview beside it does not
+                            // move under the pointer when the caret turns; and
+                            // the small carets every other disclosure uses.
                             div()
+                                .flex_none()
+                                .w(px(9.))
+                                .flex()
+                                .justify_center()
                                 .text_color(paint(palette.accent))
                                 .text_size(size * 0.7)
-                                .child(if *open { "▼" } else { "▶" }),
+                                .child(if *open { "▾" } else { "▸" }),
                         )
                         .child(div().text_color(paint(soft)).child(preview)),
                 )
@@ -3592,6 +3634,21 @@ mod tests {
     use core::prelude::v1::test;
 
     use super::*;
+
+    #[test]
+    fn a_header_label_splits_at_the_file_name() {
+        assert_eq!(
+            split_path("apps/web/store/option.store.ts:217-228"),
+            (
+                "apps/web/store/".to_string(),
+                "option.store.ts:217-228".to_string()
+            )
+        );
+        assert_eq!(
+            split_path("README.md:1-4"),
+            (String::new(), "README.md:1-4".to_string())
+        );
+    }
 
     /// A plain line of the file, numbered `n`.
     fn line(n: u32) -> Row {
