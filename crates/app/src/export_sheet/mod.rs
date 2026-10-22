@@ -89,6 +89,8 @@ enum Control {
     Portrait,
     Landscape,
     Theme,
+    /// The light cut, for printing.
+    Light,
     Every,
     Group(usize),
     Comments,
@@ -457,13 +459,15 @@ impl ExportSheet {
         });
     }
 
-    /// Scan what an export of the chosen groups would carry, in the
-    /// command's own way, and say what it found.
+    /// Scan what an export of the chosen groups, with or without the
+    /// comments, would carry, in the command's own way, and say what it
+    /// found.
     fn rescan(&mut self, cx: &mut Context<Self>) {
         let Some(packing) = self.packing.clone() else {
             return;
         };
         let groups = self.choice.numbers();
+        let comments = self.choice.comments;
         // Export stays off until this scan lands: the last one was of
         // other groups.
         self.scan = Scan::Reading;
@@ -471,7 +475,7 @@ impl ExportSheet {
         self.scanning = cx.spawn(async move |this, cx| {
             let scanned = cx
                 .background_executor()
-                .spawn(async move { crate::cli::carrying((*packing).clone(), &groups) })
+                .spawn(async move { crate::cli::carrying((*packing).clone(), &groups, comments) })
                 .await;
             this.update(cx, |sheet, cx| {
                 sheet.scan = scan_of(scanned);
@@ -516,16 +520,17 @@ impl ExportSheet {
         }
     }
 
-    /// Something was changed: what it changes is laid out, scanned if it was
-    /// the groups, and a saved line from before goes, since it is about a
-    /// file this choice would not make.
-    fn changed(&mut self, groups: bool, cx: &mut Context<Self>) {
+    /// Something was changed: what it changes is laid out, scanned again if
+    /// it changes what the file carries — the groups, or the comments — and
+    /// a saved line from before goes, since it is about a file this choice
+    /// would not make.
+    fn changed(&mut self, carried: bool, cx: &mut Context<Self>) {
         if matches!(self.phase, Phase::Saved(_) | Phase::Failed(_)) {
             self.phase = Phase::Ready;
         }
         self.page = 0;
         self.lay_out(cx);
-        if groups {
+        if carried {
             self.rescan(cx);
         }
         cx.notify();
@@ -609,7 +614,11 @@ impl ExportSheet {
                 .spawn(async move {
                     // Scanned once more, as the command scans on its way to
                     // writing, so nothing let through only on screen leaves.
-                    let packing = crate::cli::carrying((*packing).clone(), &options.groups)?;
+                    let packing = crate::cli::carrying(
+                        (*packing).clone(),
+                        &options.groups,
+                        options.comments,
+                    )?;
                     if let Some(why) = packing.refusal() {
                         anyhow::bail!(why);
                     }
@@ -641,6 +650,17 @@ impl ExportSheet {
         cx.notify();
     }
 
+    /// Take the diagrams the preview painted out of `window`'s sprite atlas,
+    /// for when the sheet is put away. gpui keeps an image painted with
+    /// `paint_image` there until it is dropped by hand, and each opening of
+    /// the sheet draws its diagrams afresh, under new ids: left in, they
+    /// would pile up for as long as the window is open.
+    pub fn forget_drawings(&self, window: &mut Window) {
+        for image in self.drawings.values() {
+            let _ = window.drop_image(image.clone());
+        }
+    }
+
     fn close(&mut self, cx: &mut Context<Self>) {
         cx.emit(Closed);
     }
@@ -651,22 +671,14 @@ impl ExportSheet {
         matches!(self.phase, Phase::Asking | Phase::Writing)
     }
 
-    /// Escape: out of waiting for a save dialog that never answered, back to
-    /// the sheet as it was; nothing while a file is being written; otherwise,
-    /// the sheet put away. A dialog that is up holds the keyboard itself, so
-    /// this is reached while "Choosing where…" only when there is no dialog
-    /// to be seen, and the export must not sit on it for ever.
+    /// Escape: the sheet put away, but nothing while a save dialog is up or
+    /// a file is being written. The dialog is answered in the dialog, by its
+    /// own Cancel or Save: dropping the wait from here would leave the dialog
+    /// standing, and the place chosen in it afterwards would be thrown away
+    /// without a word.
     fn escape(&mut self, cx: &mut Context<Self>) {
-        match self.phase {
-            Phase::Asking => {
-                // The wait is dropped with its task; an answer arriving after
-                // this goes nowhere and writes nothing.
-                self.writing = Task::ready(());
-                self.phase = Phase::Ready;
-                cx.notify();
-            }
-            Phase::Writing => {}
-            _ => self.close(cx),
+        if !self.busy() {
+            self.close(cx);
         }
     }
 
@@ -712,7 +724,7 @@ impl ExportSheet {
         if self.choice.format == Format::Pdf {
             order.extend([Control::Portrait, Control::Landscape]);
         }
-        order.extend([Control::Theme, Control::Every]);
+        order.extend([Control::Theme, Control::Light, Control::Every]);
         order.extend((0..self.source.titles.len()).map(Control::Group));
         order.push(Control::Comments);
         if let Scan::Found(hits) = &self.scan {
@@ -791,6 +803,10 @@ impl ExportSheet {
                 self.changed(false, cx);
             }
             Control::Theme => self.next_theme(cx),
+            Control::Light => {
+                self.choice.light_cut = !self.choice.light_cut;
+                self.changed(false, cx);
+            }
             Control::Every => {
                 let every = self.choice.chosen() == self.choice.groups.len();
                 self.choice.groups.fill(!every);
@@ -804,12 +820,17 @@ impl ExportSheet {
             }
             Control::Comments => {
                 self.choice.comments = !self.choice.comments;
-                self.changed(false, cx);
+                // A secret said only in a comment goes with the comments.
+                self.changed(true, cx);
             }
             Control::Allow(ix) => {
                 self.confirming = fingerprint(self, ix);
-                // The ring follows the link to what it turned into.
-                self.stop(Control::AllowSure(ix), cx).focus(window, cx);
+                // The ring follows the link to what it turned into, and
+                // lands on changing your mind rather than on letting it
+                // through, so space pressed twice lets nothing through.
+                if let Some(next) = ring_after(control) {
+                    self.stop(next, cx).focus(window, cx);
+                }
                 cx.notify();
             }
             Control::AllowSure(ix) => {
@@ -817,9 +838,11 @@ impl ExportSheet {
                     self.let_through(fingerprint, cx);
                 }
             }
-            Control::AllowCancel(ix) => {
+            Control::AllowCancel(_) => {
                 self.confirming = None;
-                self.stop(Control::Allow(ix), cx).focus(window, cx);
+                if let Some(next) = ring_after(control) {
+                    self.stop(next, cx).focus(window, cx);
+                }
                 cx.notify();
             }
             Control::Export => self.export(window, cx),
@@ -837,6 +860,20 @@ impl ExportSheet {
             Theme::Dark => own(true),
             Theme::Light => own(false),
         }
+    }
+}
+
+/// Where the ring goes once `control` is pressed, for the presses that
+/// take the control away and put another in its place: the first step of a
+/// let-through hands it to *cancel*, the safe one of the two that follow, and
+/// *cancel* hands it back to the first step. The rest keep the ring where it
+/// is. Letting a secret through is always a choice made on purpose, never
+/// where the focus happens to fall.
+fn ring_after(control: Control) -> Option<Control> {
+    match control {
+        Control::Allow(ix) => Some(Control::AllowCancel(ix)),
+        Control::AllowCancel(ix) => Some(Control::Allow(ix)),
+        _ => None,
     }
 }
 
@@ -1255,16 +1292,15 @@ impl Render for ExportSheet {
                     .child("Change steps through the themes deck knows."),
             )
             .child(
-                div()
-                    .id("x-light")
+                ring(div().id("x-light"), Control::Light)
                     .h_flex()
                     .gap(px(9.))
                     .items_start()
+                    .rounded(px(4.))
                     .cursor_pointer()
                     .text_size(px(12.5))
-                    .on_click(cx.listener(|sheet, _, _, cx| {
-                        sheet.choice.light_cut = !sheet.choice.light_cut;
-                        sheet.changed(false, cx);
+                    .on_click(cx.listener(|sheet, _, window, cx| {
+                        sheet.press(Control::Light, window, cx);
                     }))
                     .child(tick(self.choice.light_cut, &palette))
                     .child("Light cut, for printing"),

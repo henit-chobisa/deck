@@ -1064,7 +1064,7 @@ fn export(asked: &Exporting) -> anyhow::Result<PathBuf> {
     {
         anyhow::bail!("`{n}` is not a group: this deck has {count}");
     }
-    let packing = carrying(packing, &groups)?;
+    let packing = carrying(packing, &groups, asked.comments)?;
     if let Some(why) = packing.refusal() {
         anyhow::bail!(why);
     }
@@ -1137,7 +1137,14 @@ pub(crate) fn export_packing(
     }
 }
 
-/// `packing` with only the scanner hits an export of `groups` would carry.
+/// `packing` with only the scanner hits an export of `groups` would carry,
+/// with the comments or, when `comments` is false, without them.
+///
+/// The comments are `review.json`, and an export without them leaves it out
+/// whole ([`deck_render::export::deck`]): a token said only in a comment is
+/// nowhere in that file, and refusing it would be refusing over something
+/// the file does not hold. So a hit in `review.json` goes, and the review is
+/// not among what the kept groups are scanned again for.
 ///
 /// Choosing groups is choosing what to share, and the file carries only
 /// what [`deck_render::export::only`] keeps of them: a token in a file only
@@ -1162,11 +1169,20 @@ pub(crate) fn export_packing(
 pub(crate) fn carrying(
     mut packing: deck_cli::pack::Packing,
     groups: &[u32],
+    comments: bool,
 ) -> anyhow::Result<deck_cli::pack::Packing> {
+    const REVIEW: &str = "review.json";
+    if !comments {
+        packing.hits.retain(|hit| hit.entry != REVIEW);
+    }
     if groups.is_empty() || packing.hits.is_empty() {
         return Ok(packing);
     }
-    let kept = deck_render::export::only(&packing.bundle, groups).map_err(anyhow::Error::msg)?;
+    let mut kept =
+        deck_render::export::only(&packing.bundle, groups).map_err(anyhow::Error::msg)?;
+    if !comments {
+        kept.files.remove(REVIEW);
+    }
     let index = |bundle: &deck_core::bundle::Bundle| {
         bundle
             .files
@@ -2401,8 +2417,8 @@ mod tests {
 
         // Group 1 points at `ok.rs`, group 2 at `secret.rs`: sent alone,
         // group 1 carries nothing of the token.
-        assert!(!carrying(read(), &[]).unwrap().hits.is_empty());
-        assert!(carrying(read(), &[1]).unwrap().hits.is_empty());
+        assert!(!carrying(read(), &[], true).unwrap().hits.is_empty());
+        assert!(carrying(read(), &[1], true).unwrap().hits.is_empty());
         for (out, needle) in [("one.pdf", "pdf"), ("one.html", "html")] {
             let out = dir.path().join(out);
             let path = export(&Exporting {
@@ -2444,6 +2460,75 @@ mod tests {
         .expect_err("refused");
         assert!(err.to_string().contains("private-key"), "{err:#}");
         assert!(!dir.path().join("three.pdf").exists());
+    }
+
+    /// A secret said only in a comment goes with the comments: an export
+    /// with `--no-comments` leaves the review out whole, so it carries
+    /// nothing to refuse, of every group or of some; with the comments it is
+    /// refused, both ways.
+    #[test]
+    fn a_secret_in_a_comment_stops_only_an_export_with_the_comments() {
+        let dir = tempfile::tempdir().expect("a temp dir");
+        // Put together here, so no whole secret is ever in the source.
+        let token = format!("ghp_{}", "a1B2".repeat(9));
+        let mut files = std::collections::BTreeMap::new();
+        files.insert(
+            "deck/deck.json".to_string(),
+            br#"{"v":1,"id":"d-1","title":"Said in passing"}"#.to_vec(),
+        );
+        for n in 1..=2 {
+            let group = serde_json::json!({ "id": format!("g{n}"), "ord": n, "say": "look" });
+            files.insert(format!("deck/g{n}.json"), group.to_string().into_bytes());
+        }
+        let review = serde_json::json!({
+            "v": 1, "deck": "d-1", "comments": [],
+            "transcript": [
+                { "at_ms": 1000, "what": "wrote", "group": "g1", "text": format!("use {token}") },
+            ],
+        });
+        files.insert("review.json".to_string(), review.to_string().into_bytes());
+        let bundle = deck_core::bundle::Bundle {
+            manifest: deck_core::bundle::Manifest {
+                container: deck_core::bundle::CONTAINER,
+                protocol: 1,
+                created: "2026-10-22T09:30:00Z".to_string(),
+                generator: "deck test".to_string(),
+                repo: None,
+                entries: std::collections::BTreeMap::new(),
+                allowed: Vec::new(),
+            },
+            files,
+        };
+        let deck = dir.path().join("said.deck");
+        std::fs::write(&deck, bundle.pack().expect("packs")).expect("writes");
+
+        for (groups, name) in [(None, "every"), (Some("1"), "one")] {
+            let out = dir.path().join(format!("{name}.pdf"));
+            let path = export(&Exporting {
+                groups,
+                comments: false,
+                ..exporting(&deck, &out)
+            })
+            .unwrap_or_else(|err| panic!("{name} without comments: {err:#}"));
+            let bytes = std::fs::read(path).unwrap();
+            assert!(
+                !bytes.windows(token.len()).any(|w| w == token.as_bytes()),
+                "{name}: the file holds the token"
+            );
+            assert!(
+                !attached(&bytes).files.contains_key("review.json"),
+                "{name}"
+            );
+
+            let out = dir.path().join(format!("{name}-said.pdf"));
+            let err = export(&Exporting {
+                groups,
+                ..exporting(&deck, &out)
+            })
+            .expect_err("refused with the comments");
+            assert!(err.to_string().contains("github-pat"), "{name}: {err:#}");
+            assert!(!out.exists(), "{name}");
+        }
     }
 
     /// A deck folder in `dir`, written against a project of `files`: four

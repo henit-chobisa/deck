@@ -236,7 +236,7 @@ fn a_secret_stops_the_export_until_it_is_let_through() {
     );
     let read = || crate::cli::export_packing(&deck, &[], false).expect("opens");
 
-    let scan = scan_of(crate::cli::carrying(read(), &[]));
+    let scan = scan_of(crate::cli::carrying(read(), &[], true));
     let Scan::Found(hits) = &scan else {
         panic!("a hit: {scan:?}");
     };
@@ -262,7 +262,7 @@ fn a_secret_stops_the_export_until_it_is_let_through() {
     assert!(refusal.contains(deck_cli::pack::LET_THROUGH), "{refusal}");
 
     // Groups one and three do not carry it.
-    let without = scan_of(crate::cli::carrying(read(), &[1, 3]));
+    let without = scan_of(crate::cli::carrying(read(), &[1, 3], true));
     assert!(!blocks(&without), "{without:?}");
 
     // Let through, as `--allow` would: clear, and recorded.
@@ -270,7 +270,7 @@ fn a_secret_stops_the_export_until_it_is_let_through() {
     let allowed = crate::cli::export_packing(&deck, std::slice::from_ref(&fingerprint), false)
         .expect("opens");
     assert!(allowed.bundle.manifest.allowed.contains(&fingerprint));
-    let scan = scan_of(crate::cli::carrying(allowed, &[]));
+    let scan = scan_of(crate::cli::carrying(allowed, &[], true));
     assert!(!blocks(&scan), "{scan:?}");
     assert!(
         model::button(&choice, Some(4), blocks(&scan)).1,
@@ -402,4 +402,16 @@ fn a_size_is_said_as_the_finder_says_it() {
 fn a_notice_reads_as_a_sentence() {
     assert_eq!(sentence("group 2: it runs over"), "Group 2: it runs over.");
     assert_eq!(sentence("done."), "Done.");
+}
+
+/// Space, then space again, on a secret's *let through* lands on *cancel*:
+/// the first press hands the ring to changing your mind, never to the second
+/// step that lets the secret through, and *cancel* hands it back.
+#[test]
+fn space_twice_lets_no_secret_through() {
+    assert_eq!(ring_after(Control::Allow(2)), Some(Control::AllowCancel(2)));
+    assert_eq!(ring_after(Control::AllowCancel(2)), Some(Control::Allow(2)));
+    for control in [Control::AllowSure(2), Control::Light, Control::Export] {
+        assert_eq!(ring_after(control), None, "{control:?} keeps the ring");
+    }
 }

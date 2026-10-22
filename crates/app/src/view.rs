@@ -3439,7 +3439,9 @@ impl DeckView {
 
     /// Put the export sheet away and give the keyboard back to the deck.
     fn close_export(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        self.export = None;
+        if let Some((sheet, _)) = self.export.take() {
+            sheet.read(cx).forget_drawings(window);
+        }
         self.focus.focus(window, cx);
         cx.notify();
     }
