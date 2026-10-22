@@ -63,6 +63,11 @@ impl Render for NotesBody {
             leading: 19.5,
             tone: palette.fg,
             spacing: 20.5 * 0.42,
+            lead: false,
+            // Nothing in the notes can be picked, so no tick ever stands
+            // here; the band's margin, should one ever need it.
+            tick: -9.,
+            tick_from: palette.band,
         };
         let prose = |text: &str| {
             crate::prose::render_look(

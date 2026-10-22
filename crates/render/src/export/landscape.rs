@@ -27,7 +27,7 @@ use super::layout::{
 use crate::metrics::{
     BAND_BOTTOM, BAND_GAP, BAND_LEAST, BAND_SIDE, BAND_TOP, CONFIDENCE_SIZE, DECK_TITLE_SIZE,
     LINE_HEIGHT, MONO_SIZE, NUMBER_SIZE, NUMBER_SIZE_TENS, PROSE_LEADING, PROSE_SIZE,
-    PROSE_SPACING, RAIL, RAIL_LEADING, RAIL_SIZE, STEM, STEM_GAP, STRIP_GAP, STRIP_ROW, STRIP_SIDE,
+    PROSE_SPACING, RAIL_LEADING, RAIL_SIZE, STEM, STEM_GAP, STRIP_GAP, STRIP_ROW, STRIP_SIDE,
     STRIP_SIZE, TITLE_SIZE,
 };
 use crate::text;
@@ -38,8 +38,19 @@ const WIDTH: f32 = 1123.;
 const HEIGHT: f32 = 794.;
 /// Points to the pixel.
 const SCALE: f32 = 0.75;
+/// The rail's column on the page.
+///
+/// Its own width rather than the window's [`crate::metrics::RAIL`]. The
+/// window's rail was widened to 365 so its record of the conversation reads
+/// at the rail's new size, and the HTML export, which is the window laid out
+/// in a browser, follows it. A page of A4 on its side is not the window: it
+/// has a fixed 1123 to share, and every point the rail takes is a point the
+/// code loses. Taken from the window's rail, the code column lost 61 points
+/// and long lines that used to fit began to wrap. So the paged PDF keeps the
+/// rail it always had, and the code keeps its 819.
+const PAGE_RAIL: f32 = 304.;
 /// The main column, left of the rail.
-const MAIN: f32 = WIDTH - RAIL;
+const MAIN: f32 = WIDTH - PAGE_RAIL;
 /// The strip's height: its text and its padding.
 const STRIP_HIGH: f32 = 30.;
 /// Where the strip starts.
@@ -1233,10 +1244,10 @@ fn side(
         Kind::Cover | Kind::Said => None,
     };
     let x = MAIN + 22.;
-    let width = RAIL - 44.;
+    let width = PAGE_RAIL - 44.;
     let mut items = vec![
         Item::Fill {
-            rect: Rect::new(MAIN, 0., RAIL, STRIP_TOP),
+            rect: Rect::new(MAIN, 0., PAGE_RAIL, STRIP_TOP),
             colour: inks.band,
         },
         Item::Fill {
@@ -1258,7 +1269,7 @@ fn side(
     {
         let words = format!("{} OF {}", at + 1, document.groups.len());
         items.push(text_at(
-            MAIN + RAIL - 22. - measure(&words, Face::Medium, 11.),
+            MAIN + PAGE_RAIL - 22. - measure(&words, Face::Medium, 11.),
             26.,
             14.,
             &words,

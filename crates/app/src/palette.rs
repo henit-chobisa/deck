@@ -272,6 +272,11 @@ pub fn embed_fonts(cx: &App) {
     let faces = PLEX
         .iter()
         .map(|(bytes, _)| std::borrow::Cow::Borrowed(*bytes))
+        .chain(
+            deck_render::text::READING
+                .iter()
+                .map(|bytes| std::borrow::Cow::Borrowed(*bytes)),
+        )
         .collect();
     if let Err(err) = cx.text_system().add_fonts(faces) {
         // A missing face is a worse-looking deck, not a broken one.

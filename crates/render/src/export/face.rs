@@ -220,7 +220,7 @@ fn checksum(data: &[u8]) -> u32 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::text::{MONO, PLEX};
+    use crate::text::{MONO, PLEX, PLEX_ITALIC};
 
     /// What a browser does with the cut face, as near as a test can ask: it
     /// parses, every character asked for has a glyph and the same advance it
@@ -228,7 +228,13 @@ mod tests {
     #[test]
     fn a_cut_face_still_maps_its_characters() {
         let chars: BTreeSet<char> = "pending -= 1 ⋯ — é".chars().collect();
-        for (font, _) in PLEX.iter().chain(MONO) {
+        let italic: &[u8] = PLEX_ITALIC;
+        for font in PLEX
+            .iter()
+            .chain(MONO)
+            .map(|(font, _)| *font)
+            .chain([italic])
+        {
             let cut = subset(font, &chars);
             assert!(
                 cut.len() < font.len() / 4,

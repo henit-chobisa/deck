@@ -57,35 +57,53 @@ pub const NUMBER_SIZE: f32 = 36.;
 pub const NUMBER_SIZE_TENS: f32 = 27.;
 
 /// The group's title.
-pub const TITLE_SIZE: f32 = 14.;
+pub const TITLE_SIZE: f32 = 15.;
 
 /// The deck's title, the quieter line over the group's.
-pub const DECK_TITLE_SIZE: f32 = 11.5;
+pub const DECK_TITLE_SIZE: f32 = 12.;
 
 /// The confidence's level, beside the group's title.
 pub const CONFIDENCE_SIZE: f32 = 11.;
 
 /// The narration in the band: its size, its line pitch, and the space
 /// between its paragraphs.
-pub const PROSE_SIZE: f32 = 12.5;
+pub const PROSE_SIZE: f32 = 13.;
 
 /// See [`PROSE_SIZE`].
-pub const PROSE_LEADING: f32 = 21.5;
+pub const PROSE_LEADING: f32 = 20.;
 
 /// See [`PROSE_SIZE`].
-pub const PROSE_SPACING: f32 = 5.;
+pub const PROSE_SPACING: f32 = 10.;
 
-/// A code chip in the narration: a step under the prose, in the code face.
-pub const CHIP_SIZE: f32 = 11.6;
+/// A code chip in the narration, in the code face: see [`chip_size`].
+pub const CHIP_SIZE: f32 = chip_size(PROSE_SIZE);
+
+/// The size of a code chip in prose set at `prose`: 0.88 of it, to the
+/// nearest tenth of a point, because JetBrains Mono's x-height is taller
+/// than Plex's and at the same size its words read bigger than the sentence
+/// around them.
+///
+/// One function for the band, the rail and the export, so a chip cannot be
+/// one size in the window and another on the page.
+#[must_use]
+pub const fn chip_size(prose: f32) -> f32 {
+    // Rounded by hand: `f32::round` is not a `const fn`. Every size here is
+    // positive, so adding a half and truncating is rounding.
+    #[allow(clippy::cast_possible_truncation)]
+    let tenths = (prose * 8.8 + 0.5) as i32;
+    #[allow(clippy::cast_precision_loss)]
+    let size = tenths as f32 / 10.;
+    size
+}
 
 /// The rail beside the panes and the band, before anyone drags it.
-pub const RAIL: f32 = 304.;
+pub const RAIL: f32 = 365.;
 
 /// What the rail's own record of the conversation is set in, and its pitch.
-pub const RAIL_SIZE: f32 = 12.2;
+pub const RAIL_SIZE: f32 = 12.5;
 
 /// See [`RAIL_SIZE`].
-pub const RAIL_LEADING: f32 = 17.6;
+pub const RAIL_LEADING: f32 = 19.;
 
 /// The strip along the bottom: its text size, its padding across and down,
 /// and the gap between what it says.
@@ -126,16 +144,16 @@ mod tests {
             (BAND_BOTTOM, 14.),
             (NUMBER_SIZE, 36.),
             (NUMBER_SIZE_TENS, 27.),
-            (TITLE_SIZE, 14.),
-            (DECK_TITLE_SIZE, 11.5),
+            (TITLE_SIZE, 15.),
+            (DECK_TITLE_SIZE, 12.),
             (CONFIDENCE_SIZE, 11.),
-            (PROSE_SIZE, 12.5),
-            (PROSE_LEADING, 21.5),
-            (PROSE_SPACING, 5.),
-            (CHIP_SIZE, 11.6),
-            (RAIL, 304.),
-            (RAIL_SIZE, 12.2),
-            (RAIL_LEADING, 17.6),
+            (PROSE_SIZE, 13.),
+            (PROSE_LEADING, 20.),
+            (PROSE_SPACING, 10.),
+            (CHIP_SIZE, 11.4),
+            (RAIL, 365.),
+            (RAIL_SIZE, 12.5),
+            (RAIL_LEADING, 19.),
             (STRIP_SIZE, 10.5),
             (STRIP_SIDE, 14.),
             (STRIP_ROW, 7.),

@@ -39,8 +39,9 @@ use crate::metrics::{
     PROSE_SIZE, PROSE_SPACING, RAIL, RAIL_LEADING, RAIL_SIZE, SANS_SIZE, STEM, STEM_GAP, STRIP_GAP,
     STRIP_ROW, STRIP_SIDE, STRIP_SIZE, TITLE_SIZE,
 };
+use crate::reading::{self, CHIP_PADDING};
 use crate::svg::base64;
-use crate::text::{MONO, PLEX};
+use crate::text::{MONO, PLEX, PLEX_ITALIC};
 
 /// How many lines of context a landscape stop shows either side of a range:
 /// the window opens a pane two lines above it, and a page has the room for
@@ -160,7 +161,7 @@ pub fn html(document: &Document, bundle: &[u8], options: &Options) -> String {
     out
 }
 
-/// The five faces, each cut to `chars`.
+/// The six faces, each cut to `chars`.
 fn faces(out: &mut String, chars: &BTreeSet<char>) {
     for ((bytes, _), weight) in PLEX.iter().zip([400, 500, 600]) {
         let _ = writeln!(
@@ -170,6 +171,15 @@ fn faces(out: &mut String, chars: &BTreeSet<char>) {
             base64(&face::subset(bytes, chars))
         );
     }
+    // Emphasis is a true italic, as the window sets it. Left to the browser
+    // it would be the regular slanted, which reads as a mistake beside the
+    // real one in the window.
+    let _ = writeln!(
+        out,
+        "@font-face{{font-family:'IBM Plex Sans';font-weight:400;font-style:italic;\
+         src:url(data:font/ttf;base64,{}) format('truetype')}}",
+        base64(&face::subset(PLEX_ITALIC, chars))
+    );
     for ((bytes, _), style) in MONO.iter().zip(["normal", "italic"]) {
         let _ = writeln!(
             out,
@@ -185,11 +195,12 @@ fn faces(out: &mut String, chars: &BTreeSet<char>) {
 #[allow(clippy::too_many_lines)]
 fn style(out: &mut String, inks: &Inks, writer: &Writer, dark: bool) {
     let hex = |rgb: Rgb| rgb.to_hex();
-    // The prose a step off the band's ink, as the window sets it, and the
-    // group's number faint in the accent.
-    let prose = legible(inks.on_band.text.mix(inks.band, 0.22), inks.band, LEGIBLE);
+    // The prose a step off the band's ink and a chip's ground just off the
+    // band, both by the rules the window reads by, and the group's number
+    // faint in the accent.
+    let prose = reading::prose(inks.on_band.text, inks.band);
+    let chip_ground = reading::chip(inks.band);
     let number = inks.band.mix(inks.on_band.accent, 0.45);
-    let chip = legible(inks.on_band.text, inks.pane, LEGIBLE);
     let name_ground = inks.on_band.accent.mix(inks.band, 0.88);
     let name = legible(inks.on_band.accent, name_ground, LEGIBLE);
     let name_edge = inks.on_band.accent.mix(inks.band, 0.7);
@@ -203,7 +214,7 @@ fn style(out: &mut String, inks: &Inks, writer: &Writer, dark: bool) {
          --page-text:{page_text};--page-muted:{page_muted};--page-accent:{page_accent};\
          --band-text:{band_text};--band-muted:{band_muted};--band-accent:{band_accent};\
          --pane-text:{pane_text};--pane-muted:{pane_muted};--pane-accent:{pane_accent};\
-         --prose:{prose};--number:{number};--chip:{chip};--name:{name};\
+         --prose:{prose};--number:{number};--chip-ground:{chip_ground};--name:{name};\
          --name-ground:{name_ground};--name-edge:{name_edge};--quiet:{quiet_bar};--stem:{stem};\
          --going:{going};--arriving:{arriving};\
          --high:{high};--medium:{medium};--low:{low};\
@@ -225,7 +236,7 @@ fn style(out: &mut String, inks: &Inks, writer: &Writer, dark: bool) {
         pane_accent = hex(inks.on_pane.accent),
         prose = hex(prose),
         number = hex(number),
-        chip = hex(chip),
+        chip_ground = hex(chip_ground),
         name = hex(name),
         name_ground = hex(name_ground),
         name_edge = hex(name_edge),
@@ -237,6 +248,11 @@ fn style(out: &mut String, inks: &Inks, writer: &Writer, dark: bool) {
         medium = hex(inks.levels.medium),
         low = hex(inks.levels.low),
     );
+    // The rail's column is the window's own `RAIL`, 365. The HTML export is
+    // the window laid out in a browser, and a reader who opens it should find
+    // the rail where the window keeps it. The paged PDF is the one place that
+    // keeps the old 304 (see `landscape::PAGE_RAIL`), because a sheet of A4
+    // has a fixed width to share and the code would pay for a wider rail.
     let _ = write!(
         out,
         r"*{{box-sizing:border-box}}
@@ -264,9 +280,10 @@ h2{{margin:0;font-size:{TITLE_SIZE}px;font-weight:600;color:var(--band-text);whi
 .low{{color:var(--low)}}.low .bars i:nth-child(1){{background:var(--low)}}
 .prose{{margin:-4px {BAND_SIDE}px 0 {stem_at}px;padding-left:{prose_at}px;border-left:1px solid var(--stem);font-size:{PROSE_SIZE}px;line-height:{PROSE_LEADING}px;color:var(--prose);overflow-y:auto;min-height:0}}
 .prose p{{margin:0 0 {PROSE_SPACING}px}}
-.prose strong{{font-weight:600}}
-.prose em{{font-style:normal;color:var(--band-accent)}}
-.chip{{font:400 {CHIP_SIZE}px var(--mono);padding:1px 4px;border-radius:3px;background:var(--pane);color:var(--chip)}}
+.prose p:first-child{{color:var(--band-text)}}
+.prose strong{{font-weight:600;color:var(--band-text)}}
+.prose em{{font-style:italic;color:var(--band-text)}}
+.chip{{font:400 {CHIP_SIZE}px var(--mono);padding:1px {CHIP_PADDING}px;border-radius:3px;background:var(--chip-ground)}}
 .name{{padding:0 5px;border-radius:3px;background:var(--name-ground);border:1px solid var(--name-edge);color:var(--name)}}
 .mk{{display:inline-grid;place-items:center;min-width:15px;height:15px;padding:0 3px;border-radius:8px;background:var(--band-accent);color:var(--band);font:600 9px/1 var(--sans);vertical-align:1px;margin:0 2px}}
 .panes{{grid-column:1;display:flex;min-height:0;min-width:0;background:var(--pane)}}

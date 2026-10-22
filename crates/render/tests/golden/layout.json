@@ -3815,24 +3815,24 @@
       {
         "item": "text",
         "x": 62.0,
-        "baseline": 27.3125,
+        "baseline": 27.5,
         "text": "Why the batch counter stalls at 63",
         "face": "regular",
-        "size": 11.5,
+        "size": 12.0,
         "colour": "#999078"
       },
       {
         "item": "text",
         "x": 62.0,
-        "baseline": 48.25,
+        "baseline": 48.625,
         "text": "The error path <script>alert(1)</script> counts twice",
         "face": "semibold",
-        "size": 14.0,
+        "size": 15.0,
         "colour": "#ebdbb2"
       },
       {
         "item": "text",
-        "x": 415.85403,
+        "x": 440.415,
         "baseline": 47.125,
         "text": "Medium · read both paths & did not run it",
         "face": "regular",
@@ -3845,70 +3845,70 @@
           "x": 33.0,
           "y": 55.0,
           "w": 1.0,
-          "h": 56.0
+          "h": 63.0
         },
         "colour": "#625f59"
       },
       {
         "item": "text",
         "x": 62.0,
-        "baseline": 73.4375,
+        "baseline": 72.875,
         "text": "A write that fails lands in the catch in",
         "face": "regular",
-        "size": 12.5,
+        "size": 13.0,
         "colour": "#bfb393"
       },
       {
         "item": "chip",
         "rect": {
-          "x": 270.96252,
-          "y": 59.375,
-          "w": 41.65,
-          "h": 18.75
+          "x": 279.321,
+          "y": 58.25,
+          "w": 43.316006,
+          "h": 19.5
         },
         "colour": "#3e2f23"
       },
       {
         "item": "text",
-        "x": 275.96252,
-        "baseline": 73.4375,
+        "x": 284.52103,
+        "baseline": 72.875,
         "text": "batch",
         "face": "regular",
-        "size": 12.5,
+        "size": 13.0,
         "colour": "#fe8019"
       },
       {
         "item": "text",
-        "x": 312.61252,
-        "baseline": 73.4375,
+        "x": 322.63702,
+        "baseline": 72.875,
         "text": " and takes the counter down.",
         "face": "regular",
-        "size": 12.5,
+        "size": 13.0,
         "colour": "#bfb393"
       },
       {
         "item": "badge",
-        "cx": 483.9875,
-        "cy": 68.75,
-        "r": 7.5000005,
+        "cx": 500.867,
+        "cy": 68.0,
+        "r": 7.8,
         "numeral": 1,
         "fill": "#fe8019",
         "ink": "#242424"
       },
       {
         "item": "text",
-        "x": 493.3625,
-        "baseline": 73.4375,
+        "x": 510.617,
+        "baseline": 72.875,
         "text": " It goes on to the tail and takes it down again.",
         "face": "regular",
-        "size": 12.5,
+        "size": 13.0,
         "colour": "#bfb393"
       },
       {
         "item": "badge",
-        "cx": 755.775,
-        "cy": 68.75,
-        "r": 7.5000005,
+        "cx": 783.526,
+        "cy": 68.0,
+        "r": 7.8,
         "numeral": 2,
         "fill": "#fe8019",
         "ink": "#242424"
@@ -3916,112 +3916,112 @@
       {
         "item": "text",
         "x": 62.0,
-        "baseline": 99.9375,
+        "baseline": 102.875,
         "text": "So every failed write costs",
         "face": "regular",
-        "size": 12.5,
+        "size": 13.0,
         "colour": "#bfb393"
       },
       {
         "item": "text",
-        "x": 211.20001,
-        "baseline": 99.9375,
+        "x": 217.168,
+        "baseline": 102.875,
         "text": "two",
         "face": "semibold",
-        "size": 12.5,
+        "size": 13.0,
         "colour": "#ebdbb2"
       },
       {
         "item": "text",
-        "x": 233.0375,
-        "baseline": 99.9375,
+        "x": 239.879,
+        "baseline": 102.875,
         "text": ".",
         "face": "regular",
-        "size": 12.5,
+        "size": 13.0,
         "colour": "#bfb393"
       },
       {
         "item": "chip",
         "rect": {
-          "x": 239.38751,
-          "y": 85.875,
-          "w": 35.412502,
-          "h": 18.75
+          "x": 246.483,
+          "y": 88.25,
+          "w": 36.829002,
+          "h": 19.5
         },
         "colour": "#3e2f23"
       },
       {
         "item": "text",
-        "x": 244.38751,
-        "baseline": 99.9375,
+        "x": 251.683,
+        "baseline": 102.875,
         "text": "path",
         "face": "regular",
-        "size": 12.5,
+        "size": 13.0,
         "colour": "#fe8019"
       },
       {
         "item": "text",
-        "x": 274.80002,
-        "baseline": 99.9375,
+        "x": 283.312,
+        "baseline": 102.875,
         "text": " follows one row, and",
         "face": "regular",
-        "size": 12.5,
+        "size": 13.0,
         "colour": "#bfb393"
       },
       {
         "item": "chip",
         "rect": {
-          "x": 395.96252,
-          "y": 85.875,
-          "w": 58.3,
-          "h": 18.75
+          "x": 409.32098,
+          "y": 88.25,
+          "w": 60.632004,
+          "h": 19.5
         },
         "colour": "#262626"
       },
       {
         "item": "text",
-        "x": 400.96252,
-        "baseline": 99.39,
+        "x": 414.521,
+        "baseline": 102.3056,
         "text": "pending",
         "face": "mono",
-        "size": 11.5,
+        "size": 11.96,
         "colour": "#ebdbb2"
       },
       {
         "item": "text",
-        "x": 454.2625,
-        "baseline": 99.9375,
+        "x": 469.953,
+        "baseline": 102.875,
         "text": " is the count. The",
         "face": "regular",
-        "size": 12.5,
+        "size": 13.0,
         "colour": "#bfb393"
       },
       {
         "item": "chip",
         "rect": {
-          "x": 552.8875,
-          "y": 85.875,
-          "w": 46.825005,
-          "h": 18.75
+          "x": 572.52295,
+          "y": 88.25,
+          "w": 48.698006,
+          "h": 19.5
         },
         "colour": "#3e2f23"
       },
       {
         "item": "text",
-        "x": 557.8875,
-        "baseline": 99.9375,
+        "x": 577.72296,
+        "baseline": 102.875,
         "text": "shown",
         "face": "regular",
-        "size": 12.5,
+        "size": 13.0,
         "colour": "#fe8019"
       },
       {
         "item": "text",
-        "x": 599.7125,
-        "baseline": 99.9375,
+        "x": 621.221,
+        "baseline": 102.875,
         "text": " page is the picture.",
         "face": "regular",
-        "size": 12.5,
+        "size": 13.0,
         "colour": "#bfb393"
       },
       {
@@ -5162,28 +5162,28 @@
       {
         "item": "text",
         "x": 841.0,
-        "baseline": 67.375,
+        "baseline": 68.1875,
         "text": "1",
         "face": "medium",
-        "size": 12.2,
+        "size": 12.5,
         "colour": "#fe8019"
       },
       {
         "item": "text",
         "x": 865.0,
-        "baseline": 67.375,
+        "baseline": 68.1875,
         "text": "The error path <script>alert(1)</script>",
         "face": "regular",
-        "size": 12.2,
+        "size": 12.5,
         "colour": "#ebdbb2"
       },
       {
         "item": "text",
         "x": 865.0,
-        "baseline": 84.975,
+        "baseline": 87.1875,
         "text": "counts twice",
         "face": "regular",
-        "size": 12.2,
+        "size": 12.5,
         "colour": "#ebdbb2"
       },
       {
@@ -5192,14 +5192,14 @@
           "x": 841.0,
           "y": 54.0,
           "w": 260.0,
-          "h": 35.199997
+          "h": 38.0
         },
         "page": 0
       },
       {
         "item": "text",
         "x": 865.0,
-        "baseline": 101.325,
+        "baseline": 104.125,
         "text": "the argument · 2",
         "face": "regular",
         "size": 11.0,
@@ -5209,7 +5209,7 @@
         "item": "link",
         "rect": {
           "x": 865.0,
-          "y": 89.2,
+          "y": 92.0,
           "w": 236.0,
           "h": 16.0
         },
@@ -5218,63 +5218,63 @@
       {
         "item": "text",
         "x": 841.0,
-        "baseline": 127.575,
+        "baseline": 131.1875,
         "text": "2",
         "face": "medium",
-        "size": 12.2,
+        "size": 12.5,
         "colour": "#999078"
       },
       {
         "item": "text",
         "x": 865.0,
-        "baseline": 127.575,
+        "baseline": 131.1875,
         "text": "Count once",
         "face": "regular",
-        "size": 12.2,
+        "size": 12.5,
         "colour": "#999078"
       },
       {
         "item": "link",
         "rect": {
           "x": 841.0,
-          "y": 114.2,
+          "y": 117.0,
           "w": 260.0,
-          "h": 17.600006
+          "h": 19.0
         },
         "page": 2
       },
       {
         "item": "text",
         "x": 841.0,
-        "baseline": 154.175,
+        "baseline": 159.1875,
         "text": "3",
         "face": "medium",
-        "size": 12.2,
+        "size": 12.5,
         "colour": "#999078"
       },
       {
         "item": "text",
         "x": 865.0,
-        "baseline": 154.175,
+        "baseline": 159.1875,
         "text": "Nothing else moves",
         "face": "regular",
-        "size": 12.2,
+        "size": 12.5,
         "colour": "#999078"
       },
       {
         "item": "link",
         "rect": {
           "x": 841.0,
-          "y": 140.8,
+          "y": 145.0,
           "w": 260.0,
-          "h": 17.600006
+          "h": 19.0
         },
         "page": 3
       },
       {
         "item": "text",
         "x": 865.0,
-        "baseline": 170.52501,
+        "baseline": 176.125,
         "text": "the argument · 1",
         "face": "regular",
         "size": 11.0,
@@ -5284,7 +5284,7 @@
         "item": "link",
         "rect": {
           "x": 865.0,
-          "y": 158.40001,
+          "y": 164.0,
           "w": 236.0,
           "h": 16.0
         },
@@ -5442,19 +5442,19 @@
       {
         "item": "text",
         "x": 62.0,
-        "baseline": 35.25,
+        "baseline": 35.625,
         "text": "The error path <script>alert(1)</script> counts twice",
         "face": "semibold",
-        "size": 14.0,
+        "size": 15.0,
         "colour": "#ebdbb2"
       },
       {
         "item": "text",
-        "x": 405.85403,
-        "baseline": 35.25,
+        "x": 430.415,
+        "baseline": 35.625,
         "text": " — the argument",
         "face": "regular",
-        "size": 14.0,
+        "size": 15.0,
         "colour": "#999078"
       },
       {
@@ -5643,28 +5643,28 @@
       {
         "item": "text",
         "x": 841.0,
-        "baseline": 67.375,
+        "baseline": 68.1875,
         "text": "1",
         "face": "medium",
-        "size": 12.2,
+        "size": 12.5,
         "colour": "#fe8019"
       },
       {
         "item": "text",
         "x": 865.0,
-        "baseline": 67.375,
+        "baseline": 68.1875,
         "text": "The error path <script>alert(1)</script>",
         "face": "regular",
-        "size": 12.2,
+        "size": 12.5,
         "colour": "#ebdbb2"
       },
       {
         "item": "text",
         "x": 865.0,
-        "baseline": 84.975,
+        "baseline": 87.1875,
         "text": "counts twice",
         "face": "regular",
-        "size": 12.2,
+        "size": 12.5,
         "colour": "#ebdbb2"
       },
       {
@@ -5673,14 +5673,14 @@
           "x": 841.0,
           "y": 54.0,
           "w": 260.0,
-          "h": 35.199997
+          "h": 38.0
         },
         "page": 0
       },
       {
         "item": "text",
         "x": 865.0,
-        "baseline": 101.325,
+        "baseline": 104.125,
         "text": "the argument · 2",
         "face": "regular",
         "size": 11.0,
@@ -5690,7 +5690,7 @@
         "item": "link",
         "rect": {
           "x": 865.0,
-          "y": 89.2,
+          "y": 92.0,
           "w": 236.0,
           "h": 16.0
         },
@@ -5699,63 +5699,63 @@
       {
         "item": "text",
         "x": 841.0,
-        "baseline": 127.575,
+        "baseline": 131.1875,
         "text": "2",
         "face": "medium",
-        "size": 12.2,
+        "size": 12.5,
         "colour": "#999078"
       },
       {
         "item": "text",
         "x": 865.0,
-        "baseline": 127.575,
+        "baseline": 131.1875,
         "text": "Count once",
         "face": "regular",
-        "size": 12.2,
+        "size": 12.5,
         "colour": "#999078"
       },
       {
         "item": "link",
         "rect": {
           "x": 841.0,
-          "y": 114.2,
+          "y": 117.0,
           "w": 260.0,
-          "h": 17.600006
+          "h": 19.0
         },
         "page": 2
       },
       {
         "item": "text",
         "x": 841.0,
-        "baseline": 154.175,
+        "baseline": 159.1875,
         "text": "3",
         "face": "medium",
-        "size": 12.2,
+        "size": 12.5,
         "colour": "#999078"
       },
       {
         "item": "text",
         "x": 865.0,
-        "baseline": 154.175,
+        "baseline": 159.1875,
         "text": "Nothing else moves",
         "face": "regular",
-        "size": 12.2,
+        "size": 12.5,
         "colour": "#999078"
       },
       {
         "item": "link",
         "rect": {
           "x": 841.0,
-          "y": 140.8,
+          "y": 145.0,
           "w": 260.0,
-          "h": 17.600006
+          "h": 19.0
         },
         "page": 3
       },
       {
         "item": "text",
         "x": 865.0,
-        "baseline": 170.52501,
+        "baseline": 176.125,
         "text": "the argument · 1",
         "face": "regular",
         "size": 11.0,
@@ -5765,7 +5765,7 @@
         "item": "link",
         "rect": {
           "x": 865.0,
-          "y": 158.40001,
+          "y": 164.0,
           "w": 236.0,
           "h": 16.0
         },
@@ -5914,19 +5914,19 @@
       {
         "item": "text",
         "x": 62.0,
-        "baseline": 27.3125,
+        "baseline": 27.5,
         "text": "Why the batch counter stalls at 63",
         "face": "regular",
-        "size": 11.5,
+        "size": 12.0,
         "colour": "#999078"
       },
       {
         "item": "text",
         "x": 62.0,
-        "baseline": 48.25,
+        "baseline": 48.625,
         "text": "Count once",
         "face": "semibold",
-        "size": 14.0,
+        "size": 15.0,
         "colour": "#ebdbb2"
       },
       {
@@ -5935,24 +5935,24 @@
           "x": 33.0,
           "y": 55.0,
           "w": 1.0,
-          "h": 29.5
+          "h": 33.0
         },
         "colour": "#625f59"
       },
       {
         "item": "text",
         "x": 62.0,
-        "baseline": 73.4375,
+        "baseline": 72.875,
         "text": "Count once, where the write settles.",
         "face": "regular",
-        "size": 12.5,
+        "size": 13.0,
         "colour": "#bfb393"
       },
       {
         "item": "badge",
-        "cx": 272.91254,
-        "cy": 68.75,
-        "r": 7.5000005,
+        "cx": 281.349,
+        "cy": 68.0,
+        "r": 7.8,
         "numeral": 1,
         "fill": "#fe8019",
         "ink": "#242424"
@@ -6389,28 +6389,28 @@
       {
         "item": "text",
         "x": 841.0,
-        "baseline": 67.375,
+        "baseline": 68.1875,
         "text": "1",
         "face": "medium",
-        "size": 12.2,
+        "size": 12.5,
         "colour": "#999078"
       },
       {
         "item": "text",
         "x": 865.0,
-        "baseline": 67.375,
+        "baseline": 68.1875,
         "text": "The error path <script>alert(1)</script>",
         "face": "regular",
-        "size": 12.2,
+        "size": 12.5,
         "colour": "#999078"
       },
       {
         "item": "text",
         "x": 865.0,
-        "baseline": 84.975,
+        "baseline": 87.1875,
         "text": "counts twice",
         "face": "regular",
-        "size": 12.2,
+        "size": 12.5,
         "colour": "#999078"
       },
       {
@@ -6419,14 +6419,14 @@
           "x": 841.0,
           "y": 54.0,
           "w": 260.0,
-          "h": 35.199997
+          "h": 38.0
         },
         "page": 0
       },
       {
         "item": "text",
         "x": 865.0,
-        "baseline": 101.325,
+        "baseline": 104.125,
         "text": "the argument · 2",
         "face": "regular",
         "size": 11.0,
@@ -6436,7 +6436,7 @@
         "item": "link",
         "rect": {
           "x": 865.0,
-          "y": 89.2,
+          "y": 92.0,
           "w": 236.0,
           "h": 16.0
         },
@@ -6445,63 +6445,63 @@
       {
         "item": "text",
         "x": 841.0,
-        "baseline": 127.575,
+        "baseline": 131.1875,
         "text": "2",
         "face": "medium",
-        "size": 12.2,
+        "size": 12.5,
         "colour": "#fe8019"
       },
       {
         "item": "text",
         "x": 865.0,
-        "baseline": 127.575,
+        "baseline": 131.1875,
         "text": "Count once",
         "face": "regular",
-        "size": 12.2,
+        "size": 12.5,
         "colour": "#ebdbb2"
       },
       {
         "item": "link",
         "rect": {
           "x": 841.0,
-          "y": 114.2,
+          "y": 117.0,
           "w": 260.0,
-          "h": 17.600006
+          "h": 19.0
         },
         "page": 2
       },
       {
         "item": "text",
         "x": 841.0,
-        "baseline": 154.175,
+        "baseline": 159.1875,
         "text": "3",
         "face": "medium",
-        "size": 12.2,
+        "size": 12.5,
         "colour": "#999078"
       },
       {
         "item": "text",
         "x": 865.0,
-        "baseline": 154.175,
+        "baseline": 159.1875,
         "text": "Nothing else moves",
         "face": "regular",
-        "size": 12.2,
+        "size": 12.5,
         "colour": "#999078"
       },
       {
         "item": "link",
         "rect": {
           "x": 841.0,
-          "y": 140.8,
+          "y": 145.0,
           "w": 260.0,
-          "h": 17.600006
+          "h": 19.0
         },
         "page": 3
       },
       {
         "item": "text",
         "x": 865.0,
-        "baseline": 170.52501,
+        "baseline": 176.125,
         "text": "the argument · 1",
         "face": "regular",
         "size": 11.0,
@@ -6511,7 +6511,7 @@
         "item": "link",
         "rect": {
           "x": 865.0,
-          "y": 158.40001,
+          "y": 164.0,
           "w": 236.0,
           "h": 16.0
         },
@@ -6660,19 +6660,19 @@
       {
         "item": "text",
         "x": 62.0,
-        "baseline": 27.3125,
+        "baseline": 27.5,
         "text": "Why the batch counter stalls at 63",
         "face": "regular",
-        "size": 11.5,
+        "size": 12.0,
         "colour": "#999078"
       },
       {
         "item": "text",
         "x": 62.0,
-        "baseline": 48.25,
+        "baseline": 48.625,
         "text": "Nothing else moves",
         "face": "semibold",
-        "size": 14.0,
+        "size": 15.0,
         "colour": "#ebdbb2"
       },
       {
@@ -6681,24 +6681,24 @@
           "x": 33.0,
           "y": 55.0,
           "w": 1.0,
-          "h": 29.5
+          "h": 33.0
         },
         "colour": "#625f59"
       },
       {
         "item": "text",
         "x": 62.0,
-        "baseline": 73.4375,
+        "baseline": 72.875,
         "text": "The close stays as it is.",
         "face": "regular",
-        "size": 12.5,
+        "size": 13.0,
         "colour": "#bfb393"
       },
       {
         "item": "badge",
-        "cx": 198.975,
-        "cy": 68.75,
-        "r": 7.5000005,
+        "cx": 204.45401,
+        "cy": 68.0,
+        "r": 7.8,
         "numeral": 1,
         "fill": "#fe8019",
         "ink": "#242424"
@@ -7332,28 +7332,28 @@
       {
         "item": "text",
         "x": 841.0,
-        "baseline": 67.375,
+        "baseline": 68.1875,
         "text": "1",
         "face": "medium",
-        "size": 12.2,
+        "size": 12.5,
         "colour": "#999078"
       },
       {
         "item": "text",
         "x": 865.0,
-        "baseline": 67.375,
+        "baseline": 68.1875,
         "text": "The error path <script>alert(1)</script>",
         "face": "regular",
-        "size": 12.2,
+        "size": 12.5,
         "colour": "#999078"
       },
       {
         "item": "text",
         "x": 865.0,
-        "baseline": 84.975,
+        "baseline": 87.1875,
         "text": "counts twice",
         "face": "regular",
-        "size": 12.2,
+        "size": 12.5,
         "colour": "#999078"
       },
       {
@@ -7362,14 +7362,14 @@
           "x": 841.0,
           "y": 54.0,
           "w": 260.0,
-          "h": 35.199997
+          "h": 38.0
         },
         "page": 0
       },
       {
         "item": "text",
         "x": 865.0,
-        "baseline": 101.325,
+        "baseline": 104.125,
         "text": "the argument · 2",
         "face": "regular",
         "size": 11.0,
@@ -7379,7 +7379,7 @@
         "item": "link",
         "rect": {
           "x": 865.0,
-          "y": 89.2,
+          "y": 92.0,
           "w": 236.0,
           "h": 16.0
         },
@@ -7388,63 +7388,63 @@
       {
         "item": "text",
         "x": 841.0,
-        "baseline": 127.575,
+        "baseline": 131.1875,
         "text": "2",
         "face": "medium",
-        "size": 12.2,
+        "size": 12.5,
         "colour": "#999078"
       },
       {
         "item": "text",
         "x": 865.0,
-        "baseline": 127.575,
+        "baseline": 131.1875,
         "text": "Count once",
         "face": "regular",
-        "size": 12.2,
+        "size": 12.5,
         "colour": "#999078"
       },
       {
         "item": "link",
         "rect": {
           "x": 841.0,
-          "y": 114.2,
+          "y": 117.0,
           "w": 260.0,
-          "h": 17.600006
+          "h": 19.0
         },
         "page": 2
       },
       {
         "item": "text",
         "x": 841.0,
-        "baseline": 154.175,
+        "baseline": 159.1875,
         "text": "3",
         "face": "medium",
-        "size": 12.2,
+        "size": 12.5,
         "colour": "#fe8019"
       },
       {
         "item": "text",
         "x": 865.0,
-        "baseline": 154.175,
+        "baseline": 159.1875,
         "text": "Nothing else moves",
         "face": "regular",
-        "size": 12.2,
+        "size": 12.5,
         "colour": "#ebdbb2"
       },
       {
         "item": "link",
         "rect": {
           "x": 841.0,
-          "y": 140.8,
+          "y": 145.0,
           "w": 260.0,
-          "h": 17.600006
+          "h": 19.0
         },
         "page": 3
       },
       {
         "item": "text",
         "x": 865.0,
-        "baseline": 170.52501,
+        "baseline": 176.125,
         "text": "the argument · 1",
         "face": "regular",
         "size": 11.0,
@@ -7454,7 +7454,7 @@
         "item": "link",
         "rect": {
           "x": 865.0,
-          "y": 158.40001,
+          "y": 164.0,
           "w": 236.0,
           "h": 16.0
         },
@@ -7612,19 +7612,19 @@
       {
         "item": "text",
         "x": 62.0,
-        "baseline": 35.25,
+        "baseline": 35.625,
         "text": "Nothing else moves",
         "face": "semibold",
-        "size": 14.0,
+        "size": 15.0,
         "colour": "#ebdbb2"
       },
       {
         "item": "text",
-        "x": 188.63,
-        "baseline": 35.25,
+        "x": 197.675,
+        "baseline": 35.625,
         "text": " — the argument",
         "face": "regular",
-        "size": 14.0,
+        "size": 15.0,
         "colour": "#999078"
       },
       {
@@ -7778,28 +7778,28 @@
       {
         "item": "text",
         "x": 841.0,
-        "baseline": 67.375,
+        "baseline": 68.1875,
         "text": "1",
         "face": "medium",
-        "size": 12.2,
+        "size": 12.5,
         "colour": "#999078"
       },
       {
         "item": "text",
         "x": 865.0,
-        "baseline": 67.375,
+        "baseline": 68.1875,
         "text": "The error path <script>alert(1)</script>",
         "face": "regular",
-        "size": 12.2,
+        "size": 12.5,
         "colour": "#999078"
       },
       {
         "item": "text",
         "x": 865.0,
-        "baseline": 84.975,
+        "baseline": 87.1875,
         "text": "counts twice",
         "face": "regular",
-        "size": 12.2,
+        "size": 12.5,
         "colour": "#999078"
       },
       {
@@ -7808,14 +7808,14 @@
           "x": 841.0,
           "y": 54.0,
           "w": 260.0,
-          "h": 35.199997
+          "h": 38.0
         },
         "page": 0
       },
       {
         "item": "text",
         "x": 865.0,
-        "baseline": 101.325,
+        "baseline": 104.125,
         "text": "the argument · 2",
         "face": "regular",
         "size": 11.0,
@@ -7825,7 +7825,7 @@
         "item": "link",
         "rect": {
           "x": 865.0,
-          "y": 89.2,
+          "y": 92.0,
           "w": 236.0,
           "h": 16.0
         },
@@ -7834,63 +7834,63 @@
       {
         "item": "text",
         "x": 841.0,
-        "baseline": 127.575,
+        "baseline": 131.1875,
         "text": "2",
         "face": "medium",
-        "size": 12.2,
+        "size": 12.5,
         "colour": "#999078"
       },
       {
         "item": "text",
         "x": 865.0,
-        "baseline": 127.575,
+        "baseline": 131.1875,
         "text": "Count once",
         "face": "regular",
-        "size": 12.2,
+        "size": 12.5,
         "colour": "#999078"
       },
       {
         "item": "link",
         "rect": {
           "x": 841.0,
-          "y": 114.2,
+          "y": 117.0,
           "w": 260.0,
-          "h": 17.600006
+          "h": 19.0
         },
         "page": 2
       },
       {
         "item": "text",
         "x": 841.0,
-        "baseline": 154.175,
+        "baseline": 159.1875,
         "text": "3",
         "face": "medium",
-        "size": 12.2,
+        "size": 12.5,
         "colour": "#fe8019"
       },
       {
         "item": "text",
         "x": 865.0,
-        "baseline": 154.175,
+        "baseline": 159.1875,
         "text": "Nothing else moves",
         "face": "regular",
-        "size": 12.2,
+        "size": 12.5,
         "colour": "#ebdbb2"
       },
       {
         "item": "link",
         "rect": {
           "x": 841.0,
-          "y": 140.8,
+          "y": 145.0,
           "w": 260.0,
-          "h": 17.600006
+          "h": 19.0
         },
         "page": 3
       },
       {
         "item": "text",
         "x": 865.0,
-        "baseline": 170.52501,
+        "baseline": 176.125,
         "text": "the argument · 1",
         "face": "regular",
         "size": 11.0,
@@ -7900,7 +7900,7 @@
         "item": "link",
         "rect": {
           "x": 865.0,
-          "y": 158.40001,
+          "y": 164.0,
           "w": 236.0,
           "h": 16.0
         },
@@ -8046,19 +8046,19 @@
       {
         "item": "text",
         "x": 18.0,
-        "baseline": 35.25,
+        "baseline": 35.625,
         "text": "Why the batch counter stalls at 63",
         "face": "semibold",
-        "size": 14.0,
+        "size": 15.0,
         "colour": "#ebdbb2"
       },
       {
         "item": "text",
-        "x": 239.42401,
-        "baseline": 35.25,
+        "x": 255.24002,
+        "baseline": 35.625,
         "text": " — what was said about the deck",
         "face": "regular",
-        "size": 14.0,
+        "size": 15.0,
         "colour": "#999078"
       },
       {
@@ -8138,28 +8138,28 @@
       {
         "item": "text",
         "x": 841.0,
-        "baseline": 67.375,
+        "baseline": 68.1875,
         "text": "1",
         "face": "medium",
-        "size": 12.2,
+        "size": 12.5,
         "colour": "#999078"
       },
       {
         "item": "text",
         "x": 865.0,
-        "baseline": 67.375,
+        "baseline": 68.1875,
         "text": "The error path <script>alert(1)</script>",
         "face": "regular",
-        "size": 12.2,
+        "size": 12.5,
         "colour": "#999078"
       },
       {
         "item": "text",
         "x": 865.0,
-        "baseline": 84.975,
+        "baseline": 87.1875,
         "text": "counts twice",
         "face": "regular",
-        "size": 12.2,
+        "size": 12.5,
         "colour": "#999078"
       },
       {
@@ -8168,14 +8168,14 @@
           "x": 841.0,
           "y": 54.0,
           "w": 260.0,
-          "h": 35.199997
+          "h": 38.0
         },
         "page": 0
       },
       {
         "item": "text",
         "x": 865.0,
-        "baseline": 101.325,
+        "baseline": 104.125,
         "text": "the argument · 2",
         "face": "regular",
         "size": 11.0,
@@ -8185,7 +8185,7 @@
         "item": "link",
         "rect": {
           "x": 865.0,
-          "y": 89.2,
+          "y": 92.0,
           "w": 236.0,
           "h": 16.0
         },
@@ -8194,63 +8194,63 @@
       {
         "item": "text",
         "x": 841.0,
-        "baseline": 127.575,
+        "baseline": 131.1875,
         "text": "2",
         "face": "medium",
-        "size": 12.2,
+        "size": 12.5,
         "colour": "#999078"
       },
       {
         "item": "text",
         "x": 865.0,
-        "baseline": 127.575,
+        "baseline": 131.1875,
         "text": "Count once",
         "face": "regular",
-        "size": 12.2,
+        "size": 12.5,
         "colour": "#999078"
       },
       {
         "item": "link",
         "rect": {
           "x": 841.0,
-          "y": 114.2,
+          "y": 117.0,
           "w": 260.0,
-          "h": 17.600006
+          "h": 19.0
         },
         "page": 2
       },
       {
         "item": "text",
         "x": 841.0,
-        "baseline": 154.175,
+        "baseline": 159.1875,
         "text": "3",
         "face": "medium",
-        "size": 12.2,
+        "size": 12.5,
         "colour": "#999078"
       },
       {
         "item": "text",
         "x": 865.0,
-        "baseline": 154.175,
+        "baseline": 159.1875,
         "text": "Nothing else moves",
         "face": "regular",
-        "size": 12.2,
+        "size": 12.5,
         "colour": "#999078"
       },
       {
         "item": "link",
         "rect": {
           "x": 841.0,
-          "y": 140.8,
+          "y": 145.0,
           "w": 260.0,
-          "h": 17.600006
+          "h": 19.0
         },
         "page": 3
       },
       {
         "item": "text",
         "x": 865.0,
-        "baseline": 170.52501,
+        "baseline": 176.125,
         "text": "the argument · 1",
         "face": "regular",
         "size": 11.0,
@@ -8260,7 +8260,7 @@
         "item": "link",
         "rect": {
           "x": 865.0,
-          "y": 158.40001,
+          "y": 164.0,
           "w": 236.0,
           "h": 16.0
         },

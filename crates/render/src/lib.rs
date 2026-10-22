@@ -19,6 +19,7 @@
 pub mod document;
 pub mod export;
 pub mod metrics;
+pub mod reading;
 pub mod svg;
 pub mod text;
 

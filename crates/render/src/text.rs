@@ -26,6 +26,23 @@ pub const PLEX: &[(&[u8], &str)] = &[
     (include_bytes!("../fonts/IBMPlexSans-600.ttf"), "semibold"),
 ];
 
+/// IBM Plex Sans's regular italic, from Plex 3.005 under the same licence:
+/// what emphasis in the narration is set in, in the window and in the HTML
+/// export alike. Only the regular: deck has no mark that is both strong and
+/// emphasised, so a semibold italic would be a face nothing sets.
+pub const PLEX_ITALIC: &[u8] = include_bytes!("../fonts/IBMPlexSans-400-Italic.ttf");
+
+/// The faces the window reads in besides [`PLEX`]: [`PLEX_ITALIC`], and Plex
+/// Sans Text, the 450 between regular and medium, with its italic. Light
+/// strokes on a dark ground look thinner than they are, so prose on a dark
+/// theme is set a step heavier. Kept apart from [`PLEX`], which is what an
+/// export measures lines with, so nothing an export lays out moves.
+pub const READING: &[&[u8]] = &[
+    PLEX_ITALIC,
+    include_bytes!("../fonts/IBMPlexSansText-450.ttf"),
+    include_bytes!("../fonts/IBMPlexSansText-450-Italic.ttf"),
+];
+
 /// The code face an export sets code in, embedded for the same reason as
 /// [`PLEX`]: JetBrains Mono's regular and its italic, under the SIL Open Font
 /// License (`fonts/LICENSE-JetBrains-Mono.txt`), from its 2.304 release.
