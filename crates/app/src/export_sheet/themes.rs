@@ -109,18 +109,29 @@ fn cache() -> &'static Mutex<Read> {
     READ.get_or_init(Mutex::default)
 }
 
-/// `editor`'s theme `name`, read once a session: its colours, or why not.
-fn read(editor: Editor, name: Option<&str>, dark: bool) -> Result<Imported, String> {
+/// `editor`'s theme `name`, read once a session by `reading`: its colours,
+/// or why not.
+///
+/// A theme that would not read is remembered too — a file that did not parse
+/// will not parse the second time either — except Neovim's. Its failure is
+/// usually a config that took too long, and that is worth asking again.
+fn read(
+    editor: Editor,
+    name: Option<&str>,
+    reading: impl FnOnce() -> anyhow::Result<Option<Imported>>,
+) -> Result<Imported, String> {
     let key = (editor, name.map(str::to_string));
     if let Some(known) = cache().lock().ok().and_then(|read| read.get(&key).cloned()) {
         return known;
     }
-    let got = match deck_theme::read(editor, name, dark) {
+    let got = match reading() {
         Ok(Some(imported)) => Ok(imported),
         Ok(None) => Err("it has no colours to read".to_string()),
         Err(err) => Err(format!("{err:#}")),
     };
-    if let Ok(mut read) = cache().lock() {
+    if (got.is_ok() || editor != Editor::Nvim)
+        && let Ok(mut read) = cache().lock()
+    {
         read.insert(key, got.clone());
     }
     got
@@ -168,7 +179,11 @@ impl ExportSheet {
             for (ix, editor, name) in reading {
                 let got = cx
                     .background_executor()
-                    .spawn(async move { read(editor, name.as_deref(), dark) })
+                    .spawn(async move {
+                        read(editor, name.as_deref(), || {
+                            deck_theme::read(editor, name.as_deref(), dark)
+                        })
+                    })
                     .await;
                 if this
                     .update(cx, |sheet, cx| {
@@ -326,24 +341,25 @@ impl ExportSheet {
 
     /// Ask Neovim for its scheme, giving it [`NVIM_LIMIT`]; chosen when it
     /// answers, and said honestly when it does not.
+    ///
+    /// The limit is kept by the reader itself, which stops an nvim that runs
+    /// over and waits for it to go. Racing a timer here instead used to give
+    /// up on the answer and leave the nvim running, and the thread waiting on
+    /// it, for as long as the config cared to hang.
     fn read_nvim(&mut self, ix: usize, cx: &mut Context<Self>) {
-        let dark = self.source.machine_dark;
         if let Some(row) = self.editors.get_mut(ix) {
             row.swatch = Swatch::Reading;
         }
         cx.notify();
         self.asking_nvim = cx.spawn(async move |this, cx| {
-            let reading = cx
+            let got = cx
                 .background_executor()
-                .spawn(async move { read(Editor::Nvim, None, dark) });
-            let limit = cx.background_executor().timer(NVIM_LIMIT);
-            let got = match futures::future::select(Box::pin(reading), Box::pin(limit)).await {
-                futures::future::Either::Left((got, _)) => got,
-                futures::future::Either::Right(_) => Err(format!(
-                    "Neovim did not answer in {} seconds",
-                    NVIM_LIMIT.as_secs()
-                )),
-            };
+                .spawn(async move {
+                    read(Editor::Nvim, None, || {
+                        deck_theme::nvim::read_within(NVIM_LIMIT).map(Some)
+                    })
+                })
+                .await;
             this.update_in(cx, |sheet, window, cx| {
                 let read = got.is_ok();
                 sheet.set_swatch(ix, got);
