@@ -42,8 +42,12 @@ pub enum Layout {
 /// knows without being told an editor's theme by name.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Theme {
-    /// What the window is painted in: the editor's theme when one was read,
-    /// and deck's own otherwise. `--theme editor`, the command's default.
+    /// What the window is painted in, taken from the window as it stands:
+    /// the editor's theme it borrowed, a theme `deck open --theme` tried on,
+    /// or deck's own when it borrowed none. Nearest to `--theme editor`, the
+    /// command's default, but not always the same: the command reads the
+    /// config afresh and has no window to have been told another theme, nor
+    /// the platform's light or dark that the window asks once it is up.
     Window,
     /// Deck's own dark. `--theme dark`.
     Dark,
