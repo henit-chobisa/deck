@@ -494,6 +494,16 @@ enum What {
         /// rest try an editor's theme on, as `deck open --theme` does.
         #[arg(long, value_name = "THEME", default_value = "editor")]
         theme: String,
+        /// Light or dark, over what `~/.deck/config.toml` says, as `deck
+        /// open --mode` does. Only a theme that is not deck's own `dark` or
+        /// `light` has a mode left to choose; those two are their names.
+        #[arg(long, value_enum)]
+        mode: Option<Mode>,
+        /// Which neutrals deck's own colours are painted on, over the file,
+        /// as `deck open --paper` does. An editor's theme brings its own
+        /// page, and this changes nothing about it.
+        #[arg(long, value_enum)]
+        paper: Option<Paper>,
         /// Only these groups, by number: `1,3-5`. The `.deck` inside holds
         /// only them too — their code, and what was said about them — so
         /// leaving a group out leaves it out of everything the file carries.
@@ -968,6 +978,8 @@ impl Cli {
                 format,
                 landscape,
                 theme,
+                mode,
+                paper,
                 groups,
                 no_comments,
                 out,
@@ -980,6 +992,8 @@ impl Cli {
                     format,
                     landscape,
                     theme: &theme,
+                    mode,
+                    paper,
                     groups: groups.as_deref(),
                     comments: !no_comments,
                     out: out.as_deref(),
@@ -1015,6 +1029,8 @@ struct Exporting<'a> {
     format: Option<Format>,
     landscape: bool,
     theme: &'a str,
+    mode: Option<Mode>,
+    paper: Option<Paper>,
     groups: Option<&'a str>,
     comments: bool,
     out: Option<&'a std::path::Path>,
@@ -1074,7 +1090,7 @@ fn export(asked: &Exporting) -> anyhow::Result<PathBuf> {
     let (bundle, name) = (packing.bundle, packing.name);
     let stem = name.trim_end_matches(".deck").to_string();
 
-    let (palette, dark, syntax) = export_theme(asked.theme)?;
+    let (palette, dark, syntax) = export_theme(asked.theme, asked.mode, asked.paper)?;
     let options = deck_render::export::Options {
         groups,
         comments: asked.comments,
@@ -1255,10 +1271,25 @@ pub(crate) fn written(
 /// The palette an export is painted in, whether it is dark, and the syntax
 /// colours, for `--theme`: [`painted_for`], with the editor's theme read from
 /// disk and the machine asked whether it is dark.
+///
+/// `--mode` and `--paper` go over the config's own before anything is
+/// painted, the way `deck open`'s do over the window's. That is what lets the
+/// export sheet's command line carry a window opened with `deck open --mode
+/// dark` on a machine whose config says light: without them the command could
+/// only ever paint the config's answer, and the sheet's "As the window" would
+/// copy a line that makes a different file.
 fn export_theme(
     theme: &str,
+    mode: Option<Mode>,
+    paper: Option<Paper>,
 ) -> anyhow::Result<(deck_core::theme::Palette, bool, deck_core::theme::Syntax)> {
-    let config = crate::config::read()?;
+    let mut config = crate::config::read()?;
+    if let Some(mode) = mode {
+        config.theme.mode = mode;
+    }
+    if let Some(paper) = paper {
+        config.theme.paper = paper;
+    }
     let painted = painted_for(
         theme,
         &config.theme,
@@ -2345,10 +2376,16 @@ mod tests {
     /// says it is, and hands the exporter what the command would for it.
     #[test]
     fn the_export_sheet_is_the_export_command() {
-        use crate::export_sheet::{Borrowed, Choice, Format as Shown, Layout, Theme};
+        use crate::export_sheet::{Borrowed, Choice, Format as Shown, Layout, Look, Theme};
         let window = Borrowed {
             editor: deck_theme::Editor::Nvim,
             name: Some("koala-hyderabad".to_string()),
+        };
+        let config = deck_core::config::Theme::default();
+        let untold = Look::default();
+        let borrowed = Look {
+            borrowed: Some(window.clone()),
+            ..Look::default()
         };
         let choices = [
             Choice::new(3),
@@ -2386,16 +2423,17 @@ mod tests {
                 ..Choice::new(3)
             },
         ];
-        for (choice, window) in choices
+        for (choice, look) in choices
             .iter()
-            .flat_map(|choice| [(choice, None), (choice, Some(&window))])
+            .flat_map(|choice| [(choice, &untold), (choice, &borrowed)])
         {
+            let window = look.borrowed.as_ref();
             let mut line = vec![
                 "deck".to_string(),
                 "export".to_string(),
                 "d.deck".to_string(),
             ];
-            line.extend(choice.args(window));
+            line.extend(choice.args(look, &config));
             let cli = Cli::try_parse_from(&line).expect("parses");
             let What::Export {
                 format,
@@ -2438,7 +2476,11 @@ mod tests {
             ..Choice::new(2)
         };
         assert_eq!(
-            named.command(std::path::Path::new("/tmp/my decks/d.deck"), None),
+            named.command(
+                std::path::Path::new("/tmp/my decks/d.deck"),
+                &untold,
+                &config
+            ),
             "deck export '/tmp/my decks/d.deck' --format pdf --theme 'vscode:One Dark Pro'"
         );
         let plain = Choice {
@@ -2446,7 +2488,7 @@ mod tests {
             ..Choice::new(2)
         };
         assert_eq!(
-            plain.command(std::path::Path::new("d.deck"), None),
+            plain.command(std::path::Path::new("d.deck"), &untold, &config),
             "deck export d.deck --format pdf --theme dark"
         );
         assert_eq!(
@@ -2454,6 +2496,87 @@ mod tests {
             "'it'\\''s'",
             "a quote inside is closed, escaped and reopened"
         );
+    }
+
+    /// A window opened with `deck open --mode` or `--paper` over the config
+    /// copies a command that says so, and that command, read back through
+    /// the parser and painted, is the window's light or dark and paper — not
+    /// the config's. Only for the window's own theme: every other theme is
+    /// painted under the config on both sides and carries neither.
+    #[test]
+    fn as_the_window_copies_what_the_window_was_opened_in() {
+        use crate::export_sheet::{Borrowed, Choice, Look, Theme};
+        let config = deck_core::config::Theme {
+            mode: Mode::Light,
+            ..deck_core::config::Theme::default()
+        };
+        let window = Look {
+            borrowed: None,
+            mode: Mode::Dark,
+            paper: Paper::Warm,
+        };
+        let args = Choice::new(2).args(&window, &config);
+        assert_eq!(
+            args[2..],
+            ["--theme", "editor", "--mode", "dark", "--paper", "warm"],
+            "{args:?}"
+        );
+        let mut line = vec![
+            "deck".to_string(),
+            "export".to_string(),
+            "d.deck".to_string(),
+        ];
+        line.extend(args);
+        let What::Export {
+            theme, mode, paper, ..
+        } = Cli::try_parse_from(&line).expect("parses").what
+        else {
+            panic!("an export");
+        };
+        let told = deck_core::config::Theme {
+            mode: mode.unwrap_or(config.mode),
+            paper: paper.unwrap_or(config.paper),
+            ..config.clone()
+        };
+        let never = |_: deck_theme::Editor, _: Option<&str>, _: bool| -> Option<_> {
+            panic!("deck's own colours read nothing")
+        };
+        let painted = painted_for(&theme, &told, false, never);
+        assert!(painted.dark, "dark, as the window was opened");
+        assert_eq!(
+            painted.palette,
+            crate::palette::current_on(true, Paper::Warm),
+            "on the window's paper"
+        );
+
+        // A borrowed theme brings its own page: the paper is not passed.
+        let borrowed = Look {
+            borrowed: Some(Borrowed {
+                editor: deck_theme::Editor::Zed,
+                name: Some("One Dark".to_string()),
+            }),
+            ..window.clone()
+        };
+        assert_eq!(
+            Choice::new(2).args(&borrowed, &config)[2..],
+            ["--theme", "zed:One Dark", "--mode", "dark"]
+        );
+        // The config already saying it, nothing is passed.
+        let same = Look {
+            mode: Mode::Light,
+            paper: Paper::Grey,
+            borrowed: None,
+        };
+        assert_eq!(
+            Choice::new(2).args(&same, &config)[2..],
+            ["--theme", "editor"]
+        );
+        // Another theme is the config's on both sides.
+        let dark = Choice {
+            theme: Theme::Dark,
+            ..Choice::new(2)
+        };
+        assert_eq!(dark.args(&window, &config)[2..], ["--theme", "dark"]);
     }
 
     /// The command and the sheet paint through one function: deck's own
@@ -2774,6 +2897,8 @@ mod tests {
             format: None,
             landscape: false,
             theme: "dark",
+            mode: None,
+            paper: None,
             groups: None,
             comments: true,
             out: Some(out),

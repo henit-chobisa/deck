@@ -47,7 +47,7 @@ use gpui_kit::*;
 
 #[cfg(test)]
 pub use model::quoted;
-pub use model::{Borrowed, Choice, Format, Layout, Saved, Theme};
+pub use model::{Borrowed, Choice, Format, Layout, Look, Saved, Theme};
 
 use crate::palette::paint;
 
@@ -146,17 +146,29 @@ fn ask_where(
     (answer, None)
 }
 
-/// The editor's theme the window borrowed, said once at start.
-static WINDOW_THEME: std::sync::OnceLock<Option<Borrowed>> = std::sync::OnceLock::new();
+/// How the window is painted, said once at start.
+static WINDOW_LOOK: std::sync::OnceLock<Look> = std::sync::OnceLock::new();
 
-/// Say which editor's theme the window borrowed: `None` when nothing was
-/// borrowed and the window is in deck's own palette.
-pub fn name_theme(borrowed: Option<Borrowed>) {
-    let _ = WINDOW_THEME.set(borrowed);
+/// What a window that never said is taken to be in: deck's own colours, the
+/// machine's mode, grey paper — the config's defaults.
+static UNTOLD: Look = Look {
+    borrowed: None,
+    mode: deck_core::theme::Mode::Auto,
+    paper: deck_core::theme::Paper::Grey,
+};
+
+/// Say how the window is painted: which editor's theme it borrowed, `None`
+/// when it is in deck's own palette, and the mode and paper it was opened in.
+pub fn name_theme(look: Look) {
+    let _ = WINDOW_LOOK.set(look);
+}
+
+fn window_look() -> &'static Look {
+    WINDOW_LOOK.get().unwrap_or(&UNTOLD)
 }
 
 fn window_theme() -> Option<&'static Borrowed> {
-    WINDOW_THEME.get().and_then(Option::as_ref)
+    window_look().borrowed.as_ref()
 }
 
 /// The deck to export, as the window knows it.
@@ -316,8 +328,11 @@ impl Focusable for ExportSheet {
 
 impl ExportSheet {
     /// A sheet for `source`, painted in `palette`, exporting by default in
-    /// the colours the window is `painted` in. It starts reading the deck at
-    /// once: packing a folder reads every file it points at.
+    /// the colours the window is `painted` in — exactly those, which "As the
+    /// window" paints the preview and the file in, rather than working them
+    /// out again from the config the window may have been told to go over.
+    /// It starts reading the deck at once: packing a folder reads every file
+    /// it points at.
     pub fn new(source: Source, palette: Palette, painted: Painted, cx: &mut Context<Self>) -> Self {
         preview::embed_faces(cx);
         let mut sheet = Self {
@@ -429,7 +444,17 @@ impl ExportSheet {
     /// The palette, darkness and syntax `theme` paints in, as `deck export
     /// --theme` paints them ([`crate::cli::painted_for`]), from colours
     /// already read: painting never waits on a disk or a process.
+    ///
+    /// The window's own is the window's palette itself, not the config's
+    /// answer for the theme it borrowed. The two part whenever the window was
+    /// opened with `--mode` or `--paper` over the config — a `deck open --mode
+    /// dark` on a machine whose config says light would otherwise preview
+    /// and export light under a label that says dark. The command line it
+    /// copies carries the same flags ([`Choice::args`]), so it paints this too.
     fn painted(&self, theme: &Theme) -> Painted {
+        if *theme == Theme::Window {
+            return self.window;
+        }
         crate::cli::painted_for(
             &theme.flag(window_theme()),
             &self.config,
@@ -1963,7 +1988,9 @@ impl Render for ExportSheet {
             );
         // The command that makes the same file, to copy: the sheet is `deck
         // export`, and this says which one.
-        let command = self.choice.command(&self.source.deck, window_theme());
+        let command = self
+            .choice
+            .command(&self.source.deck, window_look(), &self.config);
         let preview = preview
             .child(
                 div()

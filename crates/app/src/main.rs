@@ -237,12 +237,18 @@ fn show(decks: Vec<Deck>, opening: &cli::Opening) {
                     None
                 }
             };
-            // What the sheet exports in as the window: the editor's theme
-            // the window borrowed, by name when it was asked for by one.
-            export_sheet::name_theme(imported.map(|_| export_sheet::Borrowed {
-                editor,
-                name: named.clone(),
-            }));
+            // What the sheet's command line says the window is painted in:
+            // the editor's theme it borrowed, by name when it was asked for
+            // by one, and the mode and paper it was opened in, which `--mode`
+            // and `--paper` may have put over the config's.
+            export_sheet::name_theme(export_sheet::Look {
+                borrowed: imported.map(|_| export_sheet::Borrowed {
+                    editor,
+                    name: named.clone(),
+                }),
+                mode: dark,
+                paper,
+            });
             palette::choose(palette::Chosen {
                 paper,
                 imported,

@@ -18,6 +18,7 @@
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+use deck_core::theme::{Mode, Paper};
 use deck_render::export;
 
 /// What to write.
@@ -42,13 +43,18 @@ pub enum Layout {
 /// Which colours the export is painted in: what `deck export --theme` takes.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Theme {
-    /// What the window is painted in, taken from the window as it stands:
-    /// the editor's theme it borrowed, by name when it knows it, a theme
-    /// `deck open --theme` tried on, or deck's own when it borrowed none.
-    /// Nearest to `--theme editor`, the command's default, but not always the
-    /// same: the command reads the config afresh and has no window to have
-    /// been told another theme, nor the platform's light or dark that the
-    /// window asks once it is up.
+    /// Exactly what the window is painted in: its own palette, handed to the
+    /// sheet as it stands, whatever made it — the editor's theme it borrowed,
+    /// a theme `deck open --theme` tried on, `deck open --mode` or `--paper`
+    /// going over the config, or the platform's light or dark that the window
+    /// asked once it was up.
+    ///
+    /// The command line carries as much of that as `deck export` can be
+    /// told ([`Look`]): the borrowed theme by name, and `--mode` and
+    /// `--paper` when the window's differ from the config's. What it cannot
+    /// carry is the machine's light or dark at the moment the window opened,
+    /// for a window in `auto`: run later, under a machine that has since
+    /// changed, the command asks the machine again.
     Window,
     /// Deck's own dark. `--theme dark`.
     Dark,
@@ -71,6 +77,19 @@ pub struct Borrowed {
     pub editor: deck_theme::Editor,
     /// The theme, when the reader named one.
     pub name: Option<String>,
+}
+
+/// How the window is painted, as far as `deck export` can be told it: the
+/// theme it borrowed, and the mode and paper it was opened in, which `deck open
+/// --mode` and `--paper` may have put over the config's.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Look {
+    /// The editor's theme it borrowed, or `None` for deck's own colours.
+    pub borrowed: Option<Borrowed>,
+    /// Light, dark, or the machine's, as the window was told.
+    pub mode: Mode,
+    /// The neutrals deck's own colours are on, as the window was told.
+    pub paper: Paper,
 }
 
 impl Theme {
@@ -228,8 +247,17 @@ impl Choice {
     /// the deck: `--format pdf --landscape --theme light --groups 1,3`,
     /// with the window's own theme named as `window` says. What the tests
     /// hold [`Self::options`] to.
+    ///
+    /// `window` is how the window is painted and `config` the `[theme]` the
+    /// command will read. For the window's own theme, a mode or paper the
+    /// window was opened in that the config does not say is passed as
+    /// `--mode` or `--paper`, so the command paints what the window shows
+    /// rather than what the config says; the paper only when the window is in
+    /// deck's own colours, since a borrowed theme brings its own page. Every
+    /// other theme is painted under the config by the sheet and the command
+    /// alike, and needs neither.
     #[must_use]
-    pub fn args(&self, window: Option<&Borrowed>) -> Vec<String> {
+    pub fn args(&self, window: &Look, config: &deck_core::config::Theme) -> Vec<String> {
         let mut args = vec![
             "--format".to_string(),
             match self.format {
@@ -242,7 +270,30 @@ impl Choice {
             args.push("--landscape".to_string());
         }
         args.push("--theme".to_string());
-        args.push(self.theme.flag(window));
+        args.push(self.theme.flag(window.borrowed.as_ref()));
+        if self.theme == Theme::Window {
+            if window.mode != config.mode {
+                args.push("--mode".to_string());
+                args.push(
+                    match window.mode {
+                        Mode::Auto => "auto",
+                        Mode::Light => "light",
+                        Mode::Dark => "dark",
+                    }
+                    .to_string(),
+                );
+            }
+            if window.borrowed.is_none() && window.paper != config.paper {
+                args.push("--paper".to_string());
+                args.push(
+                    match window.paper {
+                        Paper::Grey => "grey",
+                        Paper::Warm => "warm",
+                    }
+                    .to_string(),
+                );
+            }
+        }
         let numbers = self.numbers();
         if !numbers.is_empty() {
             args.push("--groups".to_string());
@@ -265,14 +316,14 @@ impl Choice {
     /// editor's theme is always quoted, since its name is the editor's to
     /// choose.
     #[must_use]
-    pub fn command(&self, deck: &Path, window: Option<&Borrowed>) -> String {
+    pub fn command(&self, deck: &Path, window: &Look, config: &deck_core::config::Theme) -> String {
         let mut line = vec![
             "deck".to_string(),
             "export".to_string(),
             quoted(&deck.to_string_lossy()),
         ];
         let mut theme_next = false;
-        for arg in self.args(window) {
+        for arg in self.args(window, config) {
             let editor_theme = theme_next && arg.contains(':');
             theme_next = arg == "--theme";
             line.push(if editor_theme {
