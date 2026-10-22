@@ -2766,11 +2766,11 @@ impl DeckView {
         }
     }
 
-    /// Turn the rest of the screen down, or back up.
+    /// Hand the deck back to the agent.
     ///
-    /// The deck does not change. What changes is everything that was competing
-    /// with it, which is the only thing wrong with reading on a screen that
-    /// also has eleven other things on it.
+    /// Scrolling or picking something stops the agent moving the reader
+    /// around; this is how they say they want to be walked again, and the
+    /// next thing the agent shows moves them as before.
     fn on_follow(&mut self, _: &Follow, _window: &mut Window, cx: &mut Context<Self>) {
         self.live.follow();
         cx.notify();
