@@ -17,12 +17,19 @@
 <rect x="107.38" y="372" width="1.25" height="21" rx="0" fill="#8f8670"/>
 <rect x="107.38" y="393" width="1.25" height="21" rx="0" fill="#8f8670"/>
 <path d="M108 414L104.75 405L111.25 405Z" fill="#8f8670"/>
+<g data-top="30" data-bottom="84">
 <rect x="30" y="30" width="156" height="54" rx="27" fill="#282828"/>
 <rect x="30.5" y="30.5" width="155" height="53" rx="26.5" fill="none" stroke="#3a3735" stroke-width="1"/>
+</g>
+<g data-top="126" data-bottom="180">
 <rect x="30" y="126" width="156" height="54" rx="6" fill="#282828"/>
 <rect x="30.5" y="126.5" width="155" height="53" rx="5.5" fill="none" stroke="#3a3735" stroke-width="1"/>
+</g>
+<g data-top="218" data-bottom="280">
 <path d="M53 218L163 218L194 249L163 280L53 280L22 249Z" fill="#fe8019"/>
 <path d="M53 219.5L163 219.5L192.5 249L163 278.5L53 278.5L23.5 249Z" fill="#332b21"/>
+</g>
+<g data-top="318" data-bottom="372">
 <path d="M30 365.5Q30 359 108 359Q186 359 186 365.5Q186 372 108 372Q30 372 30 365.5Z" fill="#3a3735"/>
 <rect x="30" y="324.5" width="156" height="41" rx="0" fill="#3a3735"/>
 <path d="M30 324.5Q30 318 108 318Q186 318 186 324.5Q186 331 108 331Q30 331 30 324.5Z" fill="#3a3735"/>
@@ -31,10 +38,15 @@
 <path d="M31 325.5Q31 319 108 319Q185 319 185 325.5Q185 332 108 332Q31 332 31 325.5Z" fill="#282828"/>
 <path d="M31 325.5Q31 319 108 319Q185 319 185 325.5Q185 332 108 332Q31 332 31 325.5Z" fill="#3a3735"/>
 <path d="M32 325.5Q32 320 108 320Q184 320 184 325.5Q184 331 108 331Q32 331 32 325.5Z" fill="#282828"/>
+</g>
+<g data-top="414" data-bottom="468">
 <path d="M30 441Q30 414 108 414Q186 414 186 441Q186 468 108 468Q30 468 30 441Z" fill="#3a3735"/>
 <path d="M31 441Q31 415 108 415Q185 415 185 441Q185 467 108 467Q31 467 31 441Z" fill="#282828"/>
+</g>
+<g data-top="318" data-bottom="372">
 <rect x="242" y="318" width="156" height="54" rx="6" fill="#332b21"/>
 <rect x="242.75" y="318.75" width="154.5" height="52.5" rx="5.25" fill="none" stroke="#fe8019" stroke-width="1.5"/>
+</g>
 <rect x="115" y="97" width="72" height="34" rx="3" fill="#1f1f1f"/>
 <text x="122.03" y="109.75" font-size="10" font-weight="400" fill="#a89984" xml:space="preserve">for each row </text>
 <text x="124.69" y="125.75" font-size="10" font-weight="400" fill="#a89984" xml:space="preserve">in the sheet</text>

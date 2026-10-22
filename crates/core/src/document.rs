@@ -314,6 +314,11 @@ pub struct Code {
     /// range names, was not frozen into it — so there is nothing to print.
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub missing: bool,
+    /// How the file stood against the deck's commit when it was frozen, if
+    /// it was: only a clean file's lines are at that commit, so only a
+    /// clean file can be linked to it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub state: Option<crate::bundle::snap::State>,
 }
 
 /// Which way a code pane's change runs.
@@ -499,6 +504,9 @@ pub enum Author {
 
 /// `bundle` as a document, painted by `paint` in `palette`.
 ///
+/// A long quiet stretch of a range folds to a gap ([`FOLD_AT`]), which a
+/// format that can open it again — the window, a web page — wants.
+///
 /// # Errors
 ///
 /// When a part of the bundle does not parse. A bundle that opened has
@@ -507,6 +515,32 @@ pub fn build(
     bundle: &Bundle,
     palette: &Palette,
     paint: &dyn Paint,
+) -> Result<Document, Unreadable> {
+    build_with(bundle, palette, paint, true)
+}
+
+/// [`build`], with every line of every range printed and nothing folded.
+///
+/// For paper. A fold on a page is lines the reader can never get back,
+/// inside the very range the deck pointed at; a paged format prints them
+/// all and lets its own overflow rules find the room.
+///
+/// # Errors
+///
+/// As [`build`].
+pub fn build_unfolded(
+    bundle: &Bundle,
+    palette: &Palette,
+    paint: &dyn Paint,
+) -> Result<Document, Unreadable> {
+    build_with(bundle, palette, paint, false)
+}
+
+fn build_with(
+    bundle: &Bundle,
+    palette: &Palette,
+    paint: &dyn Paint,
+    fold: bool,
 ) -> Result<Document, Unreadable> {
     let header = bundle.header()?;
     let snapshots = bundle.snapshots()?;
@@ -522,7 +556,7 @@ pub fn build(
     for (ix, group) in groups.iter().enumerate() {
         let n = u32::try_from(ix + 1).unwrap_or(u32::MAX);
         let argument = said.remove(&group.id).unwrap_or_default();
-        built.push(group_of(n, group, argument, &by_file, palette, paint));
+        built.push(group_of(n, group, argument, &by_file, palette, paint, fold));
     }
     // Each remark names the pane it was about as the page does.
     let labels: BTreeMap<String, String> = built
@@ -610,6 +644,7 @@ fn group_of(
     by_file: &BTreeMap<&str, &Snapshot>,
     palette: &Palette,
     paint: &dyn Paint,
+    fold: bool,
 ) -> Group {
     // How long each file is, as far as the snapshot can tell: where a range
     // runs past the last line kept around it, the file ended there, since the
@@ -636,7 +671,7 @@ fn group_of(
     }
     let panes: Vec<Pane> = order
         .iter()
-        .map(|&ix| pane_of(ix, &group.refs[ix], &landed, by_file, palette, paint))
+        .map(|&ix| pane_of(ix, &group.refs[ix], &landed, by_file, palette, paint, fold))
         .collect();
     let ledger = panes.iter().flat_map(ledger_of).collect();
     let title = group.title.clone().unwrap_or_else(|| {
@@ -851,6 +886,7 @@ fn pane_of(
     by_file: &BTreeMap<&str, &Snapshot>,
     palette: &Palette,
     paint: &dyn Paint,
+    fold: bool,
 ) -> Pane {
     let marks = || -> Vec<Marker> {
         landed
@@ -865,7 +901,7 @@ fn pane_of(
             .collect()
     };
     match r {
-        Ref::Code(spec) => Pane::Code(code_of(ix, spec, landed, by_file, palette, paint)),
+        Ref::Code(spec) => Pane::Code(code_of(ix, spec, landed, by_file, palette, paint, fold)),
         Ref::Diagram(diagram) => Pane::Diagram(Picture {
             id: diagram.id.clone(),
             name: diagram.name.clone(),
@@ -890,6 +926,7 @@ fn code_of(
     by_file: &BTreeMap<&str, &Snapshot>,
     palette: &Palette,
     paint: &dyn Paint,
+    fold: bool,
 ) -> Code {
     let file = path_of(spec);
     let change = match (&spec.after, &spec.before) {
@@ -906,11 +943,13 @@ fn code_of(
         change,
         lines: Vec::new(),
         missing: false,
+        state: None,
     };
     let Some(snapshot) = by_file.get(file.as_str()) else {
         code.missing = true;
         return code;
     };
+    code.state = Some(snapshot.file.state);
     let Some(span) = snapshot
         .file
         .kept
@@ -1032,7 +1071,7 @@ fn code_of(
             end += 1;
         }
         let quiet = end - no;
-        if quiet >= FOLD_AT {
+        if fold && quiet >= FOLD_AT {
             for line in (no..no + FOLD_EDGE).chain(end - FOLD_EDGE..end) {
                 if line == end - FOLD_EDGE {
                     code.lines.push(Line::Gap {

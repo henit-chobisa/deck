@@ -154,6 +154,48 @@ pub fn ascent_descent(size: f32, weight: Weight) -> (f32, f32) {
     )
 }
 
+/// The code face's advance at `size`: JetBrains Mono sets every character it
+/// has at one width, so a line of code is as wide as its characters times
+/// this, and a page can count columns rather than measure.
+#[must_use]
+pub fn mono_advance(size: f32) -> f32 {
+    let (face, units) = mono();
+    let glyph = face
+        .glyph_index('0')
+        .unwrap_or(rustybuzz::ttf_parser::GlyphId(0));
+    f32::from(face.glyph_hor_advance(glyph).unwrap_or(600)) / units * size
+}
+
+/// How far the code face rises above its baseline and falls below it, at
+/// `size`, from its `hhea` table as [`ascent_descent`] reads Plex's.
+#[must_use]
+pub fn mono_ascent_descent(size: f32) -> (f32, f32) {
+    let (face, units) = mono();
+    let hhea = face.tables().hhea;
+    (
+        f32::from(hhea.ascender) / units * size,
+        -f32::from(hhea.descender) / units * size,
+    )
+}
+
+/// Whether the code face has a glyph for `c`.
+#[must_use]
+pub fn mono_covers(c: char) -> bool {
+    mono().0.glyph_index(c).is_some()
+}
+
+/// The regular cut of the code face, parsed once, and its units per em.
+fn mono() -> &'static (rustybuzz::Face<'static>, f32) {
+    static MONO_FACE: OnceLock<(rustybuzz::Face<'static>, f32)> = OnceLock::new();
+    MONO_FACE.get_or_init(|| {
+        let face =
+            rustybuzz::Face::from_slice(MONO[0].0, 0).expect("the embedded JetBrains Mono parses");
+        #[allow(clippy::cast_precision_loss)]
+        let units = face.units_per_em() as f32;
+        (face, units)
+    })
+}
+
 /// How wide `text` is, at `size` in `weight`, as a sum of single characters.
 #[must_use]
 pub fn width(text: &str, size: f32, weight: Weight) -> f32 {
