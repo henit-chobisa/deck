@@ -321,11 +321,15 @@ impl ExportSheet {
                 };
                 match row.swatch {
                     Swatch::Read(_) => row.theme(),
-                    Swatch::OnClick => {
+                    // Neovim that failed is asked again: what failed is
+                    // usually a config that was slow this once, and the
+                    // reader now stops one that runs over, so another try
+                    // costs a few seconds and nothing left running.
+                    Swatch::OnClick | Swatch::Failed(_) if row.editor == Editor::Nvim => {
                         self.read_nvim(ix, cx);
                         return;
                     }
-                    Swatch::Reading | Swatch::Failed(_) => return,
+                    Swatch::OnClick | Swatch::Reading | Swatch::Failed(_) => return,
                 }
             }
             _ => return,
@@ -504,6 +508,10 @@ impl ExportSheet {
                         ),
                         Swatch::Reading => (None, "reading…".to_string(), false),
                         Swatch::OnClick => (None, "read on click".to_string(), true),
+                        // Neovim's can be asked again, so it stays a row to click.
+                        Swatch::Failed(_) if them.editor == Editor::Nvim => {
+                            (None, "try again".to_string(), true)
+                        }
                         Swatch::Failed(_) => (None, "could not be read".to_string(), false),
                     };
                     let row = row(
