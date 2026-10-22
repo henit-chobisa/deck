@@ -105,6 +105,10 @@ pub const RAIL_SIZE: f32 = 12.5;
 /// See [`RAIL_SIZE`].
 pub const RAIL_LEADING: f32 = 19.;
 
+/// The header over a pane, naming its file: set in the code face, a size
+/// under the code beneath it.
+pub const PANE_HEAD: f32 = 10.5;
+
 /// The strip along the bottom: its text size, its padding across and down,
 /// and the gap between what it says.
 pub const STRIP_SIZE: f32 = 10.5;
@@ -154,6 +158,7 @@ mod tests {
             (RAIL, 365.),
             (RAIL_SIZE, 12.5),
             (RAIL_LEADING, 19.),
+            (PANE_HEAD, 10.5),
             (STRIP_SIZE, 10.5),
             (STRIP_SIDE, 14.),
             (STRIP_ROW, 7.),

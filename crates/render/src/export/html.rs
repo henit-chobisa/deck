@@ -35,9 +35,9 @@ use deck_core::theme::{LEGIBLE, Rgb, legible};
 use super::{Options, face};
 use crate::metrics::{
     BAND_BOTTOM, BAND_GAP, BAND_LEAST, BAND_MOST, BAND_SIDE, BAND_TOP, CHIP_SIZE, CONFIDENCE_SIZE,
-    DECK_TITLE_SIZE, LINE_HEIGHT, MONO_SIZE, NUMBER_SIZE, NUMBER_SIZE_TENS, PROSE_LEADING,
-    PROSE_SIZE, PROSE_SPACING, RAIL, RAIL_LEADING, RAIL_SIZE, SANS_SIZE, STEM, STEM_GAP, STRIP_GAP,
-    STRIP_ROW, STRIP_SIDE, STRIP_SIZE, TITLE_SIZE,
+    DECK_TITLE_SIZE, LINE_HEIGHT, MONO_SIZE, NUMBER_SIZE, NUMBER_SIZE_TENS, PANE_HEAD,
+    PROSE_LEADING, PROSE_SIZE, PROSE_SPACING, RAIL, RAIL_LEADING, RAIL_SIZE, SANS_SIZE, STEM,
+    STEM_GAP, STRIP_GAP, STRIP_ROW, STRIP_SIDE, STRIP_SIZE, TITLE_SIZE,
 };
 use crate::reading::{self, CHIP_PADDING};
 use crate::svg::base64;
@@ -290,7 +290,7 @@ h2{{margin:0;font-size:{TITLE_SIZE}px;font-weight:600;color:var(--band-text);whi
 .pane{{flex:1 1 0;display:flex;flex-direction:column;min-width:0;min-height:0;border-right:1px solid var(--edge);overflow:hidden}}
 .pane.code{{flex-grow:1.3}}
 .pane:last-child{{border-right:0}}
-.ph{{flex:none;display:flex;gap:8px;align-items:baseline;padding:12px 16px 6px;font:400 11.5px var(--mono);color:var(--pane-muted);white-space:nowrap;overflow:hidden}}
+.ph{{flex:none;display:flex;gap:8px;align-items:baseline;padding:12px 16px 6px;font:400 {PANE_HEAD}px var(--mono);color:var(--pane-muted);white-space:nowrap;overflow:hidden}}
 .ph b{{font-weight:400;color:var(--pane-accent)}}
 .ph .file{{overflow:hidden;text-overflow:ellipsis}}
 .ph a{{color:inherit;text-decoration:underline;text-decoration-color:var(--edge);text-underline-offset:3px}}
@@ -318,7 +318,7 @@ h2{{margin:0;font-size:{TITLE_SIZE}px;font-weight:600;color:var(--band-text);whi
 .marks{{flex:none;display:flex;flex-wrap:wrap;gap:4px 12px;padding:0 16px 10px;font:400 11px var(--mono);color:var(--pane-muted)}}
 iframe.page{{flex:1;min-height:0;width:100%;border:0;background:transparent}}
 .side{{grid-column:2;grid-row:1/3;background:var(--band);border-left:1px solid var(--edge);padding:26px 22px;display:flex;flex-direction:column;gap:14px;overflow:hidden;color:var(--band-muted)}}
-.side h4{{margin:0;display:flex;justify-content:space-between;font:500 11px var(--sans);letter-spacing:.08em;text-transform:uppercase;color:var(--band-muted)}}
+.side h4{{margin:0;display:flex;justify-content:space-between;font:600 10.5px var(--sans);text-transform:uppercase;color:var(--band-muted)}}
 .toc{{margin:0;padding:0;list-style:none;display:grid;gap:9px;font-size:{RAIL_SIZE}px;line-height:{RAIL_LEADING}px}}
 .toc a{{display:grid;grid-template-columns:18px minmax(0,1fr);gap:6px}}
 .toc a:hover{{color:var(--band-text)}}
@@ -340,7 +340,7 @@ iframe.page{{flex:1;min-height:0;width:100%;border:0;background:transparent}}
 .thin .count{{margin-left:auto;flex:none;font:400 11px var(--mono);color:var(--band-muted)}}
 .thread{{grid-column:1;min-height:0;overflow:auto;padding:24px 30px;background:var(--page)}}
 .cols{{column-width:340px;column-count:2;column-gap:34px;column-rule:1px solid var(--edge)}}
-.msg{{break-inside:avoid;display:grid;grid-template-columns:10px minmax(0,1fr);gap:8px;margin:0 0 16px;font-size:13px;line-height:1.55;color:var(--page-text)}}
+.msg{{break-inside:avoid;display:grid;grid-template-columns:10px minmax(0,1fr);gap:8px;margin:0 0 16px;font-size:{RAIL_SIZE}px;line-height:{RAIL_LEADING}px;color:var(--page-text)}}
 .msg .dot{{width:8px;height:8px;border-radius:50%;margin-top:6px;border:1.5px solid var(--page-muted)}}
 .msg.reader .dot{{background:var(--page-accent);border-color:var(--page-accent)}}
 .who{{display:flex;gap:6px;font-size:10.5px;color:var(--page-muted)}}
