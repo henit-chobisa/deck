@@ -680,10 +680,21 @@ pub struct DeckView {
     /// light happens to be up when it fires — so opening a second mark inside
     /// the hold had its highlight cut short by the first one's timer.
     shown_at: u64,
-    /// The sentence being heard, and how far its light has come up.
-    heard_now: Option<(crate::speech::Narration, (usize, usize), crate::pane::Fade)>,
-    /// The sentence just heard, its light going out.
-    heard_was: Option<(crate::speech::Narration, (usize, usize), crate::pane::Fade)>,
+    /// The sentence being heard, and the ones just heard going out: the soft
+    /// ground under the words the voice is on.
+    heard: crate::prose::Lights<(crate::speech::Narration, (usize, usize))>,
+    /// The paragraph being heard, and the ones just left going out: what the
+    /// voice dimming keeps at full while the rest steps back.
+    ///
+    /// Its own lights rather than the sentences', because a sentence's light
+    /// changes on every sentence and the paragraph's must not. A short
+    /// sentence's light never reached full before the next began, so a
+    /// paragraph lit by its sentences dipped between every pair of them.
+    heard_paragraphs: crate::prose::Lights<(crate::speech::Narration, (usize, usize))>,
+    /// Whose words the voice is hearing at all: on from the first word of a
+    /// passage to the last, whatever sentence it is on, so the paragraphs it
+    /// is not reading step back once and stay back.
+    voiced: crate::prose::Lights<crate::speech::Narration>,
     conversation: crate::conversation::Conversation,
     /// How wide the reader has dragged the rail, if they have.
     ///
@@ -1136,16 +1147,17 @@ impl DeckView {
             ahead: 0,
             name_hovered: None,
             name_pinned: None,
-            heard_now: None,
-            heard_was: None,
+            heard: crate::prose::Lights::new(crate::pane::Fade::default()),
+            heard_paragraphs: crate::prose::Lights::new(crate::pane::Fade::default()),
+            voiced: crate::prose::Lights::new(crate::pane::Fade::default()),
             attending: None,
             folds: Vec::new(),
             temporary: std::collections::HashSet::new(),
             rail_open: crate::pane::Fade::default(),
             pressed: None,
             said_lit: None,
-            said_tick: crate::prose::Tick::default(),
-            pressed_tick: crate::prose::Tick::default(),
+            said_tick: crate::prose::Tick::hand(),
+            pressed_tick: crate::prose::Tick::hand(),
             showing: None,
             shown_at: 0,
             rail_width,
@@ -2053,42 +2065,65 @@ impl DeckView {
         }
     }
 
-    /// Follow the sentence being heard. Says whether it moved on.
+    /// Follow the sentence being heard, and the paragraph and passage it is
+    /// in. Says whether any of them moved on.
     fn listen(&mut self) -> bool {
-        let now = self.voice.hearing().and_then(|(of, word)| {
-            let text = match of {
-                crate::speech::Narration::Group(ix) => self.deck.groups().get(ix)?.say.as_str(),
-                crate::speech::Narration::Answer(ix) => {
-                    self.conversation.transcript.get(ix)?.text.as_str()
-                }
-            };
-            Some((of, crate::prose::sentence_around(text, word)?))
-        });
-        if now == self.heard_now.map(|(of, range, _)| (of, range)) {
-            return false;
+        let hearing = self.voice.hearing();
+        // On while the voice is hearing anything at all in this passage. A
+        // gap between two sentences is still the voice reading, so this
+        // never goes out and comes back inside one passage.
+        let mut moved = self.voiced.follow(hearing.map(|(of, _)| of));
+        let text = |of| match of {
+            crate::speech::Narration::Group(ix) => {
+                self.deck.groups().get(ix).map(|group| group.say.as_str())
+            }
+            crate::speech::Narration::Answer(ix) => self
+                .conversation
+                .transcript
+                .get(ix)
+                .map(|turn| turn.text.as_str()),
+        };
+        let now = hearing
+            .and_then(|(of, word)| Some((of, crate::prose::sentence_around(text(of)?, word)?)));
+        if now != self.heard.on() {
+            // The paragraph the sentence is in, read only when the sentence
+            // changes: once a sentence rather than once a frame.
+            let paragraph = now.and_then(|(of, sentence)| {
+                let paragraphs = crate::prose::parse(text(of)?);
+                Some((of, crate::prose::paragraphs_holding(&paragraphs, sentence)?))
+            });
+            // The last sentence goes out from wherever its light had got to,
+            // and so does every one before it still on its way down.
+            self.heard.follow(now);
+            self.heard_paragraphs.follow(paragraph);
+            moved = true;
         }
-        // The last sentence goes out from wherever its light had got to.
-        if let Some((of, range, mut light)) = self.heard_now.take() {
-            light.set(false);
-            self.heard_was = Some((of, range, light));
-        }
-        self.heard_now = now.map(|(of, range)| {
-            let mut light = crate::pane::Fade::default();
-            light.set(true);
-            (of, range, light)
-        });
-        true
+        moved
     }
 
     /// The sentences of `of` being heard, with how lit each one is.
     fn heard_in(&self, of: crate::speech::Narration) -> Vec<((usize, usize), f32)> {
-        [self.heard_now, self.heard_was]
-            .into_iter()
-            .flatten()
-            .filter(|(whose, _, _)| *whose == of)
-            .map(|(_, range, light)| (range, light.level()))
-            .filter(|(_, level)| *level > 0.)
-            .collect()
+        self.heard.levels(of)
+    }
+
+    /// How much the voice is reading `of` at all, for
+    /// [`crate::prose::Picking::voiced`].
+    ///
+    /// Summed, because the voice moving from one passage to another hands one
+    /// light to the next, and one of a passage's own lights coming back up
+    /// while it is still going out is still one passage.
+    fn voiced_in(&self, of: crate::speech::Narration) -> f32 {
+        self.voiced
+            .lit()
+            .filter(|(whose, _)| *whose == of)
+            .map(|(_, level)| level)
+            .sum::<f32>()
+            .min(1.)
+    }
+
+    /// The paragraphs of `of` being heard, with how lit each one is.
+    fn heard_paragraphs_in(&self, of: crate::speech::Narration) -> Vec<((usize, usize), f32)> {
+        self.heard_paragraphs.levels(of)
     }
 
     /// Fold what the agent asked to fold, by name or the whole group.
@@ -6079,6 +6114,12 @@ impl DeckView {
                                             heard: self.heard_in(crate::speech::Narration::Group(
                                                 self.group_ix,
                                             )),
+                                            voiced: self.voiced_in(
+                                                crate::speech::Narration::Group(self.group_ix),
+                                            ),
+                                            heard_paragraphs: self.heard_paragraphs_in(
+                                                crate::speech::Narration::Group(self.group_ix),
+                                            ),
                                             lit_also: [self.track_hover, self.track_hover_was]
                                                 .into_iter()
                                                 .filter(|_| self.aloud)
@@ -7925,9 +7966,9 @@ impl DeckView {
                 } else {
                     // The band's own reading of prose, so a name in backticks
                     // is a chip here too, and the sentence being heard is lit.
-                    let picking = crate::prose::Picking::quiet(
-                        self.heard_in(crate::speech::Narration::Answer(ix)),
-                    );
+                    let turn = crate::speech::Narration::Answer(ix);
+                    let picking = crate::prose::Picking::quiet(self.heard_in(turn))
+                        .voiced(self.voiced_in(turn), self.heard_paragraphs_in(turn));
                     // Only a turn with a pointed copy beside it can move the
                     // code, so only that turn offers the hand. The reader's own
                     // words were never spoken, and a turn restored from a draft
@@ -8723,10 +8764,7 @@ impl Render for DeckView {
         self.look_ahead(cx);
         // A light coming up or going out is a few hundred milliseconds of
         // frames, and then none.
-        let hearing = [self.heard_now, self.heard_was]
-            .into_iter()
-            .flatten()
-            .any(|(_, _, light)| light.moving());
+        let hearing = self.heard.moving() || self.heard_paragraphs.moving() || self.voiced.moving();
         if hearing
             || self.pressed.is_some_and(|(_, _, light)| light.moving())
             || self.said_lit.is_some_and(|(_, light)| light.moving())

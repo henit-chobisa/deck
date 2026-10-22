@@ -67,6 +67,7 @@ impl Render for NotesBody {
             // Nothing in the notes can be picked, so no tick ever stands
             // here; the band's margin, should one ever need it.
             tick: -9.,
+            tick_from: palette.band,
         };
         let prose = |text: &str| {
             crate::prose::render_look(

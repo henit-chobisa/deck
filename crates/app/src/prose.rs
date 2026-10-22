@@ -59,10 +59,25 @@ pub struct Picking {
     pub named: Option<SharedString>,
     /// The pointer did something to a pane's name.
     pub name: Name,
-    /// The sentences being heard, as word ranges, each with how lit it is.
-    ///
-    /// Two at most: the one coming up and the one going out.
+    /// The sentences being heard, as word ranges, each with how lit it is:
+    /// the one coming up, and any still going out.
     pub heard: Vec<((usize, usize), f32)>,
+    /// The paragraphs being heard, as word spans, each with how lit it is.
+    ///
+    /// What the voice dimming answers to, rather than `heard`. A sentence's
+    /// light rises over half a second, so a short one never reached full
+    /// before the voice moved on, and the paragraph it was in stepped back a
+    /// third of the way and came forward again on every short sentence. Keyed
+    /// by paragraph, a voice moving from one sentence to the next in the same
+    /// paragraph leaves the light exactly where it was.
+    pub heard_paragraphs: Vec<((usize, usize), f32)>,
+    /// How much the voice is reading this prose at all, nought to one.
+    ///
+    /// One light, on for as long as the voice is hearing anything here, so
+    /// the paragraphs it is not in step back once and stay back until it
+    /// stops. Summing the sentences' lights did the same only while each
+    /// sentence reached full before the next began.
+    pub voiced: f32,
     /// Whether the words can be picked at all. The rail's record cannot, and a
     /// pointer hand over words that do nothing is a promise it breaks.
     pub pickable: bool,
@@ -109,6 +124,15 @@ impl Picking {
         self
     }
 
+    /// How the voice is reading this prose: see [`Picking::voiced`] and
+    /// [`Picking::heard_paragraphs`].
+    #[must_use]
+    pub fn voiced(mut self, voiced: f32, paragraphs: Vec<((usize, usize), f32)>) -> Self {
+        self.voiced = voiced;
+        self.heard_paragraphs = paragraphs;
+        self
+    }
+
     /// The margin ticks a [`Tick`] has lit for this prose.
     #[must_use]
     pub fn ticked(mut self, ticks: Vec<((usize, usize), f32)>) -> Self {
@@ -128,6 +152,8 @@ impl Picking {
             named: None,
             name: std::rc::Rc::new(|_, _, _, _| {}),
             heard,
+            heard_paragraphs: Vec::new(),
+            voiced: 0.,
             pickable: false,
             shown: 1.,
             remarked: Vec::new(),
@@ -179,6 +205,18 @@ pub struct Look {
     /// there the tick is laid on the thread itself: the thread lights beside
     /// the paragraph the reader picked from.
     pub tick: f32,
+    /// What the margin tick comes up from: the colour under it at no light.
+    ///
+    /// The band's tick stands on the band's own ground, so it rises out of
+    /// that. The rail's is laid on the thread, and rising out of the band
+    /// there meant that a tick at low light painted the band over the thread
+    /// and the thread went missing beside the very paragraph it was marking.
+    /// Rising out of the thread's own colour, the tick at its lowest is the
+    /// thread, and it lights from there. That holds on a turn that was just
+    /// brought, too: its tinted ground is under the turn, but the thread is
+    /// drawn in the same colour on every turn, so the tick still starts as
+    /// the thread it covers.
+    pub tick_from: deck_core::theme::Rgb,
 }
 
 impl Look {
@@ -197,6 +235,7 @@ impl Look {
             spacing: deck_render::metrics::PROSE_SPACING,
             lead: true,
             tick: -9.,
+            tick_from: palette.band,
         }
     }
 
@@ -216,6 +255,8 @@ impl Look {
             // The rail's prose starts 24 points into its turn and the thread
             // runs at 10, a point wide: two points centred on it.
             tick: -14.5,
+            // The thread's own colour: see `tick_from`.
+            tick_from: palette.edge,
         }
     }
 }
@@ -234,34 +275,34 @@ pub fn render_look(
     // their own needs the whole argument at full strength.
     //
     // By degrees, never by a switch. How far a paragraph steps back is how
-    // much the voice is heard anywhere, less how much of that is in this
-    // paragraph. Summed rather than the strongest, and that is what keeps it
-    // still between sentences: as the voice moves on, the sentence it left
-    // goes out while the next comes up, and the next rises quicker than the
-    // last falls, so the two together never dip under full. The strongest of
-    // them dipped to half at the crossing, and every other paragraph
-    // brightened and dimmed again between each pair of sentences.
-    let heard = |words: Option<&Paragraph>| -> f32 {
+    // much the voice is reading this prose at all, less how much of that is
+    // in this paragraph. Both are lights that answer to something longer
+    // than a sentence. The first is one light, on for as long as the voice is
+    // hearing anything here; the second is one per paragraph, and a voice
+    // moving between sentences of the same paragraph leaves it alone. They
+    // were summed from the sentences' own lights, which stayed at full only
+    // when the sentence the voice left had reached full before it left: a
+    // short sentence never did, and every other paragraph brightened a third
+    // of the way and dimmed again on each one.
+    let heard = |para: &Paragraph| -> f32 {
         picking
-            .heard
+            .heard_paragraphs
             .iter()
             .filter(|((from, to), _)| {
-                words.is_none_or(|para| {
-                    para.tokens
-                        .iter()
-                        .any(|token| token.at >= *from && token.at <= *to)
-                })
+                para.tokens
+                    .iter()
+                    .any(|token| token.at >= *from && token.at <= *to)
             })
             .map(|(_, level)| *level)
             .sum::<f32>()
             .min(1.)
     };
-    let voiced = heard(None);
+    let voiced = picking.voiced;
     let rendered: Vec<AnyElement> = paragraphs
         .into_iter()
         .enumerate()
         .map(|(ix, para)| {
-            let back = voiced * (1. - heard(Some(&para)));
+            let back = voiced * (1. - heard(&para));
             // The paragraph's full ink, for its stressed and emphasised words:
             // they step back with the words around them, or a paragraph the
             // voice has left would still have its loudest words shouting.
@@ -358,64 +399,114 @@ pub fn paragraphs_holding(
     Some((first, last))
 }
 
+/// Lights that hand over from one thing to the next: the one that is on, and
+/// every one still going out.
+///
+/// Kept by whoever keeps what they mark, and keyed by what they mark. Told to
+/// follow the same key again, nothing changes; told to follow another, the
+/// light that was on starts to go out from wherever it had got to while the
+/// new one comes up, so a light fades across rather than jumping; told to
+/// follow nothing, the last one goes out on its own.
+///
+/// Every light going out is kept until it is out. Only the last one used to
+/// be, and a reader who moved twice inside a fall — A, then B, then C — had
+/// A's light thrown away halfway down: it vanished in a frame, which is the
+/// snap every other light in the window is built not to do.
+#[derive(Debug, Clone)]
+pub(crate) struct Lights<K> {
+    now: Option<(K, crate::pane::Fade)>,
+    going: Vec<(K, crate::pane::Fade)>,
+    /// A fresh light, at the pace these lights keep.
+    fresh: crate::pane::Fade,
+}
+
+impl<K: Copy + PartialEq> Lights<K> {
+    /// No light on, and each one that comes on rises and falls as `fresh`
+    /// does.
+    pub(crate) fn new(fresh: crate::pane::Fade) -> Self {
+        Self {
+            now: None,
+            going: Vec::new(),
+            fresh,
+        }
+    }
+
+    /// What the light that is on marks, if one is.
+    pub(crate) fn on(&self) -> Option<K> {
+        self.now.as_ref().map(|(key, _)| *key)
+    }
+
+    /// Light `to`, or nothing. Says whether that was a change.
+    pub(crate) fn follow(&mut self, to: Option<K>) -> bool {
+        if self.on() == to {
+            return false;
+        }
+        // Out is out: nothing is left to draw of a light that has gone all
+        // the way down, so the list holds only the ones still falling.
+        self.going.retain(|(_, light)| light.level() > 0.);
+        // Back to something that is still going out: that light turns round
+        // from wherever it had fallen to, rather than starting again from
+        // nothing beside its own fading self.
+        let back = to
+            .and_then(|to| self.going.iter().position(|(key, _)| *key == to))
+            .map(|at| self.going.remove(at).1);
+        if let Some((key, mut light)) = self.now.take() {
+            light.set(false);
+            self.going.push((key, light));
+        }
+        let fresh = self.fresh;
+        self.now = to.map(|key| {
+            let mut light = back.unwrap_or(fresh);
+            light.set(true);
+            (key, light)
+        });
+        true
+    }
+
+    /// Every light with something left to show, and how lit it is.
+    pub(crate) fn lit(&self) -> impl Iterator<Item = (K, f32)> + '_ {
+        self.now
+            .iter()
+            .chain(&self.going)
+            .map(|(key, light)| (*key, light.level()))
+            .filter(|(_, level)| *level > 0.)
+    }
+
+    /// Whether any light is still on its way somewhere.
+    pub(crate) fn moving(&self) -> bool {
+        self.now
+            .iter()
+            .chain(&self.going)
+            .any(|(_, light)| light.moving())
+    }
+}
+
+impl<O: Copy + PartialEq> Lights<(O, (usize, usize))> {
+    /// The spans lit in prose `of`, with how lit each one is: what
+    /// [`Picking`] takes.
+    pub(crate) fn levels(&self, of: O) -> Vec<((usize, usize), f32)> {
+        self.lit()
+            .filter(|((whose, _), _)| *whose == of)
+            .map(|((_, span), level)| (span, level))
+            .collect()
+    }
+}
+
 /// The margin tick's own light, kept by whoever keeps the pick it marks.
 ///
 /// Keyed by the prose it is in — a group, or a turn of the rail — and the
 /// paragraphs the pick touches. A pick that moves to another sentence of the
 /// same paragraphs leaves the light as it is; one that moves elsewhere lets
-/// this light go out while the new one comes up, so the tick fades across
-/// rather than jumping; and letting go of the pick lets it fall with the bar.
-#[derive(Debug, Clone, Copy, Default)]
-pub(crate) struct Tick {
-    now: Option<(usize, (usize, usize), crate::pane::Fade)>,
-    was: Option<(usize, (usize, usize), crate::pane::Fade)>,
-}
+/// this light go out while the new one comes up; and letting go of the pick
+/// lets it fall with the bar.
+pub(crate) type Tick = Lights<(usize, (usize, usize))>;
 
 impl Tick {
-    /// Mark the paragraphs `to` names, in the prose it names, or none.
-    pub(crate) fn follow(&mut self, to: Option<(usize, (usize, usize))>) {
-        if self.now.map(|(of, span, _)| (of, span)) == to {
-            return;
-        }
-        // Back to where it just was: that light turns round from wherever it
-        // had fallen to, rather than starting again from nothing.
-        let back = self
-            .was
-            .filter(|(of, span, _)| Some((*of, *span)) == to)
-            .map(|(_, _, light)| light);
-        if back.is_some() {
-            self.was = None;
-        }
-        if let Some((of, span, mut light)) = self.now.take() {
-            light.set(false);
-            self.was = Some((of, span, light));
-        }
-        self.now = to.map(|(of, span)| {
-            let mut light = back.unwrap_or_else(|| {
-                crate::pane::Fade::default().paced(crate::pane::HAND_RISE, crate::pane::HAND_FALL)
-            });
-            light.set(true);
-            (of, span, light)
-        });
-    }
-
-    /// The ticks lit in prose `of`, for [`Picking::ticks`].
-    pub(crate) fn levels(&self, of: usize) -> Vec<((usize, usize), f32)> {
-        [self.now, self.was]
-            .into_iter()
-            .flatten()
-            .filter(|(whose, _, _)| *whose == of)
-            .map(|(_, span, light)| (span, light.level()))
-            .filter(|(_, level)| *level > 0.)
-            .collect()
-    }
-
-    /// Whether either light is still on its way somewhere.
-    pub(crate) fn moving(&self) -> bool {
-        [self.now, self.was]
-            .into_iter()
-            .flatten()
-            .any(|(_, _, light)| light.moving())
+    /// A tick's lights, at the pace of a light the reader's hand raised.
+    pub(crate) fn hand() -> Self {
+        Self::new(
+            crate::pane::Fade::default().paced(crate::pane::HAND_RISE, crate::pane::HAND_FALL),
+        )
     }
 }
 
@@ -444,7 +535,8 @@ fn render_paragraph(
         // A tick in the margin beside a paragraph that holds the picked
         // sentence. A fill alone is lost the moment the reader looks away;
         // the tick is how they find their place again. It comes and goes
-        // with its light, from the ground up to the accent, as the bar does.
+        // with its light, from what is under it up to the accent, as the bar
+        // does: see `Look::tick_from`.
         .when(tick > 0., |this| {
             this.child(
                 div()
@@ -454,7 +546,7 @@ fn render_paragraph(
                     .bottom(px(2.))
                     .w(px(2.))
                     .rounded(px(1.))
-                    .bg(paint(palette.band.mix(palette.accent, tick))),
+                    .bg(paint(look.tick_from.mix(palette.accent, tick))),
             )
         })
         .text_size(px(look.size))
@@ -524,6 +616,9 @@ fn render_token(
         .filter(|((from, to), _)| at >= *from && at <= *to)
         .map(|(_, level)| *level)
         .fold(0., f32::max);
+    // The ground the voice gives a word it is on, and the band's own where
+    // it is on none.
+    let heard_ground = palette.band.mix(palette.accent, 0.09 * heard);
 
     // A pane's name answers the pointer by lighting its pane. It is still a
     // word a selection can run across, so it keeps `over`; it does not take
@@ -614,7 +709,11 @@ fn render_token(
                 // so the words sit inside it rather than against its edge.
                 // Pulled left by as much as it is padded, so lighting a
                 // sentence moves no word.
-                this.bg(paint(palette.band.mix(firm, lit)))
+                // Up from the ground the word already had, not from the
+                // band: a sentence picked while it is being heard used to
+                // lose its tint in the first lit frame and start again from
+                // bare band, a step down before it went up.
+                this.bg(paint(heard_ground.mix(firm, lit)))
                     // The words come up with the bar, from the prose's tone
                     // to the page's ink, rather than switching halfway.
                     .text_color(paint(look.tone.mix(ink, lit)))
@@ -623,9 +722,7 @@ fn render_token(
                     })
                     .when(last, |this| this.rounded_r(px(3.)))
             })
-            .when(lit <= 0. && heard > 0., |this| {
-                this.bg(paint(palette.band.mix(palette.accent, 0.09 * heard)))
-            })
+            .when(lit <= 0. && heard > 0., |this| this.bg(paint(heard_ground)))
             // Something was said about these words. Underlined rather than
             // filled: the ground is already doing two jobs here — what is
             // selected, and what is being read aloud — and a third colour
@@ -736,7 +833,7 @@ const LIT_LEAD: f32 = 4.;
 
 #[cfg(test)]
 mod tests {
-    use super::{Paragraph, Picking, paragraphs_holding, parse, tick_level};
+    use super::{Lights, Paragraph, Picking, paragraphs_holding, parse, tick_level};
 
     fn two_paragraphs() -> Vec<Paragraph> {
         parse("One two three. Four five.\n\nSix seven. Eight nine.")
@@ -769,5 +866,56 @@ mod tests {
         picking.range = Some((3, 4));
         picking.shown = 0.25;
         assert!((tick_level(&paragraphs[0], &picking) - 0.25).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn every_light_going_out_is_kept_until_it_is_out() {
+        // A, then B, then C, all inside one fall: A is still on its way down
+        // when C comes up, and keeping only the last light going out threw
+        // it away in a frame.
+        let pace = std::time::Duration::from_millis(1000);
+        let mut lights = Lights::new(crate::pane::Fade::default().paced(pace, pace));
+        let rest = || std::thread::sleep(std::time::Duration::from_millis(30));
+        assert!(lights.follow(Some('a')));
+        rest();
+        assert!(lights.follow(Some('b')));
+        rest();
+        assert!(lights.follow(Some('c')));
+        rest();
+        let mut lit: Vec<char> = lights.lit().map(|(key, _)| key).collect();
+        lit.sort_unstable();
+        assert_eq!(lit, ['a', 'b', 'c']);
+        assert_eq!(lights.on(), Some('c'));
+
+        // The same key again changes nothing.
+        assert!(!lights.follow(Some('c')));
+
+        // Back to A turns its own light round from where it had fallen to,
+        // rather than lighting a second A from nothing beside the one going
+        // out.
+        let before = lights
+            .lit()
+            .find(|(key, _)| *key == 'a')
+            .map(|(_, level)| level);
+        assert!(lights.follow(Some('a')));
+        assert_eq!(lights.lit().filter(|(key, _)| *key == 'a').count(), 1);
+        let after = lights
+            .lit()
+            .find(|(key, _)| *key == 'a')
+            .map(|(_, level)| level);
+        let (before, after) = (before.unwrap_or(0.), after.unwrap_or(0.));
+        assert!((after - before).abs() < 0.01, "{after} from {before}");
+    }
+
+    #[test]
+    fn a_voice_moving_inside_a_paragraph_does_not_dim_it() {
+        // Keyed by paragraph, two sentences of the same one are the same key,
+        // so the light the dimming answers to is never handed over.
+        let paragraphs = two_paragraphs();
+        let first = paragraphs_holding(&paragraphs, (0, 2));
+        let second = paragraphs_holding(&paragraphs, (3, 4));
+        let mut lights = Lights::new(crate::pane::Fade::default());
+        assert!(lights.follow(first));
+        assert!(!lights.follow(second));
     }
 }
