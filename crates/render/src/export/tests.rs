@@ -610,8 +610,8 @@ fn a_remark_quotes_the_half_of_a_change_that_is_in_the_file() {
 #[test]
 fn the_faces_are_cut_down() {
     let html = export(&Options::default());
-    assert_eq!(html.matches("@font-face").count(), 5);
-    // Five faces whole are over a megabyte before base64.
+    assert_eq!(html.matches("@font-face").count(), 6);
+    // Six faces whole are over a megabyte before base64.
     assert!(html.len() < 400_000, "{}", html.len());
 }
 

@@ -83,6 +83,13 @@ pub struct Picking {
     /// pointer — each with how far up its light has come. Painted exactly as a
     /// pressed sentence is, because it is the same promise: *this one*.
     pub lit_also: Vec<((usize, usize), f32)>,
+    /// The margin ticks the picked sentence has lit, as word spans, each
+    /// with how far up its light has come: see [`Tick`].
+    ///
+    /// Their own light rather than `shown`, because the tick answers to the
+    /// paragraph and the bar to the sentence. Empty for prose nobody keeps a
+    /// [`Tick`] for, whose tick then simply follows `shown`.
+    pub ticks: Vec<((usize, usize), f32)>,
 }
 
 impl Picking {
@@ -102,6 +109,13 @@ impl Picking {
         self
     }
 
+    /// The margin ticks a [`Tick`] has lit for this prose.
+    #[must_use]
+    pub fn ticked(mut self, ticks: Vec<((usize, usize), f32)>) -> Self {
+        self.ticks = ticks;
+        self
+    }
+
     /// Prose that is read but not picked from: the rail's record of what was
     /// said. It still lights the sentence being heard.
     #[must_use]
@@ -118,6 +132,7 @@ impl Picking {
             shown: 1.,
             remarked: Vec::new(),
             lit_also: Vec::new(),
+            ticks: Vec::new(),
         }
     }
 }
@@ -155,6 +170,15 @@ pub struct Look {
     /// Whether the first paragraph is set in the page's full ink: the claim,
     /// for a reader who drops in and reads only the title and one paragraph.
     pub lead: bool,
+    /// Where the margin tick stands, from the prose's left edge: negative,
+    /// out in the margin.
+    ///
+    /// The band has a clear margin, so the tick stands in it, clear of the
+    /// lit bar's lead. The rail's prose hangs from the thread, which runs a
+    /// few points to its left, and a tick between the two crowded both, so
+    /// there the tick is laid on the thread itself: the thread lights beside
+    /// the paragraph the reader picked from.
+    pub tick: f32,
 }
 
 impl Look {
@@ -166,14 +190,13 @@ impl Look {
             leading: deck_render::metrics::PROSE_LEADING,
             // A step off the page's ink, so the group's title is the
             // brightest line in the band and the prose reads as its body.
-            // The step is a contrast, not a fixed mix: a fixed mix that read
-            // well on one theme left another's prose grey and hard work.
-            tone: reading(palette, (9.5, 11.), (7., 9.)),
+            tone: deck_render::reading::prose(palette.fg, palette.band),
             // A group's paragraphs are beats of one claim, so the gap is
             // modest; but it is half a line again on top of the leading, so a
             // new paragraph is never mistaken for the next line of the last.
             spacing: deck_render::metrics::PROSE_SPACING,
             lead: true,
+            tick: -9.,
         }
     }
 
@@ -187,59 +210,13 @@ impl Look {
         Self {
             size: deck_render::metrics::RAIL_SIZE,
             leading: deck_render::metrics::RAIL_LEADING,
-            tone: reading(palette, (8.5, 9.5), (7., 8.)),
+            tone: deck_render::reading::rail(palette.fg, palette.band),
             spacing: 8.,
             lead: false,
+            // The rail's prose starts 24 points into its turn and the thread
+            // runs at 10, a point wide: two points centred on it.
+            tick: -14.5,
         }
-    }
-}
-
-/// The prose's ink: the page's own, stepped toward the ground until its
-/// contrast falls inside the range for this kind of theme, `dark` or `light`.
-///
-/// Full ink on a dark ground is around 13:1, and that much glares: the eye
-/// sees the letters bloom. Much under 7:1 and a tired reader works for every
-/// word. An ink already inside the range, or under it, is kept as it is.
-fn reading(palette: &Palette, dark: (f64, f64), light: (f64, f64)) -> deck_core::theme::Rgb {
-    let ground = palette.band;
-    let (low, high) = if ground.is_dark() { dark } else { light };
-    if palette.fg.contrast(ground) <= high {
-        return palette.fg;
-    }
-    // The contrast falls as the ink moves toward the ground: find the least
-    // step that brings it to the top of the range.
-    let (mut near, mut far) = (0f32, 1f32);
-    for _ in 0..24 {
-        let mid = f32::midpoint(near, far);
-        if palette.fg.mix(ground, mid).contrast(ground) > high {
-            near = mid;
-        } else {
-            far = mid;
-        }
-    }
-    let ink = palette.fg.mix(ground, far);
-    if ink.contrast(ground) < low {
-        palette.fg
-    } else {
-        ink
-    }
-}
-
-/// The bar a picked sentence is drawn on, and how strong it is.
-///
-/// A quiet tint of the accent, not a block of it: the bar's job is to say
-/// where, and the words on it must read better than the words around it,
-/// not worse. A strong bar took the words' contrast away, and making the
-/// words whiter to win it back only made them glare. Starting at a fifth of
-/// the accent, it steps back until the page's ink reads on it at 7:1.
-fn lit_bar(palette: &Palette) -> deck_core::theme::Rgb {
-    let mut amount = 0.22;
-    loop {
-        let bar = palette.band.mix(palette.accent, amount);
-        if palette.fg.contrast(bar) >= 7. || amount <= 0.1 {
-            return bar;
-        }
-        amount -= 0.02;
     }
 }
 
@@ -255,47 +232,207 @@ pub fn render_look(
     // While the voice is reading, the paragraphs it is not in step back, so
     // the eye stays where the voice is. Never otherwise: somebody reading on
     // their own needs the whole argument at full strength.
-    let voiced = picking.heard.iter().any(|(_, level)| *level > 0.);
-    div()
-        .v_flex()
-        .gap(px(look.spacing))
-        .children(paragraphs.into_iter().enumerate().map(|(ix, para)| {
-            let heard = para.tokens.iter().any(|token| {
-                picking
-                    .heard
-                    .iter()
-                    .any(|((from, to), level)| *level > 0. && token.at >= *from && token.at <= *to)
-            });
-            let tone = if look.lead && ix == 0 && !voiced {
-                palette.fg
-            } else if voiced && !heard {
-                // About 5:1: there to be found, not to be read.
-                look.tone.mix(palette.band, 0.35)
+    //
+    // By degrees, never by a switch. How far a paragraph steps back is how
+    // much the voice is heard anywhere, less how much of that is in this
+    // paragraph. Summed rather than the strongest, and that is what keeps it
+    // still between sentences: as the voice moves on, the sentence it left
+    // goes out while the next comes up, and the next rises quicker than the
+    // last falls, so the two together never dip under full. The strongest of
+    // them dipped to half at the crossing, and every other paragraph
+    // brightened and dimmed again between each pair of sentences.
+    let heard = |words: Option<&Paragraph>| -> f32 {
+        picking
+            .heard
+            .iter()
+            .filter(|((from, to), _)| {
+                words.is_none_or(|para| {
+                    para.tokens
+                        .iter()
+                        .any(|token| token.at >= *from && token.at <= *to)
+                })
+            })
+            .map(|(_, level)| *level)
+            .sum::<f32>()
+            .min(1.)
+    };
+    let voiced = heard(None);
+    let rendered: Vec<AnyElement> = paragraphs
+        .into_iter()
+        .enumerate()
+        .map(|(ix, para)| {
+            let back = voiced * (1. - heard(Some(&para)));
+            // The paragraph's full ink, for its stressed and emphasised words:
+            // they step back with the words around them, or a paragraph the
+            // voice has left would still have its loudest words shouting.
+            let full = palette.fg.mix(palette.band, VOICED_BACK * back);
+            // The first paragraph is set in the page's full ink for a reader
+            // on their own, and comes down to the prose's tone as the voice
+            // comes up, so the voice reading it is not reading the one bright
+            // paragraph on the page.
+            let tone = if look.lead && ix == 0 {
+                palette.fg.mix(look.tone, voiced)
             } else {
                 look.tone
-            };
-            render_paragraph(para, palette, mono.clone(), picking, Look { tone, ..look })
-        }))
+            }
+            .mix(palette.band, VOICED_BACK * back);
+            let tick = tick_level(&para, picking);
+            render_paragraph(
+                para,
+                palette,
+                mono.clone(),
+                picking,
+                Look { tone, ..look },
+                full,
+                tick,
+            )
+            .into_any_element()
+        })
+        .collect();
+    div().v_flex().gap(px(look.spacing)).children(rendered)
+}
+
+/// How far a paragraph the voice has left steps back toward the ground: about
+/// 5:1 for a band's prose, there to be found rather than read.
+const VOICED_BACK: f32 = 0.35;
+
+/// How lit a paragraph's margin tick is.
+///
+/// The tick says *the sentence you are on is in here*, so it answers to the
+/// paragraph, not to the sentence's bar. Moving from one sentence to the next
+/// in the same paragraph lights a new bar from nothing, and a tick that
+/// followed the bar went out and came back with it, flickering beside words
+/// the reader had not left. So each light that touches the paragraph is
+/// summed, never more than full: a [`Tick`] keeps one light for the
+/// paragraph however many sentences in it are picked, and a sentence lit
+/// from the walk's track hands over to the next one with the next rising as
+/// the last falls, which together stay at full.
+fn tick_level(para: &Paragraph, picking: &Picking) -> f32 {
+    let touches = |(from, to): (usize, usize)| {
+        let (from, to) = (from.min(to), from.max(to));
+        para.tokens
+            .iter()
+            .any(|token| token.at >= from && token.at <= to)
+    };
+    let picked = if picking.ticks.is_empty() {
+        picking
+            .range
+            .filter(|range| touches(*range))
+            .map_or(0., |_| picking.shown)
+    } else {
+        picking
+            .ticks
+            .iter()
+            .filter(|(span, _)| touches(*span))
+            .map(|(_, level)| *level)
+            .sum()
+    };
+    let also: f32 = picking
+        .lit_also
+        .iter()
+        .filter(|(range, _)| touches(*range))
+        .map(|(_, level)| *level)
+        .sum();
+    (picked + also).min(1.)
+}
+
+/// The words a pick spans, widened to the whole paragraphs it touches: what a
+/// [`Tick`] is keyed by, so a pick that moves within a paragraph keeps its
+/// tick.
+#[must_use]
+pub fn paragraphs_holding(
+    paragraphs: &[Paragraph],
+    (from, to): (usize, usize),
+) -> Option<(usize, usize)> {
+    let (from, to) = (from.min(to), from.max(to));
+    let held: Vec<&Paragraph> = paragraphs
+        .iter()
+        .filter(|para| {
+            para.tokens
+                .iter()
+                .any(|token| token.at >= from && token.at <= to)
+        })
+        .collect();
+    let first = held.first()?.tokens.first()?.at;
+    let last = held.last()?.tokens.last()?.at;
+    Some((first, last))
+}
+
+/// The margin tick's own light, kept by whoever keeps the pick it marks.
+///
+/// Keyed by the prose it is in — a group, or a turn of the rail — and the
+/// paragraphs the pick touches. A pick that moves to another sentence of the
+/// same paragraphs leaves the light as it is; one that moves elsewhere lets
+/// this light go out while the new one comes up, so the tick fades across
+/// rather than jumping; and letting go of the pick lets it fall with the bar.
+#[derive(Debug, Clone, Copy, Default)]
+pub(crate) struct Tick {
+    now: Option<(usize, (usize, usize), crate::pane::Fade)>,
+    was: Option<(usize, (usize, usize), crate::pane::Fade)>,
+}
+
+impl Tick {
+    /// Mark the paragraphs `to` names, in the prose it names, or none.
+    pub(crate) fn follow(&mut self, to: Option<(usize, (usize, usize))>) {
+        if self.now.map(|(of, span, _)| (of, span)) == to {
+            return;
+        }
+        // Back to where it just was: that light turns round from wherever it
+        // had fallen to, rather than starting again from nothing.
+        let back = self
+            .was
+            .filter(|(of, span, _)| Some((*of, *span)) == to)
+            .map(|(_, _, light)| light);
+        if back.is_some() {
+            self.was = None;
+        }
+        if let Some((of, span, mut light)) = self.now.take() {
+            light.set(false);
+            self.was = Some((of, span, light));
+        }
+        self.now = to.map(|(of, span)| {
+            let mut light = back.unwrap_or_else(|| {
+                crate::pane::Fade::default().paced(crate::pane::HAND_RISE, crate::pane::HAND_FALL)
+            });
+            light.set(true);
+            (of, span, light)
+        });
+    }
+
+    /// The ticks lit in prose `of`, for [`Picking::ticks`].
+    pub(crate) fn levels(&self, of: usize) -> Vec<((usize, usize), f32)> {
+        [self.now, self.was]
+            .into_iter()
+            .flatten()
+            .filter(|(whose, _, _)| *whose == of)
+            .map(|(_, span, light)| (span, light.level()))
+            .filter(|(_, level)| *level > 0.)
+            .collect()
+    }
+
+    /// Whether either light is still on its way somewhere.
+    pub(crate) fn moving(&self) -> bool {
+        [self.now, self.was]
+            .into_iter()
+            .flatten()
+            .any(|(_, _, light)| light.moving())
+    }
 }
 
 /// One paragraph, as a row that wraps between any two of its words.
+///
+/// `full` is the paragraph's full ink, for its stressed and emphasised words,
+/// and `tick` how lit its margin tick is.
 fn render_paragraph(
     para: Paragraph,
     palette: &Palette,
     mono: SharedString,
     picking: &Picking,
     look: Look,
+    full: deck_core::theme::Rgb,
+    tick: f32,
 ) -> impl IntoElement {
-    // A tick in the margin beside a paragraph that holds the picked
-    // sentence. A fill alone is lost the moment the reader looks away; the
-    // tick is how they find their place again.
-    let ticked = picking.range.is_some_and(|(from, to)| {
-        let (from, to) = (from.min(to), from.max(to));
-        para.tokens
-            .iter()
-            .any(|token| token.at >= from && token.at <= to)
-    });
-    let dark = palette.band.is_dark();
+    let dark = deck_render::reading::dark(palette.band);
     div()
         .relative()
         .flex()
@@ -304,20 +441,20 @@ fn render_paragraph(
         // Light strokes on a dark ground look thinner than they are, so a
         // dark theme reads in Plex Sans Text, a step heavier than regular.
         .when(dark, |this| this.font_family("IBM Plex Sans Text"))
-        .when(ticked, |this| {
+        // A tick in the margin beside a paragraph that holds the picked
+        // sentence. A fill alone is lost the moment the reader looks away;
+        // the tick is how they find their place again. It comes and goes
+        // with its light, from the ground up to the accent, as the bar does.
+        .when(tick > 0., |this| {
             this.child(
                 div()
                     .absolute()
-                    .left(px(-9.))
+                    .left(px(look.tick))
                     .top(px(2.))
                     .bottom(px(2.))
                     .w(px(2.))
                     .rounded(px(1.))
-                    // Steady, not faded with the bar: moving from one
-                    // sentence to the next in the same paragraph lights a new
-                    // bar, and a tick that went out and came back with it
-                    // flickered beside words the reader had not left.
-                    .bg(paint(palette.accent)),
+                    .bg(paint(palette.band.mix(palette.accent, tick))),
             )
         })
         .text_size(px(look.size))
@@ -330,7 +467,7 @@ fn render_paragraph(
         .children(
             para.tokens
                 .into_iter()
-                .map(|token| render_token(token, palette, mono.clone(), picking, look)),
+                .map(|token| render_token(token, palette, mono.clone(), picking, look, full)),
         )
 }
 
@@ -345,6 +482,7 @@ fn render_token(
     mono: SharedString,
     picking: &Picking,
     look: Look,
+    full: deck_core::theme::Rgb,
 ) -> AnyElement {
     // Every word answers to the pointer: down starts a selection, and the
     // window extends it to whichever word is under the pointer while the
@@ -450,12 +588,12 @@ fn render_token(
         .any(|(from, to)| at >= *from && at <= *to);
     // The bar a picked sentence is drawn on, at full light, and the ink that
     // reads on it. The prose's own tone is set a step off the page's ink so
-    // the title leads; on the bar that step made the words the very ones
-    // you picked hard to read, so lit words take the page's own ink, the
-    // title's. It is lifted only if a theme's ink does not reach the plain
-    // legible ratio on the bar; asking for more turned it white, which
-    // glared on the warm bar.
-    let firm = lit_bar(palette);
+    // the title leads; on the bar that step made the very words you picked
+    // hard to read, so lit words take the page's own ink, the title's. The
+    // bar is the one that gives way, stepping back toward the band until
+    // that ink reads on it; the ink is never lifted, because asking for more
+    // turned it white, which glared on the warm bar.
+    let firm = deck_render::reading::lit_bar(palette.fg, palette.band, palette.accent);
     let ink = palette.fg;
     // The point of clear space above and below each word's box.
     let inset = 1.;
@@ -465,11 +603,12 @@ fn render_token(
         // The inner one is what is painted, set in from the top and bottom.
         let bar = div()
             .when(lit > 0., |this| {
-                // Firm enough to see at a glance. Three quarters of the way
-                // to the band was a tint you could hold a whole sentence in
-                // and not notice, which reads as the click having done
-                // nothing — and a reader who thinks nothing happened does
-                // not try again.
+                // Seen at a glance, and quiet: see `lit_bar`. A tint you
+                // could hold a whole sentence in and not notice reads as the
+                // click having done nothing, and a reader who thinks nothing
+                // happened does not try again; a block of the accent took
+                // the words' contrast away.
+                //
                 // The bar starts a little before its first word, as far
                 // as the space after its last word reaches past the end,
                 // so the words sit inside it rather than against its edge.
@@ -509,11 +648,7 @@ fn render_token(
             .my(px(inset))
             .border_b_1()
             .border_color(if remarked {
-                paint(if lit > 0.5 {
-                    palette.comment
-                } else {
-                    palette.comment.mix(palette.band, 0.25)
-                })
+                paint(palette.comment)
             } else {
                 // Transparent, not the band's colour.
                 //
@@ -536,9 +671,14 @@ fn render_token(
             .into_any_element()
     };
 
+    // A stressed or emphasised word's ink: the paragraph's full ink, and the
+    // page's own on a lit bar, coming up with the bar as the words around it
+    // do.
+    let full = full.mix(palette.fg, lit);
     wrap(match token.mark {
         Some(Mark::Code) => {
-            // The chip: mono, on the pane's own ground, sized to its text.
+            // The chip: mono, on a ground just off the band's (see
+            // `reading::chip`), sized to its text.
             let (text, trailing) = split_trailing_space(&token.text);
             div()
                 .flex()
@@ -546,38 +686,36 @@ fn render_token(
                 .child(
                     div()
                         .font_family(mono)
-                        // 0.88 of the prose: the code face's x-height is
-                        // taller, so at the prose's size its words read
-                        // bigger than the sentence they sit in.
-                        .text_size(px((look.size * 0.88 * 10.).round() / 10.))
+                        // A step under the prose: see `chip_size`.
+                        .text_size(px(deck_render::metrics::chip_size(look.size)))
                         // Exactly the word's box, padding and all, so a chip
                         // in a lit sentence sits inside the bar instead of
                         // standing out of it above and below.
                         .line_height(px(word(look.leading) - 2.))
-                        .px(px(3.))
+                        .px(px(deck_render::reading::CHIP_PADDING))
                         .py(px(1.))
                         .rounded(px(3.))
-                        .bg(paint(chip(palette)))
+                        .bg(paint(deck_render::reading::chip(palette.band)))
                         .child(text),
                 )
                 .child(trailing)
                 .into_any_element()
         }
-        // Plex's own semibold, in the page's full ink. Named, because a dark
-        // theme's prose is in Plex Sans Text, which has no semibold.
+        // Plex's own semibold, in the paragraph's full ink. Named, because a
+        // dark theme's prose is in Plex Sans Text, which has no semibold.
         Some(Mark::Strong) => div()
             .font_family("IBM Plex Sans")
             .font_semibold()
-            .text_color(paint(palette.fg))
+            .text_color(paint(full))
             .child(SharedString::from(token.text))
             .into_any_element(),
-        // A true italic in the page's full ink. It was the accent, which
+        // A true italic in the paragraph's full ink. It was the accent, which
         // put orange on the line being read: orange vibrates on a dark
         // ground at reading size, and it is what deck uses for things that
         // can be pressed, so an emphasised word looked like a link.
         Some(Mark::Emphasis) => div()
             .italic()
-            .text_color(paint(palette.fg))
+            .text_color(paint(full))
             .child(SharedString::from(token.text))
             .into_any_element(),
         None | Some(Mark::Pane) => div()
@@ -592,23 +730,44 @@ fn word(leading: f32) -> f32 {
     leading - 4.
 }
 
-/// A code chip's ground: just enough off the page to see, about 1.15:1, so
-/// a sentence with three names in it does not turn into a row of blocks.
-/// Worked out from the page rather than taken from the theme's wash, which
-/// on some themes is the page's own colour and on others a slab.
-fn chip(palette: &Palette) -> deck_core::theme::Rgb {
-    let toward = if palette.band.is_dark() {
-        deck_core::theme::Rgb::new(255, 255, 255)
-    } else {
-        deck_core::theme::Rgb::new(0, 0, 0)
-    };
-    let mut amount = 0.02;
-    while amount < 0.3 && palette.band.mix(toward, amount).contrast(palette.band) < 1.15 {
-        amount += 0.01;
-    }
-    palette.band.mix(toward, amount)
-}
-
 /// How far a lit sentence's bar reaches before its first word: about the
 /// width of the space after its last, which is the bar's margin at that end.
 const LIT_LEAD: f32 = 4.;
+
+#[cfg(test)]
+mod tests {
+    use super::{Paragraph, Picking, paragraphs_holding, parse, tick_level};
+
+    fn two_paragraphs() -> Vec<Paragraph> {
+        parse("One two three. Four five.\n\nSix seven. Eight nine.")
+    }
+
+    #[test]
+    fn a_pick_is_held_by_the_whole_paragraphs_it_touches() {
+        let paragraphs = two_paragraphs();
+        let first = paragraphs_holding(&paragraphs, (0, 2)).unwrap();
+        // Another sentence of the same paragraph: the same span, so the tick
+        // keeps its light.
+        assert_eq!(paragraphs_holding(&paragraphs, (3, 4)), Some(first));
+        // Across into the next: both paragraphs.
+        let across = paragraphs_holding(&paragraphs, (4, 5)).unwrap();
+        assert_eq!(across.0, first.0);
+        assert!(across.1 > first.1);
+    }
+
+    #[test]
+    fn a_tick_handing_over_inside_its_paragraph_stays_full() {
+        let paragraphs = two_paragraphs();
+        // A light going out and the next coming up, both in the first
+        // paragraph: summed, the tick does not dip.
+        let mut picking = Picking::quiet(Vec::new());
+        picking.lit_also = vec![((0, 2), 0.4), ((3, 4), 0.7)];
+        assert!((tick_level(&paragraphs[0], &picking) - 1.).abs() < f32::EPSILON);
+        assert!(tick_level(&paragraphs[1], &picking) <= 0.);
+        // A pick with no `Tick` kept for it follows its own light.
+        picking.lit_also.clear();
+        picking.range = Some((3, 4));
+        picking.shown = 0.25;
+        assert!((tick_level(&paragraphs[0], &picking) - 0.25).abs() < f32::EPSILON);
+    }
+}

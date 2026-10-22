@@ -75,10 +75,26 @@ pub const PROSE_LEADING: f32 = 20.;
 /// See [`PROSE_SIZE`].
 pub const PROSE_SPACING: f32 = 10.;
 
-/// A code chip in the narration, in the code face: 0.88 of the prose, because
-/// JetBrains Mono's x-height is taller than Plex's and at the same size its
-/// words read bigger than the sentence around them.
-pub const CHIP_SIZE: f32 = 11.4;
+/// A code chip in the narration, in the code face: see [`chip_size`].
+pub const CHIP_SIZE: f32 = chip_size(PROSE_SIZE);
+
+/// The size of a code chip in prose set at `prose`: 0.88 of it, to the
+/// nearest tenth of a point, because JetBrains Mono's x-height is taller
+/// than Plex's and at the same size its words read bigger than the sentence
+/// around them.
+///
+/// One function for the band, the rail and the export, so a chip cannot be
+/// one size in the window and another on the page.
+#[must_use]
+pub const fn chip_size(prose: f32) -> f32 {
+    // Rounded by hand: `f32::round` is not a `const fn`. Every size here is
+    // positive, so adding a half and truncating is rounding.
+    #[allow(clippy::cast_possible_truncation)]
+    let tenths = (prose * 8.8 + 0.5) as i32;
+    #[allow(clippy::cast_precision_loss)]
+    let size = tenths as f32 / 10.;
+    size
+}
 
 /// The rail beside the panes and the band, before anyone drags it.
 pub const RAIL: f32 = 365.;

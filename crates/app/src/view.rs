@@ -656,6 +656,16 @@ pub struct DeckView {
     /// starting — and every one of them wants the light to follow without
     /// having to say so. It is brought into step once a frame.
     said_lit: Option<((usize, usize), crate::pane::Fade)>,
+    /// The margin tick beside the narration's picked sentence, keyed by group.
+    ///
+    /// A light of its own rather than `said_lit`'s, because a press on the
+    /// next sentence of the same paragraph starts a new bar from nothing and
+    /// the tick must not go with it. Brought into step once a frame, as
+    /// `said_lit` is.
+    said_tick: crate::prose::Tick,
+    /// The margin tick beside the rail's pressed sentence, keyed by turn: as
+    /// `said_tick`, for `pressed`.
+    pressed_tick: crate::prose::Tick,
     /// The turn the reader was just taken to, and its fading light.
     ///
     /// Scrolling to a comment puts it on screen and says nothing about which
@@ -1134,6 +1144,8 @@ impl DeckView {
             rail_open: crate::pane::Fade::default(),
             pressed: None,
             said_lit: None,
+            said_tick: crate::prose::Tick::default(),
+            pressed_tick: crate::prose::Tick::default(),
             showing: None,
             shown_at: 0,
             rail_width,
@@ -2715,6 +2727,35 @@ impl DeckView {
     /// start again.
     fn still_the_same(was: (usize, usize), now: (usize, usize)) -> bool {
         was.0 <= now.1 && now.0 <= was.1
+    }
+
+    /// Bring the margin ticks into step with the lights they mark: the
+    /// narration's picked sentence, and the rail's pressed one.
+    ///
+    /// Read from the lights rather than set beside them, so every place that
+    /// moves a pick moves its tick without having to say so. A light on its
+    /// way out lets its tick go out with it.
+    fn settle_ticks(&mut self) {
+        let band = self
+            .said_lit
+            .filter(|(_, light)| light.on())
+            .and_then(|(words, _)| {
+                let group = self.group()?;
+                let span =
+                    crate::prose::paragraphs_holding(&crate::prose::parse(&group.say), words)?;
+                Some((self.group_ix, span))
+            });
+        self.said_tick.follow(band);
+        let rail = self
+            .pressed
+            .filter(|(_, _, light)| light.on())
+            .and_then(|(turn, words, _)| {
+                let moment = self.conversation.transcript.get(turn)?;
+                let span =
+                    crate::prose::paragraphs_holding(&crate::prose::parse(&moment.text), words)?;
+                Some((turn, span))
+            });
+        self.pressed_tick.follow(rail);
     }
 
     /// Bring the narration's lit sentence into step with the pick.
@@ -6045,6 +6086,7 @@ impl DeckView {
                                                 .map(|(range, light)| (range, light.level()))
                                                 .filter(|(_, level)| *level > 0.)
                                                 .collect(),
+                                            ticks: self.said_tick.levels(self.group_ix),
                                             pickable: true,
                                             // Only this group's. A word range means
                                             // nothing against another group's prose —
@@ -7893,7 +7935,7 @@ impl DeckView {
                     // promise a light that cannot come.
                     let picking = if again {
                         let mine = self.pressed.filter(|(turn, _, _)| *turn == ix);
-                        picking.pressable(
+                        picking.ticked(self.pressed_tick.levels(ix)).pressable(
                             mine.map(|(_, range, _)| range),
                             mine.map_or(0., |(_, _, light)| light.level()),
                             {
@@ -8611,6 +8653,7 @@ use crate::pane::SPINE;
 impl Render for DeckView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         self.settle_said_light();
+        self.settle_ticks();
         #[cfg(debug_assertions)]
         self.debug_sheet(window, cx);
         // The dock, a key's card, and a key lit on the dock all move on their
@@ -8687,6 +8730,8 @@ impl Render for DeckView {
         if hearing
             || self.pressed.is_some_and(|(_, _, light)| light.moving())
             || self.said_lit.is_some_and(|(_, light)| light.moving())
+            || self.said_tick.moving()
+            || self.pressed_tick.moving()
             || [self.track_hover, self.track_hover_was]
                 .into_iter()
                 .flatten()
@@ -9383,7 +9428,7 @@ mod tests {
 
         for line in NOTHING_YET {
             assert!(!line.is_empty(), "an empty one is the bug being fixed");
-            // The rail starts at 304 points and can be dragged narrower, so
+            // The rail starts at `RAIL` points and can be dragged narrower, so
             // no length is safe and the line has to wrap — which it now does.
             // This is only a bound on how much of the panel one can eat: four
             // wrapped lines of filler in an empty rail is its own kind of
