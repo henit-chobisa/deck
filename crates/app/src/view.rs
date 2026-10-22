@@ -767,6 +767,22 @@ pub struct DeckView {
     /// scroll to it has been painted and the rows past each edge can be
     /// counted.
     review_settle: bool,
+    /// The words of the picked sentence, and the pick and narration they
+    /// were cut from.
+    ///
+    /// Every frame asks for them, to open the values the sentence names, and
+    /// cutting them meant parsing the whole narration again sixty times a
+    /// second for as long as anything moved. Cut again only when the pick or
+    /// the narration changes.
+    said_memo: Option<((usize, usize), String, Option<String>)>,
+    /// Each group's line in the review column, and the title and narration
+    /// it was made from.
+    ///
+    /// A line with no title is cut from the narration — points, beats and
+    /// names taken out, then the first sentence — and the column is drawn on
+    /// every frame anything in the window moves. Made again only for a group
+    /// whose words changed.
+    review_titles: std::cell::RefCell<Vec<(Option<String>, String, SharedString)>>,
     /// The loop watching the deck directory fill, while there is more coming.
     ///
     /// Dropping it stops it, which is what should happen when the window
@@ -1231,6 +1247,8 @@ impl DeckView {
             tipping: Task::ready(()),
             review_scroll: ScrollHandle::new(),
             review_settle: false,
+            said_memo: None,
+            review_titles: std::cell::RefCell::default(),
             saved,
         };
         if let Some((about, state, when)) = draft {
@@ -6227,71 +6245,79 @@ impl DeckView {
             }
         }
 
-        let rows = groups.iter().enumerate().map(|(ix, group)| {
-            let here = ix == self.group_ix;
-            let been = self.seen.contains(&ix) && !here;
-            let said = self
-                .remarks
-                .iter()
-                .filter(|remark| remark.group == group.id)
-                .count();
-            div()
-                .id(("review-row", ix))
-                .h_flex()
-                .items_start()
-                .gap(px(8.))
-                .px(px(4.))
-                .mx(px(-4.))
-                .py(px(2.))
-                .rounded(px(6.))
-                .cursor_pointer()
-                .hover(|style| style.bg(paint(palette.wash)))
-                .on_click(cx.listener(move |deck, _, _, cx| deck.go_to(ix, cx)))
-                .text_size(px(12.))
-                .line_height(px(17.))
-                .text_color(paint(if here {
-                    palette.fg
-                } else if been {
-                    palette.muted.mix(palette.band, 0.2)
-                } else {
-                    palette.muted
-                }))
-                // The tick: the group has been read. Bold and warm enough to
-                // see at a glance, since it is the column's whole progress.
-                .child(
-                    div()
-                        .flex_none()
-                        .w(px(10.))
-                        .text_size(px(10.))
-                        .font_weight(FontWeight::BOLD)
-                        .text_color(paint(palette.accent.mix(palette.band, 0.25)))
-                        .when(been, |this| this.child("✓")),
-                )
-                .child(
-                    div()
-                        .flex_none()
-                        .w(px(14.))
-                        .font_family(mono.clone())
-                        .text_size(px(11.))
-                        .text_color(paint(if here {
-                            palette.accent
-                        } else {
-                            palette.muted.mix(palette.band, 0.3)
-                        }))
-                        .child(format!("{}", ix + 1)),
-                )
-                .child(div().flex_1().min_w_0().child(row_title(group)))
-                .when(said > 0, |this| {
-                    this.child(
+        // How many remarks each group has, counted in one pass rather than
+        // once per group.
+        let mut said_of: std::collections::HashMap<&str, usize> = std::collections::HashMap::new();
+        for remark in &self.remarks {
+            *said_of.entry(remark.group.as_ref()).or_default() += 1;
+        }
+        let titles = self.review_titles();
+
+        let rows = groups
+            .iter()
+            .zip(titles)
+            .enumerate()
+            .map(|(ix, (group, title))| {
+                let here = ix == self.group_ix;
+                let been = self.seen.contains(&ix) && !here;
+                let said = said_of.get(group.id.as_str()).copied().unwrap_or(0);
+                div()
+                    .id(("review-row", ix))
+                    .h_flex()
+                    .items_start()
+                    .gap(px(8.))
+                    .px(px(4.))
+                    .mx(px(-4.))
+                    .py(px(2.))
+                    .rounded(px(6.))
+                    .cursor_pointer()
+                    .hover(|style| style.bg(paint(palette.wash)))
+                    .on_click(cx.listener(move |deck, _, _, cx| deck.go_to(ix, cx)))
+                    .text_size(px(12.))
+                    .line_height(px(17.))
+                    .text_color(paint(if here {
+                        palette.fg
+                    } else if been {
+                        palette.muted.mix(palette.band, 0.2)
+                    } else {
+                        palette.muted
+                    }))
+                    // The tick: the group has been read. Bold and warm enough to
+                    // see at a glance, since it is the column's whole progress.
+                    .child(
                         div()
                             .flex_none()
-                            .font_family(mono.clone())
-                            .text_size(px(10.5))
-                            .text_color(paint(palette.muted.mix(palette.band, 0.3)))
-                            .child(format!("✎ {said}")),
+                            .w(px(10.))
+                            .text_size(px(10.))
+                            .font_weight(FontWeight::BOLD)
+                            .text_color(paint(palette.accent.mix(palette.band, 0.25)))
+                            .when(been, |this| this.child("✓")),
                     )
-                })
-        });
+                    .child(
+                        div()
+                            .flex_none()
+                            .w(px(14.))
+                            .font_family(mono.clone())
+                            .text_size(px(11.))
+                            .text_color(paint(if here {
+                                palette.accent
+                            } else {
+                                palette.muted.mix(palette.band, 0.3)
+                            }))
+                            .child(format!("{}", ix + 1)),
+                    )
+                    .child(div().flex_1().min_w_0().child(title))
+                    .when(said > 0, |this| {
+                        this.child(
+                            div()
+                                .flex_none()
+                                .font_family(mono.clone())
+                                .text_size(px(10.5))
+                                .text_color(paint(palette.muted.mix(palette.band, 0.3)))
+                                .child(format!("✎ {said}")),
+                        )
+                    })
+            });
 
         let more = |id: &'static str, label: String, down: bool| {
             let scroll = self.review_scroll.clone();
@@ -6416,6 +6442,32 @@ impl DeckView {
                     )
                     .children(self.render_destination(cx)),
             )
+    }
+
+    /// Every group's line in the review column, made again only for a group
+    /// whose title or narration is not what it was made from.
+    fn review_titles(&self) -> Vec<SharedString> {
+        let groups = self.deck.groups();
+        let mut memo = self.review_titles.borrow_mut();
+        memo.truncate(groups.len());
+        for (ix, group) in groups.iter().enumerate() {
+            let fresh = memo
+                .get(ix)
+                .is_some_and(|(title, say, _)| *title == group.title && *say == group.say);
+            if fresh {
+                continue;
+            }
+            let made = (
+                group.title.clone(),
+                group.say.clone(),
+                SharedString::from(row_title(group)),
+            );
+            match memo.get_mut(ix) {
+                Some(slot) => *slot = made,
+                None => memo.push(made),
+            }
+        }
+        memo.iter().map(|(_, _, line)| line.clone()).collect()
     }
 
     /// Where the review of a deck from a `.deck` file goes, in one muted line
@@ -8748,14 +8800,23 @@ impl Render for DeckView {
             cx.on_next_frame(window, |_, _, cx| cx.notify());
         }
         // The picked sentence opens the values whose keys it names.
-        let said = self.picked_said.and_then(|(from, to)| {
-            let group = self.group()?;
-            let words = crate::prose::words(&group.say);
-            let (a, b) = (
-                from.min(to),
-                from.max(to).min(words.len().saturating_sub(1)),
-            );
-            Some(words.get(a..=b)?.concat())
+        let said = self.picked_said.and_then(|picked| {
+            let say = &self.group()?.say;
+            let fresh = self
+                .said_memo
+                .as_ref()
+                .is_some_and(|(at, was, _)| *at == picked && was == say);
+            if !fresh {
+                let (from, to) = picked;
+                let words = crate::prose::words(say);
+                let (a, b) = (
+                    from.min(to),
+                    from.max(to).min(words.len().saturating_sub(1)),
+                );
+                let cut = words.get(a..=b).map(<[String]>::concat);
+                self.said_memo = Some((picked, say.clone(), cut));
+            }
+            self.said_memo.as_ref().and_then(|(_, _, cut)| cut.clone())
         });
         // Values that have finished closing are taken out of their panes.
         for pane in &mut self.panes {

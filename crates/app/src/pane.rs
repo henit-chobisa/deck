@@ -495,7 +495,11 @@ pub struct Pane {
     /// The note at the end of the header, for a deck from a `.deck` file
     /// opened inside the repo it came from. See [`Aside`].
     pub aside: Option<Aside>,
-    rows: Vec<Row>,
+    /// Shared rather than owned, because every frame hands the whole list to
+    /// the closure that draws it, and a frame of a value opening is sixty of
+    /// them a second: copying every line of the file, runs and all, to draw
+    /// the forty on screen was most of what a frame cost.
+    rows: std::rc::Rc<[Row]>,
     /// The rows of the file and its change, before any value rows go in.
     base: Vec<Row>,
     /// The values the ref carries, as written.
@@ -860,7 +864,7 @@ impl Pane {
         let mut pane = Self {
             missing,
             aside: None,
-            rows: Vec::new(),
+            rows: std::rc::Rc::from(Vec::new()),
             base: rows,
             values: code.values.clone(),
             open: std::collections::HashSet::new(),
@@ -1114,7 +1118,7 @@ impl Pane {
             })
             .max()
             .unwrap_or(0);
-        self.rows = rows;
+        self.rows = rows.into();
     }
 
     /// Open or close the value under `line`.
@@ -1376,6 +1380,12 @@ impl Pane {
 
     /// Let go of values that have finished closing. Called once a frame.
     pub fn settle(&mut self) {
+        // A pane with no value moving, closing or kept away has nothing to
+        // settle, and that is nearly every pane on nearly every frame: this
+        // runs for each of them whenever anything in the window moves.
+        if !self.hiding && self.unfolding.is_empty() && self.presence.is_empty() {
+            return;
+        }
         // Nothing closing and nothing arriving: nothing to let go of, and no
         // reason to look through the rows on every frame.
         let gone = self.hiding
@@ -1894,8 +1904,8 @@ impl Pane {
         let size = cx.theme().mono_font_size;
 
         // Everything a row needs is copied in: the closure outlives this call
-        // and so cannot borrow the pane.
-        let rows = self.rows.clone();
+        // and so cannot borrow the pane. The rows are shared, not copied.
+        let rows = std::rc::Rc::clone(&self.rows);
         // For each value in motion: the last of its key rows, how many there
         // are, and how far open it is. Everything below a block is drawn that
         // much higher while it opens, so the code glides down to make room
