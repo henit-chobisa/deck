@@ -1618,6 +1618,7 @@ version = "0.1.7-rc.1"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
+ "block2 0.6.2",
  "clap",
  "deck-cli",
  "deck-core",

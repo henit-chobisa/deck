@@ -494,6 +494,16 @@ enum What {
         /// rest try an editor's theme on, as `deck open --theme` does.
         #[arg(long, value_name = "THEME", default_value = "editor")]
         theme: String,
+        /// Light or dark, over what `~/.deck/config.toml` says, as `deck
+        /// open --mode` does. Only a theme that is not deck's own `dark` or
+        /// `light` has a mode left to choose; those two are their names.
+        #[arg(long, value_enum)]
+        mode: Option<Mode>,
+        /// Which neutrals deck's own colours are painted on, over the file,
+        /// as `deck open --paper` does. An editor's theme brings its own
+        /// page, and this changes nothing about it.
+        #[arg(long, value_enum)]
+        paper: Option<Paper>,
         /// Only these groups, by number: `1,3-5`. The `.deck` inside holds
         /// only them too — their code, and what was said about them — so
         /// leaving a group out leaves it out of everything the file carries.
@@ -968,6 +978,8 @@ impl Cli {
                 format,
                 landscape,
                 theme,
+                mode,
+                paper,
                 groups,
                 no_comments,
                 out,
@@ -980,6 +992,8 @@ impl Cli {
                     format,
                     landscape,
                     theme: &theme,
+                    mode,
+                    paper,
                     groups: groups.as_deref(),
                     comments: !no_comments,
                     out: out.as_deref(),
@@ -1015,6 +1029,8 @@ struct Exporting<'a> {
     format: Option<Format>,
     landscape: bool,
     theme: &'a str,
+    mode: Option<Mode>,
+    paper: Option<Paper>,
     groups: Option<&'a str>,
     comments: bool,
     out: Option<&'a std::path::Path>,
@@ -1055,33 +1071,16 @@ fn export(asked: &Exporting) -> anyhow::Result<PathBuf> {
         None => Vec::new(),
     };
 
-    // A file is opened and scanned; a directory is packed first, exactly as
-    // `deck pack` packs it. Either way what goes into the page is what would
-    // go into a `.deck`, and it is refused in pack's words.
-    let options = deck_cli::pack::Options {
-        allow: asked.allow.clone(),
-        allow_missing: asked.allow_missing,
-        ..deck_cli::pack::Options::default()
-    };
-    let packing = if asked.deck.is_file() {
-        if asked.allow_missing {
-            eprintln!(
-                "deck: --allow-missing is for a deck directory: a .deck file holds \
-                 whatever it was packed with, and nothing in it can be missing"
-            );
-        }
-        let bytes = std::fs::read(asked.deck)
-            .map_err(|err| anyhow::anyhow!("cannot read {}: {err}", asked.deck.display()))?;
-        let (bundle, ignored) = deck_core::bundle::Bundle::open(&bytes)
-            .map_err(|err| anyhow::anyhow!("{}: {err}", asked.deck.display()))?;
-        for name in &ignored {
-            eprintln!("deck: {name} is from a newer deck, and was left out");
-        }
-        deck_cli::pack::opened(bundle, &options)
-            .map_err(|err| anyhow::anyhow!("{}: {err}", asked.deck.display()))?
-    } else {
-        deck_cli::pack::gather(asked.deck, &options)?
-    };
+    let packing = export_packing(asked.deck, &asked.allow, asked.allow_missing, None)?;
+    // A group that is not there is a typo, not a request for nothing.
+    let count = packing.bundle.groups().map_err(anyhow::Error::msg)?.len();
+    if let Some(n) = groups
+        .iter()
+        .find(|&&n| usize::try_from(n).is_ok_and(|n| n > count))
+    {
+        anyhow::bail!("`{n}` is not a group: this deck has {count}");
+    }
+    let packing = carrying(packing, &groups, asked.comments)?;
     if let Some(why) = packing.refusal() {
         anyhow::bail!(why);
     }
@@ -1089,51 +1088,25 @@ fn export(asked: &Exporting) -> anyhow::Result<PathBuf> {
         eprintln!("deck: {note}");
     }
     let (bundle, name) = (packing.bundle, packing.name);
-    // A group that is not there is a typo, not a request for nothing.
-    let count = bundle.groups().map_err(anyhow::Error::msg)?.len();
-    if let Some(n) = groups
-        .iter()
-        .find(|&&n| usize::try_from(n).is_ok_and(|n| n > count))
-    {
-        anyhow::bail!("`{n}` is not a group: this deck has {count}");
-    }
     let stem = name.trim_end_matches(".deck").to_string();
 
-    let (palette, dark, syntax) = export_theme(asked.theme)?;
+    let (palette, dark, syntax) = export_theme(asked.theme, asked.mode, asked.paper)?;
     let options = deck_render::export::Options {
         groups,
         comments: asked.comments,
         dark,
     };
-    let (bytes, file) = match format {
-        Format::Html => (
-            deck_render::export::deck(&bundle, &palette, syntax, &options)
-                .map_err(anyhow::Error::msg)?
-                .into_bytes(),
-            format!("{stem}.html"),
-        ),
-        Format::Pdf => {
-            let shape = if asked.landscape {
-                deck_render::export::Format::Landscape
-            } else {
-                deck_render::export::Format::Portrait
-            };
-            let writing = deck_render::export::Writing {
-                name: name.clone(),
-                // For reviewing the spacing: the 4-point grid and every
-                // box's outline, drawn over the pages.
-                grid: std::env::var("DECK_EXPORT_GRID").as_deref() == Ok("1"),
-            };
-            let (bytes, warnings) =
-                deck_render::export::deck_pdf(&bundle, &palette, syntax, &options, shape, &writing)
-                    .map_err(anyhow::Error::msg)?;
-            // Said before the path, as pack says its notes.
-            for warning in warnings {
-                eprintln!("deck: {warning}");
-            }
-            (bytes, format!("{stem}.pdf"))
-        }
+    let shape = match format {
+        Format::Html => None,
+        Format::Pdf if asked.landscape => Some(deck_render::export::Format::Landscape),
+        Format::Pdf => Some(deck_render::export::Format::Portrait),
     };
+    let (bytes, notices) = written(&bundle, &name, &palette, syntax, &options, shape)?;
+    // Said before the path, as pack says its notes.
+    for notice in notices {
+        eprintln!("deck: {notice}");
+    }
+    let file = format!("{stem}.{}", if shape.is_some() { "pdf" } else { "html" });
     let path = match asked.out {
         Some(out) if out.is_dir() => out.join(&file),
         Some(out) => out.to_path_buf(),
@@ -1143,52 +1116,241 @@ fn export(asked: &Exporting) -> anyhow::Result<PathBuf> {
     Ok(path)
 }
 
-/// The palette an export is painted in, whether it is dark, and the syntax
-/// colours, for `--theme`.
+/// What an export of `deck` would carry, packed or opened, scanned, and not
+/// yet refused: the one way to it for `deck export` and the export sheet.
 ///
-/// `editor` is the window's own answer, by the window's own rules: the
-/// config's editor theme and mode, the palette derived from the theme when
-/// one is read and deck's own otherwise, and anything written by hand over
-/// both. Only the machine's light or dark is asked differently — the window
-/// asks the platform once it is up, and an export has no window.
+/// A file is opened and scanned; a directory is packed first, exactly as
+/// `deck pack` packs it. Either way what goes into the page is what would go
+/// into a `.deck`, and it is refused in pack's words.
+///
+/// `review`, when there is one, is carried in place of the review on disk or
+/// in the file: the export sheet hands it the comments a reader has written
+/// in the window and not yet submitted, so they are counted, scanned and
+/// written with the deck. The command has no window, and hands it `None`.
+pub(crate) fn export_packing(
+    deck: &std::path::Path,
+    allow: &[String],
+    allow_missing: bool,
+    review: Option<deck_core::Review>,
+) -> anyhow::Result<deck_cli::pack::Packing> {
+    let options = deck_cli::pack::Options {
+        allow: allow.to_vec(),
+        allow_missing,
+        review,
+        ..deck_cli::pack::Options::default()
+    };
+    if deck.is_file() {
+        if allow_missing {
+            eprintln!(
+                "deck: --allow-missing is for a deck directory: a .deck file holds \
+                 whatever it was packed with, and nothing in it can be missing"
+            );
+        }
+        let bytes = std::fs::read(deck)
+            .map_err(|err| anyhow::anyhow!("cannot read {}: {err}", deck.display()))?;
+        let (bundle, ignored) = deck_core::bundle::Bundle::open(&bytes)
+            .map_err(|err| anyhow::anyhow!("{}: {err}", deck.display()))?;
+        for name in &ignored {
+            eprintln!("deck: {name} is from a newer deck, and was left out");
+        }
+        deck_cli::pack::opened(bundle, &options)
+            .map_err(|err| anyhow::anyhow!("{}: {err}", deck.display()))
+    } else {
+        deck_cli::pack::gather(deck, &options)
+    }
+}
+
+/// `packing` with only the scanner hits an export of `groups` would carry,
+/// with the comments or, when `comments` is false, without them.
+///
+/// The comments are `review.json`, and an export without them leaves it out
+/// whole ([`deck_render::export::deck`]): a token said only in a comment is
+/// nowhere in that file, and refusing it would be refusing over something
+/// the file does not hold. So a hit in `review.json` goes, and the review is
+/// not among what the kept groups are scanned again for.
+///
+/// Choosing groups is choosing what to share, and the file carries only
+/// what [`deck_render::export::only`] keeps of them: a token in a file only
+/// group three points at is not in an export of groups one and two, and
+/// refusing that export would be refusing over something it does not hold.
+///
+/// A hit in a snapshot goes only when no part of its source file is kept.
+/// Scanning the kept lines again would not do: a rule can match one line of
+/// a secret that runs over several — a private key's `BEGIN` line — and a
+/// window kept around another group's lines can leave that line out and
+/// carry the key's body. A hit anywhere else is in a string of the deck's
+/// own files, which goes whole or not at all, so it stands when the kept
+/// files still hold its fingerprint.
+///
+/// The hits themselves are the ones the whole deck was scanned for, so each
+/// is still placed where its author can find it — `deck/g3.json`, not the
+/// `deck/g2.json` it is renumbered to inside.
+///
+/// # Errors
+///
+/// When a part of the bundle does not parse.
+pub(crate) fn carrying(
+    mut packing: deck_cli::pack::Packing,
+    groups: &[u32],
+    comments: bool,
+) -> anyhow::Result<deck_cli::pack::Packing> {
+    const REVIEW: &str = "review.json";
+    if !comments {
+        packing.hits.retain(|hit| hit.entry != REVIEW);
+    }
+    if groups.is_empty() || packing.hits.is_empty() {
+        return Ok(packing);
+    }
+    let mut kept =
+        deck_render::export::only(&packing.bundle, groups).map_err(anyhow::Error::msg)?;
+    if !comments {
+        kept.files.remove(REVIEW);
+    }
+    let index = |bundle: &deck_core::bundle::Bundle| {
+        bundle
+            .files
+            .get("snap/index.json")
+            .and_then(|bytes| serde_json::from_slice::<deck_core::bundle::snap::Index>(bytes).ok())
+            .map(|index| index.files)
+            .unwrap_or_default()
+    };
+    let snapped = index(&packing.bundle);
+    let carried: std::collections::BTreeSet<String> =
+        index(&kept).into_iter().map(|file| file.path).collect();
+    let held: std::collections::BTreeSet<String> = deck_cli::pack::scan_bundle(&kept.files)
+        .into_iter()
+        .map(|hit| hit.fingerprint)
+        .collect();
+    packing.hits.retain(
+        |hit| match snapped.iter().find(|file| file.entry == hit.entry) {
+            Some(file) => carried.contains(&file.path),
+            None => held.contains(&hit.fingerprint),
+        },
+    );
+    Ok(packing)
+}
+
+/// `bundle` written as an export: a PDF in `shape`, or the HTML file when
+/// there is none; and what the person exporting should be told about it.
+///
+/// The bytes and nothing else. Where they go is the caller's: `deck export`
+/// names a path on its command line, and the window asks with the system's
+/// own save dialog. Nothing here writes a file.
+///
+/// # Errors
+///
+/// When the bundle does not pack or a part of it does not parse.
+pub(crate) fn written(
+    bundle: &deck_core::bundle::Bundle,
+    name: &str,
+    palette: &deck_core::theme::Palette,
+    syntax: deck_core::theme::Syntax,
+    options: &deck_render::export::Options,
+    shape: Option<deck_render::export::Format>,
+) -> anyhow::Result<(Vec<u8>, Vec<String>)> {
+    match shape {
+        None => Ok((
+            deck_render::export::deck(bundle, palette, syntax, options)
+                .map_err(anyhow::Error::msg)?
+                .into_bytes(),
+            Vec::new(),
+        )),
+        Some(shape) => {
+            let writing = deck_render::export::Writing {
+                name: name.to_string(),
+                // For reviewing the spacing: the 4-point grid and every
+                // box's outline, drawn over the pages.
+                grid: std::env::var("DECK_EXPORT_GRID").as_deref() == Ok("1"),
+            };
+            deck_render::export::deck_pdf(bundle, palette, syntax, options, shape, &writing)
+                .map_err(anyhow::Error::msg)
+        }
+    }
+}
+
+/// The palette an export is painted in, whether it is dark, and the syntax
+/// colours, for `--theme`: [`painted_for`], with the editor's theme read from
+/// disk and the machine asked whether it is dark.
+///
+/// `--mode` and `--paper` go over the config's own before anything is
+/// painted, the way `deck open`'s do over the window's. That is what lets the
+/// export sheet's command line carry a window opened with `deck open --mode
+/// dark` on a machine whose config says light: without them the command could
+/// only ever paint the config's answer, and the sheet's "As the window" would
+/// copy a line that makes a different file.
 fn export_theme(
     theme: &str,
+    mode: Option<Mode>,
+    paper: Option<Paper>,
 ) -> anyhow::Result<(deck_core::theme::Palette, bool, deck_core::theme::Syntax)> {
-    let config = crate::config::read()?;
-    let (asked, mode) = match theme {
+    let mut config = crate::config::read()?;
+    if let Some(mode) = mode {
+        config.theme.mode = mode;
+    }
+    if let Some(paper) = paper {
+        config.theme.paper = paper;
+    }
+    let painted = painted_for(
+        theme,
+        &config.theme,
+        machine_dark(),
+        |editor, named, dark| {
+            deck_theme::read(editor, named, dark).unwrap_or_else(|err| {
+                // As the window does: said, then carried on in deck's own.
+                eprintln!("deck: cannot read the theme: {err}");
+                None
+            })
+        },
+    );
+    Ok((painted.palette, painted.dark, painted.syntax))
+}
+
+/// What `--theme asked` paints an export in, for `deck export` and the
+/// export sheet alike, so the preview, the file and the command line the
+/// sheet offers cannot disagree.
+///
+/// `dark` and `light` are deck's own. `editor` is the window's own answer,
+/// by the window's own rules: the config's editor theme and mode. Anything
+/// else names an editor's theme, `vscode:Nord`, in the config's mode. The
+/// palette is derived from the theme when one is read and deck's own
+/// otherwise, and the colours written by hand in the config go over both.
+///
+/// `read` is handed the editor, the theme's name and whether the machine is
+/// dark, and answers with the theme's colours or `None`: the command reads
+/// them from disk, the sheet from what it has already read.
+pub(crate) fn painted_for(
+    asked: &str,
+    theme: &deck_core::config::Theme,
+    machine_dark: bool,
+    read: impl FnOnce(deck_theme::Editor, Option<&str>, bool) -> Option<deck_core::theme::Imported>,
+) -> crate::export_sheet::Painted {
+    let (named, mode) = match asked {
         "dark" => (None, Mode::Dark),
         "light" => (None, Mode::Light),
-        "editor" => (config.theme.editor.clone(), config.theme.mode),
-        other => (Some(other.to_string()), config.theme.mode),
+        "editor" => (theme.editor.clone(), theme.mode),
+        other => (Some(other.to_string()), theme.mode),
     };
-    let machine_dark = machine_dark();
-    let imported = match asked.as_deref() {
-        Some(asked) => {
-            let (editor, named) = match asked.split_once(':') {
-                Some((editor, name)) => (editor.to_string(), Some(name)),
-                None => (asked.to_string(), None),
-            };
-            deck_theme::read(deck_theme::Editor::from(editor), named, machine_dark).unwrap_or_else(
-                |err| {
-                    // As the window does: said, then carried on in deck's own.
-                    eprintln!("deck: cannot read the theme: {err}");
-                    None
-                },
-            )
+    let imported = named.as_deref().and_then(|asked| {
+        let (editor, name) = match asked.split_once(':') {
+            Some((editor, name)) => (editor, Some(name)),
+            None => (asked, None),
+        };
+        match deck_theme::Editor::from(editor.to_string()) {
+            deck_theme::Editor::None => None,
+            editor => read(editor, name, machine_dark),
         }
-        None => None,
-    };
+    });
     let dark = mode.is_dark(imported.map_or(machine_dark, |imported| imported.bg.is_dark()));
     let mut palette = match imported {
         Some(imported) => deck_core::theme::derive(imported),
-        None => crate::palette::current_on(dark, config.theme.paper),
+        None => crate::palette::current_on(dark, theme.paper),
     };
-    config.theme.colors.apply(&mut palette);
-    Ok((
+    theme.colors.apply(&mut palette);
+    crate::export_sheet::Painted {
         palette,
         dark,
-        imported.map(|imported| imported.syntax).unwrap_or_default(),
-    ))
+        syntax: imported.map(|imported| imported.syntax).unwrap_or_default(),
+    }
 }
 
 /// Whether the machine is set to dark, asked without a window.
@@ -2210,6 +2372,498 @@ mod tests {
         ));
     }
 
+    /// Each choice on the export sheet is the `deck export` command line it
+    /// says it is, and hands the exporter what the command would for it.
+    #[test]
+    fn the_export_sheet_is_the_export_command() {
+        use crate::export_sheet::{Borrowed, Choice, Format as Shown, Layout, Look, Theme};
+        let window = Borrowed {
+            editor: deck_theme::Editor::Nvim,
+            name: Some("koala-hyderabad".to_string()),
+        };
+        let config = deck_core::config::Theme::default();
+        let untold = Look::default();
+        let borrowed = Look {
+            borrowed: Some(window.clone()),
+            ..Look::default()
+        };
+        let choices = [
+            Choice::new(3),
+            Choice {
+                format: Shown::Html,
+                comments: false,
+                theme: Theme::Dark,
+                ..Choice::new(3)
+            },
+            Choice {
+                layout: Layout::Landscape,
+                groups: vec![true, false, true],
+                theme: Theme::Light,
+                ..Choice::new(3)
+            },
+            Choice {
+                theme: Theme::Editor {
+                    editor: deck_theme::Editor::Vscode,
+                    name: Some("One Dark Pro".into()),
+                },
+                ..Choice::new(3)
+            },
+            Choice {
+                theme: Theme::Editor {
+                    editor: deck_theme::Editor::Nvim,
+                    name: None,
+                },
+                ..Choice::new(3)
+            },
+            Choice {
+                format: Shown::Html,
+                // Landscape means nothing to the HTML, and is not passed.
+                layout: Layout::Landscape,
+                groups: vec![false, true, false],
+                ..Choice::new(3)
+            },
+        ];
+        for (choice, look) in choices
+            .iter()
+            .flat_map(|choice| [(choice, &untold), (choice, &borrowed)])
+        {
+            let window = look.borrowed.as_ref();
+            let mut line = vec![
+                "deck".to_string(),
+                "export".to_string(),
+                "d.deck".to_string(),
+            ];
+            line.extend(choice.args(look, &config));
+            let cli = Cli::try_parse_from(&line).expect("parses");
+            let What::Export {
+                format,
+                landscape,
+                theme,
+                groups,
+                no_comments,
+                ..
+            } = cli.what
+            else {
+                panic!("an export");
+            };
+            let dark = theme != "light";
+            let asked = deck_render::export::Options {
+                groups: match groups.as_deref() {
+                    Some(list) => deck_render::export::groups(list).expect("a list"),
+                    None => Vec::new(),
+                },
+                comments: !no_comments,
+                dark,
+            };
+            assert_eq!(choice.options(dark), asked, "{line:?}");
+            let shape = match format {
+                Some(Format::Pdf) if landscape => Some(deck_render::export::Format::Landscape),
+                Some(Format::Pdf) => Some(deck_render::export::Format::Portrait),
+                _ => None,
+            };
+            assert_eq!(choice.shape(), shape, "{line:?}");
+            assert_eq!(theme, choice.theme.flag(window), "{line:?}");
+        }
+        // The window's own names the theme it borrowed, when it borrowed one.
+        assert_eq!(Theme::Window.flag(Some(&window)), "nvim:koala-hyderabad");
+        assert_eq!(Theme::Window.flag(None), "editor");
+        // And the line to copy is quoted for a shell to read back.
+        let named = Choice {
+            theme: Theme::Editor {
+                editor: deck_theme::Editor::Vscode,
+                name: Some("One Dark Pro".into()),
+            },
+            ..Choice::new(2)
+        };
+        assert_eq!(
+            named.command(
+                std::path::Path::new("/tmp/my decks/d.deck"),
+                &untold,
+                &config
+            ),
+            "deck export '/tmp/my decks/d.deck' --format pdf --theme 'vscode:One Dark Pro'"
+        );
+        let plain = Choice {
+            theme: Theme::Dark,
+            ..Choice::new(2)
+        };
+        assert_eq!(
+            plain.command(std::path::Path::new("d.deck"), &untold, &config),
+            "deck export d.deck --format pdf --theme dark"
+        );
+        assert_eq!(
+            crate::export_sheet::quoted("it's"),
+            "'it'\\''s'",
+            "a quote inside is closed, escaped and reopened"
+        );
+    }
+
+    /// A window opened with `deck open --mode` or `--paper` over the config
+    /// copies a command that says so, and that command, read back through
+    /// the parser and painted, is the window's light or dark and paper — not
+    /// the config's. Only for the window's own theme: every other theme is
+    /// painted under the config on both sides and carries neither.
+    #[test]
+    fn as_the_window_copies_what_the_window_was_opened_in() {
+        use crate::export_sheet::{Borrowed, Choice, Look, Theme};
+        let config = deck_core::config::Theme {
+            mode: Mode::Light,
+            ..deck_core::config::Theme::default()
+        };
+        let window = Look {
+            borrowed: None,
+            mode: Mode::Dark,
+            paper: Paper::Warm,
+        };
+        let args = Choice::new(2).args(&window, &config);
+        assert_eq!(
+            args[2..],
+            ["--theme", "editor", "--mode", "dark", "--paper", "warm"],
+            "{args:?}"
+        );
+        let mut line = vec![
+            "deck".to_string(),
+            "export".to_string(),
+            "d.deck".to_string(),
+        ];
+        line.extend(args);
+        let What::Export {
+            theme, mode, paper, ..
+        } = Cli::try_parse_from(&line).expect("parses").what
+        else {
+            panic!("an export");
+        };
+        let told = deck_core::config::Theme {
+            mode: mode.unwrap_or(config.mode),
+            paper: paper.unwrap_or(config.paper),
+            ..config.clone()
+        };
+        let never = |_: deck_theme::Editor, _: Option<&str>, _: bool| -> Option<_> {
+            panic!("deck's own colours read nothing")
+        };
+        let painted = painted_for(&theme, &told, false, never);
+        assert!(painted.dark, "dark, as the window was opened");
+        assert_eq!(
+            painted.palette,
+            crate::palette::current_on(true, Paper::Warm),
+            "on the window's paper"
+        );
+
+        // A borrowed theme brings its own page: the paper is not passed.
+        let borrowed = Look {
+            borrowed: Some(Borrowed {
+                editor: deck_theme::Editor::Zed,
+                name: Some("One Dark".to_string()),
+            }),
+            ..window.clone()
+        };
+        assert_eq!(
+            Choice::new(2).args(&borrowed, &config)[2..],
+            ["--theme", "zed:One Dark", "--mode", "dark"]
+        );
+        // The config already saying it, nothing is passed.
+        let same = Look {
+            mode: Mode::Light,
+            paper: Paper::Grey,
+            borrowed: None,
+        };
+        assert_eq!(
+            Choice::new(2).args(&same, &config)[2..],
+            ["--theme", "editor"]
+        );
+        // Another theme is the config's on both sides.
+        let dark = Choice {
+            theme: Theme::Dark,
+            ..Choice::new(2)
+        };
+        assert_eq!(dark.args(&window, &config)[2..], ["--theme", "dark"]);
+    }
+
+    /// The command and the sheet paint through one function: deck's own
+    /// themes in the config's paper and hand-written colours, an editor's
+    /// derived from what was read and in the config's mode.
+    #[test]
+    fn an_export_is_painted_the_one_way() {
+        let mut theme = deck_core::config::Theme {
+            colors: toml::from_str("accent = \"#af3a03\"").expect("colours"),
+            ..deck_core::config::Theme::default()
+        };
+        let accent = deck_core::theme::Rgb::from_hex("#af3a03").unwrap();
+        let never = |_: deck_theme::Editor, _: Option<&str>, _: bool| -> Option<_> {
+            panic!("deck's own themes read nothing")
+        };
+        let dark = painted_for("dark", &theme, false, never);
+        assert!(dark.dark);
+        assert_eq!(dark.palette.accent, accent, "hand-written colours win");
+        let light = painted_for("light", &theme, true, never);
+        assert!(!light.dark);
+
+        let page = deck_core::theme::Imported {
+            bg: deck_core::theme::Rgb::new(0x1e, 0x1e, 0x2e),
+            fg: deck_core::theme::Rgb::new(0xcd, 0xd6, 0xf4),
+            accent: deck_core::theme::Rgb::new(0xcb, 0xa6, 0xf7),
+            comment: None,
+            add: None,
+            del: None,
+            syntax: deck_core::theme::Syntax::default(),
+        };
+        let mut asked = Vec::new();
+        let editor = painted_for("vscode:One Dark Pro", &theme, false, |editor, name, _| {
+            asked.push((editor, name.map(str::to_string)));
+            Some(page)
+        });
+        assert_eq!(
+            asked,
+            [(deck_theme::Editor::Vscode, Some("One Dark Pro".to_string()))]
+        );
+        assert!(editor.dark, "a dark page is a dark export in auto mode");
+        let mut derived = deck_core::theme::derive(page);
+        theme.colors.apply(&mut derived);
+        assert_eq!(editor.palette, derived);
+        theme.mode = deck_core::theme::Mode::Light;
+        let told = painted_for("vscode:One Dark Pro", &theme, false, |_, _, _| Some(page));
+        assert!(!told.dark, "the config's mode is the config's");
+
+        // The sheet's preview of the same choice is the same paint.
+        let sheet = crate::export_sheet::Theme::Editor {
+            editor: deck_theme::Editor::Vscode,
+            name: Some("One Dark Pro".into()),
+        };
+        let again = painted_for(&sheet.flag(None), &theme, false, |_, _, _| Some(page));
+        assert_eq!(again.palette, told.palette);
+    }
+
+    /// Choosing groups is choosing what to share: a secret in a file only a
+    /// group left out points at does not stop the export, and is nowhere in
+    /// what it writes, the `.deck` inside included; a secret in a file a
+    /// group sent still points at stops it, even when the line the scanner
+    /// knows it by is outside the lines that group keeps.
+    #[test]
+    fn an_export_of_some_groups_is_scanned_for_what_it_carries() {
+        let dir = tempfile::tempdir().expect("a temp dir");
+        let lines = |n: u32| -> Vec<String> { (1..=n).map(|n| format!("line {n}")).collect() };
+        // Put together here, so no whole secret is ever in the source.
+        let token = format!("ghp_{}", "a1B2".repeat(9));
+        let mut secret = lines(30);
+        secret[9] = format!("let token = \"{token}\";");
+        let mut key = lines(100);
+        key[4] = format!("-----BEGIN RSA {}-----", "PRIVATE KEY");
+        let body = format!("MIIEpAIBAAKCAQEA{}", "q7Z3".repeat(12));
+        for line in &mut key[5..70] {
+            line.clone_from(&body);
+        }
+        key[70] = format!("-----END RSA {}-----", "PRIVATE KEY");
+        let deck = four_groups(
+            dir.path(),
+            &[
+                ("ok.rs", lines(100)),
+                ("secret.rs", secret),
+                ("key.rs", key),
+            ],
+        );
+        let read = || export_packing(&deck, &[], false, None).expect("packs");
+
+        // Group 1 points at `ok.rs`, group 2 at `secret.rs`: sent alone,
+        // group 1 carries nothing of the token.
+        assert!(!carrying(read(), &[], true).unwrap().hits.is_empty());
+        assert!(carrying(read(), &[1], true).unwrap().hits.is_empty());
+        for (out, needle) in [("one.pdf", "pdf"), ("one.html", "html")] {
+            let out = dir.path().join(out);
+            let path = export(&Exporting {
+                groups: Some("1"),
+                ..exporting(&deck, &out)
+            })
+            .unwrap_or_else(|err| panic!("{needle}: {err:#}"));
+            let bytes = std::fs::read(path).unwrap();
+            let inside = if needle == "pdf" {
+                attached(&bytes)
+            } else {
+                carried(&String::from_utf8(bytes.clone()).unwrap())
+            };
+            assert!(inside.files.contains_key("deck/g1.json"), "{needle}");
+            for (name, file) in inside
+                .files
+                .iter()
+                .map(|(n, f)| (n.clone(), f))
+                .chain([(format!("the {needle} itself"), &bytes)])
+            {
+                assert!(
+                    !file.windows(token.len()).any(|w| w == token.as_bytes()),
+                    "{name} holds the token"
+                );
+                assert!(
+                    !file.windows(9).any(|w| w == b"secret.rs"),
+                    "{name} names the file"
+                );
+            }
+        }
+
+        // Group 3 points into the key's body, past the twenty lines kept
+        // either side of what it points at, and group 4 at its BEGIN line.
+        // Sent without group 4, the body still goes: refused.
+        let err = export(&Exporting {
+            groups: Some("3"),
+            ..exporting(&deck, &dir.path().join("three.pdf"))
+        })
+        .expect_err("refused");
+        assert!(err.to_string().contains("private-key"), "{err:#}");
+        assert!(!dir.path().join("three.pdf").exists());
+    }
+
+    /// A secret said only in a comment goes with the comments: an export
+    /// with `--no-comments` leaves the review out whole, so it carries
+    /// nothing to refuse, of every group or of some; with the comments it is
+    /// refused, both ways.
+    #[test]
+    fn a_secret_in_a_comment_stops_only_an_export_with_the_comments() {
+        let dir = tempfile::tempdir().expect("a temp dir");
+        // Put together here, so no whole secret is ever in the source.
+        let token = format!("ghp_{}", "a1B2".repeat(9));
+        let mut files = std::collections::BTreeMap::new();
+        files.insert(
+            "deck/deck.json".to_string(),
+            br#"{"v":1,"id":"d-1","title":"Said in passing"}"#.to_vec(),
+        );
+        for n in 1..=2 {
+            let group = serde_json::json!({ "id": format!("g{n}"), "ord": n, "say": "look" });
+            files.insert(format!("deck/g{n}.json"), group.to_string().into_bytes());
+        }
+        let review = serde_json::json!({
+            "v": 1, "deck": "d-1", "comments": [],
+            "transcript": [
+                { "at_ms": 1000, "what": "wrote", "group": "g1", "text": format!("use {token}") },
+            ],
+        });
+        files.insert("review.json".to_string(), review.to_string().into_bytes());
+        let bundle = deck_core::bundle::Bundle {
+            manifest: deck_core::bundle::Manifest {
+                container: deck_core::bundle::CONTAINER,
+                protocol: 1,
+                created: "2026-10-22T09:30:00Z".to_string(),
+                generator: "deck test".to_string(),
+                repo: None,
+                entries: std::collections::BTreeMap::new(),
+                allowed: Vec::new(),
+            },
+            files,
+        };
+        let deck = dir.path().join("said.deck");
+        std::fs::write(&deck, bundle.pack().expect("packs")).expect("writes");
+
+        for (groups, name) in [(None, "every"), (Some("1"), "one")] {
+            let out = dir.path().join(format!("{name}.pdf"));
+            let path = export(&Exporting {
+                groups,
+                comments: false,
+                ..exporting(&deck, &out)
+            })
+            .unwrap_or_else(|err| panic!("{name} without comments: {err:#}"));
+            let bytes = std::fs::read(path).unwrap();
+            // The PDF's own streams are compressed, so its bytes would never
+            // show the token whatever it held; the `.deck` it carries is
+            // read back whole, and that is where a comment would travel.
+            let carried = attached(&bytes);
+            assert!(!carried.files.contains_key("review.json"), "{name}");
+            assert!(
+                !carried
+                    .files
+                    .values()
+                    .any(|file| file.windows(token.len()).any(|w| w == token.as_bytes())),
+                "{name}: the .deck inside holds the token"
+            );
+
+            let out = dir.path().join(format!("{name}-said.pdf"));
+            let err = export(&Exporting {
+                groups,
+                ..exporting(&deck, &out)
+            })
+            .expect_err("refused with the comments");
+            assert!(err.to_string().contains("github-pat"), "{name}: {err:#}");
+            assert!(!out.exists(), "{name}");
+        }
+    }
+
+    /// A deck folder in `dir`, written against a project of `files`: four
+    /// groups, pointing at `ok.rs`, `secret.rs`, the middle of `key.rs` and
+    /// its fifth line.
+    fn four_groups(dir: &std::path::Path, files: &[(&str, Vec<String>)]) -> PathBuf {
+        let project = dir.join("project");
+        std::fs::create_dir_all(&project).expect("a project");
+        for (name, lines) in files {
+            std::fs::write(project.join(name), lines.join("\n") + "\n").expect("written");
+        }
+        let root = dir.join("d-1.deck");
+        std::fs::create_dir_all(&root).expect("a deck folder");
+        let header = serde_json::json!({
+            "v": 1, "id": "d-1", "title": "Some of it", "cwd": project,
+        });
+        std::fs::write(root.join("deck.json"), header.to_string()).expect("a header");
+        for (n, (file, first, last)) in [
+            ("ok.rs", 40, 42),
+            ("secret.rs", 9, 11),
+            ("key.rs", 60, 62),
+            ("key.rs", 4, 6),
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            let group = serde_json::json!({
+                "id": format!("g{}", n + 1),
+                "ord": n + 1,
+                "say": "look",
+                "refs": [{ "id": format!("g{}r1", n + 1), "file": file, "range": [first, last] }],
+            });
+            std::fs::write(root.join(format!("g{}.json", n + 1)), group.to_string())
+                .expect("a group");
+        }
+        root
+    }
+
+    /// The `.deck` an HTML export carries, taken back out of it.
+    fn carried(html: &str) -> deck_core::bundle::Bundle {
+        let open = "<script type=\"application/x-deck\" id=\"deck\">";
+        let start = html.find(open).expect("the deck is embedded") + open.len();
+        let end = start + html[start..].find("</script>").expect("closed");
+        let value = |c: u8| match c {
+            b'A'..=b'Z' => c - b'A',
+            b'a'..=b'z' => c - b'a' + 26,
+            b'0'..=b'9' => c - b'0' + 52,
+            b'+' => 62,
+            b'/' => 63,
+            _ => panic!("not base64: {c}"),
+        };
+        let clean: Vec<u8> = html[start..end].bytes().filter(|&c| c != b'=').collect();
+        let mut zip = Vec::new();
+        for chunk in clean.chunks(4) {
+            let mut word = 0u32;
+            for (ix, &c) in chunk.iter().enumerate() {
+                word |= u32::from(value(c)) << (18 - 6 * ix);
+            }
+            zip.extend_from_slice(&word.to_be_bytes()[1..chunk.len()]);
+        }
+        deck_core::bundle::Bundle::open(&zip)
+            .expect("the embedded deck opens")
+            .0
+    }
+
+    /// The `.deck` a PDF carries: stored uncompressed, it is the zip from
+    /// its first local header to the end of its stream.
+    fn attached(pdf: &[u8]) -> deck_core::bundle::Bundle {
+        let start = pdf
+            .windows(4)
+            .position(|w| w == b"PK\x03\x04")
+            .expect("a zip in the PDF");
+        let end = start
+            + pdf[start..]
+                .windows(9)
+                .position(|w| w == b"endstream")
+                .expect("the stream ends");
+        let zip = pdf[start..end].trim_ascii_end();
+        deck_core::bundle::Bundle::open(zip)
+            .expect("the attached deck opens")
+            .0
+    }
+
     /// A `.deck` file written by hand, holding `say` as its one group's
     /// narration, in `dir`.
     fn hand_built(dir: &std::path::Path, say: &str, allowed: &[String]) -> PathBuf {
@@ -2243,6 +2897,8 @@ mod tests {
             format: None,
             landscape: false,
             theme: "dark",
+            mode: None,
+            paper: None,
             groups: None,
             comments: true,
             out: Some(out),

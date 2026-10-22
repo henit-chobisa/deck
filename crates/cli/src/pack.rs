@@ -116,6 +116,17 @@ pub struct Options {
     /// directory that happens to sit inside some other repo is not taken for
     /// part of it. `None` looks as git always does.
     pub ceiling: Option<PathBuf>,
+    /// The review to carry in place of the one on disk, or the one in the
+    /// file: a reader's comments that have not been submitted yet, which the
+    /// export sheet exports, counts and scans as the comments the deck holds.
+    ///
+    /// Put in exactly where a review read from disk would be. From a deck
+    /// folder it is scrubbed and its files pointed at as that review is, so
+    /// a line a comment is about is frozen with the rest; from a `.deck`
+    /// file, or a folder unpacked from one, it is taken as it is, since its
+    /// files are already named as the file names them. `None` packs the
+    /// review that is there, if there is one.
+    pub review: Option<Review>,
 }
 
 impl Default for Options {
@@ -129,6 +140,7 @@ impl Default for Options {
             created: None,
             home: deck_core::home::home(),
             ceiling: None,
+            review: None,
         }
     }
 }
@@ -293,8 +305,12 @@ pub fn gather(deck: &Path, options: &Options) -> anyhow::Result<Packing> {
     }
 
     let review_at = crate::review_path(deck);
-    if review_at.is_file() {
-        let mut review: Review = read_json(&review_at)?;
+    let review = match &options.review {
+        Some(review) => Some(review.clone()),
+        None if review_at.is_file() => Some(read_json::<Review>(&review_at)?),
+        None => None,
+    };
+    if let Some(mut review) = review {
         for comment in &mut review.comments {
             scrub.text(&mut comment.text);
             scrub.text(&mut comment.quote);
@@ -433,6 +449,9 @@ fn regather(dir: &Path, options: &Options) -> anyhow::Result<Packing> {
     let mut left = Vec::new();
     walk(dir, "", &mut files, &mut left)?;
     files.remove("manifest.json");
+    if let Some(review) = &options.review {
+        files.insert("review.json".to_string(), json(review)?);
+    }
     let bundle = Bundle { manifest, files };
     let header = bundle
         .header()
@@ -472,10 +491,18 @@ fn regather(dir: &Path, options: &Options) -> anyhow::Result<Packing> {
 /// already records, or one in `options.allow`. Nothing in it can be
 /// missing, so `allow_missing` has nothing to apply to.
 ///
+/// A review in `options` takes the place of the one the file holds, before
+/// the scan, so what is scanned is what would be carried.
+///
 /// # Errors
 ///
 /// When its header does not parse.
-pub fn opened(bundle: Bundle, options: &Options) -> anyhow::Result<Packing> {
+pub fn opened(mut bundle: Bundle, options: &Options) -> anyhow::Result<Packing> {
+    if let Some(review) = &options.review {
+        bundle
+            .files
+            .insert("review.json".to_string(), json(review)?);
+    }
     let header = bundle.header().map_err(|err| anyhow::anyhow!("{err}"))?;
     let snapped = bundle
         .snapshots()
@@ -584,6 +611,22 @@ fn group_number(name: &str) -> Option<u32> {
         .and_then(|n| n.parse().ok())
 }
 
+/// How many things the scanner found, said the one way deck says it: `one
+/// thing looks like a secret`, `3 things look like secrets`. The refusal
+/// `deck pack` and `deck export` print, and the export sheet's notice, all
+/// start from these words.
+#[must_use]
+pub fn looks_like(hits: usize) -> String {
+    match hits {
+        1 => "one thing looks like a secret".to_string(),
+        n => format!("{n} things look like secrets"),
+    }
+}
+
+/// What letting a hit through comes to, in the refusal's words and the
+/// export sheet's: the file says somebody looked and let it go.
+pub const LET_THROUGH: &str = "the manifest will say you did";
+
 impl Packing {
     /// Scan every entry, and sort the hits into those let through and those
     /// not.
@@ -632,23 +675,7 @@ impl Packing {
             why.push(said);
         }
         if !self.hits.is_empty() {
-            let mut said = format!(
-                "refusing to pack: {} in it {} like {}.\n",
-                match self.hits.len() {
-                    1 => "one thing".to_string(),
-                    n => format!("{n} things"),
-                },
-                if self.hits.len() == 1 {
-                    "looks"
-                } else {
-                    "look"
-                },
-                if self.hits.len() == 1 {
-                    "a secret"
-                } else {
-                    "secrets"
-                },
-            );
+            let mut said = format!("refusing to pack: {}.\n", looks_like(self.hits.len()));
             for hit in &self.hits {
                 said.push_str(&format!("\n  {hit}"));
             }
@@ -661,7 +688,7 @@ impl Packing {
             said.push_str(&format!(
                 "\n\nTake it out of the deck and pack again. Or, for each one you \
                  have looked at and know is safe, pass its fingerprint — {} — and \
-                 the manifest will say you did.",
+                 {LET_THROUGH}.",
                 flags.join(" ")
             ));
             why.push(said);
