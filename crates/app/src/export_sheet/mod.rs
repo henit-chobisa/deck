@@ -297,6 +297,11 @@ pub struct ExportSheet {
     copied: bool,
     discovering: Task<()>,
     asking_nvim: Task<()>,
+    /// Whether Neovim's answer, when it comes, is to be chosen: set when its
+    /// row is clicked, and cleared when the list shuts, by a pick or not. A
+    /// theme picked while Neovim was still starting is the reader's later
+    /// word, and an answer that arrives after it must not take it back.
+    nvim_on_answer: bool,
     /// The pages last shown, kept up — dimmed, and said to be updating —
     /// while the pages for a changed option are laid out, so the preview
     /// never goes blank between two of them.
@@ -360,6 +365,7 @@ impl ExportSheet {
             copied: false,
             discovering: Task::ready(()),
             asking_nvim: Task::ready(()),
+            nvim_on_answer: false,
             last: None,
             drawings: Arc::new(preview::Drawings::new()),
             thumbs: ScrollHandle::new(),

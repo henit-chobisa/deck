@@ -271,6 +271,9 @@ impl ExportSheet {
     /// Put the list away, with the focus back on the field that opened it.
     pub(super) fn close_themes(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.picking = None;
+        // Every pick shuts the list through here, and so does walking away
+        // from it: either way Neovim's answer is no longer the one asked for.
+        self.nvim_on_answer = false;
         self.stops.remove(&Control::Filter);
         self.stop(Control::Theme, cx).focus(window, cx);
         cx.notify();
@@ -351,6 +354,7 @@ impl ExportSheet {
                     // costs a few seconds and nothing left running.
                     Swatch::OnClick | Swatch::Failed(_) if row.editor == Editor::Nvim => {
                         self.read_nvim(ix, cx);
+                        self.nvim_on_answer = true;
                         return;
                     }
                     Swatch::OnClick | Swatch::Reading | Swatch::Failed(_) => return,
@@ -361,6 +365,9 @@ impl ExportSheet {
         self.pick(theme, window, cx);
     }
 
+    /// Choose `theme`, and shut the list. Shutting it also forgets any wait
+    /// on Neovim ([`Self::close_themes`]), so a pick made while it was still
+    /// starting stands when it answers.
     fn pick(&mut self, theme: Theme, window: &mut Window, cx: &mut Context<Self>) {
         self.choice.theme = theme;
         self.close_themes(window, cx);
@@ -391,7 +398,7 @@ impl ExportSheet {
             this.update_in(cx, |sheet, window, cx| {
                 let read = got.is_ok();
                 sheet.set_swatch(ix, got);
-                if read && sheet.picking.is_some() {
+                if read && sheet.nvim_on_answer {
                     sheet.pick(
                         Theme::Editor {
                             editor: Editor::Nvim,
