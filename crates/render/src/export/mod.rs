@@ -99,8 +99,7 @@ pub fn deck(
 
 /// `bundle` as a PDF in `format`, painted in `palette` with the window's
 /// highlighter, carrying the same `.deck` the HTML export would, and what
-/// the person exporting should be told about it: a group that ran past two
-/// pages, a pane that could not show every line.
+/// the person exporting should be told about it: [`notices`].
 ///
 /// # Errors
 ///
@@ -114,25 +113,58 @@ pub fn deck_pdf(
     format: Format,
     writing: &Writing,
 ) -> Result<(Vec<u8>, Vec<String>), String> {
+    let mut carried = bundle.clone();
+    if !options.comments {
+        carried.files.remove("review.json");
+    }
+    let bytes = only(&carried, &options.groups)?.pack()?;
+    let document = paged(bundle, palette, syntax, options)?;
+    let pages = layout(&document, format);
+    let notices = notices(&pages);
+    let pdf = pdf(&document, &pages, &bytes, writing)?;
+    Ok((pdf, notices))
+}
+
+/// `bundle` as the document a paged export lays out: unfolded, since a gap
+/// on paper is lines nobody can open again, and [`shown`] as `options` ask.
+///
+/// The one way to it, for [`deck_pdf`] and for the export sheet's preview,
+/// so the pages the sheet paints are the pages the file will hold.
+///
+/// # Errors
+///
+/// When a part of the bundle does not parse.
+pub fn paged(
+    bundle: &Bundle,
+    palette: &Palette,
+    syntax: Syntax,
+    options: &Options,
+) -> Result<Document, String> {
     let mut bundle = bundle.clone();
     if !options.comments {
         bundle.files.remove("review.json");
     }
-    let carried = only(&bundle, &options.groups)?;
-    let bytes = carried.pack()?;
-    // Unfolded: a gap on paper is lines nobody can open again.
     let document = crate::document::build_unfolded(&bundle, palette, options.dark, syntax)
         .map_err(|err| err.to_string())?;
-    let document = shown(&document, options);
-    let pages = layout(&document, format);
-    let warnings = pages
+    Ok(shown(&document, options))
+}
+
+/// What the person exporting `pages` should be told before they do: a
+/// group that ran onto more pages than it was meant to, a landscape pane
+/// that could not show every line or a diagram cut at its edge, and the
+/// characters set in a face from this machine or not drawable at all.
+///
+/// Data rather than lines printed on the way, so `deck export` prints them
+/// and the export sheet shows them, and the two are the same words from the
+/// same pages.
+#[must_use]
+pub fn notices(pages: &[Page]) -> Vec<String> {
+    let mut said: Vec<String> = pages
         .iter()
         .flat_map(|page| page.warnings.iter().cloned())
         .collect();
-    let (pdf, more) = pdf(&document, &pages, &bytes, writing)?;
-    let mut warnings: Vec<String> = warnings;
-    warnings.extend(more);
-    Ok((pdf, warnings))
+    said.extend(pdf::coverage(pages));
+    said
 }
 
 /// `document` as an export shows it: only the groups asked for, keeping

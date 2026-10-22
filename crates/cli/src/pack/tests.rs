@@ -1372,3 +1372,53 @@ fn a_very_long_file_packs_without_its_length_and_only_far_spans_are_refused() {
     )]));
     assert!(!beyond(&[]));
 }
+
+/// A review handed in with the options is the one carried, in place of the
+/// one on disk or in the file: from a folder it is scrubbed as the review on
+/// disk would be, and from a `.deck` file it takes the place of the review
+/// the file holds. This is how the export sheet carries the comments a
+/// reader has written and not yet sent.
+#[test]
+fn a_review_handed_in_is_carried_in_place_of_the_one_there() {
+    let dir = tempfile::tempdir().expect("a temp dir");
+    let root = deck(
+        dir.path(),
+        None,
+        &[json!({ "id": "g1", "ord": 1, "say": "look" })],
+    );
+    let sent = json!({ "v": 1, "deck": "d-1",
+        "comments": [{ "group": "g1", "quote": "", "text": "sent before" }] });
+    std::fs::write(crate::review_path(&root), sent.to_string()).unwrap();
+    let unsent: Review = serde_json::from_value(json!({ "v": 1, "deck": "d-1",
+        "comments": [{ "group": "g1", "quote": "",
+                       "text": format!("see {HOME}/notes.txt") }] }))
+    .unwrap();
+    let handing = Options {
+        review: Some(unsent.clone()),
+        ..options(dir.path())
+    };
+
+    let packing = gather(&root, &handing).expect("gathers");
+    let review = packing.bundle.review().unwrap().expect("a review");
+    let said: Vec<&str> = review.comments.iter().map(|c| c.text.as_str()).collect();
+    assert_eq!(said.len(), 1, "{said:?}");
+    assert!(!said[0].contains(HOME), "scrubbed: {said:?}");
+    assert!(said[0].contains("notes.txt"), "{said:?}");
+
+    // Packed without it, the file holds the review that was sent; opened
+    // with it, the one handed in.
+    let packed = gather(&root, &options(dir.path())).expect("gathers");
+    let texts = |bundle: &Bundle| -> Vec<String> {
+        bundle
+            .review()
+            .unwrap()
+            .expect("a review")
+            .comments
+            .into_iter()
+            .map(|c| c.text)
+            .collect()
+    };
+    assert_eq!(texts(&packed.bundle), ["sent before"]);
+    let reopened = opened(packed.bundle, &handing).expect("opens");
+    assert_eq!(texts(&reopened.bundle), [format!("see {HOME}/notes.txt")]);
+}

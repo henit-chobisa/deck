@@ -862,6 +862,13 @@ pub struct DeckView {
     notes_fade: crate::pane::Fade,
     /// The same, for the warning before quitting.
     quit_fade: crate::pane::Fade,
+    /// The export sheet, while it is up, and the window's hold on its
+    /// asking to be put away.
+    export: Option<(Entity<crate::export_sheet::ExportSheet>, Subscription)>,
+    /// Whether a debug build has opened the sheet it was asked to show at
+    /// start, for the screenshots. See `debug_sheet`.
+    #[cfg(debug_assertions)]
+    export_shown: bool,
     /// The card that says why *Ask now* is off, while it is up.
     ///
     /// Shown when the reader presses the button, or its keys, with no agent
@@ -1157,6 +1164,9 @@ impl DeckView {
             quit_focus: cx.focus_handle(),
             notes_fade: Self::card_fade(),
             quit_fade: Self::card_fade(),
+            export: None,
+            #[cfg(debug_assertions)]
+            export_shown: false,
             explaining: false,
             asks_carousel: crate::asks::Carousel::default(),
             asks_shown: None,
@@ -3290,6 +3300,33 @@ impl DeckView {
                                                 .on_click(move |_, _window, cx| cx.open_url(&page))
                                                 .child("on GitHub ↗"),
                                         )
+                                        // Which deck this is, for a bug report:
+                                        // the strip no longer shows it, so it
+                                        // is here beside the version, a click
+                                        // from the clipboard.
+                                        .when(running, |this| {
+                                            let id = self.deck.header.id.clone();
+                                            this.child(
+                                                div()
+                                                    .id("notes-deck-id")
+                                                    .font_family(mono.clone())
+                                                    .cursor_pointer()
+                                                    .hover(|this| {
+                                                        this.text_color(paint(palette.accent))
+                                                    })
+                                                    .on_click(move |_, _window, cx| {
+                                                        cx.write_to_clipboard(
+                                                            ClipboardItem::new_string(
+                                                                id.to_string(),
+                                                            ),
+                                                        );
+                                                    })
+                                                    .child(format!(
+                                                        "{} · copy",
+                                                        self.deck.header.id
+                                                    )),
+                                            )
+                                        })
                                         .when(!running && !waiting, |this| {
                                             this.child(
                                                 div()
@@ -3330,6 +3367,94 @@ impl DeckView {
                 )
                 .into_any_element(),
         )
+    }
+
+    /// Whether there is a whole deck to export: sealed, with a group in it.
+    fn exportable(&self) -> bool {
+        self.deck.sealed() && !self.deck.groups().is_empty()
+    }
+
+    /// The strip's Export button: the export sheet, over the window.
+    ///
+    /// The sheet holds the keyboard while it is up, as the notes card does:
+    /// the deck's own keys must not act under it, and its own keys must
+    /// reach it whatever was focused before.
+    fn open_export(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.export.is_some() || !self.exportable() {
+            return;
+        }
+        let deck = self.deck.packed.as_ref().map_or_else(
+            || self.deck.root.clone(),
+            |packed| packed.origin.file.clone(),
+        );
+        let project = self
+            .deck
+            .header
+            .cwd
+            .clone()
+            .or_else(|| std::env::current_dir().ok());
+        // What the reader has said in this window reaches the deck on disk
+        // only when they submit, and the sheet packs the deck from disk: it
+        // would export, count and scan the comments of the last review sent,
+        // not the ones on screen. So the review as it stands goes with the
+        // sheet, built as submitting builds it, and is packed in place of the
+        // one on disk. A window where nothing has been said yet has nothing
+        // to put there, and leaves a review already on disk, or in the file,
+        // as it is.
+        let review = self.review();
+        let said = !review.comments.is_empty() || !review.transcript.is_empty();
+        let source = crate::export_sheet::Source {
+            deck,
+            review: said.then_some(review),
+            project,
+            title: crate::load::heading(&self.deck.header.title),
+            titles: self.deck.groups().iter().map(row_title).collect(),
+        };
+        let painted = crate::export_sheet::Painted {
+            palette: self.palette,
+            dark: cx.theme().mode.is_dark(),
+            syntax: crate::palette::syntax(),
+        };
+        let palette = self.palette;
+        let sheet =
+            cx.new(|cx| crate::export_sheet::ExportSheet::new(source, palette, painted, cx));
+        let closing = cx.subscribe_in(
+            &sheet,
+            window,
+            |deck, _, _: &crate::export_sheet::Closed, window, cx| {
+                deck.close_export(window, cx);
+            },
+        );
+        sheet.read(cx).focus_handle(cx).focus(window, cx);
+        self.export = Some((sheet, closing));
+        cx.notify();
+    }
+
+    /// For the screenshots of the export sheet: a debug build started with
+    /// `DECK_DEBUG_SHEET` opens it, once, in the state it names, as soon as
+    /// the deck has every group.
+    #[cfg(debug_assertions)]
+    fn debug_sheet(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.export_shown || !self.exportable() {
+            return;
+        }
+        let Ok(asked) = std::env::var("DECK_DEBUG_SHEET") else {
+            return;
+        };
+        self.export_shown = true;
+        self.open_export(window, cx);
+        if let Some((sheet, _)) = &self.export {
+            sheet.update(cx, |sheet, cx| sheet.snapshot(&asked, cx));
+        }
+    }
+
+    /// Put the export sheet away and give the keyboard back to the deck.
+    fn close_export(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if let Some((sheet, _)) = self.export.take() {
+            sheet.read(cx).forget_drawings(window);
+        }
+        self.focus.focus(window, cx);
+        cx.notify();
     }
 
     /// `?`: the help dock, up or away.
@@ -3520,7 +3645,16 @@ impl DeckView {
                             this.bg(paint(palette.band.mix(palette.accent, 0.28 * glow)))
                         })
                         .child(crate::keys::cap(key, palette, mono.clone()))
-                        .child(*name),
+                        .child(*name)
+                        // Putting the deck away has to be reachable without
+                        // knowing a key, so hide is pressed here as well.
+                        .when(*key == "h", |this| {
+                            this.cursor_pointer()
+                                .hover(|this| this.bg(paint(palette.wash)))
+                                .on_click(cx.listener(|deck, _, window, cx| {
+                                    deck.on_hide(&Hide, window, cx);
+                                }))
+                        }),
                     cx,
                 )
             })
@@ -5354,43 +5488,33 @@ impl DeckView {
         crate::mac::step_back();
     }
 
-    fn submit_review(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        crate::usage::record_soon(crate::usage::Count::Review);
-        let found = self.follow_the_files();
-        let comments: Vec<deck_core::Comment> = self
-            .remarks
-            .iter()
-            .enumerate()
-            .map(|(ix, remark)| {
-                let moved = found.get(&ix).copied();
-                deck_core::Comment {
-                    group: remark.group.to_string(),
-                    ref_id: remark.ref_id.as_ref().map(ToString::to_string),
-                    file: remark.file.clone(),
-                    range: moved.map_or(remark.range, |found| Some(found.range)),
-                    source: moved.map(|found| found.source),
-                    kind: remark.kind,
-                    when: remark.when,
-                    quote: remark.quote.clone(),
-                    text: remark.text.clone(),
-                }
-            })
-            .collect();
-
-        let review = deck_core::Review {
-            v: deck_core::VERSION,
+    /// The review as it stands in this window: every remark the reader has
+    /// written, followed to where its lines are now, with the conversation
+    /// and which file it answers. What [`Self::submit_review`] writes, and
+    /// what the export sheet carries as the deck's comments, built the one
+    /// way so the file somebody is sent says exactly what the review would.
+    ///
+    /// Nothing is written and nothing is put away: the export sheet asks for
+    /// it while the reader is still reading.
+    fn review(&self) -> deck_core::Review {
+        review_of(
+            &self.remarks,
+            &self.follow_the_files(),
             // A failed write must leave the conversation intact for retry.
-            transcript: self.conversation.transcript.clone(),
+            self.conversation.transcript.clone(),
+            self.deck.header.id.clone(),
             // Which file this answers, so opening it again knows the review
             // is its own and not an earlier copy's.
-            deck_sha256: self
-                .deck
+            self.deck
                 .packed
                 .as_ref()
                 .map(|packed| packed.origin.sha256.clone()),
-            deck: self.deck.header.id.clone(),
-            comments,
-        };
+        )
+    }
+
+    fn submit_review(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        crate::usage::record_soon(crate::usage::Count::Review);
+        let review = self.review();
 
         // A deck from a file has its review beside the file, or wherever
         // opening it found room for one.
@@ -6115,6 +6239,7 @@ impl DeckView {
                         div()
                             .h_flex()
                             .justify_between()
+                            .items_center()
                             .child(
                                 div()
                                     .text_size(px(10.))
@@ -7051,7 +7176,6 @@ impl DeckView {
     /// The strip along the bottom: what is still coming, and which deck this
     /// is. Quiet, and always in the same place.
     fn render_strip(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        let said = self.remarks.len();
         // How much of the story can be read right now.
         let here = u32::try_from(self.deck.groups().len()).unwrap_or(1);
         let total = self.deck.header.total.unwrap_or(here).max(here).max(1);
@@ -7096,8 +7220,7 @@ impl DeckView {
                     .whitespace_nowrap()
                     // Where you are lives down here with the other counts,
                     // rather than beside the title. The title says what the
-                    // group is about; the strip says where you are in the deck
-                    // and what you have said so far, and those belong together.
+                    // group is about; the strip says where you are in the deck.
                     .child(format!("group {}/{}", self.group_ix + 1, total))
                     .when(walking, |this| {
                         this.child(
@@ -7254,11 +7377,31 @@ impl DeckView {
                     .gap_4()
                     .flex_none()
                     .whitespace_nowrap()
-                    .child(format!(
-                        "{said} comment{}",
-                        if said == 1 { "" } else { "s" }
-                    ))
-                    .child(self.deck.header.id.clone())
+                    // Export, once there is a whole deck to export. It takes
+                    // the place the deck id had, and is drawn as the keys
+                    // beside it are: a cap and a name, so the strip reads as
+                    // one row. The id is in the card the version opens.
+                    .when(self.exportable(), |this| {
+                        this.child(
+                            div()
+                                .id("strip-export")
+                                .flex_none()
+                                .h_flex()
+                                .items_center()
+                                .gap(px(6.))
+                                .cursor_pointer()
+                                .hover(|this| this.text_color(paint(self.palette.fg)))
+                                .on_click(cx.listener(|deck, _, window, cx| {
+                                    deck.open_export(window, cx);
+                                }))
+                                .child(crate::keys::cap(
+                                    "↓",
+                                    &self.palette,
+                                    cx.theme().mono_font_family.clone(),
+                                ))
+                                .child("export"),
+                        )
+                    })
                     // Which deck is running. Asked for because there was no way
                     // to tell from inside the window, and the first thing
                     // anybody reporting a bug has to answer is which version
@@ -7320,27 +7463,7 @@ impl DeckView {
                                     .bg(paint(self.palette.accent)),
                             )
                             .child(format!("{newer} available"))
-                    }))
-                    // Putting the deck away has to be reachable without
-                    // knowing a key. It sits at the quiet end of the strip
-                    // rather than as a control in the header: it is a way out,
-                    // not something to be tempted by.
-                    .child(
-                        div()
-                            .id("hide")
-                            .px(px(6.))
-                            .py(px(2.))
-                            .rounded(px(4.))
-                            .text_color(paint(self.palette.muted))
-                            .hover(|this| {
-                                this.bg(paint(self.palette.wash))
-                                    .text_color(paint(self.palette.fg))
-                            })
-                            .on_click(cx.listener(|deck, _, window, cx| {
-                                deck.on_hide(&Hide, window, cx);
-                            }))
-                            .child("hide"),
-                    ),
+                    })),
             )
     }
 
@@ -8480,6 +8603,8 @@ use crate::pane::SPINE;
 impl Render for DeckView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         self.settle_said_light();
+        #[cfg(debug_assertions)]
+        self.debug_sheet(window, cx);
         // The dock, a key's card, and a key lit on the dock all move on their
         // own clock.
         let hit = self
@@ -8867,11 +8992,16 @@ impl Render for DeckView {
             // element on mouse down. So the keys come back exactly when the
             // caret leaves the box, and go away exactly when it returns.
             //
-            // Nor while the notes are up. They are a card over the deck, and a
-            // key matched up the focus chain would otherwise reach through it:
-            // `s` sent the review, `c` opened a comment under the card.
+            // Nor while the notes or the export sheet are up. They are cards
+            // over the deck, and a key matched up the focus chain would
+            // otherwise reach through them: `s` sent the review, `c` opened a
+            // comment under the card.
             .when(
-                !typing && !self.notes_fade.on() && !self.quitting && !self.explaining,
+                !typing
+                    && !self.notes_fade.on()
+                    && !self.quitting
+                    && !self.explaining
+                    && self.export.is_none(),
                 |this| this.key_context("Deck"),
             )
             .on_action(cx.listener(Self::on_next))
@@ -8893,6 +9023,7 @@ impl Render for DeckView {
                 if deck.notes_fade.on()
                     || deck.quitting
                     || deck.explaining
+                    || deck.export.is_some()
                     || deck.typing(window, cx)
                 {
                     return;
@@ -9046,6 +9177,7 @@ impl Render for DeckView {
             .children(self.render_notes(cx))
             .children(self.render_quitting(cx))
             .children(self.render_unheard(cx))
+            .children(self.export.as_ref().map(|(sheet, _)| sheet.clone()))
     }
 }
 
@@ -9109,6 +9241,45 @@ fn row_title(group: &Group) -> String {
     crate::load::heading(&out)
 }
 
+/// A review of deck `deck` from the reader's `remarks`, each moved to the
+/// range `found` followed it to when one was found, with the `transcript` of
+/// the walk and the sha256 of the `.deck` file it answers, when it answers
+/// one. The whole of building a review, apart from the window it is built
+/// in, so a test can hold it.
+fn review_of(
+    remarks: &[Remark],
+    found: &std::collections::HashMap<usize, Relocated>,
+    transcript: Vec<deck_core::Moment>,
+    deck: String,
+    deck_sha256: Option<String>,
+) -> deck_core::Review {
+    let comments = remarks
+        .iter()
+        .enumerate()
+        .map(|(ix, remark)| {
+            let moved = found.get(&ix).copied();
+            deck_core::Comment {
+                group: remark.group.to_string(),
+                ref_id: remark.ref_id.as_ref().map(ToString::to_string),
+                file: remark.file.clone(),
+                range: moved.map_or(remark.range, |found| Some(found.range)),
+                source: moved.map(|found| found.source),
+                kind: remark.kind,
+                when: remark.when,
+                quote: remark.quote.clone(),
+                text: remark.text.clone(),
+            }
+        })
+        .collect();
+    deck_core::Review {
+        v: deck_core::VERSION,
+        transcript,
+        deck_sha256,
+        deck,
+        comments,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     #[test]
@@ -9147,6 +9318,48 @@ mod tests {
             when: deck_core::When::Queue,
             kind: deck_core::Kind::Question,
         }
+    }
+
+    /// The review is the remarks as written, each at the range its lines
+    /// were followed to when they moved, with the walk and which file it
+    /// answers: what submitting writes, and what the export sheet carries.
+    #[test]
+    fn a_review_is_the_remarks_followed_to_where_their_lines_are() {
+        let mut pinned = said_about(None, None);
+        pinned.ref_id = Some("g1r1".into());
+        pinned.file = Some(std::path::PathBuf::from("src/a.rs"));
+        pinned.range = Some(LineRange::new(10, 12));
+        pinned.text = "why twice?".into();
+        pinned.kind = deck_core::Kind::MustFix;
+        let loose = said_about(Some((2, 5)), Some(0));
+        let found = std::collections::HashMap::from([(
+            0,
+            Relocated {
+                range: LineRange::new(14, 16),
+                source: deck_core::protocol::Source::Diff,
+            },
+        )]);
+
+        let review = review_of(
+            &[pinned, loose],
+            &found,
+            Vec::new(),
+            "d-1".into(),
+            Some("abc".into()),
+        );
+        assert_eq!(review.deck, "d-1");
+        assert_eq!(review.deck_sha256.as_deref(), Some("abc"));
+        assert_eq!(review.comments.len(), 2);
+        let moved = &review.comments[0];
+        assert_eq!(moved.ref_id.as_deref(), Some("g1r1"));
+        assert_eq!(moved.range, Some(LineRange::new(14, 16)));
+        assert!(moved.source.is_some());
+        assert_eq!(moved.text, "why twice?");
+        assert_eq!(moved.kind, deck_core::Kind::MustFix);
+        let stayed = &review.comments[1];
+        assert_eq!(stayed.range, None);
+        assert!(stayed.source.is_none());
+        assert_eq!(stayed.text, "a remark");
     }
 
     #[test]
@@ -9406,6 +9619,59 @@ mod tests {
             Some("deck::Close"),
             "{quit} never refuses"
         );
+    }
+
+    #[test]
+    fn a_bare_key_acts_only_where_the_deck_claims_the_keyboard() {
+        // The root gives up its context under a card or the export sheet, and
+        // that only holds the deck's keys back if every key bound outside a
+        // context is a chord: a bare letter bound with none would reach
+        // through anything.
+        for binding in bindings() {
+            if binding.predicate().is_some() {
+                continue;
+            }
+            let stroke = binding.keystrokes().first().expect("a keystroke");
+            let held = stroke.modifiers();
+            assert!(
+                held.platform || held.control || held.alt,
+                "{} is bound everywhere with no modifier",
+                stroke.unparse()
+            );
+        }
+    }
+
+    #[test]
+    fn tab_and_space_move_and_press_only_on_the_export_sheet() {
+        // The sheet's keyboard path is tab to a control and space to press
+        // it. Bound anywhere else they would act under it, or on the deck;
+        // and no letter is bound on the sheet at all.
+        let every: Vec<_> = bindings()
+            .into_iter()
+            .chain(crate::export_sheet::bindings())
+            .collect();
+        for binding in &every {
+            let key = binding.keystrokes()[0].unparse();
+            let context = binding.predicate().map(|it| it.to_string());
+            if matches!(key.as_str(), "tab" | "shift-tab" | "space") {
+                assert_eq!(context.as_deref(), Some("DeckExport"), "{key}");
+            }
+            if context.as_deref() == Some("DeckExport") {
+                let stroke = &binding.keystrokes()[0];
+                assert!(
+                    stroke.key().chars().count() > 1,
+                    "{key} is a letter on the export sheet"
+                );
+            }
+        }
+        for key in ["tab", "shift-tab", "space"] {
+            assert!(
+                every
+                    .iter()
+                    .any(|binding| binding.keystrokes()[0].unparse() == key),
+                "{key} is bound"
+            );
+        }
     }
 
     #[test]

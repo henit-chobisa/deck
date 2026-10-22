@@ -1055,33 +1055,16 @@ fn export(asked: &Exporting) -> anyhow::Result<PathBuf> {
         None => Vec::new(),
     };
 
-    // A file is opened and scanned; a directory is packed first, exactly as
-    // `deck pack` packs it. Either way what goes into the page is what would
-    // go into a `.deck`, and it is refused in pack's words.
-    let options = deck_cli::pack::Options {
-        allow: asked.allow.clone(),
-        allow_missing: asked.allow_missing,
-        ..deck_cli::pack::Options::default()
-    };
-    let packing = if asked.deck.is_file() {
-        if asked.allow_missing {
-            eprintln!(
-                "deck: --allow-missing is for a deck directory: a .deck file holds \
-                 whatever it was packed with, and nothing in it can be missing"
-            );
-        }
-        let bytes = std::fs::read(asked.deck)
-            .map_err(|err| anyhow::anyhow!("cannot read {}: {err}", asked.deck.display()))?;
-        let (bundle, ignored) = deck_core::bundle::Bundle::open(&bytes)
-            .map_err(|err| anyhow::anyhow!("{}: {err}", asked.deck.display()))?;
-        for name in &ignored {
-            eprintln!("deck: {name} is from a newer deck, and was left out");
-        }
-        deck_cli::pack::opened(bundle, &options)
-            .map_err(|err| anyhow::anyhow!("{}: {err}", asked.deck.display()))?
-    } else {
-        deck_cli::pack::gather(asked.deck, &options)?
-    };
+    let packing = export_packing(asked.deck, &asked.allow, asked.allow_missing, None)?;
+    // A group that is not there is a typo, not a request for nothing.
+    let count = packing.bundle.groups().map_err(anyhow::Error::msg)?.len();
+    if let Some(n) = groups
+        .iter()
+        .find(|&&n| usize::try_from(n).is_ok_and(|n| n > count))
+    {
+        anyhow::bail!("`{n}` is not a group: this deck has {count}");
+    }
+    let packing = carrying(packing, &groups, asked.comments)?;
     if let Some(why) = packing.refusal() {
         anyhow::bail!(why);
     }
@@ -1089,14 +1072,6 @@ fn export(asked: &Exporting) -> anyhow::Result<PathBuf> {
         eprintln!("deck: {note}");
     }
     let (bundle, name) = (packing.bundle, packing.name);
-    // A group that is not there is a typo, not a request for nothing.
-    let count = bundle.groups().map_err(anyhow::Error::msg)?.len();
-    if let Some(n) = groups
-        .iter()
-        .find(|&&n| usize::try_from(n).is_ok_and(|n| n > count))
-    {
-        anyhow::bail!("`{n}` is not a group: this deck has {count}");
-    }
     let stem = name.trim_end_matches(".deck").to_string();
 
     let (palette, dark, syntax) = export_theme(asked.theme)?;
@@ -1105,35 +1080,17 @@ fn export(asked: &Exporting) -> anyhow::Result<PathBuf> {
         comments: asked.comments,
         dark,
     };
-    let (bytes, file) = match format {
-        Format::Html => (
-            deck_render::export::deck(&bundle, &palette, syntax, &options)
-                .map_err(anyhow::Error::msg)?
-                .into_bytes(),
-            format!("{stem}.html"),
-        ),
-        Format::Pdf => {
-            let shape = if asked.landscape {
-                deck_render::export::Format::Landscape
-            } else {
-                deck_render::export::Format::Portrait
-            };
-            let writing = deck_render::export::Writing {
-                name: name.clone(),
-                // For reviewing the spacing: the 4-point grid and every
-                // box's outline, drawn over the pages.
-                grid: std::env::var("DECK_EXPORT_GRID").as_deref() == Ok("1"),
-            };
-            let (bytes, warnings) =
-                deck_render::export::deck_pdf(&bundle, &palette, syntax, &options, shape, &writing)
-                    .map_err(anyhow::Error::msg)?;
-            // Said before the path, as pack says its notes.
-            for warning in warnings {
-                eprintln!("deck: {warning}");
-            }
-            (bytes, format!("{stem}.pdf"))
-        }
+    let shape = match format {
+        Format::Html => None,
+        Format::Pdf if asked.landscape => Some(deck_render::export::Format::Landscape),
+        Format::Pdf => Some(deck_render::export::Format::Portrait),
     };
+    let (bytes, notices) = written(&bundle, &name, &palette, syntax, &options, shape)?;
+    // Said before the path, as pack says its notes.
+    for notice in notices {
+        eprintln!("deck: {notice}");
+    }
+    let file = format!("{stem}.{}", if shape.is_some() { "pdf" } else { "html" });
     let path = match asked.out {
         Some(out) if out.is_dir() => out.join(&file),
         Some(out) => out.to_path_buf(),
@@ -1141,6 +1098,158 @@ fn export(asked: &Exporting) -> anyhow::Result<PathBuf> {
     };
     deck_cli::pack::write_new(&path, &bytes, asked.force)?;
     Ok(path)
+}
+
+/// What an export of `deck` would carry, packed or opened, scanned, and not
+/// yet refused: the one way to it for `deck export` and the export sheet.
+///
+/// A file is opened and scanned; a directory is packed first, exactly as
+/// `deck pack` packs it. Either way what goes into the page is what would go
+/// into a `.deck`, and it is refused in pack's words.
+///
+/// `review`, when there is one, is carried in place of the review on disk or
+/// in the file: the export sheet hands it the comments a reader has written
+/// in the window and not yet submitted, so they are counted, scanned and
+/// written with the deck. The command has no window, and hands it `None`.
+pub(crate) fn export_packing(
+    deck: &std::path::Path,
+    allow: &[String],
+    allow_missing: bool,
+    review: Option<deck_core::Review>,
+) -> anyhow::Result<deck_cli::pack::Packing> {
+    let options = deck_cli::pack::Options {
+        allow: allow.to_vec(),
+        allow_missing,
+        review,
+        ..deck_cli::pack::Options::default()
+    };
+    if deck.is_file() {
+        if allow_missing {
+            eprintln!(
+                "deck: --allow-missing is for a deck directory: a .deck file holds \
+                 whatever it was packed with, and nothing in it can be missing"
+            );
+        }
+        let bytes = std::fs::read(deck)
+            .map_err(|err| anyhow::anyhow!("cannot read {}: {err}", deck.display()))?;
+        let (bundle, ignored) = deck_core::bundle::Bundle::open(&bytes)
+            .map_err(|err| anyhow::anyhow!("{}: {err}", deck.display()))?;
+        for name in &ignored {
+            eprintln!("deck: {name} is from a newer deck, and was left out");
+        }
+        deck_cli::pack::opened(bundle, &options)
+            .map_err(|err| anyhow::anyhow!("{}: {err}", deck.display()))
+    } else {
+        deck_cli::pack::gather(deck, &options)
+    }
+}
+
+/// `packing` with only the scanner hits an export of `groups` would carry,
+/// with the comments or, when `comments` is false, without them.
+///
+/// The comments are `review.json`, and an export without them leaves it out
+/// whole ([`deck_render::export::deck`]): a token said only in a comment is
+/// nowhere in that file, and refusing it would be refusing over something
+/// the file does not hold. So a hit in `review.json` goes, and the review is
+/// not among what the kept groups are scanned again for.
+///
+/// Choosing groups is choosing what to share, and the file carries only
+/// what [`deck_render::export::only`] keeps of them: a token in a file only
+/// group three points at is not in an export of groups one and two, and
+/// refusing that export would be refusing over something it does not hold.
+///
+/// A hit in a snapshot goes only when no part of its source file is kept.
+/// Scanning the kept lines again would not do: a rule can match one line of
+/// a secret that runs over several — a private key's `BEGIN` line — and a
+/// window kept around another group's lines can leave that line out and
+/// carry the key's body. A hit anywhere else is in a string of the deck's
+/// own files, which goes whole or not at all, so it stands when the kept
+/// files still hold its fingerprint.
+///
+/// The hits themselves are the ones the whole deck was scanned for, so each
+/// is still placed where its author can find it — `deck/g3.json`, not the
+/// `deck/g2.json` it is renumbered to inside.
+///
+/// # Errors
+///
+/// When a part of the bundle does not parse.
+pub(crate) fn carrying(
+    mut packing: deck_cli::pack::Packing,
+    groups: &[u32],
+    comments: bool,
+) -> anyhow::Result<deck_cli::pack::Packing> {
+    const REVIEW: &str = "review.json";
+    if !comments {
+        packing.hits.retain(|hit| hit.entry != REVIEW);
+    }
+    if groups.is_empty() || packing.hits.is_empty() {
+        return Ok(packing);
+    }
+    let mut kept =
+        deck_render::export::only(&packing.bundle, groups).map_err(anyhow::Error::msg)?;
+    if !comments {
+        kept.files.remove(REVIEW);
+    }
+    let index = |bundle: &deck_core::bundle::Bundle| {
+        bundle
+            .files
+            .get("snap/index.json")
+            .and_then(|bytes| serde_json::from_slice::<deck_core::bundle::snap::Index>(bytes).ok())
+            .map(|index| index.files)
+            .unwrap_or_default()
+    };
+    let snapped = index(&packing.bundle);
+    let carried: std::collections::BTreeSet<String> =
+        index(&kept).into_iter().map(|file| file.path).collect();
+    let held: std::collections::BTreeSet<String> = deck_cli::pack::scan_bundle(&kept.files)
+        .into_iter()
+        .map(|hit| hit.fingerprint)
+        .collect();
+    packing.hits.retain(
+        |hit| match snapped.iter().find(|file| file.entry == hit.entry) {
+            Some(file) => carried.contains(&file.path),
+            None => held.contains(&hit.fingerprint),
+        },
+    );
+    Ok(packing)
+}
+
+/// `bundle` written as an export: a PDF in `shape`, or the HTML file when
+/// there is none; and what the person exporting should be told about it.
+///
+/// The bytes and nothing else. Where they go is the caller's: `deck export`
+/// names a path on its command line, and the window asks with the system's
+/// own save dialog. Nothing here writes a file.
+///
+/// # Errors
+///
+/// When the bundle does not pack or a part of it does not parse.
+pub(crate) fn written(
+    bundle: &deck_core::bundle::Bundle,
+    name: &str,
+    palette: &deck_core::theme::Palette,
+    syntax: deck_core::theme::Syntax,
+    options: &deck_render::export::Options,
+    shape: Option<deck_render::export::Format>,
+) -> anyhow::Result<(Vec<u8>, Vec<String>)> {
+    match shape {
+        None => Ok((
+            deck_render::export::deck(bundle, palette, syntax, options)
+                .map_err(anyhow::Error::msg)?
+                .into_bytes(),
+            Vec::new(),
+        )),
+        Some(shape) => {
+            let writing = deck_render::export::Writing {
+                name: name.to_string(),
+                // For reviewing the spacing: the 4-point grid and every
+                // box's outline, drawn over the pages.
+                grid: std::env::var("DECK_EXPORT_GRID").as_deref() == Ok("1"),
+            };
+            deck_render::export::deck_pdf(bundle, palette, syntax, options, shape, &writing)
+                .map_err(anyhow::Error::msg)
+        }
+    }
 }
 
 /// The palette an export is painted in, whether it is dark, and the syntax
@@ -2208,6 +2317,310 @@ mod tests {
                 ..
             }
         ));
+    }
+
+    /// Each choice on the export sheet is the `deck export` command line it
+    /// says it is, and hands the exporter what the command would for it.
+    #[test]
+    fn the_export_sheet_is_the_export_command() {
+        use crate::export_sheet::{Choice, Format as Shown, Layout, Theme};
+        let choices = [
+            Choice::new(3),
+            Choice {
+                format: Shown::Html,
+                comments: false,
+                theme: Theme::Dark,
+                ..Choice::new(3)
+            },
+            Choice {
+                layout: Layout::Landscape,
+                groups: vec![true, false, true],
+                light_cut: true,
+                ..Choice::new(3)
+            },
+            Choice {
+                format: Shown::Html,
+                // Landscape means nothing to the HTML, and is not passed.
+                layout: Layout::Landscape,
+                groups: vec![false, true, false],
+                ..Choice::new(3)
+            },
+        ];
+        for choice in choices {
+            let mut line = vec![
+                "deck".to_string(),
+                "export".to_string(),
+                "d.deck".to_string(),
+            ];
+            line.extend(choice.args());
+            let cli = Cli::try_parse_from(&line).expect("parses");
+            let What::Export {
+                format,
+                landscape,
+                theme,
+                groups,
+                no_comments,
+                ..
+            } = cli.what
+            else {
+                panic!("an export");
+            };
+            let dark = theme != "light";
+            let asked = deck_render::export::Options {
+                groups: match groups.as_deref() {
+                    Some(list) => deck_render::export::groups(list).expect("a list"),
+                    None => Vec::new(),
+                },
+                comments: !no_comments,
+                dark,
+            };
+            assert_eq!(choice.options(dark), asked, "{line:?}");
+            let shape = match format {
+                Some(Format::Pdf) if landscape => Some(deck_render::export::Format::Landscape),
+                Some(Format::Pdf) => Some(deck_render::export::Format::Portrait),
+                _ => None,
+            };
+            assert_eq!(choice.shape(), shape, "{line:?}");
+            assert_eq!(theme, choice.theme().flag(), "{line:?}");
+        }
+        // The light cut is `--theme light`, whatever the theme row says.
+        let cut = Choice {
+            light_cut: true,
+            theme: Theme::Window,
+            ..Choice::new(1)
+        };
+        assert_eq!(cut.theme(), Theme::Light);
+    }
+
+    /// Choosing groups is choosing what to share: a secret in a file only a
+    /// group left out points at does not stop the export, and is nowhere in
+    /// what it writes, the `.deck` inside included; a secret in a file a
+    /// group sent still points at stops it, even when the line the scanner
+    /// knows it by is outside the lines that group keeps.
+    #[test]
+    fn an_export_of_some_groups_is_scanned_for_what_it_carries() {
+        let dir = tempfile::tempdir().expect("a temp dir");
+        let lines = |n: u32| -> Vec<String> { (1..=n).map(|n| format!("line {n}")).collect() };
+        // Put together here, so no whole secret is ever in the source.
+        let token = format!("ghp_{}", "a1B2".repeat(9));
+        let mut secret = lines(30);
+        secret[9] = format!("let token = \"{token}\";");
+        let mut key = lines(100);
+        key[4] = format!("-----BEGIN RSA {}-----", "PRIVATE KEY");
+        let body = format!("MIIEpAIBAAKCAQEA{}", "q7Z3".repeat(12));
+        for line in &mut key[5..70] {
+            line.clone_from(&body);
+        }
+        key[70] = format!("-----END RSA {}-----", "PRIVATE KEY");
+        let deck = four_groups(
+            dir.path(),
+            &[
+                ("ok.rs", lines(100)),
+                ("secret.rs", secret),
+                ("key.rs", key),
+            ],
+        );
+        let read = || export_packing(&deck, &[], false, None).expect("packs");
+
+        // Group 1 points at `ok.rs`, group 2 at `secret.rs`: sent alone,
+        // group 1 carries nothing of the token.
+        assert!(!carrying(read(), &[], true).unwrap().hits.is_empty());
+        assert!(carrying(read(), &[1], true).unwrap().hits.is_empty());
+        for (out, needle) in [("one.pdf", "pdf"), ("one.html", "html")] {
+            let out = dir.path().join(out);
+            let path = export(&Exporting {
+                groups: Some("1"),
+                ..exporting(&deck, &out)
+            })
+            .unwrap_or_else(|err| panic!("{needle}: {err:#}"));
+            let bytes = std::fs::read(path).unwrap();
+            let inside = if needle == "pdf" {
+                attached(&bytes)
+            } else {
+                carried(&String::from_utf8(bytes.clone()).unwrap())
+            };
+            assert!(inside.files.contains_key("deck/g1.json"), "{needle}");
+            for (name, file) in inside
+                .files
+                .iter()
+                .map(|(n, f)| (n.clone(), f))
+                .chain([(format!("the {needle} itself"), &bytes)])
+            {
+                assert!(
+                    !file.windows(token.len()).any(|w| w == token.as_bytes()),
+                    "{name} holds the token"
+                );
+                assert!(
+                    !file.windows(9).any(|w| w == b"secret.rs"),
+                    "{name} names the file"
+                );
+            }
+        }
+
+        // Group 3 points into the key's body, past the twenty lines kept
+        // either side of what it points at, and group 4 at its BEGIN line.
+        // Sent without group 4, the body still goes: refused.
+        let err = export(&Exporting {
+            groups: Some("3"),
+            ..exporting(&deck, &dir.path().join("three.pdf"))
+        })
+        .expect_err("refused");
+        assert!(err.to_string().contains("private-key"), "{err:#}");
+        assert!(!dir.path().join("three.pdf").exists());
+    }
+
+    /// A secret said only in a comment goes with the comments: an export
+    /// with `--no-comments` leaves the review out whole, so it carries
+    /// nothing to refuse, of every group or of some; with the comments it is
+    /// refused, both ways.
+    #[test]
+    fn a_secret_in_a_comment_stops_only_an_export_with_the_comments() {
+        let dir = tempfile::tempdir().expect("a temp dir");
+        // Put together here, so no whole secret is ever in the source.
+        let token = format!("ghp_{}", "a1B2".repeat(9));
+        let mut files = std::collections::BTreeMap::new();
+        files.insert(
+            "deck/deck.json".to_string(),
+            br#"{"v":1,"id":"d-1","title":"Said in passing"}"#.to_vec(),
+        );
+        for n in 1..=2 {
+            let group = serde_json::json!({ "id": format!("g{n}"), "ord": n, "say": "look" });
+            files.insert(format!("deck/g{n}.json"), group.to_string().into_bytes());
+        }
+        let review = serde_json::json!({
+            "v": 1, "deck": "d-1", "comments": [],
+            "transcript": [
+                { "at_ms": 1000, "what": "wrote", "group": "g1", "text": format!("use {token}") },
+            ],
+        });
+        files.insert("review.json".to_string(), review.to_string().into_bytes());
+        let bundle = deck_core::bundle::Bundle {
+            manifest: deck_core::bundle::Manifest {
+                container: deck_core::bundle::CONTAINER,
+                protocol: 1,
+                created: "2026-10-22T09:30:00Z".to_string(),
+                generator: "deck test".to_string(),
+                repo: None,
+                entries: std::collections::BTreeMap::new(),
+                allowed: Vec::new(),
+            },
+            files,
+        };
+        let deck = dir.path().join("said.deck");
+        std::fs::write(&deck, bundle.pack().expect("packs")).expect("writes");
+
+        for (groups, name) in [(None, "every"), (Some("1"), "one")] {
+            let out = dir.path().join(format!("{name}.pdf"));
+            let path = export(&Exporting {
+                groups,
+                comments: false,
+                ..exporting(&deck, &out)
+            })
+            .unwrap_or_else(|err| panic!("{name} without comments: {err:#}"));
+            let bytes = std::fs::read(path).unwrap();
+            // The PDF's own streams are compressed, so its bytes would never
+            // show the token whatever it held; the `.deck` it carries is
+            // read back whole, and that is where a comment would travel.
+            let carried = attached(&bytes);
+            assert!(!carried.files.contains_key("review.json"), "{name}");
+            assert!(
+                !carried
+                    .files
+                    .values()
+                    .any(|file| file.windows(token.len()).any(|w| w == token.as_bytes())),
+                "{name}: the .deck inside holds the token"
+            );
+
+            let out = dir.path().join(format!("{name}-said.pdf"));
+            let err = export(&Exporting {
+                groups,
+                ..exporting(&deck, &out)
+            })
+            .expect_err("refused with the comments");
+            assert!(err.to_string().contains("github-pat"), "{name}: {err:#}");
+            assert!(!out.exists(), "{name}");
+        }
+    }
+
+    /// A deck folder in `dir`, written against a project of `files`: four
+    /// groups, pointing at `ok.rs`, `secret.rs`, the middle of `key.rs` and
+    /// its fifth line.
+    fn four_groups(dir: &std::path::Path, files: &[(&str, Vec<String>)]) -> PathBuf {
+        let project = dir.join("project");
+        std::fs::create_dir_all(&project).expect("a project");
+        for (name, lines) in files {
+            std::fs::write(project.join(name), lines.join("\n") + "\n").expect("written");
+        }
+        let root = dir.join("d-1.deck");
+        std::fs::create_dir_all(&root).expect("a deck folder");
+        let header = serde_json::json!({
+            "v": 1, "id": "d-1", "title": "Some of it", "cwd": project,
+        });
+        std::fs::write(root.join("deck.json"), header.to_string()).expect("a header");
+        for (n, (file, first, last)) in [
+            ("ok.rs", 40, 42),
+            ("secret.rs", 9, 11),
+            ("key.rs", 60, 62),
+            ("key.rs", 4, 6),
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            let group = serde_json::json!({
+                "id": format!("g{}", n + 1),
+                "ord": n + 1,
+                "say": "look",
+                "refs": [{ "id": format!("g{}r1", n + 1), "file": file, "range": [first, last] }],
+            });
+            std::fs::write(root.join(format!("g{}.json", n + 1)), group.to_string())
+                .expect("a group");
+        }
+        root
+    }
+
+    /// The `.deck` an HTML export carries, taken back out of it.
+    fn carried(html: &str) -> deck_core::bundle::Bundle {
+        let open = "<script type=\"application/x-deck\" id=\"deck\">";
+        let start = html.find(open).expect("the deck is embedded") + open.len();
+        let end = start + html[start..].find("</script>").expect("closed");
+        let value = |c: u8| match c {
+            b'A'..=b'Z' => c - b'A',
+            b'a'..=b'z' => c - b'a' + 26,
+            b'0'..=b'9' => c - b'0' + 52,
+            b'+' => 62,
+            b'/' => 63,
+            _ => panic!("not base64: {c}"),
+        };
+        let clean: Vec<u8> = html[start..end].bytes().filter(|&c| c != b'=').collect();
+        let mut zip = Vec::new();
+        for chunk in clean.chunks(4) {
+            let mut word = 0u32;
+            for (ix, &c) in chunk.iter().enumerate() {
+                word |= u32::from(value(c)) << (18 - 6 * ix);
+            }
+            zip.extend_from_slice(&word.to_be_bytes()[1..chunk.len()]);
+        }
+        deck_core::bundle::Bundle::open(&zip)
+            .expect("the embedded deck opens")
+            .0
+    }
+
+    /// The `.deck` a PDF carries: stored uncompressed, it is the zip from
+    /// its first local header to the end of its stream.
+    fn attached(pdf: &[u8]) -> deck_core::bundle::Bundle {
+        let start = pdf
+            .windows(4)
+            .position(|w| w == b"PK\x03\x04")
+            .expect("a zip in the PDF");
+        let end = start
+            + pdf[start..]
+                .windows(9)
+                .position(|w| w == b"endstream")
+                .expect("the stream ends");
+        let zip = pdf[start..end].trim_ascii_end();
+        deck_core::bundle::Bundle::open(zip)
+            .expect("the attached deck opens")
+            .0
     }
 
     /// A `.deck` file written by hand, holding `say` as its one group's

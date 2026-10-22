@@ -212,6 +212,79 @@ pub fn step_back() {
     before.activateWithOptions(NSApplicationActivationOptions::empty());
 }
 
+/// Where the save panel's answer arrives: the path chosen, or `None` for
+/// Cancel.
+pub type SaveAnswer = futures::channel::oneshot::Receiver<Option<std::path::PathBuf>>;
+
+/// Ask where to save a file, with the system's save panel run as a sheet on
+/// `window`: `name` offered, opening in `directory`. The answer arrives on
+/// the receiver — the path chosen, or `None` for Cancel.
+///
+/// With it comes a way to end the sheet from the deck, for a reader who
+/// stops waiting on it: ended, it answers as Cancel would, to a receiver
+/// nobody may be holding any more. Called after the panel has answered, it
+/// does nothing, since the sheet is no longer on the window.
+///
+/// A sheet is at the deck's own level and holds the keyboard while it is
+/// there. Deck is brought forward first, so the sheet is in front of
+/// whatever the reader was in.
+///
+/// `None` when there is no native window to hang it from, for the caller to
+/// ask some other way.
+pub fn save_panel(
+    window: &Window,
+    directory: &std::path::Path,
+    name: &str,
+) -> Option<(SaveAnswer, Box<dyn FnOnce()>)> {
+    use objc2_app_kit::{NSModalResponse, NSModalResponseOK, NSSavePanel};
+    use objc2_foundation::{NSString, NSURL};
+
+    let main = objc2::MainThreadMarker::new()?;
+    let parent = ns_window(window)?;
+    let panel = NSSavePanel::savePanel(main);
+    let folder = NSString::from_str(&directory.to_string_lossy());
+    panel.setDirectoryURL(Some(&NSURL::fileURLWithPath_isDirectory(&folder, true)));
+    panel.setNameFieldStringValue(&NSString::from_str(name));
+    panel.setCanCreateDirectories(true);
+
+    let (answer, answered) = futures::channel::oneshot::channel();
+    // Taken once: the handler is called once, and holding the sender in a
+    // cell lets a closure AppKit may call by shared reference send it.
+    let answer = std::cell::Cell::new(Some(answer));
+    let asked = panel.clone();
+    let handler = block2::RcBlock::new(move |response: NSModalResponse| {
+        let path = (response == NSModalResponseOK)
+            .then(|| asked.URL())
+            .flatten()
+            .and_then(|url| url.path())
+            .map(|path| std::path::PathBuf::from(path.to_string()));
+        if let Some(answer) = answer.take() {
+            let _ = answer.send(path);
+        }
+    });
+    // `activate` is macOS 14's, and the old way is deprecated there.
+    let app = NSApplication::sharedApplication(main);
+    if app.respondsToSelector(sel!(activate)) {
+        app.activate();
+    } else {
+        NSRunningApplication::currentApplication()
+            .activateWithOptions(NSApplicationActivationOptions::empty());
+    }
+    parent.makeKeyAndOrderFront(None);
+    panel.beginSheetModalForWindow_completionHandler(&parent, &handler);
+    let put_away = Box::new(move || {
+        // Only the sheet this window has up now, and only if it is this
+        // panel: a panel that has answered is off the window already.
+        if parent.attachedSheet().is_some_and(|sheet| {
+            objc2::rc::Retained::as_ptr(&sheet).cast::<()>()
+                == objc2::rc::Retained::as_ptr(&panel).cast::<()>()
+        }) {
+            parent.endSheet(&panel);
+        }
+    });
+    Some((answered, put_away))
+}
+
 /// Whether `class` is `ancestor` or was made from it.
 fn descends(class: &AnyClass, ancestor: &AnyClass) -> bool {
     let mut at = Some(class);

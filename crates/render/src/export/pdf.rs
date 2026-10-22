@@ -49,20 +49,22 @@ pub struct Writing {
     pub grid: bool,
 }
 
-/// What text is drawn with: the embedded faces, the machine's where they
-/// lack a character ([`super::fallback`]), and what nothing could draw.
+/// What text is drawn with: the embedded faces, and the machine's where they
+/// lack a character ([`super::fallback`]).
+///
+/// What nothing could draw is not kept here: [`coverage`] works it out from
+/// the pages before anything is written, so that `deck export` and the
+/// sheet can say so, and the writing has nothing left to tell.
 struct Pen {
     faces: Faces,
     machine: HashMap<usvg::fontdb::ID, Font>,
-    missing: BTreeSet<char>,
 }
 
 impl Pen {
-    /// Whether a diagram has words Plex cannot set, noting what nothing on
-    /// the machine can.
-    fn diagram_needs_machine(&mut self, svg: &str) -> bool {
+    /// Whether a diagram has words Plex cannot set.
+    fn diagram_needs_machine(&self, svg: &str) -> bool {
         let words: String = svg.chars().filter(|ch| !ch.is_ascii()).collect();
-        fallback::runs(Face::Regular, &words, &mut self.missing)
+        fallback::runs(Face::Regular, &words, &mut BTreeSet::new())
             .iter()
             .any(|(source, _)| matches!(source, Source::Machine(_)))
     }
@@ -102,7 +104,7 @@ fn write(surface: &mut Surface, pen: &mut Pen, face: Face, size: f32, at: Point,
         .filter_map(|feature| feature.parse().ok())
         .collect();
     let mut x = at.x;
-    for (source, range) in fallback::runs(face, text, &mut pen.missing) {
+    for (source, range) in fallback::runs(face, text, &mut BTreeSet::new()) {
         let piece = &text[range];
         let drawn = match source {
             Source::Own => fallback::own(face).map(|shaper| {
@@ -254,8 +256,12 @@ fn fontdb() -> Arc<usvg::fontdb::Database> {
     .clone()
 }
 
-/// `pages` as a PDF of `document`, carrying `bundle`, and what the person
-/// exporting should hear: characters no face on this machine could draw.
+/// `pages` as a PDF of `document`, carrying `bundle`.
+///
+/// What the person exporting should hear about it — a face borrowed from the
+/// machine, a character nothing can draw — is not found out here, after the
+/// fact, but asked beforehand of [`coverage`], so the export sheet can say
+/// it before there is a file.
 ///
 /// # Errors
 ///
@@ -266,12 +272,11 @@ pub fn pdf(
     pages: &[Page],
     bundle: &[u8],
     writing: &Writing,
-) -> Result<(Vec<u8>, Vec<String>), String> {
+) -> Result<Vec<u8>, String> {
     let faces = faces().ok_or("the embedded faces would not load")?;
     let mut pen = Pen {
         faces,
         machine: HashMap::new(),
-        missing: BTreeSet::new(),
     };
     let mut pdf = Pdf::new();
     let date = date(&document.created);
@@ -384,20 +389,96 @@ pub fn pdf(
     }
     pdf.embed_file(file)
         .ok_or("the deck could not be attached")?;
-    let bytes = pdf.finish().map_err(|err| format!("{err:?}"))?;
-    let mut warnings = Vec::new();
-    if !pen.missing.is_empty() {
-        let listed: Vec<String> = pen
-            .missing
+    pdf.finish().map_err(|err| format!("{err:?}"))
+}
+
+/// What the faces will make of `pages`, said before anything is written:
+/// the characters set in a face from this machine, page by page, and those
+/// no face here can draw at all.
+///
+/// Asked of the same pen [`pdf()`] draws with, run over the same text and
+/// the same diagrams without a surface to draw on, so what the export sheet
+/// says before a PDF exists is what the PDF will do. A character is said
+/// once, on the first page it is borrowed for: the second page a run of
+/// Japanese is on does not make it news again.
+pub(super) fn coverage(pages: &[Page]) -> Vec<String> {
+    let mut missing: BTreeSet<char> = BTreeSet::new();
+    // Where each borrowed character was first met, by the part of the
+    // export it is in, in the order they come.
+    let mut borrowed: Vec<(String, Vec<char>)> = Vec::new();
+    let mut seen: BTreeSet<char> = BTreeSet::new();
+    for page in pages {
+        let place = match page.kind {
+            Kind::Cover => "the contents".to_string(),
+            Kind::Group { n, .. } => format!("group {n}"),
+            Kind::Argument { n, .. } => format!("group {n}'s argument"),
+            Kind::Said => "what was said about the deck".to_string(),
+        };
+        let mut found: Vec<char> = Vec::new();
+        for item in &page.items {
+            match item {
+                Item::Text { text, face, .. } => {
+                    for (source, range) in fallback::runs(*face, text, &mut missing) {
+                        if matches!(source, Source::Machine(_)) {
+                            found.extend(
+                                text[range]
+                                    .chars()
+                                    .filter(|ch| !ch.is_whitespace() && !fallback::rides(*ch)),
+                            );
+                        }
+                    }
+                }
+                Item::Svg { svg, .. } => {
+                    // What a diagram's labels borrow, as the PDF asks of
+                    // them: the words Plex cannot set.
+                    let words: String = svg.chars().filter(|ch| !ch.is_ascii()).collect();
+                    for (source, range) in fallback::runs(Face::Regular, &words, &mut missing) {
+                        if matches!(source, Source::Machine(_)) {
+                            found.extend(
+                                words[range]
+                                    .chars()
+                                    .filter(|ch| !ch.is_whitespace() && !fallback::rides(*ch)),
+                            );
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+        found.retain(|ch| seen.insert(*ch));
+        if found.is_empty() {
+            continue;
+        }
+        match borrowed.iter_mut().find(|(at, _)| *at == place) {
+            Some((_, chars)) => chars.extend(found),
+            None => borrowed.push((place, found)),
+        }
+    }
+    let mut said = Vec::new();
+    for (place, chars) in borrowed {
+        let shown: String = chars.iter().take(12).collect::<String>();
+        let more = if chars.len() > 12 { "…" } else { "" };
+        said.push(format!(
+            "{place}: {} — {shown}{more} — {} set in a face from this machine, so the \
+             PDF can look a little different when it is made on another",
+            match chars.len() {
+                1 => "1 character".to_string(),
+                n => format!("{n} characters"),
+            },
+            if chars.len() == 1 { "is" } else { "are" },
+        ));
+    }
+    if !missing.is_empty() {
+        let listed: Vec<String> = missing
             .iter()
             .map(|ch| format!("{ch} (U+{:04X})", u32::from(*ch)))
             .collect();
-        warnings.push(format!(
+        said.push(format!(
             "no face on this machine can draw {}; they show as boxes",
             listed.join(", ")
         ));
     }
-    Ok((bytes, warnings))
+    said
 }
 
 /// The packing day and time, `2026-10-20T09:30:00Z`, as a PDF date.

@@ -1,13 +1,15 @@
 //! What the deck remembers between runs.
 //!
-//! The window's shape, and which way the reader last turned the page. A deck is
+//! The window's shape, which way the reader last turned the page, and the
+//! folder they last saved an export in. A deck is
 //! opened by an agent rather than by the reader, so the reader never gets to
 //! place the window or arrange it before it appears — the only way it can
 //! arrive the way they want it is to arrive the way they last left it.
 //!
-//! Both are written into one file, and each is written without disturbing the
-//! other: the shape is known when the window closes and the turn is known the
-//! moment it is asked for, so the two never arrive together.
+//! All three are written into one file, and each is written without disturbing
+//! the others: the shape is known when the window closes, the turn the moment
+//! it is asked for, and the folder when an export is saved, so they never
+//! arrive together.
 //!
 //! Kept beside the config the app will read later, under `~/.deck`, so there is
 //! one place to look for anything deck has written about you.
@@ -18,7 +20,7 @@ use gpui_kit::{Bounds, Pixels, Point, Size, point, px, size};
 use serde::{Deserialize, Serialize};
 
 /// What was last left behind.
-#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Placement {
     /// The window's shape, in logical pixels.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -32,11 +34,15 @@ pub struct Placement {
     /// Which quarter turn the page was on. See `view::quarter`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     turn: Option<u8>,
+    /// The folder the last export was saved in, where the save dialog opens
+    /// next time. See [`remember_export_dir`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    export_dir: Option<PathBuf>,
 }
 
 impl Placement {
     /// The shape, if all four numbers were written.
-    fn bounds(self) -> Option<Bounds<Pixels>> {
+    fn bounds(&self) -> Option<Bounds<Pixels>> {
         Some(Bounds {
             origin: Point {
                 x: px(self.x?),
@@ -74,6 +80,30 @@ pub fn remembered_turn() -> Option<u8> {
     path().and_then(|path| read_from(&path).turn)
 }
 
+/// The folder the last export was saved in, when it is still there.
+///
+/// Gone is the same as never remembered: a dialog opened on a folder that
+/// was deleted since opens somewhere the platform picks, which is worse than
+/// the deck's own guess.
+#[must_use]
+pub fn remembered_export_dir() -> Option<PathBuf> {
+    path()
+        .and_then(|path| read_from(&path).export_dir)
+        .filter(|dir| dir.is_dir())
+}
+
+/// Remember the folder an export was just saved in.
+///
+/// The folder the reader chose in the save dialog, never one deck chose for
+/// them: there is no folder exports go to, only the last one somebody picked.
+pub fn remember_export_dir(dir: &std::path::Path) {
+    if let Some(path) = path() {
+        let mut placement = read_from(&path);
+        placement.export_dir = Some(dir.to_path_buf());
+        write_placement(&path, &placement);
+    }
+}
+
 /// Everything in the file, or nothing if it will not read.
 fn read_from(path: &std::path::Path) -> Placement {
     std::fs::read_to_string(path)
@@ -98,10 +128,11 @@ pub fn remember_turn(turn: u8) {
 
 /// Write what is given and leave the rest as it was.
 ///
-/// Read, change, write. The two things remembered here are learned at different
-/// moments — the turn when it is asked for, the shape when the window closes —
-/// so a writer that put down everything it knew would put down a default over
-/// something the other one had just saved.
+/// Read, change, write. The three things remembered in the file are learned at
+/// different moments — the turn when it is asked for, the shape when the
+/// window closes, the export folder when an export is saved — so a writer that
+/// put down everything it knew would put down a default over something another
+/// had just saved.
 ///
 /// Failure is silent on purpose. This runs while the window is closing, and a
 /// deck that refused to shut because it could not write a preference would be a
@@ -118,8 +149,12 @@ fn write_to(path: &std::path::Path, bounds: Option<Bounds<Pixels>>, turn: Option
     if turn.is_some() {
         placement.turn = turn;
     }
+    write_placement(path, &placement);
+}
 
-    let Ok(json) = serde_json::to_string_pretty(&placement) else {
+/// `placement` written over the file, quietly: see [`write_to`].
+fn write_placement(path: &std::path::Path, placement: &Placement) {
+    let Ok(json) = serde_json::to_string_pretty(placement) else {
         return;
     };
     if let Some(dir) = path.parent() {
