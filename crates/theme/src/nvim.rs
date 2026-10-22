@@ -193,8 +193,17 @@ fn answer_within(mut command: Command, limit: Duration) -> std::io::Result<Optio
     // with a deadline, and a tenth of the limit's worth of latency is not
     // something anyone waiting on an editor to start will notice.
     loop {
-        if child.try_wait()?.is_some() {
-            break;
+        match child.try_wait() {
+            Ok(Some(_)) => break,
+            Ok(None) => {}
+            // Not knowing whether it has finished is no reason to leave it
+            // running: stopped and waited on like one that ran over, so the
+            // error does not leave a process or a zombie behind it.
+            Err(err) => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Err(err);
+            }
         }
         if Instant::now() >= deadline {
             let _ = child.kill();
