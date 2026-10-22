@@ -89,19 +89,23 @@ fn stepped(ink: Rgb, ground: Rgb, dark_range: (f64, f64), light_range: (f64, f64
 /// A quiet tint of the accent, not a block of it: the bar's job is to say
 /// where, and the words on it must read better than the words around it,
 /// not worse. A strong bar took the words' contrast away, and making the
-/// words whiter to win it back only made them glare. Starting at a fifth of
-/// the accent, it steps back until `ink` reads on it at 7:1, and never goes
-/// under a tenth, where it would stop being seen at all.
+/// words whiter to win it back only made them glare. Starting at 0.22 of the
+/// accent, a little over a fifth, it steps back two hundredths at a time
+/// until `ink` reads on it at 7:1, and never goes under a tenth, where it
+/// would stop being seen at all.
+///
+/// Counted in whole hundredths rather than by taking 0.02 off a float: the
+/// float's steps drift, the sixth of them lands a hair over 0.1, and the
+/// seventh came back as 0.08, under the floor the bar promises.
 #[must_use]
 pub fn lit_bar(ink: Rgb, ground: Rgb, accent: Rgb) -> Rgb {
-    let mut amount = 0.22;
-    loop {
-        let bar = ground.mix(accent, amount);
-        if ink.contrast(bar) >= 7. || amount <= 0.1 {
+    for hundredths in (10_u8..=22).rev().step_by(2) {
+        let bar = ground.mix(accent, f32::from(hundredths) / 100.);
+        if ink.contrast(bar) >= 7. {
             return bar;
         }
-        amount -= 0.02;
     }
+    ground.mix(accent, 0.1)
 }
 
 /// A code chip's ground: just enough off `ground` to see, about 1.15:1, so a
@@ -148,6 +152,17 @@ mod tests {
         // An ink already under the range is left alone.
         let quiet = Rgb::new(0x90, 0x90, 0x90);
         assert_eq!(prose(quiet, ground), quiet);
+    }
+
+    #[test]
+    fn the_lit_bar_never_goes_under_a_tenth() {
+        let (ground, accent) = (Rgb::new(0x24, 0x24, 0x24), Rgb::new(0xfe, 0x80, 0x19));
+        // Ink that reads at 7:1 on the strongest bar takes it.
+        let white = Rgb::new(0xff, 0xff, 0xff);
+        assert_eq!(lit_bar(white, ground, accent), ground.mix(accent, 0.22));
+        // Ink that never does stops at the floor, not a step past it.
+        let grey = Rgb::new(0x60, 0x60, 0x60);
+        assert_eq!(lit_bar(grey, ground, accent), ground.mix(accent, 0.1));
     }
 
     #[test]
