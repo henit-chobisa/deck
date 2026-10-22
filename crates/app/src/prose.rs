@@ -152,6 +152,9 @@ pub struct Look {
     pub tone: deck_core::theme::Rgb,
     /// The space between paragraphs.
     pub spacing: f32,
+    /// Whether the first paragraph is set in the page's full ink: the claim,
+    /// for a reader who drops in and reads only the title and one paragraph.
+    pub lead: bool,
 }
 
 impl Look {
@@ -163,10 +166,14 @@ impl Look {
             leading: deck_render::metrics::PROSE_LEADING,
             // A step off the page's ink, so the group's title is the
             // brightest line in the band and the prose reads as its body.
-            tone: palette.fg.mix(palette.band, 0.22),
-            // Close: a group's paragraphs are beats of one claim, and a wide
-            // gap between them read as separate statements.
+            // The step is a contrast, not a fixed mix: a fixed mix that read
+            // well on one theme left another's prose grey and hard work.
+            tone: reading(palette, (9.5, 11.), (7., 9.)),
+            // A group's paragraphs are beats of one claim, so the gap is
+            // modest; but it is half a line again on top of the leading, so a
+            // new paragraph is never mistaken for the next line of the last.
             spacing: deck_render::metrics::PROSE_SPACING,
+            lead: true,
         }
     }
 
@@ -180,9 +187,59 @@ impl Look {
         Self {
             size: deck_render::metrics::RAIL_SIZE,
             leading: deck_render::metrics::RAIL_LEADING,
-            tone: palette.fg.mix(palette.muted, 0.22),
-            spacing: 18.6 * 0.42,
+            tone: reading(palette, (8.5, 9.5), (7., 8.)),
+            spacing: 8.,
+            lead: false,
         }
+    }
+}
+
+/// The prose's ink: the page's own, stepped toward the ground until its
+/// contrast falls inside the range for this kind of theme, `dark` or `light`.
+///
+/// Full ink on a dark ground is around 13:1, and that much glares: the eye
+/// sees the letters bloom. Much under 7:1 and a tired reader works for every
+/// word. An ink already inside the range, or under it, is kept as it is.
+fn reading(palette: &Palette, dark: (f64, f64), light: (f64, f64)) -> deck_core::theme::Rgb {
+    let ground = palette.band;
+    let (low, high) = if ground.is_dark() { dark } else { light };
+    if palette.fg.contrast(ground) <= high {
+        return palette.fg;
+    }
+    // The contrast falls as the ink moves toward the ground: find the least
+    // step that brings it to the top of the range.
+    let (mut near, mut far) = (0f32, 1f32);
+    for _ in 0..24 {
+        let mid = f32::midpoint(near, far);
+        if palette.fg.mix(ground, mid).contrast(ground) > high {
+            near = mid;
+        } else {
+            far = mid;
+        }
+    }
+    let ink = palette.fg.mix(ground, far);
+    if ink.contrast(ground) < low {
+        palette.fg
+    } else {
+        ink
+    }
+}
+
+/// The bar a picked sentence is drawn on, and how strong it is.
+///
+/// A quiet tint of the accent, not a block of it: the bar's job is to say
+/// where, and the words on it must read better than the words around it,
+/// not worse. A strong bar took the words' contrast away, and making the
+/// words whiter to win it back only made them glare. Starting at a fifth of
+/// the accent, it steps back until the page's ink reads on it at 7:1.
+fn lit_bar(palette: &Palette) -> deck_core::theme::Rgb {
+    let mut amount = 0.22;
+    loop {
+        let bar = palette.band.mix(palette.accent, amount);
+        if palette.fg.contrast(bar) >= 7. || amount <= 0.1 {
+            return bar;
+        }
+        amount -= 0.02;
     }
 }
 
@@ -195,11 +252,30 @@ pub fn render_look(
     picking: &Picking,
     look: Look,
 ) -> impl IntoElement {
-    div().v_flex().gap(px(look.spacing)).children(
-        paragraphs
-            .into_iter()
-            .map(|para| render_paragraph(para, palette, mono.clone(), picking, look)),
-    )
+    // While the voice is reading, the paragraphs it is not in step back, so
+    // the eye stays where the voice is. Never otherwise: somebody reading on
+    // their own needs the whole argument at full strength.
+    let voiced = picking.heard.iter().any(|(_, level)| *level > 0.);
+    div()
+        .v_flex()
+        .gap(px(look.spacing))
+        .children(paragraphs.into_iter().enumerate().map(|(ix, para)| {
+            let heard = para.tokens.iter().any(|token| {
+                picking
+                    .heard
+                    .iter()
+                    .any(|((from, to), level)| *level > 0. && token.at >= *from && token.at <= *to)
+            });
+            let tone = if look.lead && ix == 0 && !voiced {
+                palette.fg
+            } else if voiced && !heard {
+                // About 5:1: there to be found, not to be read.
+                look.tone.mix(palette.band, 0.35)
+            } else {
+                look.tone
+            };
+            render_paragraph(para, palette, mono.clone(), picking, Look { tone, ..look })
+        }))
 }
 
 /// One paragraph, as a row that wraps between any two of its words.
@@ -210,19 +286,51 @@ fn render_paragraph(
     picking: &Picking,
     look: Look,
 ) -> impl IntoElement {
+    // A tick in the margin beside a paragraph that holds the picked
+    // sentence. A fill alone is lost the moment the reader looks away; the
+    // tick is how they find their place again.
+    let ticked = picking.range.is_some_and(|(from, to)| {
+        let (from, to) = (from.min(to), from.max(to));
+        para.tokens
+            .iter()
+            .any(|token| token.at >= from && token.at <= to)
+    });
+    let dark = palette.band.is_dark();
     div()
+        .relative()
         .flex()
         .flex_wrap()
         .items_center()
+        // Light strokes on a dark ground look thinner than they are, so a
+        // dark theme reads in Plex Sans Text, a step heavier than regular.
+        .when(dark, |this| this.font_family("IBM Plex Sans Text"))
+        .when(ticked, |this| {
+            this.child(
+                div()
+                    .absolute()
+                    .left(px(-9.))
+                    .top(px(2.))
+                    .bottom(px(2.))
+                    .w(px(2.))
+                    .rounded(px(1.))
+                    // Steady, not faded with the bar: moving from one
+                    // sentence to the next in the same paragraph lights a new
+                    // bar, and a tick that went out and came back with it
+                    // flickered beside words the reader had not left.
+                    .bg(paint(palette.accent)),
+            )
+        })
         .text_size(px(look.size))
-        // Each word stands in its line with `LIT_INSET` of clear space
-        // above and below it, so the line's pitch is still `leading`.
-        .line_height(px(look.leading - 2. * LIT_INSET))
+        // A word's painted box is the line, less a point above and below
+        // and the rule's pixel and its match: a lit sentence that wraps is
+        // one shape with a hairline between its lines, and its words have
+        // even room above and below them inside the bar.
+        .line_height(px(word(look.leading)))
         .text_color(paint(look.tone))
         .children(
             para.tokens
                 .into_iter()
-                .map(|token| render_token(token, palette, mono.clone(), picking)),
+                .map(|token| render_token(token, palette, mono.clone(), picking, look)),
         )
 }
 
@@ -236,6 +344,7 @@ fn render_token(
     palette: &Palette,
     mono: SharedString,
     picking: &Picking,
+    look: Look,
 ) -> AnyElement {
     // Every word answers to the pointer: down starts a selection, and the
     // window extends it to whichever word is under the pointer while the
@@ -326,7 +435,7 @@ fn render_token(
                     ))
                     .border_1()
                     .border_color(paint(
-                        palette.accent.mix(palette.band, if on { 0.3 } else { 0.7 }),
+                        palette.accent.mix(palette.band, if on { 0.3 } else { 0.5 }),
                     ))
                     .child(text),
             )
@@ -339,6 +448,17 @@ fn render_token(
         .remarked
         .iter()
         .any(|(from, to)| at >= *from && at <= *to);
+    // The bar a picked sentence is drawn on, at full light, and the ink that
+    // reads on it. The prose's own tone is set a step off the page's ink so
+    // the title leads; on the bar that step made the words the very ones
+    // you picked hard to read, so lit words take the page's own ink, the
+    // title's. It is lifted only if a theme's ink does not reach the plain
+    // legible ratio on the bar; asking for more turned it white, which
+    // glared on the warm bar.
+    let firm = lit_bar(palette);
+    let ink = palette.fg;
+    // The point of clear space above and below each word's box.
+    let inset = 1.;
     let wrap = move |inner: AnyElement| {
         // Two boxes. The outer one is the word's whole share of its line,
         // and takes the pointer, so there is no dead strip between lines.
@@ -350,20 +470,22 @@ fn render_token(
                 // and not notice, which reads as the click having done
                 // nothing — and a reader who thinks nothing happened does
                 // not try again.
-                let firm = palette.accent.mix(palette.band, 0.55);
                 // The bar starts a little before its first word, as far
                 // as the space after its last word reaches past the end,
                 // so the words sit inside it rather than against its edge.
                 // Pulled left by as much as it is padded, so lighting a
                 // sentence moves no word.
                 this.bg(paint(palette.band.mix(firm, lit)))
+                    // The words come up with the bar, from the prose's tone
+                    // to the page's ink, rather than switching halfway.
+                    .text_color(paint(look.tone.mix(ink, lit)))
                     .when(first, |this| {
-                        this.ml(px(-LIT_LEAD)).pl(px(LIT_LEAD)).rounded_l(px(4.))
+                        this.ml(px(-LIT_LEAD)).pl(px(LIT_LEAD)).rounded_l(px(3.))
                     })
-                    .when(last, |this| this.rounded_r(px(4.)))
+                    .when(last, |this| this.rounded_r(px(3.)))
             })
             .when(lit <= 0. && heard > 0., |this| {
-                this.bg(paint(palette.band.mix(palette.accent, 0.2 * heard)))
+                this.bg(paint(palette.band.mix(palette.accent, 0.09 * heard)))
             })
             // Something was said about these words. Underlined rather than
             // filled: the ground is already doing two jobs here — what is
@@ -384,10 +506,14 @@ fn render_token(
             // a bar set in its line, not the whole height of it. Painted
             // edge to edge, a sentence that wraps became one block, and a
             // single line looked sliced off at the top and bottom.
-            .my(px(LIT_INSET))
+            .my(px(inset))
             .border_b_1()
             .border_color(if remarked {
-                paint(palette.comment)
+                paint(if lit > 0.5 {
+                    palette.comment
+                } else {
+                    palette.comment.mix(palette.band, 0.25)
+                })
             } else {
                 // Transparent, not the band's colour.
                 //
@@ -420,24 +546,38 @@ fn render_token(
                 .child(
                     div()
                         .font_family(mono)
-                        .text_size(px(deck_render::metrics::CHIP_SIZE))
-                        .px(px(4.))
+                        // 0.88 of the prose: the code face's x-height is
+                        // taller, so at the prose's size its words read
+                        // bigger than the sentence they sit in.
+                        .text_size(px((look.size * 0.88 * 10.).round() / 10.))
+                        // Exactly the word's box, padding and all, so a chip
+                        // in a lit sentence sits inside the bar instead of
+                        // standing out of it above and below.
+                        .line_height(px(word(look.leading) - 2.))
+                        .px(px(3.))
                         .py(px(1.))
                         .rounded(px(3.))
-                        .bg(paint(palette.wash))
+                        .bg(paint(chip(palette)))
                         .child(text),
                 )
                 .child(trailing)
                 .into_any_element()
         }
+        // Plex's own semibold, in the page's full ink. Named, because a dark
+        // theme's prose is in Plex Sans Text, which has no semibold.
         Some(Mark::Strong) => div()
+            .font_family("IBM Plex Sans")
             .font_semibold()
+            .text_color(paint(palette.fg))
             .child(SharedString::from(token.text))
             .into_any_element(),
-        // The accent, not italics. Emphasis in a deck means "this is the
-        // word to look at", and the deck already has a colour for that.
+        // A true italic in the page's full ink. It was the accent, which
+        // put orange on the line being read: orange vibrates on a dark
+        // ground at reading size, and it is what deck uses for things that
+        // can be pressed, so an emphasised word looked like a link.
         Some(Mark::Emphasis) => div()
-            .text_color(paint(palette.accent))
+            .italic()
+            .text_color(paint(palette.fg))
             .child(SharedString::from(token.text))
             .into_any_element(),
         None | Some(Mark::Pane) => div()
@@ -446,8 +586,28 @@ fn render_token(
     })
 }
 
-/// The clear space above and below a lit sentence's bar, inside its line.
-const LIT_INSET: f32 = 3.;
+/// The height of a word's painted box in a line `leading` high: a point of
+/// clear space above and below, and the rule's pixel and its match above.
+fn word(leading: f32) -> f32 {
+    leading - 4.
+}
+
+/// A code chip's ground: just enough off the page to see, about 1.15:1, so
+/// a sentence with three names in it does not turn into a row of blocks.
+/// Worked out from the page rather than taken from the theme's wash, which
+/// on some themes is the page's own colour and on others a slab.
+fn chip(palette: &Palette) -> deck_core::theme::Rgb {
+    let toward = if palette.band.is_dark() {
+        deck_core::theme::Rgb::new(255, 255, 255)
+    } else {
+        deck_core::theme::Rgb::new(0, 0, 0)
+    };
+    let mut amount = 0.02;
+    while amount < 0.3 && palette.band.mix(toward, amount).contrast(palette.band) < 1.15 {
+        amount += 0.01;
+    }
+    palette.band.mix(toward, amount)
+}
 
 /// How far a lit sentence's bar reaches before its first word: about the
 /// width of the space after its last, which is the bar's margin at that end.

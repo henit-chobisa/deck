@@ -7988,15 +7988,19 @@ impl DeckView {
                             .v_flex()
                             .gap(px(4.))
                             .pt(px(3.))
-                            .pb(px(if moved { 10. } else { 16. }))
+                            // A turn's gap is plainly wider than a paragraph's
+                            // inside it, so where one voice stops is never a
+                            // guess.
+                            .pb(px(if moved { 10. } else { 18. }))
                             .child(
                                 div()
                                     .h_flex()
                                     .justify_between()
                                     .items_center()
                                     .gap(px(8.))
-                                    .font_family(mono.clone())
-                                    .text_size(px(9.))
+                                    // Who and where, in the reading face: set
+                                    // in mono, a label looked like code.
+                                    .text_size(px(11.))
                                     .text_color(paint(sunk(palette.muted)))
                                     .child(
                                         div().min_w_0().truncate().child(SharedString::from(meta)),

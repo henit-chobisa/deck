@@ -63,6 +63,7 @@ impl Render for NotesBody {
             leading: 19.5,
             tone: palette.fg,
             spacing: 20.5 * 0.42,
+            lead: false,
         };
         let prose = |text: &str| {
             crate::prose::render_look(
