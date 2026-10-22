@@ -787,6 +787,15 @@ pub struct DeckView {
     /// The animation carrying a pane back to its range, while one is running.
     /// Dropping it stops it, which is what should happen if another starts.
     gliding: Task<()>,
+    /// A pane whose values wait for the glide carrying it to finish.
+    ///
+    /// The narration pointed at lines off screen that hold a value, so the
+    /// pane travels to them — and a value opening while the pane travels is
+    /// two motions at once: the code below the value sliding down while the
+    /// whole pane slides up, at different speeds, with the lines the sentence
+    /// is about moving through both. One thing at a time. The pane arrives,
+    /// then the value opens where the reader is already looking.
+    values_after_glide: Option<usize>,
     /// How each row's width is shared between the panes standing in it.
     ///
     /// One entry per pane rather than one per column: a seam moves width
@@ -1207,6 +1216,7 @@ impl DeckView {
             folded,
             drifting: None,
             gliding: Task::ready(()),
+            values_after_glide: None,
             tailing: Task::ready(()),
             controlling: Task::ready(()),
             spread: false,
@@ -2496,9 +2506,6 @@ impl DeckView {
                     code.point_at(want);
                     moved = true;
                 }
-                // The first time the narration reaches a pane's values, they
-                // come out, and stay.
-                code.follow_values();
                 continue;
             }
             if let Some(chart) = pane.chart_mut() {
@@ -2527,12 +2534,27 @@ impl DeckView {
         // sight — below a tall range, or somewhere the reader wandered from —
         // lit nothing anybody could see. Not while the reader is holding the
         // pane still: their scroll is theirs until it lapses.
-        if moved
+        let gliding = if moved
             && !self.live.reader_holds()
             && let Some(owner) = owner
             && let Some(target) = self.panes[owner].code().and_then(Pane::point_offset)
         {
             self.glide(owner, target, cx);
+            Some(owner)
+        } else {
+            None
+        };
+        // The first time the narration reaches a pane's values, they come out,
+        // and stay: at the same moment as the light on the lines, when those
+        // lines are already in view, and once the pane has got there when it
+        // had to travel. Measured before they open, so the glide is aimed at
+        // where the lines are now and not where the value will push them.
+        for (ix, pane) in self.panes.iter_mut().enumerate() {
+            if Some(ix) == gliding {
+                self.values_after_glide = Some(ix);
+            } else if let Some(code) = pane.code_mut() {
+                code.follow_values();
+            }
         }
         moved
     }
@@ -6883,6 +6905,10 @@ impl DeckView {
     /// a mouse notch is a glide rather than a jump.
     pub fn wheel(&mut self, pane_ix: usize, by: Point<Pixels>, cx: &mut Context<Self>) {
         self.live.pause(PauseReason::Navigation);
+        // The wheel stops a glide where it is, so a value waiting for it to
+        // land would wait for good. The reader has taken the pane; what the
+        // sentence reached comes out now.
+        self.open_held_values();
         let Some(pane) = self.panes.get(pane_ix).and_then(Sheet::code) else {
             return;
         };
@@ -6975,6 +7001,15 @@ impl DeckView {
         self.glide(pane_ix, target, cx);
     }
 
+    /// Open the values of the pane a glide was carrying, now it has stopped.
+    fn open_held_values(&mut self) {
+        if let Some(ix) = self.values_after_glide.take()
+            && let Some(code) = self.panes.get_mut(ix).and_then(Sheet::code_mut)
+        {
+            code.follow_values();
+        }
+    }
+
     /// Carry a pane's list to `target` over a few frames.
     #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
     fn glide(&mut self, pane_ix: usize, target: Pixels, cx: &mut Context<Self>) {
@@ -6993,6 +7028,7 @@ impl DeckView {
         self.drifting = None;
 
         let Some(pane) = self.panes.get(pane_ix).and_then(Sheet::code) else {
+            self.open_held_values();
             return;
         };
         let scroll = pane.scroll();
@@ -7020,8 +7056,11 @@ impl DeckView {
                 };
                 let y = from.y + (target - from.y) * eased;
 
-                let moved = view.update(cx, |_, cx| {
+                let moved = view.update(cx, |deck, cx| {
                     scroll.0.borrow().base_handle.set_offset(point(from.x, y));
+                    if along >= 1. {
+                        deck.open_held_values();
+                    }
                     cx.notify();
                 });
                 if moved.is_err() || along >= 1. {
