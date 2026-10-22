@@ -19,6 +19,7 @@ use deck_core::theme::Palette;
 #[cfg(target_os = "macos")]
 use gpui_kit::component::Root;
 use gpui_kit::component::*;
+use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::*;
 
 use crate::palette::paint;
@@ -53,8 +54,9 @@ pub struct Renewal {
     pub since: Instant,
 }
 
-/// How long a question takes to sink away, one after another.
-const SINK: Duration = Duration::from_millis(1000);
+/// How long a question takes to sink away, one after another: deck's *Light
+/// out*, the pace a thing leaves at everywhere else in the window.
+const SINK: Duration = Duration::from_millis(760);
 const SINK_STAGGER: Duration = Duration::from_millis(120);
 /// How small it gets as it goes under.
 const SHRINK: f32 = 0.86;
@@ -64,9 +66,10 @@ const CLOSE_FROM: f32 = 0.35;
 /// When the first new question arrives, and the ones after it.
 const ARRIVE_AFTER: Duration = Duration::from_millis(520);
 const ARRIVE_STAGGER: Duration = Duration::from_millis(160);
-/// The row makes room for it, then it glides in from the right.
-const ROOM: Duration = Duration::from_millis(840);
-const SLIDE: Duration = Duration::from_millis(1080);
+/// The row makes room for it, then it glides in from the right: both on
+/// deck's *Light in*, the pace a thing arrives at everywhere else.
+const ROOM: Duration = Duration::from_millis(520);
+const SLIDE: Duration = Duration::from_millis(520);
 const SLIDE_AFTER: Duration = Duration::from_millis(160);
 const SLIDE_BY: f32 = 38.;
 
@@ -75,10 +78,11 @@ fn nth(step: Duration, n: usize) -> Duration {
     step.saturating_mul(u32::try_from(n).unwrap_or(u32::MAX))
 }
 
-/// The renewal's curve: it eases in and out, calm at both ends.
-fn calm(t: f32) -> f32 {
+/// The curve deck moves everything on, the renewal and the arrows' slide
+/// included: it eases in and out, gentle at both ends.
+fn smooth(t: f32) -> f32 {
     let t = t.clamp(0., 1.);
-    (1. - (std::f32::consts::PI * t).cos()) / 2.
+    t * t * (3. - 2. * t)
 }
 
 impl Renewal {
@@ -631,7 +635,7 @@ impl Carousel {
         if let Some(glide) = self.glide.get() {
             let done = glide.since.elapsed().as_secs_f32() / GLIDE.as_secs_f32();
             let t = done.min(1.);
-            let eased = 1. - (1. - t).powi(3);
+            let eased = smooth(t);
             let x = glide.from + (glide.to - glide.from) * eased;
             self.handle.set_offset(point(px(x), px(0.)));
             if t >= 1. {
@@ -717,6 +721,40 @@ pub fn next_left(lefts: &[f32], at: f32, max: f32, by: isize) -> f32 {
         .clamp(0., max.max(0.))
 }
 
+/// The size a question is set in, in a pill.
+const PILL_TEXT: f32 = 13.;
+
+/// How wide an arrow is.
+const ARROW: f32 = 36.;
+
+/// Where the row is along its length: whether it goes beyond its window at
+/// all, and if so whether it is at either end.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct Reach {
+    overflows: bool,
+    at_start: bool,
+    at_end: bool,
+}
+
+impl Reach {
+    /// `content` is the row's whole length, `wide` the width the row is drawn
+    /// across and `at` how far along it is, from 0.
+    ///
+    /// Whether it overflows is judged against the window it would have *with*
+    /// the arrows. Judged against the one it has now, taking the arrows away
+    /// would widen the window until the row fitted, bring them back, and the
+    /// row would flicker between the two.
+    fn of(content: f32, wide: f32, at: f32) -> Self {
+        let window = wide - 2. * (ARROW + GAP);
+        let overflows = content > window + 1.;
+        Self {
+            overflows,
+            at_start: at <= 1.,
+            at_end: content - window - at <= 1.,
+        }
+    }
+}
+
 /// The row, as an element, `wide` across. `corner` is the window's own
 /// radius, which every pill and both arrows share, so they read as made of
 /// the same thing.
@@ -754,7 +792,10 @@ pub fn render(
     let spotlight = carousel.spotlight();
     // The hint is quieter than the question it sits beside.
     let tertiary = palette.muted.mix(palette.band, 0.15);
-    let surface = |id: ElementId| {
+    // The size the questions are set in: the arrows' glyphs match it, so
+    // they read as the same hand as the pills beside them.
+    let text = px(PILL_TEXT);
+    let surface = |id: ElementId, live: bool| {
         div()
             .id(id)
             .flex_none()
@@ -765,20 +806,33 @@ pub fn render(
             .border_1()
             .border_color(paint(palette.edge))
             .bg(paint(palette.band))
-            .text_color(paint(palette.fg))
-            .cursor_pointer()
-            .hover(|style| style.bg(paint(palette.wash)))
+            .text_color(paint(if live { palette.fg } else { palette.muted }))
+            .when(live, |this| {
+                this.cursor_pointer()
+                    .hover(|style| style.bg(paint(palette.wash)))
+            })
     };
-    let arrow = |id: &'static str, glyph: &'static str, by: isize| {
+    // An arrow with nowhere to go is drawn quiet, takes no pointer and does
+    // nothing, rather than answering a press with no movement.
+    let arrow = |id: &'static str, glyph: &'static str, by: isize, live: bool| {
         let carousel = carousel.clone();
-        surface(ElementId::from(id))
-            .w(px(36.))
+        surface(ElementId::from(id), live)
+            .w(px(ARROW))
             .justify_center()
-            .text_size(px(15.))
-            .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-            .on_click(move |_, window, cx| carousel.slide(by, window, cx))
+            .text_size(text)
+            .when(live, |this| {
+                this.on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                    .on_click(move |_, window, cx| carousel.slide(by, window, cx))
+            })
             .child(glyph)
     };
+    // Where the row is along its length, to tell which arrows have anywhere
+    // to go. Read from where it was last laid out, one frame behind at most.
+    let reach = Reach::of(
+        f32::from(carousel.handle.bounds().size.width + carousel.handle.max_offset().x),
+        wide,
+        -f32::from(carousel.handle.offset().x),
+    );
     let mut made: Vec<Option<Stateful<Div>>> = row
         .asks
         .iter()
@@ -849,7 +903,7 @@ pub fn render(
             });
             let shown = carousel.said(ix);
             let carousel = carousel.clone();
-            surface(ElementId::from(("ask", ix)))
+            surface(ElementId::from(("ask", ix)), true)
                 .max_w(px(WIDEST + hint_w))
                 .px(px(13.))
                 .text_size(px(13.))
@@ -962,8 +1016,8 @@ pub fn render(
                         let age = since
                             .saturating_sub(ARRIVE_AFTER + nth(ARRIVE_STAGGER, k))
                             .as_secs_f32();
-                        let room = calm(age / ROOM.as_secs_f32());
-                        let slid = calm((age - SLIDE_AFTER.as_secs_f32()) / SLIDE.as_secs_f32());
+                        let room = smooth(age / ROOM.as_secs_f32());
+                        let slid = smooth((age - SLIDE_AFTER.as_secs_f32()) / SLIDE.as_secs_f32());
                         // Pressable only once it has arrived; until then it is
                         // drawn as the pill it is becoming, rounded at both
                         // ends, its words uncovered as the row opens round it.
@@ -999,8 +1053,8 @@ pub fn render(
                     }
                     Part::Sinks(k) => {
                         let under = under(since, k);
-                        let gone = calm(under);
-                        let closed = calm((under - CLOSE_FROM) / (1. - CLOSE_FROM));
+                        let gone = smooth(under);
+                        let closed = smooth((under - CLOSE_FROM) / (1. - CLOSE_FROM));
                         let size = 1. - (1. - SHRINK) * gone;
                         let wide = natural(&ask) * size * (1. - closed);
                         // Gone under: nothing is left on the row, not even a
@@ -1050,7 +1104,9 @@ pub fn render(
         .w(px(wide))
         .h_flex()
         .gap(px(GAP))
-        .child(arrow("ask-back", "\u{2039}", -1))
+        .when(reach.overflows, |this| {
+            this.child(arrow("ask-back", "\u{2039}", -1, !reach.at_start))
+        })
         .child(
             div()
                 .id("asks")
@@ -1063,7 +1119,9 @@ pub fn render(
                 .gap(px(GAP))
                 .children(pills),
         )
-        .child(arrow("ask-on", "\u{203a}", 1))
+        .when(reach.overflows, |this| {
+            this.child(arrow("ask-on", "\u{203a}", 1, !reach.at_end))
+        })
 }
 
 /// How far the questions hang below the deck.
@@ -1282,11 +1340,11 @@ mod tests {
 
     #[test]
     fn the_renewal_is_calm_at_both_ends() {
-        assert_eq!(calm(0.), 0.);
-        assert!((calm(1.) - 1.).abs() < 1e-6);
-        assert!((calm(0.5) - 0.5).abs() < 1e-6);
-        assert!(calm(0.05) < 0.01, "it starts gently");
-        assert!(calm(0.95) > 0.99, "and settles gently");
+        assert_eq!(smooth(0.), 0.);
+        assert!((smooth(1.) - 1.).abs() < 1e-6);
+        assert!((smooth(0.5) - 0.5).abs() < 1e-6);
+        assert!(smooth(0.05) < 0.01, "it starts gently");
+        assert!(smooth(0.95) > 0.99, "and settles gently");
     }
 
     #[test]
