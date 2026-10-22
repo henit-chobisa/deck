@@ -103,31 +103,40 @@ enum Control {
     Export,
 }
 
-/// Ask where to save `name`, opening in `start`: the path chosen, `None` for
-/// Cancel, or why no dialog could be shown.
+/// The answer a save dialog will give: the path chosen, `None` for Cancel,
+/// or why no dialog could be shown.
+type Answer = futures::future::LocalBoxFuture<'static, Result<Option<PathBuf>, String>>;
+
+/// Ask where to save `name`, opening in `start`: the answer, and a way to
+/// take the dialog down when the answer is no longer wanted, where there is
+/// one.
 ///
 /// On a Mac the panel hangs from the deck's own window as a sheet
 /// ([`crate::mac::save_panel`]), since the deck floats above gpui's
-/// free-standing panel; elsewhere it is gpui's `prompt_for_new_path`.
+/// free-standing panel, and the deck can end that sheet itself. Elsewhere it
+/// is gpui's `prompt_for_new_path`, which gives nothing to take the dialog
+/// down with: the wait for it can only be dropped.
 fn ask_where(
     start: &std::path::Path,
     name: &str,
     window: &mut Window,
     cx: &mut App,
-) -> futures::future::LocalBoxFuture<'static, Result<Option<PathBuf>, String>> {
+) -> (Answer, Option<Box<dyn FnOnce()>>) {
     #[cfg(target_os = "macos")]
-    if let Some(answer) = crate::mac::save_panel(window, start, name) {
-        return Box::pin(async move { Ok(answer.await.unwrap_or(None)) });
+    if let Some((answer, put_away)) = crate::mac::save_panel(window, start, name) {
+        let answer: Answer = Box::pin(async move { Ok(answer.await.unwrap_or(None)) });
+        return (answer, Some(put_away));
     }
     let _ = window;
     let answer = cx.prompt_for_new_path(start, Some(name));
-    Box::pin(async move {
+    let answer: Answer = Box::pin(async move {
         match answer.await {
             Ok(Ok(path)) => Ok(path),
             Ok(Err(err)) => Err(format!("the save dialog would not open: {err}")),
             Err(_) => Ok(None),
         }
-    })
+    });
+    (answer, None)
 }
 
 /// What the theme the window is painted in is called, said once at start.
@@ -146,6 +155,10 @@ pub struct Source {
     /// The deck folder, or the `.deck` file it was opened from: what `deck
     /// export` would be handed.
     pub deck: PathBuf,
+    /// The review as it stands in the window, comments not yet submitted and
+    /// all, to carry in place of the one on disk or in the file; `None` when
+    /// nothing has been said in the window, and what is there goes as it is.
+    pub review: Option<deck_core::Review>,
     /// The project it was written against, or the folder deck was started in,
     /// for where the first save dialog opens.
     pub project: Option<PathBuf>,
@@ -256,6 +269,9 @@ pub struct ExportSheet {
     /// groups it runs well past the sheet's edge.
     thumbs: ScrollHandle,
     phase: Phase,
+    /// Takes the save dialog down, while it is up and the deck has a way to:
+    /// for when the reader stops waiting on it from the sheet.
+    put_away: Option<Box<dyn FnOnce()>>,
     reading: Task<()>,
     laying: Task<()>,
     scanning: Task<()>,
@@ -301,6 +317,7 @@ impl ExportSheet {
             drawings: Arc::new(preview::Drawings::new()),
             thumbs: ScrollHandle::new(),
             phase: Phase::Ready,
+            put_away: None,
             reading: Task::ready(()),
             laying: Task::ready(()),
             scanning: Task::ready(()),
@@ -316,13 +333,14 @@ impl ExportSheet {
     /// let through; then lay it out and scan it.
     fn read(&mut self, cx: &mut Context<Self>) {
         let deck = self.source.deck.clone();
+        let review = self.source.review.clone();
         let allow = self.allow.clone();
         let painted = self.window;
         self.reading = cx.spawn(async move |this, cx| {
             let read = cx
                 .background_executor()
                 .spawn(async move {
-                    let packing = crate::cli::export_packing(&deck, &allow, false)?;
+                    let packing = crate::cli::export_packing(&deck, &allow, false, review)?;
                     // What was said about each group, from the document the
                     // contents are written from.
                     let document = export::paged(
@@ -582,9 +600,14 @@ impl ExportSheet {
         let shape = self.choice.shape();
         let pages = shape.map(|_| laid.pages.len());
         self.phase = Phase::Asking;
-        let answer = ask_where(&start, &name, window, cx);
+        let (answer, put_away) = ask_where(&start, &name, window, cx);
+        self.put_away = put_away;
         self.writing = cx.spawn(async move |this, cx| {
-            let asked = match answer.await {
+            let answered = answer.await;
+            // Answered: the dialog has gone by itself, and there is nothing
+            // left to take down.
+            this.update(cx, |sheet, _| sheet.put_away = None).ok();
+            let asked = match answered {
                 Ok(path) => path,
                 Err(err) => {
                     this.update(cx, |sheet, cx| {
@@ -671,14 +694,33 @@ impl ExportSheet {
         matches!(self.phase, Phase::Asking | Phase::Writing)
     }
 
-    /// Escape: the sheet put away, but nothing while a save dialog is up or
-    /// a file is being written. The dialog is answered in the dialog, by its
-    /// own Cancel or Save: dropping the wait from here would leave the dialog
-    /// standing, and the place chosen in it afterwards would be thrown away
-    /// without a word.
+    /// Escape, or a click on the shade: the sheet put away — but not while
+    /// it is waiting on a save dialog or writing a file.
+    ///
+    /// While a dialog is asked for, it stops the waiting instead, and the
+    /// sheet stays up, ready to export again. This can only reach the sheet
+    /// when no dialog is in front of it to take the key — on a Mac the panel
+    /// hangs from the window and takes Escape itself — so it is the way out
+    /// of a dialog that never came up, or one gpui's prompt left hanging,
+    /// which would otherwise hold the sheet up for good. The wait is dropped,
+    /// so an answer that does come later goes nowhere, and on a Mac the panel
+    /// is ended too, if it is still standing, so no dialog is left behind
+    /// whose Save would write nothing.
+    ///
+    /// While a file is being written, nothing: the write is the reader's
+    /// answer already, and what came of it is said on the sheet when it ends.
     fn escape(&mut self, cx: &mut Context<Self>) {
-        if !self.busy() {
-            self.close(cx);
+        match self.phase {
+            Phase::Asking => {
+                self.writing = Task::ready(());
+                if let Some(put_away) = self.put_away.take() {
+                    put_away();
+                }
+                self.phase = Phase::Ready;
+                cx.notify();
+            }
+            Phase::Writing => {}
+            _ => self.close(cx),
         }
     }
 
@@ -780,7 +822,15 @@ impl ExportSheet {
     }
 
     /// What a click on `control` does, and space while it has the ring.
+    ///
+    /// Nothing while a file is asked for or written: a change made then
+    /// would be to a choice the file being written no longer follows, and a
+    /// secret let through then would be let through for an export already
+    /// on its way. Paging the preview is not a press, and goes on.
     fn press(&mut self, control: Control, window: &mut Window, cx: &mut Context<Self>) {
+        if self.busy() {
+            return;
+        }
         let fingerprint = |sheet: &Self, ix: usize| match &sheet.scan {
             Scan::Found(hits) => hits.get(ix).map(|hit| hit.fingerprint.clone()),
             _ => None,
@@ -1915,11 +1965,7 @@ impl Render for ExportSheet {
             .occlude()
             .on_mouse_down(
                 MouseButton::Left,
-                cx.listener(|sheet, _, _, cx| {
-                    if !sheet.busy() {
-                        sheet.close(cx);
-                    }
-                }),
+                cx.listener(|sheet, _, _, cx| sheet.escape(cx)),
             )
             .absolute()
             .top_0()

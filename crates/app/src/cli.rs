@@ -1055,7 +1055,7 @@ fn export(asked: &Exporting) -> anyhow::Result<PathBuf> {
         None => Vec::new(),
     };
 
-    let packing = export_packing(asked.deck, &asked.allow, asked.allow_missing)?;
+    let packing = export_packing(asked.deck, &asked.allow, asked.allow_missing, None)?;
     // A group that is not there is a typo, not a request for nothing.
     let count = packing.bundle.groups().map_err(anyhow::Error::msg)?.len();
     if let Some(n) = groups
@@ -1106,14 +1106,21 @@ fn export(asked: &Exporting) -> anyhow::Result<PathBuf> {
 /// A file is opened and scanned; a directory is packed first, exactly as
 /// `deck pack` packs it. Either way what goes into the page is what would go
 /// into a `.deck`, and it is refused in pack's words.
+///
+/// `review`, when there is one, is carried in place of the review on disk or
+/// in the file: the export sheet hands it the comments a reader has written
+/// in the window and not yet submitted, so they are counted, scanned and
+/// written with the deck. The command has no window, and hands it `None`.
 pub(crate) fn export_packing(
     deck: &std::path::Path,
     allow: &[String],
     allow_missing: bool,
+    review: Option<deck_core::Review>,
 ) -> anyhow::Result<deck_cli::pack::Packing> {
     let options = deck_cli::pack::Options {
         allow: allow.to_vec(),
         allow_missing,
+        review,
         ..deck_cli::pack::Options::default()
     };
     if deck.is_file() {
@@ -2413,7 +2420,7 @@ mod tests {
                 ("key.rs", key),
             ],
         );
-        let read = || export_packing(&deck, &[], false).expect("packs");
+        let read = || export_packing(&deck, &[], false, None).expect("packs");
 
         // Group 1 points at `ok.rs`, group 2 at `secret.rs`: sent alone,
         // group 1 carries nothing of the token.
@@ -2511,13 +2518,17 @@ mod tests {
             })
             .unwrap_or_else(|err| panic!("{name} without comments: {err:#}"));
             let bytes = std::fs::read(path).unwrap();
+            // The PDF's own streams are compressed, so its bytes would never
+            // show the token whatever it held; the `.deck` it carries is
+            // read back whole, and that is where a comment would travel.
+            let carried = attached(&bytes);
+            assert!(!carried.files.contains_key("review.json"), "{name}");
             assert!(
-                !bytes.windows(token.len()).any(|w| w == token.as_bytes()),
-                "{name}: the file holds the token"
-            );
-            assert!(
-                !attached(&bytes).files.contains_key("review.json"),
-                "{name}"
+                !carried
+                    .files
+                    .values()
+                    .any(|file| file.windows(token.len()).any(|w| w == token.as_bytes())),
+                "{name}: the .deck inside holds the token"
             );
 
             let out = dir.path().join(format!("{name}-said.pdf"));

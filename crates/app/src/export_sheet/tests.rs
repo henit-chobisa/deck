@@ -88,7 +88,7 @@ fn noticed(dir: &Path) -> PathBuf {
 fn the_notices_are_the_commands_notices() {
     let dir = tempfile::tempdir().expect("a temp dir");
     let deck = noticed(dir.path());
-    let packing = crate::cli::export_packing(&deck, &[], false).expect("opens");
+    let packing = crate::cli::export_packing(&deck, &[], false, None).expect("opens");
     for (layout, groups) in [
         (Layout::Portrait, vec![true, true, true]),
         (Layout::Landscape, vec![true, true, true]),
@@ -147,7 +147,7 @@ fn the_notices_are_the_commands_notices() {
 fn a_group_left_out_leaves_the_preview_and_the_counts() {
     let dir = tempfile::tempdir().expect("a temp dir");
     let deck = hand_built(dir.path(), &["One.", "Two.", "Three."]);
-    let packing = crate::cli::export_packing(&deck, &[], false).expect("opens");
+    let packing = crate::cli::export_packing(&deck, &[], false, None).expect("opens");
     let all = Choice::new(3);
     let (every, labels, _) = lay(&packing.bundle, painted(), &all, &titles(3)).expect("lays out");
     let some = Choice {
@@ -234,7 +234,7 @@ fn a_secret_stops_the_export_until_it_is_let_through() {
             "Nor here.",
         ],
     );
-    let read = || crate::cli::export_packing(&deck, &[], false).expect("opens");
+    let read = || crate::cli::export_packing(&deck, &[], false, None).expect("opens");
 
     let scan = scan_of(crate::cli::carrying(read(), &[], true));
     let Scan::Found(hits) = &scan else {
@@ -267,8 +267,9 @@ fn a_secret_stops_the_export_until_it_is_let_through() {
 
     // Let through, as `--allow` would: clear, and recorded.
     let fingerprint = hits[0].fingerprint.clone();
-    let allowed = crate::cli::export_packing(&deck, std::slice::from_ref(&fingerprint), false)
-        .expect("opens");
+    let allowed =
+        crate::cli::export_packing(&deck, std::slice::from_ref(&fingerprint), false, None)
+            .expect("opens");
     assert!(allowed.bundle.manifest.allowed.contains(&fingerprint));
     let scan = scan_of(crate::cli::carrying(allowed, &[], true));
     assert!(!blocks(&scan), "{scan:?}");
@@ -276,6 +277,49 @@ fn a_secret_stops_the_export_until_it_is_let_through() {
         model::button(&choice, Some(4), blocks(&scan)).1,
         "Export is on again"
     );
+}
+
+/// Comments the reader wrote in the window and has not sent go with the
+/// sheet's packing: they are counted where the sheet says how much was said,
+/// scanned, and carried in place of the review the file holds.
+#[test]
+fn unsent_comments_are_counted_scanned_and_carried() {
+    let dir = tempfile::tempdir().expect("a temp dir");
+    let token = format!("ghp_{}", "a1B2".repeat(9));
+    let deck = hand_built(dir.path(), &["Nothing here.", "Nor here."]);
+    let unsent: deck_core::Review = serde_json::from_value(serde_json::json!({
+        "v": 1, "deck": "d-1",
+        "comments": [
+            { "group": "g2", "quote": "", "text": "Why here?" },
+            { "group": "g2", "quote": "", "text": format!("It needs {token}.") },
+        ],
+    }))
+    .expect("a review");
+
+    let packing = crate::cli::export_packing(&deck, &[], false, Some(unsent)).expect("opens");
+    let document = export::paged(
+        &packing.bundle,
+        &painted().palette,
+        painted().syntax,
+        &export::Options::default(),
+    )
+    .expect("pages");
+    let remarks: Vec<(u32, usize)> = document
+        .contents
+        .iter()
+        .map(|entry| (entry.n, entry.remarks))
+        .collect();
+    assert_eq!(remarks, [(1, 0), (2, 2)], "the unsent two, on group two");
+
+    let scan = scan_of(crate::cli::carrying(packing.clone(), &[], true));
+    let Scan::Found(hits) = &scan else {
+        panic!("a hit: {scan:?}");
+    };
+    assert_eq!(hits.len(), 1);
+    assert_eq!(hits[0].entry, "review.json");
+    // Left out with the comments, it stops nothing.
+    let without = scan_of(crate::cli::carrying(packing, &[], false));
+    assert!(!blocks(&without), "{without:?}");
 }
 
 /// The dialog offers the name `deck export` would give the file, and opens

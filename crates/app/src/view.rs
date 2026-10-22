@@ -3374,7 +3374,7 @@ impl DeckView {
         self.deck.sealed() && !self.deck.groups().is_empty()
     }
 
-    /// The band's Export button: the export sheet, over the window.
+    /// The strip's Export button: the export sheet, over the window.
     ///
     /// The sheet holds the keyboard while it is up, as the notes card does:
     /// the deck's own keys must not act under it, and its own keys must
@@ -3393,8 +3393,19 @@ impl DeckView {
             .cwd
             .clone()
             .or_else(|| std::env::current_dir().ok());
+        // What the reader has said in this window reaches the deck on disk
+        // only when they submit, and the sheet packs the deck from disk: it
+        // would export, count and scan the comments of the last review sent,
+        // not the ones on screen. So the review as it stands goes with the
+        // sheet, built as submitting builds it, and is packed in place of the
+        // one on disk. A window where nothing has been said yet has nothing
+        // to put there, and leaves a review already on disk, or in the file,
+        // as it is.
+        let review = self.review();
+        let said = !review.comments.is_empty() || !review.transcript.is_empty();
         let source = crate::export_sheet::Source {
             deck,
+            review: said.then_some(review),
             project,
             title: crate::load::heading(&self.deck.header.title),
             titles: self.deck.groups().iter().map(row_title).collect(),
@@ -5477,43 +5488,33 @@ impl DeckView {
         crate::mac::step_back();
     }
 
-    fn submit_review(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        crate::usage::record_soon(crate::usage::Count::Review);
-        let found = self.follow_the_files();
-        let comments: Vec<deck_core::Comment> = self
-            .remarks
-            .iter()
-            .enumerate()
-            .map(|(ix, remark)| {
-                let moved = found.get(&ix).copied();
-                deck_core::Comment {
-                    group: remark.group.to_string(),
-                    ref_id: remark.ref_id.as_ref().map(ToString::to_string),
-                    file: remark.file.clone(),
-                    range: moved.map_or(remark.range, |found| Some(found.range)),
-                    source: moved.map(|found| found.source),
-                    kind: remark.kind,
-                    when: remark.when,
-                    quote: remark.quote.clone(),
-                    text: remark.text.clone(),
-                }
-            })
-            .collect();
-
-        let review = deck_core::Review {
-            v: deck_core::VERSION,
+    /// The review as it stands in this window: every remark the reader has
+    /// written, followed to where its lines are now, with the conversation
+    /// and which file it answers. What [`Self::submit_review`] writes, and
+    /// what the export sheet carries as the deck's comments, built the one
+    /// way so the file somebody is sent says exactly what the review would.
+    ///
+    /// Nothing is written and nothing is put away: the export sheet asks for
+    /// it while the reader is still reading.
+    fn review(&self) -> deck_core::Review {
+        review_of(
+            &self.remarks,
+            &self.follow_the_files(),
             // A failed write must leave the conversation intact for retry.
-            transcript: self.conversation.transcript.clone(),
+            self.conversation.transcript.clone(),
+            self.deck.header.id.clone(),
             // Which file this answers, so opening it again knows the review
             // is its own and not an earlier copy's.
-            deck_sha256: self
-                .deck
+            self.deck
                 .packed
                 .as_ref()
                 .map(|packed| packed.origin.sha256.clone()),
-            deck: self.deck.header.id.clone(),
-            comments,
-        };
+        )
+    }
+
+    fn submit_review(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        crate::usage::record_soon(crate::usage::Count::Review);
+        let review = self.review();
 
         // A deck from a file has its review beside the file, or wherever
         // opening it found room for one.
@@ -9240,6 +9241,45 @@ fn row_title(group: &Group) -> String {
     crate::load::heading(&out)
 }
 
+/// A review of deck `deck` from the reader's `remarks`, each moved to the
+/// range `found` followed it to when one was found, with the `transcript` of
+/// the walk and the sha256 of the `.deck` file it answers, when it answers
+/// one. The whole of building a review, apart from the window it is built
+/// in, so a test can hold it.
+fn review_of(
+    remarks: &[Remark],
+    found: &std::collections::HashMap<usize, Relocated>,
+    transcript: Vec<deck_core::Moment>,
+    deck: String,
+    deck_sha256: Option<String>,
+) -> deck_core::Review {
+    let comments = remarks
+        .iter()
+        .enumerate()
+        .map(|(ix, remark)| {
+            let moved = found.get(&ix).copied();
+            deck_core::Comment {
+                group: remark.group.to_string(),
+                ref_id: remark.ref_id.as_ref().map(ToString::to_string),
+                file: remark.file.clone(),
+                range: moved.map_or(remark.range, |found| Some(found.range)),
+                source: moved.map(|found| found.source),
+                kind: remark.kind,
+                when: remark.when,
+                quote: remark.quote.clone(),
+                text: remark.text.clone(),
+            }
+        })
+        .collect();
+    deck_core::Review {
+        v: deck_core::VERSION,
+        transcript,
+        deck_sha256,
+        deck,
+        comments,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     #[test]
@@ -9278,6 +9318,48 @@ mod tests {
             when: deck_core::When::Queue,
             kind: deck_core::Kind::Question,
         }
+    }
+
+    /// The review is the remarks as written, each at the range its lines
+    /// were followed to when they moved, with the walk and which file it
+    /// answers: what submitting writes, and what the export sheet carries.
+    #[test]
+    fn a_review_is_the_remarks_followed_to_where_their_lines_are() {
+        let mut pinned = said_about(None, None);
+        pinned.ref_id = Some("g1r1".into());
+        pinned.file = Some(std::path::PathBuf::from("src/a.rs"));
+        pinned.range = Some(LineRange::new(10, 12));
+        pinned.text = "why twice?".into();
+        pinned.kind = deck_core::Kind::MustFix;
+        let loose = said_about(Some((2, 5)), Some(0));
+        let found = std::collections::HashMap::from([(
+            0,
+            Relocated {
+                range: LineRange::new(14, 16),
+                source: deck_core::protocol::Source::Diff,
+            },
+        )]);
+
+        let review = review_of(
+            &[pinned, loose],
+            &found,
+            Vec::new(),
+            "d-1".into(),
+            Some("abc".into()),
+        );
+        assert_eq!(review.deck, "d-1");
+        assert_eq!(review.deck_sha256.as_deref(), Some("abc"));
+        assert_eq!(review.comments.len(), 2);
+        let moved = &review.comments[0];
+        assert_eq!(moved.ref_id.as_deref(), Some("g1r1"));
+        assert_eq!(moved.range, Some(LineRange::new(14, 16)));
+        assert!(moved.source.is_some());
+        assert_eq!(moved.text, "why twice?");
+        assert_eq!(moved.kind, deck_core::Kind::MustFix);
+        let stayed = &review.comments[1];
+        assert_eq!(stayed.range, None);
+        assert!(stayed.source.is_none());
+        assert_eq!(stayed.text, "a remark");
     }
 
     #[test]

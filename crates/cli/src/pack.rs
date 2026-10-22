@@ -116,6 +116,17 @@ pub struct Options {
     /// directory that happens to sit inside some other repo is not taken for
     /// part of it. `None` looks as git always does.
     pub ceiling: Option<PathBuf>,
+    /// The review to carry in place of the one on disk, or the one in the
+    /// file: a reader's comments that have not been submitted yet, which the
+    /// export sheet exports, counts and scans as the comments the deck holds.
+    ///
+    /// Put in exactly where a review read from disk would be. From a deck
+    /// folder it is scrubbed and its files pointed at as that review is, so
+    /// a line a comment is about is frozen with the rest; from a `.deck`
+    /// file, or a folder unpacked from one, it is taken as it is, since its
+    /// files are already named as the file names them. `None` packs the
+    /// review that is there, if there is one.
+    pub review: Option<Review>,
 }
 
 impl Default for Options {
@@ -129,6 +140,7 @@ impl Default for Options {
             created: None,
             home: deck_core::home::home(),
             ceiling: None,
+            review: None,
         }
     }
 }
@@ -293,8 +305,12 @@ pub fn gather(deck: &Path, options: &Options) -> anyhow::Result<Packing> {
     }
 
     let review_at = crate::review_path(deck);
-    if review_at.is_file() {
-        let mut review: Review = read_json(&review_at)?;
+    let review = match &options.review {
+        Some(review) => Some(review.clone()),
+        None if review_at.is_file() => Some(read_json::<Review>(&review_at)?),
+        None => None,
+    };
+    if let Some(mut review) = review {
         for comment in &mut review.comments {
             scrub.text(&mut comment.text);
             scrub.text(&mut comment.quote);
@@ -433,6 +449,9 @@ fn regather(dir: &Path, options: &Options) -> anyhow::Result<Packing> {
     let mut left = Vec::new();
     walk(dir, "", &mut files, &mut left)?;
     files.remove("manifest.json");
+    if let Some(review) = &options.review {
+        files.insert("review.json".to_string(), json(review)?);
+    }
     let bundle = Bundle { manifest, files };
     let header = bundle
         .header()
@@ -472,10 +491,18 @@ fn regather(dir: &Path, options: &Options) -> anyhow::Result<Packing> {
 /// already records, or one in `options.allow`. Nothing in it can be
 /// missing, so `allow_missing` has nothing to apply to.
 ///
+/// A review in `options` takes the place of the one the file holds, before
+/// the scan, so what is scanned is what would be carried.
+///
 /// # Errors
 ///
 /// When its header does not parse.
-pub fn opened(bundle: Bundle, options: &Options) -> anyhow::Result<Packing> {
+pub fn opened(mut bundle: Bundle, options: &Options) -> anyhow::Result<Packing> {
+    if let Some(review) = &options.review {
+        bundle
+            .files
+            .insert("review.json".to_string(), json(review)?);
+    }
     let header = bundle.header().map_err(|err| anyhow::anyhow!("{err}"))?;
     let snapped = bundle
         .snapshots()
