@@ -399,11 +399,25 @@ pub(crate) fn strip_comments(text: &str) -> String {
 /// one claims the name. There are a few hundred at most and each is a small
 /// file; a cache would be a second thing to invalidate. Fine for one name — a
 /// list of them goes through [`shelf`] instead.
+///
+/// A name first, from the first manifest that declares it, and only then an
+/// id. That is the order [`shelf`] keeps, which lists by name alone: asked
+/// for a theme the list showed, this answers with the file the list read its
+/// swatch from, even when an earlier extension happens to use that name as
+/// another theme's id. The ids are for the editor's own defaults
+/// ([`default_theme`]), which are known by id because their labels are
+/// translated.
 fn find(label: &str, flavour: Flavour, home: &Path) -> Option<PathBuf> {
-    declared(flavour, home)
-        .into_iter()
-        .find(|theme| theme.name.as_deref() == Some(label) || theme.id.as_deref() == Some(label))
-        .map(|theme| theme.file)
+    let declared = declared(flavour, home);
+    declared
+        .iter()
+        .find(|theme| theme.name.as_deref() == Some(label))
+        .or_else(|| {
+            declared
+                .iter()
+                .find(|theme| theme.id.as_deref() == Some(label))
+        })
+        .map(|theme| theme.file.clone())
 }
 
 /// The theme this flavour shows when nobody has chosen one.
@@ -757,15 +771,18 @@ mod tests {
 
     #[test]
     fn the_shelf_finds_each_theme_where_find_does_and_it_reads() {
-        // One extension with two themes, in a home of its own. The flavour's
-        // bundled themes come along too when it is installed, so only these
-        // two are looked at.
+        // One extension with three themes, in a home of its own. The flavour's
+        // bundled themes come along too when it is installed, so only the
+        // two named for this test are looked at.
         let home = std::env::temp_dir().join(format!("deck-vscode-shelf-{}", std::process::id()));
         let at = home.join(CODE.extensions).join("someone.nord");
         std::fs::create_dir_all(at.join("themes")).unwrap();
         std::fs::write(
             at.join("package.json"),
+            // The first theme's id is the second's name. The list shows
+            // the second by that name, so that is the one asked for by it.
             r#"{ "contributes": { "themes": [
+                { "id": "Shelf Nord", "label": "Another", "path": "./themes/another.json" },
                 { "label": "Shelf Nord", "path": "./themes/nord.json" },
                 { "label": "Shelf Nord Light", "path": "./themes/light.json" }
             ] } }"#,
@@ -788,7 +805,11 @@ mod tests {
 
         assert_eq!(ours.len(), 2, "{ours:?}");
         assert_eq!(ours[0].0, "Shelf Nord");
-        assert_eq!(Some(ours[0].1.clone()), found);
+        assert_eq!(
+            Some(ours[0].1.clone()),
+            found,
+            "a name is found before an id"
+        );
         assert_eq!(
             read.expect("the file is a theme").bg,
             Rgb::from_hex("#2e3440").unwrap()
