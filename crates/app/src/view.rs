@@ -5992,7 +5992,15 @@ impl DeckView {
                                                         .overflow_hidden()
                                                         .text_ellipsis()
                                                         .whitespace_nowrap()
-                                                        .child(own.unwrap_or_else(|| self.deck.title())),
+                                                        // A group written with no title of its own
+                                                        // is headed by its opening sentence, as its
+                                                        // row in the review column is: headed by the
+                                                        // deck's title, it repeated the line above.
+                                                        .child(own.unwrap_or_else(|| {
+                                                            self.group()
+                                                                .map(row_title)
+                                                                .unwrap_or_else(|| self.deck.title())
+                                                        })),
                                                 )
                                                 // How sure the agent is, after the claim it
                                                 // qualifies: bars and the level, and on a rest
@@ -7308,7 +7316,7 @@ impl DeckView {
                     // Where you are lives down here with the other counts,
                     // rather than beside the title. The title says what the
                     // group is about; the strip says where you are in the deck.
-                    .child(format!("group {}/{}", self.group_ix + 1, total))
+                    .child(format!("group {} of {}", self.group_ix + 1, total))
                     .when(walking, |this| {
                         this.child(
                             div()
@@ -7408,8 +7416,8 @@ impl DeckView {
                             .min_w_0()
                             .overflow_hidden()
                             .text_ellipsis()
-                            .text_color(paint(self.palette.muted.mix(self.palette.band, 0.35)))
-                            .child("Your agent can make incorrect claims"),
+                            .text_color(paint(self.palette.muted))
+                            .child("your agent can make incorrect claims"),
                     ),
             )
             // The three keys used most, each with a card on a rest,
@@ -7465,9 +7473,11 @@ impl DeckView {
                     .flex_none()
                     .whitespace_nowrap()
                     // Export, once there is a whole deck to export. It takes
-                    // the place the deck id had, and is drawn as the keys
-                    // beside it are: a cap and a name, so the strip reads as
-                    // one row. The id is in the card the version opens.
+                    // the place the deck id had, and is drawn as the version
+                    // beside it is: a word that brightens under the pointer.
+                    // Not a key cap, because no key opens it, and a cap that
+                    // nothing answers to is a promise the strip cannot keep.
+                    // The id is in the card the version opens.
                     .when(self.exportable(), |this| {
                         this.child(
                             div()
@@ -7481,11 +7491,6 @@ impl DeckView {
                                 .on_click(cx.listener(|deck, _, window, cx| {
                                     deck.open_export(window, cx);
                                 }))
-                                .child(crate::keys::cap(
-                                    "↓",
-                                    &self.palette,
-                                    cx.theme().mono_font_family.clone(),
-                                ))
                                 .child("export"),
                         )
                     })
