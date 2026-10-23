@@ -831,7 +831,7 @@ pub fn render(
             .text_color(paint(if live { palette.fg } else { palette.muted }))
             .when(live, |this| {
                 this.cursor_pointer()
-                    .hover(|style| style.bg(paint(hover_on_band(&palette))))
+                    .hover(|style| style.bg(paint(hover_on_band(palette))))
             })
     };
     // An arrow with nowhere to go is drawn quiet, takes no pointer and does
