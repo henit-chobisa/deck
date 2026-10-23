@@ -273,6 +273,21 @@ impl Paper {
         self.shown = false;
     }
 
+    /// Let go of the native view at once, for a pane that is leaving.
+    ///
+    /// A page is a view of its own, laid over the window, so GPUI's opacity
+    /// cannot fade it; a crossfade would leave it whole over the new group.
+    /// It goes in the frame the step is taken, and the pane that remains is
+    /// only its wash and header, which fade like any other.
+    pub fn release(&mut self) {
+        self.hide();
+        self.view = None;
+        #[cfg(target_os = "windows")]
+        {
+            self.host = None;
+        }
+    }
+
     /// Let what is laid over the window show through: the page goes from whole
     /// at a `cover` of nought to gone at one.
     ///

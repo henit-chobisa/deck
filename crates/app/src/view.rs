@@ -745,18 +745,27 @@ pub struct DeckView {
     /// Whether the thread the window opened with has been recorded: those
     /// turns were there already and never animate.
     entry_primed: std::cell::Cell<bool>,
-    /// How far up the group's own content is: its heading, its prose and its
-    /// panes. Resting whole, so a window that opens on a deck does not fade it
-    /// in. A step to another group dips it to its floor over [`GROUP_FALL_MS`],
-    /// swaps the group there, and brings it back on the card rise.
+    /// How far up the group on screen is. Resting whole, so a window that
+    /// opens on a deck does not fade it in. A step to another group starts it
+    /// at nought and lets it rise over the card rise, while the group that was
+    /// on screen falls in [`Self::outgoing`] over the card fall: the two cross.
     group_fade: crate::pane::Fade,
-    /// The opacity `group_fade` bottoms out at: [`DIP_FLOOR`] for a step, so
-    /// the window is never empty between two groups, and nought for the first
-    /// group landing, where there is nothing on screen to dip from.
-    group_floor: f32,
-    /// The group a step is on its way to, while the one on screen fades out.
-    /// Only ever one: a press mid-fade retargets it rather than stacking.
-    arriving: Option<usize>,
+    /// The group that was on screen before the last step, still being drawn
+    /// under the new one while it fades out. Only ever one: a press mid-fade
+    /// replaces it, so layers never stack.
+    outgoing: Option<Outgoing>,
+    /// A step that `build_panes` is to crossfade: the group left, and the
+    /// direction of travel (1 for onward, -1 for back). Anything else that
+    /// rebuilds the panes is a cut.
+    stepped: Option<(usize, i8)>,
+    /// The direction the group on screen arrived from, for its slide.
+    slide: i8,
+    /// How tall the band was on the last frame it was drawn, written while
+    /// painting. A cell because the band is drawn from `&self`.
+    band_seen: std::rc::Rc<std::cell::Cell<f32>>,
+    /// How tall the band was when the last step was taken, while it eases
+    /// from that to the new group's height; nought otherwise.
+    band_from: f32,
     /// The waiting placeholder, up while the deck has nothing to read and
     /// going out when the first group lands.
     waiting_fade: crate::pane::Fade,
@@ -1274,9 +1283,12 @@ impl DeckView {
                 std::time::Duration::from_millis(160),
             )),
             entry_primed: std::cell::Cell::new(false),
-            group_fade: Self::group_fade().whole(),
-            group_floor: DIP_FLOOR,
-            arriving: None,
+            group_fade: Self::card_fade().whole(),
+            outgoing: None,
+            stepped: None,
+            slide: 0,
+            band_seen: std::rc::Rc::new(std::cell::Cell::new(0.)),
+            band_from: 0.,
             waiting_fade: Self::card_fade(),
             entering: std::cell::RefCell::new(std::collections::HashMap::new()),
             known: std::cell::RefCell::new(std::collections::HashSet::new()),
@@ -1496,7 +1508,6 @@ impl DeckView {
                             // here with the placeholder up, so it never fades.
                             if deck.waiting_fade.on() && !deck.deck.groups().is_empty() {
                                 deck.waiting_fade.set(false);
-                                deck.group_floor = 0.;
                                 deck.group_fade.dip(0.);
                             }
                         }
@@ -2035,11 +2046,13 @@ impl DeckView {
     /// above. With one heading for both, a reader moving through the deck
     /// could not tell the question being answered from the step of the answer
     /// on screen.
-    fn group_title(&self) -> Option<String> {
+    fn group_title_of(&self, ix: usize) -> Option<String> {
         // Trimmed and cut at the first line, and none at all when that
         // leaves nothing: `deck group` checks a title, but a deck written by
         // another client may not have.
-        self.group()
+        self.deck
+            .groups()
+            .get(ix)
             .and_then(|group| group.title.as_deref())
             .and_then(|title| title.lines().map(str::trim).find(|line| !line.is_empty()))
             .map(crate::load::heading)
@@ -2051,38 +2064,15 @@ impl DeckView {
     /// story, and arriving back at the beginning by pressing `n` reads as
     /// having lost your place.
     fn walk(&mut self, step: isize, cx: &mut Context<Self>) {
-        // From where the last press was going, not from the group still
-        // fading out: three quick presses are three steps.
-        let from = self.arriving.unwrap_or(self.group_ix);
-        let Some(next) = walked_to(from, step, self.deck.groups().len()) else {
+        let Some(next) = walked_to(self.group_ix, step, self.deck.groups().len()) else {
             return;
         };
         self.live.pause(PauseReason::Navigation);
-        if next == self.group_ix {
-            // Back to the one on screen before it left: nothing to swap, and
-            // it rises again from wherever the fall had got to.
-            self.arriving = None;
-            self.group_fade.set(true);
-        } else {
-            // The group on screen goes out; `render` swaps it at the bottom of
-            // the fall (see `arrival_due`), which is also where the panes are
-            // rebuilt and the voice, if it is reading, picks up in the new one.
-            self.arriving = Some(next);
-            // From what is on screen: a step in mid-rise (the first group
-            // coming up) must not jump.
-            let level = self.group_fade.level();
-            let floor = carried_floor(self.group_floor, level);
-            if self.group_fade.set(false) {
-                self.group_floor = floor;
-            }
-        }
-        cx.notify();
-    }
-
-    /// The swap half of a step, once the outgoing group has gone out.
-    fn arrive(&mut self, next: usize, cx: &mut Context<Self>) {
+        // The group goes to the new one at the press, so the voice and the
+        // keys are on it at once; `build_panes` keeps the one that left on
+        // screen under it to fade out.
+        self.stepped = Some((self.group_ix, if step < 0 { -1 } else { 1 }));
         self.group_ix = next;
-        // Also puts `group_fade` rising and clears `arriving`.
         self.build_panes(cx);
         // `build_panes` has just stopped the voice mid-sentence, because what
         // it was saying belonged to the group that left the screen. If the
@@ -2090,6 +2080,7 @@ impl DeckView {
         if self.aloud {
             self.speak_unheard(cx);
         }
+        cx.notify();
     }
 
     fn on_next(&mut self, _: &NextGroup, _window: &mut Window, cx: &mut Context<Self>) {
@@ -5963,11 +5954,32 @@ impl DeckView {
     /// comment being written — repaints without coming through here, because a
     /// rebuild throws away where the reader had scrolled to.
     fn build_panes(&mut self, cx: &mut App) {
-        // Whatever brought us here is the arrival: a step pending behind it
-        // would swap the group back later. The group comes up from where it
-        // stands, which is nought after a step's fall and whole for a cut.
-        self.arriving = None;
-        self.group_fade.set(true);
+        // A step keeps the group that is leaving: its panes are moved out, not
+        // rebuilt, and drawn under the new group while they fade. Any other
+        // rebuild is a cut, and drops whatever was still leaving.
+        match self.stepped.take() {
+            Some((from, dir)) if self.group().is_some() => {
+                let mut set = self.take_set();
+                // A page is a native view and sits over everything GPUI
+                // draws, opacity or no: the old one goes at once, and its
+                // pane crossfades as a wash only.
+                for pane in &mut set.panes {
+                    if let Sheet::Page(paper) = pane {
+                        paper.release();
+                    }
+                }
+                let shown = slid_in(self.slide, self.group_fade.level());
+                hand_over(&mut self.outgoing, set, from, dir, self.group_fade, shown);
+                self.slide = dir;
+                self.group_fade = Self::card_fade();
+                self.group_fade.set(true);
+                self.band_from = self.band_seen.get();
+            }
+            _ => {
+                self.outgoing = None;
+                self.group_fade.set(true);
+            }
+        }
         // A card over the band belongs to the group on screen before, however
         // the group changed (a step, a click, the agent jumping): its
         // badge may not exist on the next one, and nothing would ever say the
@@ -6122,29 +6134,72 @@ impl DeckView {
     /// with no group yet belongs to no group, so it is never veiled.
     fn group_level(&self) -> f32 {
         if self.group().is_some() {
-            self.group_floor + (1. - self.group_floor) * self.group_fade.level()
+            self.group_fade.level()
         } else {
             1.
         }
     }
 
-    /// How a group steps: out quickly, because the next one is already
-    /// waiting behind it, and in on the card rise. Both ends go through the
-    /// same smoothstep as every other fade.
-    fn group_fade() -> crate::pane::Fade {
-        crate::pane::Fade::default().paced(
-            std::time::Duration::from_millis(200),
-            std::time::Duration::from_millis(GROUP_FALL_MS),
-        )
+    /// Move the group on screen's panes and the layout kept with them out of
+    /// the window, leaving it with none. The widths and shares the reader has
+    /// dragged are copied, not moved: they carry to the next group.
+    fn take_set(&mut self) -> PaneSet {
+        PaneSet {
+            panes: std::mem::take(&mut self.panes),
+            folds: std::mem::take(&mut self.folds),
+            widths: self.widths.clone(),
+            shares: self.shares.clone(),
+            temporary: std::mem::take(&mut self.temporary),
+            closing: std::mem::take(&mut self.closing),
+            turn_now: self.turn_now,
+            cols: self.cols,
+        }
     }
 
-    fn render_band(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        let veil = self.group_level();
-        // Nothing to read yet is a real state, not a blank. The agent opens
-        // the window and then writes, so an empty deck is the first moment of
-        // most decks' lives — and a window that shows nothing at all in it
-        // looks broken rather than early.
-        let say = self.group().map_or_else(
+    /// Run `f` with `set` standing in for the window's own panes and layout,
+    /// then put everything back.
+    ///
+    /// The swap back is not something `f` can skip: it cannot return past
+    /// this function. So whatever the layout writes while it runs (it resizes
+    /// `shares` and `widths` and records `cols` and `turn_now`) lands in the
+    /// set that is leaving and never in the live one.
+    fn with_set<R>(&mut self, set: &mut PaneSet, f: impl FnOnce(&mut Self) -> R) -> R {
+        self.swap_set(set);
+        let out = f(self);
+        self.swap_set(set);
+        out
+    }
+
+    fn swap_set(&mut self, set: &mut PaneSet) {
+        std::mem::swap(&mut self.panes, &mut set.panes);
+        std::mem::swap(&mut self.folds, &mut set.folds);
+        std::mem::swap(&mut self.widths, &mut set.widths);
+        std::mem::swap(&mut self.shares, &mut set.shares);
+        std::mem::swap(&mut self.temporary, &mut set.temporary);
+        std::mem::swap(&mut self.closing, &mut set.closing);
+        std::mem::swap(&mut self.turn_now, &mut set.turn_now);
+        std::mem::swap(&mut self.cols, &mut set.cols);
+    }
+
+    /// The group's own part of the band, for the group at `ix`: its number,
+    /// its heading, its confidence and its prose.
+    ///
+    /// Drawn for the group on screen, and again for the one leaving it when a
+    /// step crossfades (`ghost`). The ghost takes no input and carries none of
+    /// the live lights: no handlers, no tip, no scroll handle, no track, the
+    /// deck's own title line hidden so the shared line is not drawn twice.
+    /// `veil` is its opacity and `slide` how far it stands from its place, in
+    /// points.
+    fn band_column(
+        &self,
+        ix: usize,
+        ghost: bool,
+        veil: f32,
+        slide: f32,
+        cx: &mut Context<Self>,
+    ) -> Div {
+        let group = self.deck.groups().get(ix);
+        let say = group.map_or_else(
             || {
                 if self.deck.sealed() {
                     // Opening one before any group is possible now, so this is
@@ -6163,6 +6218,336 @@ impl DeckView {
         );
 
         div()
+            .v_flex()
+            .flex_1()
+            .min_w_0()
+            .min_h_0()
+            .overflow_hidden()
+            .gap(px(BAND_GAP))
+            .pb(px(BAND_BOTTOM))
+            // The horizontal and top padding belong to the children
+            // rather than to this column, so that the titlebar can
+            // include the gap above the title. Put here, that gap is a
+            // strip of band between the window's edge and the only
+            // thing that answers a double-click — which is exactly
+            // where somebody aiming at a titlebar clicks.
+            .child(
+                // The title stays. It is what the group is *for*, and
+                // scrolling it away to read the middle of a long
+                // narration loses the one line that says what the
+                // narration is about. Over it, a step quieter and in
+                // the same type, the deck's title: the question this
+                // group is one step of answering. A group written
+                // without a title is headed by the deck's, as every
+                // group once was, and the small line stays over it.
+                // It is also the deck's titlebar, so it behaves like
+                // one: double-click zooms the window. The real
+                // titlebar is there but made invisible and its traffic
+                // lights are pushed off-screen, so a double-click
+                // where a titlebar would be landed on the band and did
+                // nothing — while every other window on the machine
+                // zooms.
+                //
+                // On Windows it is also where the window is dragged
+                // from. There the platform only moves a window from an
+                // area the window says is a caption, and with the real
+                // one hidden nothing said so — the deck could not be
+                // moved at all (#50). The platform's caption also
+                // brings its own double-click, which maximises and
+                // restores — so the `on_click` below only ever runs on
+                // other platforms: on Windows the caption's clicks
+                // never reach the deck.
+                div().h_flex().flex_none().items_start().child(
+                    div()
+                        .id(("deck-titlebar", usize::from(ghost)))
+                        .h_flex()
+                        .items_center()
+                        .gap(px(STEM_GAP))
+                        .pt(px(BAND_TOP))
+                        .pl(px(BAND_SIDE))
+                        .pr(px(BAND_SIDE))
+                        .when(cfg!(target_os = "windows"), |this| {
+                            this.window_control_area(WindowControlArea::Drag)
+                        })
+                        .when(!ghost, |this| {
+                            this.on_click(|event, window, _| {
+                                if event.click_count() >= 2 {
+                                    window.zoom_window();
+                                }
+                            })
+                        })
+                        // The group's number, faint in the accent, then the
+                        // deck's title over the group's. The number says
+                        // *step*, so the group's heading is never taken
+                        // for the deck's: the question sits small above
+                        // it, and the step of the answer is the line in
+                        // bold.
+                        .when(group.is_some(), |this| {
+                            this.child(
+                                div()
+                                    .flex_none()
+                                    .w(px(STEM))
+                                    .h_flex()
+                                    .justify_center()
+                                    // A step smaller from ten on, so two
+                                    // digits stay in the column the line
+                                    // hangs from.
+                                    .text_size(px(if ix >= 9 {
+                                        NUMBER_SIZE_TENS
+                                    } else {
+                                        NUMBER_SIZE
+                                    }))
+                                    .line_height(px(36.))
+                                    .when(veil < 1., |this| this.opacity(veil))
+                                    .relative()
+                                    .left(px(slide))
+                                    .font_weight(FontWeight::LIGHT)
+                                    .text_color(paint(
+                                        self.palette.band.mix(self.palette.accent, 0.45),
+                                    ))
+                                    .child(format!("{}", ix + 1)),
+                            )
+                        })
+                        .child({
+                            let own = self.group_title_of(ix);
+                            div()
+                                .v_flex()
+                                .gap(px(2.))
+                                .min_w_0()
+                                // Always there, even over a group headed
+                                // by the deck's title: the line above the
+                                // heading is where the question lives, and
+                                // a reader who learned that should never
+                                // find it gone.
+                                .child(
+                                    div()
+                                        .when(ghost, |this| this.opacity(0.))
+                                        .text_size(px(DECK_TITLE_SIZE))
+                                        .text_color(paint(self.palette.muted))
+                                        .overflow_hidden()
+                                        .text_ellipsis()
+                                        .whitespace_nowrap()
+                                        .child(self.deck.title()),
+                                )
+                                .child(
+                                    div()
+                                        .h_flex()
+                                        .items_center()
+                                        .gap(px(10.))
+                                        .min_w_0()
+                                        .when(veil < 1., |this| this.opacity(veil))
+                                        .relative()
+                                        .left(px(slide))
+                                        .child(
+                                            div()
+                                                .min_w_0()
+                                                .text_size(px(TITLE_SIZE))
+                                                .font_weight(FontWeight::SEMIBOLD)
+                                                .text_color(paint(self.palette.fg))
+                                                .overflow_hidden()
+                                                .text_ellipsis()
+                                                .whitespace_nowrap()
+                                                // A group written with no title of its own
+                                                // is headed by its opening sentence, as its
+                                                // row in the review column is: headed by the
+                                                // deck's title, it repeated the line above.
+                                                .child(own.unwrap_or_else(|| {
+                                                    group
+                                                        .map(row_title)
+                                                        .unwrap_or_else(|| self.deck.title())
+                                                })),
+                                        )
+                                        // How sure the agent is, after the claim it
+                                        // qualifies: bars and the level, and on a rest
+                                        // a card with what the level means and why.
+                                        .children(
+                                            group.and_then(|group| group.confidence.as_ref()).map(
+                                                |confidence| {
+                                                    let (name, _) =
+                                                        crate::keys::level_words(confidence.level);
+                                                    let badge = div()
+                                                        .id("confidence")
+                                                        .flex_none()
+                                                        .h_flex()
+                                                        .items_center()
+                                                        .gap(px(6.))
+                                                        .child(crate::keys::bars(
+                                                            confidence.level,
+                                                            &self.palette,
+                                                        ))
+                                                        .child(
+                                                            div()
+                                                                .text_size(px(CONFIDENCE_SIZE))
+                                                                .text_color(paint(
+                                                                    crate::keys::level_colour(
+                                                                        confidence.level,
+                                                                        &self.palette,
+                                                                    ),
+                                                                ))
+                                                                .child(name),
+                                                        );
+                                                    if ghost {
+                                                        badge
+                                                    } else {
+                                                        self.tipped(
+                                                            crate::keys::CONFIDENCE,
+                                                            "band",
+                                                            badge,
+                                                            cx,
+                                                        )
+                                                    }
+                                                },
+                                            ),
+                                        ),
+                                )
+                        })
+                        .flex_1()
+                        .min_w_0(),
+                ),
+            )
+            .child(
+                // The prose is pickable too. An objection to what the
+                // group claims has to be able to land on the claim,
+                // not on some line of code chosen for want of anywhere
+                // better to put it.
+                div()
+                    .id(("deck-claim", usize::from(ghost)))
+                    // Drawn up into the column's gap: the prose
+                    // belongs to the title over it, and the line height
+                    // already leaves air above the words. On this
+                    // scrolling box, not on what it holds — pulled up
+                    // inside it, the first line was clipped at the top.
+                    .mt(px(-4.))
+                    .pl(px(BAND_SIDE))
+                    .pr(px(BAND_SIDE))
+                    // Scrolls, because a `say` is as long as the agent
+                    // needed it to be and the band is as tall as the
+                    // window can spare. When the two disagreed the
+                    // prose stopped mid-sentence at the bottom edge,
+                    // and the rest of it could not be reached at all —
+                    // dragging the seam is a way to make the band
+                    // bigger, not a way to read past the end of it.
+                    .flex_1()
+                    .min_h_0()
+                    .overflow_y_scroll()
+                    .when(!ghost, |this| this.track_scroll(&self.band_scroll))
+                    .text_size(px(SANS_SIZE))
+                    .text_color(paint(self.palette.fg))
+                    // Hung on a line that runs down from the group's
+                    // number, and stops where the prose stops: the
+                    // number is the step, and this is what it says.
+                    .child(
+                        div()
+                            .when(veil < 1., |this| this.opacity(veil))
+                            .relative()
+                            .left(px(slide))
+                            // Only under a group's number: with nothing
+                            // loaded yet there is no number to hang
+                            // from, and the placeholder sits flush.
+                            .when(group.is_some(), |this| {
+                                this.ml(px(STEM / 2.))
+                                    .pl(px(STEM / 2. + STEM_GAP - 1.))
+                                    .border_l_1()
+                            })
+                            .border_color(paint(self.palette.edge.mix(self.palette.muted, 0.25)))
+                            .child(crate::prose::render(
+                                crate::prose::parse(&say),
+                                &self.palette,
+                                cx.theme().mono_font_family.clone(),
+                                &(if ghost {
+                                    crate::prose::Picking::quiet(Vec::new())
+                                } else {
+                                    crate::prose::Picking {
+                                        range: self.said_lit.map(|(words, _)| words),
+                                        shown: self.said_lit.map_or(0., |(_, light)| light.level()),
+                                        down: {
+                                            let deck = cx.entity().downgrade();
+                                            std::rc::Rc::new(move |at, _window, cx| {
+                                                deck.update(cx, |deck, cx| {
+                                                    deck.start_say_pick(at, cx)
+                                                })
+                                                .ok();
+                                            })
+                                        },
+                                        over: {
+                                            let deck = cx.entity().downgrade();
+                                            std::rc::Rc::new(move |at, entered, _window, cx| {
+                                                deck.update(cx, |deck, _| {
+                                                    deck.hover_say(at, entered)
+                                                })
+                                                .ok();
+                                            })
+                                        },
+                                        names: self
+                                            .panes
+                                            .iter()
+                                            .filter_map(|pane| pane.name().cloned())
+                                            .collect(),
+                                        named: self
+                                            .name_hovered
+                                            .clone()
+                                            .or(self.name_pinned.clone()),
+                                        heard: self.heard_in(crate::speech::Narration::Group(ix)),
+                                        voiced: self.voiced_in(crate::speech::Narration::Group(ix)),
+                                        heard_paragraphs: self.heard_paragraphs_in(
+                                            crate::speech::Narration::Group(ix),
+                                        ),
+                                        lit_also: [self.track_hover, self.track_hover_was]
+                                            .into_iter()
+                                            .filter(|_| self.aloud)
+                                            .flatten()
+                                            .map(|(range, light)| (range, light.level()))
+                                            .filter(|(_, level)| *level > 0.)
+                                            .collect(),
+                                        ticks: self.said_tick.levels(ix),
+                                        pickable: true,
+                                        // Only this group's. A word range means
+                                        // nothing against another group's prose —
+                                        // the same numbers there are different
+                                        // words entirely.
+                                        remarked: self
+                                            .remarks
+                                            .iter()
+                                            .filter(|remark| {
+                                                group.is_some_and(|group| {
+                                                    remark.group.as_ref() == group.id
+                                                })
+                                            })
+                                            .filter_map(|remark| remark.said)
+                                            .collect(),
+                                        name: {
+                                            let deck = cx.entity().downgrade();
+                                            std::rc::Rc::new(move |name, naming, _window, cx| {
+                                                deck.update(cx, |deck, cx| {
+                                                    deck.on_name(name, naming, cx)
+                                                })
+                                                .ok();
+                                            })
+                                        },
+                                    }
+                                }),
+                            )),
+                    ),
+            )
+            .children(self.render_track(cx).filter(|_| !ghost))
+    }
+
+    fn render_band(&self, ghost: Option<AnyElement>, cx: &mut Context<Self>) -> impl IntoElement {
+        let veil = self.group_level();
+        let slide = slid_in(self.slide, veil);
+        let seen = self.band_seen.clone();
+        // While a step is crossfading the band eases from the height the old
+        // group had to the height the new one needs, rather than jumping.
+        let least = if self.band_from > 0. {
+            band_floor(self.band_from, veil).clamp(BAND_LEAST, BAND_MOST)
+        } else {
+            BAND_LEAST
+        };
+        // Nothing to read yet is a real state, not a blank. The agent opens
+        // the window and then writes, so an empty deck is the first moment of
+        // most decks' lives — and a window that shows nothing at all in it
+        // looks broken rather than early.
+        div()
             .h_flex()
             .flex_none()
             .items_stretch()
@@ -6175,308 +6560,29 @@ impl DeckView {
             // narration squeezed the band until the review column beside it
             // showed two rows, and the prose read as cramped.
             .when(self.band_height.is_none(), |this| {
-                this.min_h(px(BAND_LEAST)).max_h(px(BAND_MOST))
+                this.min_h(px(least)).max_h(px(BAND_MOST))
             })
+            // Records how tall the band is, for the step after this one.
+            .child(
+                canvas(
+                    move |bounds, _window, _cx| seen.set(f32::from(bounds.size.height)),
+                    |_, (), _, _| {},
+                )
+                .absolute()
+                .size_full(),
+            )
             .child(
                 div()
-                    .v_flex()
+                    .h_flex()
+                    .relative()
                     .flex_1()
                     .min_w_0()
                     .min_h_0()
-                    .overflow_hidden()
-                    .gap(px(BAND_GAP))
-                    .pb(px(BAND_BOTTOM))
-                    // The horizontal and top padding belong to the children
-                    // rather than to this column, so that the titlebar can
-                    // include the gap above the title. Put here, that gap is a
-                    // strip of band between the window's edge and the only
-                    // thing that answers a double-click — which is exactly
-                    // where somebody aiming at a titlebar clicks.
-                    .child(
-                        // The title stays. It is what the group is *for*, and
-                        // scrolling it away to read the middle of a long
-                        // narration loses the one line that says what the
-                        // narration is about. Over it, a step quieter and in
-                        // the same type, the deck's title: the question this
-                        // group is one step of answering. A group written
-                        // without a title is headed by the deck's, as every
-                        // group once was, and the small line stays over it.
-                        // It is also the deck's titlebar, so it behaves like
-                        // one: double-click zooms the window. The real
-                        // titlebar is there but made invisible and its traffic
-                        // lights are pushed off-screen, so a double-click
-                        // where a titlebar would be landed on the band and did
-                        // nothing — while every other window on the machine
-                        // zooms.
-                        //
-                        // On Windows it is also where the window is dragged
-                        // from. There the platform only moves a window from an
-                        // area the window says is a caption, and with the real
-                        // one hidden nothing said so — the deck could not be
-                        // moved at all (#50). The platform's caption also
-                        // brings its own double-click, which maximises and
-                        // restores — so the `on_click` below only ever runs on
-                        // other platforms: on Windows the caption's clicks
-                        // never reach the deck.
-                        div().h_flex().flex_none().items_start().child(
-                            div()
-                                .id("deck-titlebar")
-                                .h_flex()
-                                .items_center()
-                                .gap(px(STEM_GAP))
-                                .pt(px(BAND_TOP))
-                                .pl(px(BAND_SIDE))
-                                .pr(px(BAND_SIDE))
-                                .when(cfg!(target_os = "windows"), |this| {
-                                    this.window_control_area(WindowControlArea::Drag)
-                                })
-                                .on_click(|event, window, _| {
-                                    if event.click_count() >= 2 {
-                                        window.zoom_window();
-                                    }
-                                })
-                                // The group's number, faint in the accent, then the
-                                // deck's title over the group's. The number says
-                                // *step*, so the group's heading is never taken
-                                // for the deck's: the question sits small above
-                                // it, and the step of the answer is the line in
-                                // bold.
-                                .when(self.group().is_some(), |this| {
-                                    this.child(
-                                        div()
-                                            .flex_none()
-                                            .w(px(STEM))
-                                            .h_flex()
-                                            .justify_center()
-                                            // A step smaller from ten on, so two
-                                            // digits stay in the column the line
-                                            // hangs from.
-                                            .text_size(px(if self.group_ix >= 9 {
-                                                NUMBER_SIZE_TENS
-                                            } else {
-                                                NUMBER_SIZE
-                                            }))
-                                            .line_height(px(36.))
-                                            .when(veil < 1., |this| this.opacity(veil))
-                                            .font_weight(FontWeight::LIGHT)
-                                            .text_color(paint(
-                                                self.palette.band.mix(self.palette.accent, 0.45),
-                                            ))
-                                            .child(format!("{}", self.group_ix + 1)),
-                                    )
-                                })
-                                .child({
-                                    let own = self.group_title();
-                                    div()
-                                        .v_flex()
-                                        .gap(px(2.))
-                                        .min_w_0()
-                                        // Always there, even over a group headed
-                                        // by the deck's title: the line above the
-                                        // heading is where the question lives, and
-                                        // a reader who learned that should never
-                                        // find it gone.
-                                        .child(
-                                            div()
-                                                .text_size(px(DECK_TITLE_SIZE))
-                                                .text_color(paint(self.palette.muted))
-                                                .overflow_hidden()
-                                                .text_ellipsis()
-                                                .whitespace_nowrap()
-                                                .child(self.deck.title()),
-                                        )
-                                        .child(
-                                            div()
-                                                .h_flex()
-                                                .items_center()
-                                                .gap(px(10.))
-                                                .min_w_0()
-                                                .when(veil < 1., |this| this.opacity(veil))
-                                                .child(
-                                                    div()
-                                                        .min_w_0()
-                                                        .text_size(px(TITLE_SIZE))
-                                                        .font_weight(FontWeight::SEMIBOLD)
-                                                        .text_color(paint(self.palette.fg))
-                                                        .overflow_hidden()
-                                                        .text_ellipsis()
-                                                        .whitespace_nowrap()
-                                                        // A group written with no title of its own
-                                                        // is headed by its opening sentence, as its
-                                                        // row in the review column is: headed by the
-                                                        // deck's title, it repeated the line above.
-                                                        .child(own.unwrap_or_else(|| {
-                                                            self.group()
-                                                                .map(row_title)
-                                                                .unwrap_or_else(|| self.deck.title())
-                                                        })),
-                                                )
-                                                // How sure the agent is, after the claim it
-                                                // qualifies: bars and the level, and on a rest
-                                                // a card with what the level means and why.
-                                                .children(
-                                                    self.group()
-                                                        .and_then(|group| group.confidence.as_ref())
-                                                        .map(|confidence| {
-                                                            let (name, _) = crate::keys::level_words(confidence.level);
-                                                            self.tipped(
-                                                                crate::keys::CONFIDENCE,
-                                                                "band",
-                                                                div()
-                                                                    .id("confidence")
-                                                                    .flex_none()
-                                                                    .h_flex()
-                                                                    .items_center()
-                                                                    .gap(px(6.))
-                                                                    .child(crate::keys::bars(confidence.level, &self.palette))
-                                                                    .child(
-                                                                        div()
-                                                                            .text_size(px(CONFIDENCE_SIZE))
-                                                                            .text_color(paint(crate::keys::level_colour(
-                                                                                confidence.level,
-                                                                                &self.palette,
-                                                                            )))
-                                                                            .child(name),
-                                                                    ),
-                                                                cx,
-                                                            )
-                                                        }),
-                                                ),
-                                        )
-                                })
-                                .flex_1()
-                                .min_w_0(),
-                        ),
-                    )
-                    .child(
-                        // The prose is pickable too. An objection to what the
-                        // group claims has to be able to land on the claim,
-                        // not on some line of code chosen for want of anywhere
-                        // better to put it.
-                        div()
-                            .id("deck-claim")
-                            // Drawn up into the column's gap: the prose
-                            // belongs to the title over it, and the line height
-                            // already leaves air above the words. On this
-                            // scrolling box, not on what it holds — pulled up
-                            // inside it, the first line was clipped at the top.
-                            .mt(px(-4.))
-                            .pl(px(BAND_SIDE))
-                            .pr(px(BAND_SIDE))
-                            // Scrolls, because a `say` is as long as the agent
-                            // needed it to be and the band is as tall as the
-                            // window can spare. When the two disagreed the
-                            // prose stopped mid-sentence at the bottom edge,
-                            // and the rest of it could not be reached at all —
-                            // dragging the seam is a way to make the band
-                            // bigger, not a way to read past the end of it.
-                            .flex_1()
-                            .min_h_0()
-                            .overflow_y_scroll()
-                            .track_scroll(&self.band_scroll)
-                            .text_size(px(SANS_SIZE))
-                            .text_color(paint(self.palette.fg))
-                            // Hung on a line that runs down from the group's
-                            // number, and stops where the prose stops: the
-                            // number is the step, and this is what it says.
-                            .child(
-                                div()
-                                    .when(veil < 1., |this| this.opacity(veil))
-                                    // Only under a group's number: with nothing
-                                    // loaded yet there is no number to hang
-                                    // from, and the placeholder sits flush.
-                                    .when(self.group().is_some(), |this| {
-                                        this.ml(px(STEM / 2.))
-                                            .pl(px(STEM / 2. + STEM_GAP - 1.))
-                                            .border_l_1()
-                                    })
-                                    .border_color(paint(
-                                        self.palette.edge.mix(self.palette.muted, 0.25),
-                                    ))
-                                    .child(crate::prose::render(
-                                        crate::prose::parse(&say),
-                                        &self.palette,
-                                        cx.theme().mono_font_family.clone(),
-                                        &crate::prose::Picking {
-                                            range: self.said_lit.map(|(words, _)| words),
-                                            shown: self
-                                                .said_lit
-                                                .map_or(0., |(_, light)| light.level()),
-                                            down: {
-                                                let deck = cx.entity().downgrade();
-                                                std::rc::Rc::new(move |at, _window, cx| {
-                                                    deck.update(cx, |deck, cx| {
-                                                        deck.start_say_pick(at, cx)
-                                                    })
-                                                    .ok();
-                                                })
-                                            },
-                                            over: {
-                                                let deck = cx.entity().downgrade();
-                                                std::rc::Rc::new(move |at, entered, _window, cx| {
-                                                    deck.update(cx, |deck, _| {
-                                                        deck.hover_say(at, entered)
-                                                    })
-                                                    .ok();
-                                                })
-                                            },
-                                            names: self
-                                                .panes
-                                                .iter()
-                                                .filter_map(|pane| pane.name().cloned())
-                                                .collect(),
-                                            named: self
-                                                .name_hovered
-                                                .clone()
-                                                .or(self.name_pinned.clone()),
-                                            heard: self.heard_in(crate::speech::Narration::Group(
-                                                self.group_ix,
-                                            )),
-                                            voiced: self.voiced_in(
-                                                crate::speech::Narration::Group(self.group_ix),
-                                            ),
-                                            heard_paragraphs: self.heard_paragraphs_in(
-                                                crate::speech::Narration::Group(self.group_ix),
-                                            ),
-                                            lit_also: [self.track_hover, self.track_hover_was]
-                                                .into_iter()
-                                                .filter(|_| self.aloud)
-                                                .flatten()
-                                                .map(|(range, light)| (range, light.level()))
-                                                .filter(|(_, level)| *level > 0.)
-                                                .collect(),
-                                            ticks: self.said_tick.levels(self.group_ix),
-                                            pickable: true,
-                                            // Only this group's. A word range means
-                                            // nothing against another group's prose —
-                                            // the same numbers there are different
-                                            // words entirely.
-                                            remarked: self
-                                                .remarks
-                                                .iter()
-                                                .filter(|remark| {
-                                                    self.group().is_some_and(|group| {
-                                                        remark.group.as_ref() == group.id
-                                                    })
-                                                })
-                                                .filter_map(|remark| remark.said)
-                                                .collect(),
-                                            name: {
-                                                let deck = cx.entity().downgrade();
-                                                std::rc::Rc::new(
-                                                    move |name, naming, _window, cx| {
-                                                        deck.update(cx, |deck, cx| {
-                                                            deck.on_name(name, naming, cx)
-                                                        })
-                                                        .ok();
-                                                    },
-                                                )
-                                            },
-                                        },
-                                    )),
-                            ),
-                    )
-                    .children(self.render_track(cx)),
+                    // The group leaving, under the one arriving, in the same
+                    // place. It takes no input, and the arriving group is
+                    // drawn over it.
+                    .children(ghost)
+                    .child(self.band_column(self.group_ix, false, veil, slide, cx)),
             )
             .when(!self.deck.groups().is_empty(), |this| {
                 this.child(self.render_review(cx))
@@ -6485,8 +6591,7 @@ impl DeckView {
 
     /// Go to a group by its place in the deck.
     fn go_to(&mut self, ix: usize, cx: &mut Context<Self>) {
-        let from = self.arriving.unwrap_or(self.group_ix);
-        let step = isize::try_from(ix).unwrap_or(0) - isize::try_from(from).unwrap_or(0);
+        let step = isize::try_from(ix).unwrap_or(0) - isize::try_from(self.group_ix).unwrap_or(0);
         if step != 0 {
             self.walk(step, cx);
         }
@@ -9491,163 +9596,21 @@ fn window_corner(window: &Window) -> f32 {
 /// both edges.
 use crate::pane::SPINE;
 
-impl Render for DeckView {
-    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        if let Some(next) = arrival_due(self.arriving, &self.group_fade) {
-            self.arrive(next, cx);
-        }
-        self.settle_said_light();
-        self.settle_ticks();
-        #[cfg(debug_assertions)]
-        self.debug_sheet(window, cx);
-        // The dock, a key's card, and a key lit on the dock all move on their
-        // own clock. The glow is asked for frames for exactly as long as it
-        // takes to go out, which is the pace it is drawn at.
-        let hit = self.help_hit.is_some_and(|(_, at)| at.elapsed() < GLOW);
-        self.export_fade.set(self.exportable());
-        if self.help.moving() || self.tip_fade.moving() || self.export_fade.moving() || hit {
-            window.request_animation_frame();
-        }
-        if std::mem::take(&mut self.review_settle) {
-            cx.on_next_frame(window, |_, _, cx| cx.notify());
-        }
-        // The picked sentence opens the values whose keys it names.
-        let said = self.picked_said.and_then(|picked| {
-            let say = &self.group()?.say;
-            let fresh = self
-                .said_memo
-                .as_ref()
-                .is_some_and(|(at, was, _)| *at == picked && was == say);
-            if !fresh {
-                let (from, to) = picked;
-                let words = crate::prose::words(say);
-                let (a, b) = (
-                    from.min(to),
-                    from.max(to).min(words.len().saturating_sub(1)),
-                );
-                let cut = words.get(a..=b).map(<[String]>::concat);
-                self.said_memo = Some((picked, say.clone(), cut));
-            }
-            self.said_memo.as_ref().and_then(|(_, _, cut)| cut.clone())
-        });
-        // Values that have finished closing are taken out of their panes.
-        for pane in &mut self.panes {
-            if let Sheet::Code(code) = pane {
-                code.follow_prose(said.as_deref());
-                code.settle();
-            }
-        }
-        // Notes that have finished fading out are let go.
-        if self.notes.is_some() && !self.notes_fade.on() && !self.notes_fade.moving() {
-            self.notes = None;
-        }
-        // Somebody is there again: a card still saying otherwise would be
-        // wrong for as long as it stayed up. Put away here, where there is a
-        // window to hand the keyboard back through.
-        if self.explaining && self.heard() {
-            self.understood(window, cx);
-        }
-        let typing = self.typing(window, cx);
-        let corner = window_corner(window);
-        self.hang_asks(window, cx);
-        // A page's own view is not deck's to paint, so it is moved here, before
-        // anything is drawn: to where the last frame measured its hole, or off
-        // the screen if the room is in the middle of moving.
-        self.settle_pages(window);
-        // Built up front rather than inside `.children()`: rendering a pane
-        // needs the context, and a closure holding it cannot also be handed to
-        // the element it is building.
-        // Rows call back into the view when clicked, and a weak handle is what
-        // a closure that outlives this frame is allowed to hold.
+impl DeckView {
+    /// The panes of the group the window holds now, laid out: its rows, and
+    /// the spines of the ones folded to either edge.
+    ///
+    /// Drawn from whichever set is in the window, so the group that is
+    /// leaving is laid out by the very code that lays out the one arriving.
+    /// `veil` is the opacity of the spines, which sit outside the rows.
+    fn lay_out(
+        &mut self,
+        veil: f32,
+        window: &Window,
+        cx: &mut Context<Self>,
+    ) -> (Vec<AnyElement>, Vec<AnyElement>, Vec<AnyElement>) {
         let me = cx.entity().downgrade();
-
-        let speaking = self.voice.talking();
-        // How far through a turn the page is, and how far down the panes have
-        // dipped for it. A half sine: down to meet the new arrangement, back up
-        // once it is there.
-        // A quarter turn lands at once, with no animation at all.
-        //
-        // It has been tried twice. A dip reads as the window blinking, and
-        // folding the panes away and back reads as two movements that happen to
-        // share a key — because a turn is not a fold: nothing is going away.
-        // What is left is the honest thing, which is also the quickest: the
-        // panes are simply somewhere else the next time the window paints.
-        self.heed();
-        self.look_ahead(cx);
-        // A light coming up or going out is a few hundred milliseconds of
-        // frames, and then none.
-        let hearing = self.heard.moving() || self.heard_paragraphs.moving() || self.voiced.moving();
-        if hearing
-            || self.pressed.is_some_and(|(_, _, light)| light.moving())
-            || self.said_lit.is_some_and(|(_, light)| light.moving())
-            || self.said_tick.moving()
-            || self.pressed_tick.moving()
-            || [self.track_hover, self.track_hover_was]
-                .into_iter()
-                .flatten()
-                .any(|(_, light)| light.moving())
-            || self.rail_open.moving()
-            || self.phrase_fade.get().moving()
-            || self.chip_fade.get().moving()
-            // `arriving` too: the fall can end between the swap check at the
-            // top of this frame and here, and a swap nobody asks a frame for
-            // would leave the old group frozen at its floor.
-            || self.group_fade.moving()
-            || self.arriving.is_some()
-            || self.waiting_fade.moving()
-            || self.quip_fade.get().moving()
-            || self
-                .entering
-                .borrow()
-                .values()
-                .any(crate::pane::Fade::moving)
-            || self
-                .ages
-                .borrow()
-                .values()
-                .any(|(_, _, fade)| fade.moving())
-            || self.notes_fade.moving()
-            || self.quit_fade.moving()
-            || self.explain_fade.moving()
-            || self
-                .showing
-                .as_ref()
-                .is_some_and(|(_, light)| light.moving())
-            || self.folds.iter().any(crate::pane::Fade::moving)
-            || self.panes.iter().any(|pane| {
-                pane.code().is_some_and(Pane::fading)
-                    || pane.chart().is_some_and(crate::chart::Chart::fading)
-                    || pane.paper().is_some_and(crate::page::Paper::fading)
-            })
-        {
-            window.request_animation_frame();
-        }
-
-        // The grid decides how many panes stand beside each other, from the
-        // width actually available. `min_pane_width` is in the same unit, so
-        // the two only have to agree with each other.
-        //
-        // A group with a picture in it is laid out sideways: a diagram wants
-        // width and a file wants height, and stacking them gives each one the
-        // other's shape.
-        //
-        // Worked out before a single pane is built, because a pane carries its
-        // own share of the row and cannot be told afterwards.
-        //
-        // And only while the picture actually fits beside the code. A diagram
-        // is put in a column because a diagram wants width; giving it half a
-        // window and cutting the last box off it is the opposite of that. A
-        // wide one gets the full width and the row below, where it fits and the
-        // reader can see all of it without dragging.
         let count = self.panes.len();
-        let veil = self.group_level();
-        // Only once the first group is in: before that the placeholder is the
-        // pane area itself and needs no layer.
-        let waiting_level = if self.deck.groups().is_empty() {
-            0.
-        } else {
-            self.waiting_fade.level()
-        };
         let drawings: Vec<f32> = self
             .panes
             .iter()
@@ -9900,7 +9863,185 @@ impl Render for DeckView {
                     .into_any_element(),
             );
         }
-        let rows = stacked;
+        (stacked, left_spines, right_spines)
+    }
+}
+
+impl Render for DeckView {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        // The group that left is gone once it has faded, and the band has
+        // eased to the height of the one that arrived.
+        if self.outgoing.as_ref().is_some_and(|out| !out.fade.moving()) {
+            self.outgoing = None;
+        }
+        if !self.group_fade.moving() {
+            self.band_from = 0.;
+        }
+        self.settle_said_light();
+        self.settle_ticks();
+        #[cfg(debug_assertions)]
+        self.debug_sheet(window, cx);
+        // The dock, a key's card, and a key lit on the dock all move on their
+        // own clock. The glow is asked for frames for exactly as long as it
+        // takes to go out, which is the pace it is drawn at.
+        let hit = self.help_hit.is_some_and(|(_, at)| at.elapsed() < GLOW);
+        self.export_fade.set(self.exportable());
+        if self.help.moving() || self.tip_fade.moving() || self.export_fade.moving() || hit {
+            window.request_animation_frame();
+        }
+        if std::mem::take(&mut self.review_settle) {
+            cx.on_next_frame(window, |_, _, cx| cx.notify());
+        }
+        // The picked sentence opens the values whose keys it names.
+        let said = self.picked_said.and_then(|picked| {
+            let say = &self.group()?.say;
+            let fresh = self
+                .said_memo
+                .as_ref()
+                .is_some_and(|(at, was, _)| *at == picked && was == say);
+            if !fresh {
+                let (from, to) = picked;
+                let words = crate::prose::words(say);
+                let (a, b) = (
+                    from.min(to),
+                    from.max(to).min(words.len().saturating_sub(1)),
+                );
+                let cut = words.get(a..=b).map(<[String]>::concat);
+                self.said_memo = Some((picked, say.clone(), cut));
+            }
+            self.said_memo.as_ref().and_then(|(_, _, cut)| cut.clone())
+        });
+        // Values that have finished closing are taken out of their panes.
+        for pane in &mut self.panes {
+            if let Sheet::Code(code) = pane {
+                code.follow_prose(said.as_deref());
+                code.settle();
+            }
+        }
+        // Notes that have finished fading out are let go.
+        if self.notes.is_some() && !self.notes_fade.on() && !self.notes_fade.moving() {
+            self.notes = None;
+        }
+        // Somebody is there again: a card still saying otherwise would be
+        // wrong for as long as it stayed up. Put away here, where there is a
+        // window to hand the keyboard back through.
+        if self.explaining && self.heard() {
+            self.understood(window, cx);
+        }
+        let typing = self.typing(window, cx);
+        let corner = window_corner(window);
+        self.hang_asks(window, cx);
+        // A page's own view is not deck's to paint, so it is moved here, before
+        // anything is drawn: to where the last frame measured its hole, or off
+        // the screen if the room is in the middle of moving.
+        self.settle_pages(window);
+        // Built up front rather than inside `.children()`: rendering a pane
+        // needs the context, and a closure holding it cannot also be handed to
+        // the element it is building.
+        // Rows call back into the view when clicked, and a weak handle is what
+        // a closure that outlives this frame is allowed to hold.
+
+        let speaking = self.voice.talking();
+        // How far through a turn the page is, and how far down the panes have
+        // dipped for it. A half sine: down to meet the new arrangement, back up
+        // once it is there.
+        // A quarter turn lands at once, with no animation at all.
+        //
+        // It has been tried twice. A dip reads as the window blinking, and
+        // folding the panes away and back reads as two movements that happen to
+        // share a key — because a turn is not a fold: nothing is going away.
+        // What is left is the honest thing, which is also the quickest: the
+        // panes are simply somewhere else the next time the window paints.
+        self.heed();
+        self.look_ahead(cx);
+        // A light coming up or going out is a few hundred milliseconds of
+        // frames, and then none.
+        let hearing = self.heard.moving() || self.heard_paragraphs.moving() || self.voiced.moving();
+        if hearing
+            || self.pressed.is_some_and(|(_, _, light)| light.moving())
+            || self.said_lit.is_some_and(|(_, light)| light.moving())
+            || self.said_tick.moving()
+            || self.pressed_tick.moving()
+            || [self.track_hover, self.track_hover_was]
+                .into_iter()
+                .flatten()
+                .any(|(_, light)| light.moving())
+            || self.rail_open.moving()
+            || self.phrase_fade.get().moving()
+            || self.chip_fade.get().moving()
+            || self.group_fade.moving()
+            || self.outgoing.as_ref().is_some_and(|out| out.fade.moving())
+            || self.waiting_fade.moving()
+            || self.quip_fade.get().moving()
+            || self
+                .entering
+                .borrow()
+                .values()
+                .any(crate::pane::Fade::moving)
+            || self
+                .ages
+                .borrow()
+                .values()
+                .any(|(_, _, fade)| fade.moving())
+            || self.notes_fade.moving()
+            || self.quit_fade.moving()
+            || self.explain_fade.moving()
+            || self
+                .showing
+                .as_ref()
+                .is_some_and(|(_, light)| light.moving())
+            || self.folds.iter().any(crate::pane::Fade::moving)
+            || self.panes.iter().any(|pane| {
+                pane.code().is_some_and(Pane::fading)
+                    || pane.chart().is_some_and(crate::chart::Chart::fading)
+                    || pane.paper().is_some_and(crate::page::Paper::fading)
+            })
+        {
+            window.request_animation_frame();
+        }
+
+        // The grid decides how many panes stand beside each other, from the
+        // width actually available. `min_pane_width` is in the same unit, so
+        // the two only have to agree with each other.
+        //
+        // A group with a picture in it is laid out sideways: a diagram wants
+        // width and a file wants height, and stacking them gives each one the
+        // other's shape.
+        //
+        // Worked out before a single pane is built, because a pane carries its
+        // own share of the row and cannot be told afterwards.
+        //
+        // And only while the picture actually fits beside the code. A diagram
+        // is put in a column because a diagram wants width; giving it half a
+        // window and cutting the last box off it is the opposite of that. A
+        // wide one gets the full width and the row below, where it fits and the
+        // reader can see all of it without dragging.
+        let veil = self.group_level();
+        // Only once the first group is in: before that the placeholder is the
+        // pane area itself and needs no layer.
+        let waiting_level = if self.deck.groups().is_empty() {
+            0.
+        } else {
+            self.waiting_fade.level()
+        };
+        let (rows, left_spines, right_spines) = self.lay_out(veil, window, cx);
+        // The group that left, laid out by the same code from the set that
+        // was kept, and its band content. Nothing it writes outlives it.
+        let leaving = self.outgoing.take().map(|mut out| {
+            let level = out.fade.level();
+            let ix = out.ix;
+            let offset = slid_out(out.from_offset, out.dir, out.start, level);
+            let (rows, band) = self.with_set(&mut out.set, |this| {
+                let (rows, _, _) = this.lay_out(1., window, cx);
+                (rows, this.band_column(ix, true, level, offset, cx))
+            });
+            self.outgoing = Some(out);
+            (rows, band, level)
+        });
+        let (leaving_rows, leaving_band, leaving_level) = match leaving {
+            Some((rows, band, level)) => (Some(rows), Some(band), level),
+            None => (None, None, 0.),
+        };
 
         div()
             .size_full()
@@ -10031,7 +10172,19 @@ impl Render for DeckView {
             .border_1()
             .border_color(paint(self.palette.edge))
             .text_color(paint(self.palette.fg))
-            .child(self.render_band(cx))
+            .child(self.render_band(
+                leaving_band.map(|band| {
+                    div()
+                        .absolute()
+                        .top_0()
+                        .left_0()
+                        .size_full()
+                        .h_flex()
+                        .child(band)
+                        .into_any_element()
+                }),
+                cx,
+            ))
             .child(self.render_seam(Divide::Band, cx))
             // The moving placeholder says something is on its way, which is
             // only true while the deck is still being written. A sealed deck
@@ -10077,6 +10230,25 @@ impl Render for DeckView {
                             .h_full()
                             .min_h_0()
                             .relative()
+                            // The group that left, under the one arriving, in
+                            // the same place and fading on its own clock. The
+                            // blocker over it takes the pointer, so nothing
+                            // under the arriving group is ever reached; the
+                            // arriving group is drawn over both.
+                            .children(leaving_rows.map(|rows| {
+                                div()
+                                    .id("leaving-panes")
+                                    .absolute()
+                                    .top_0()
+                                    .left_0()
+                                    .size_full()
+                                    .v_flex()
+                                    .opacity(leaving_level)
+                                    .children(rows)
+                            }))
+                            .when(leaving_level > 0., |this| {
+                                this.child(div().absolute().top_0().left_0().size_full().occlude())
+                            })
                             // The group's panes fade; the window around them
                             // does not.
                             .child(
@@ -10180,18 +10352,92 @@ fn about(
     }
 }
 
-/// How far down the group dips on a step, as an opacity.
-///
-/// Not nought: at nought the window is empty for a moment between two groups,
-/// which read as a flash of nothing. Held at this, there is always content on
-/// screen and the swap happens under it, as one soft dip in brightness.
-const DIP_FLOOR: f32 = 0.35;
+/// How far the words of a group stand from their place while it comes or
+/// goes, in points.
+const SLIDE: f32 = 12.;
 
-/// How long the group takes to dip on a step, in milliseconds.
+/// The panes of one group, and the layout kept with them.
 ///
-/// The Feedback pace: quick enough that the swap under the dip goes
-/// unnoticed, slow enough to read as a dip and not a cut.
-const GROUP_FALL_MS: u64 = 120;
+/// Grouped so that the group that is leaving can be moved out of the window
+/// whole and swapped back in for drawing (see [`DeckView::with_set`]) without
+/// the layout code knowing which group it is laying out.
+#[derive(Default)]
+struct PaneSet {
+    panes: Vec<Sheet>,
+    folds: Vec<crate::pane::Fade>,
+    widths: Vec<f32>,
+    shares: Vec<f32>,
+    temporary: std::collections::HashSet<usize>,
+    closing: std::collections::HashSet<usize>,
+    turn_now: u8,
+    cols: usize,
+}
+
+/// The group a step has just left, kept on screen while it fades.
+struct Outgoing {
+    set: PaneSet,
+    /// Which group it was, for its band.
+    ix: usize,
+    /// The way the step went: its words leave the opposite way.
+    dir: i8,
+    /// Its level when the step came: it falls from there, never from whole.
+    start: f32,
+    /// How far from its place its words stood when the step came.
+    from_offset: f32,
+    /// Falls from `start` to nought on the card fall.
+    fade: crate::pane::Fade,
+}
+
+/// Put the group that was on screen under the one arriving.
+///
+/// There is one slot, so a step taken while another is still fading drops the
+/// layer that was there at once: layers never stack. The new layer falls from
+/// the level `shown` had reached, so a step in mid-rise does not jump.
+fn hand_over(
+    slot: &mut Option<Outgoing>,
+    set: PaneSet,
+    ix: usize,
+    dir: i8,
+    shown: crate::pane::Fade,
+    from_offset: f32,
+) {
+    let start = shown.level();
+    let mut fade = shown;
+    fade.set(false);
+    // Nothing worth keeping if it was not yet visible.
+    *slot = (start > 0.02).then_some(Outgoing {
+        set,
+        ix,
+        dir,
+        start,
+        from_offset,
+        fade,
+    });
+}
+
+/// Where the arriving group's words stand, `level` of the way in from the side
+/// the step came from.
+fn slid_in(dir: i8, level: f32) -> f32 {
+    SLIDE * f32::from(dir) * (1. - level)
+}
+
+/// Where the leaving group's words stand: from where they were when the step
+/// came, out to the side opposite the way it went, on the level it is falling
+/// through.
+fn slid_out(from: f32, dir: i8, start: f32, level: f32) -> f32 {
+    let gone = if start > 0. {
+        (1. - level / start).clamp(0., 1.)
+    } else {
+        1.
+    };
+    from + (-SLIDE * f32::from(dir) - from) * gone
+}
+
+/// The least height the band keeps while it eases from the height it had when
+/// a step was taken, `level` of the way to the new group's.
+fn band_floor(from: f32, level: f32) -> f32 {
+    from * (1. - level)
+}
 
 /// Where turn `place` sits among the rail's children: after the spacer that
 /// anchors the turns to the bottom. `scroll_to_item` indexes children, so every
@@ -10200,31 +10446,12 @@ fn rail_child(place: usize) -> usize {
     place + 1
 }
 
-/// The floor a dip should bottom out at when a step lands while the group is
-/// at `level` of a rise from `floor`.
-///
-/// Dipping to the usual floor from a group that is shown lower than it would
-/// jump the picture up; this solves for the floor that makes the first frame
-/// of the fall equal what is on screen.
-fn carried_floor(floor: f32, level: f32) -> f32 {
-    if level >= 1. - 1e-4 {
-        return DIP_FLOOR;
-    }
-    let shown = floor + (1. - floor) * level;
-    ((shown - level) / (1. - level)).clamp(0., DIP_FLOOR)
-}
-
 /// The group a step of `step` from `from` lands on, if the deck has one there.
 ///
 /// From the group the last press was heading for, so pressing `n` three times
 /// quickly is three steps however far the first fade got.
 fn walked_to(from: usize, step: isize, len: usize) -> Option<usize> {
     from.checked_add_signed(step).filter(|next| *next < len)
-}
-
-/// The group to swap to, once the one on screen has finished going out.
-fn arrival_due(arriving: Option<usize>, fade: &crate::pane::Fade) -> Option<usize> {
-    arriving.filter(|_| !fade.on() && !fade.moving())
 }
 
 /// A group's name in the review column: its title, or for a group written
@@ -10330,18 +10557,6 @@ mod tests {
     }
 
     #[test]
-    fn a_step_in_mid_rise_starts_from_what_is_shown() {
-        let shown = |floor: f32, level: f32| floor + (1. - floor) * level;
-        // Whole: the usual floor.
-        assert!((super::carried_floor(0.35, 1.) - super::DIP_FLOOR).abs() < 1e-6);
-        // Half way up from nothing: the dip starts from where it stands.
-        let floor = super::carried_floor(0., 0.5);
-        assert!((shown(floor, 0.5) - 0.5).abs() < 1e-6);
-        // Never above the floor.
-        assert!(super::carried_floor(0., 0.9) <= super::DIP_FLOOR);
-    }
-
-    #[test]
     fn three_quick_presses_are_three_steps() {
         // Each press starts from where the last was heading, not from the
         // group still fading out.
@@ -10355,41 +10570,80 @@ mod tests {
         assert_eq!(super::walked_to(0, -1, 5), None);
     }
 
-    #[test]
-    fn a_second_press_mid_fade_keeps_one_arrival() {
-        let fall = std::time::Duration::from_millis(super::GROUP_FALL_MS);
-        let mut fade = super::DeckView::group_fade().whole();
-        fade.set(false);
-        let mut arriving = Some(1);
-        // Mid-fall nothing swaps.
-        assert_eq!(super::arrival_due(arriving, &fade), None);
-        // A second press retargets; there is still exactly one arrival, and
-        // the fall that was running is not restarted.
-        arriving = Some(2);
-        assert!(!fade.set(false));
-        assert_eq!(super::arrival_due(arriving, &fade), None);
-        // Only the last target arrives, once the fall has run out.
-        let fade = fade.aged(fall);
-        assert_eq!(super::arrival_due(arriving, &fade), Some(2));
+    fn rising(level_after: u64) -> crate::pane::Fade {
+        let mut fade = super::DeckView::card_fade();
+        fade.set(true);
+        fade.aged(std::time::Duration::from_millis(level_after))
     }
 
     #[test]
-    fn a_step_never_empties_the_group() {
-        // The deepest the dip goes is the floor, not nought.
-        let mut fade = super::DeckView::group_fade().whole();
-        fade.set(false);
-        let fade = fade.aged(std::time::Duration::from_millis(super::GROUP_FALL_MS));
-        let shown = super::DIP_FLOOR + (1. - super::DIP_FLOOR) * fade.level();
-        assert!((shown - super::DIP_FLOOR).abs() < 1e-6);
-        assert!(shown > 0.);
+    fn rapid_presses_keep_one_outgoing_layer() {
+        let mut slot = None;
+        for (ix, dir) in [(0, 1), (1, 1), (2, 1)] {
+            super::hand_over(
+                &mut slot,
+                super::PaneSet::default(),
+                ix,
+                dir,
+                rising(100),
+                0.,
+            );
+            assert!(slot.is_some());
+        }
+        // Only the last group left is kept; the ones before it are gone.
+        assert_eq!(slot.map(|out| out.ix), Some(2));
+    }
+
+    #[test]
+    fn the_outgoing_layer_starts_from_the_level_the_incoming_had() {
+        let shown = rising(100);
+        let mut slot = None;
+        super::hand_over(&mut slot, super::PaneSet::default(), 0, 1, shown, 0.);
+        let out = slot.unwrap();
+        assert!((out.fade.level() - shown.level()).abs() < 0.02);
+        assert!((out.start - shown.level()).abs() < 0.02);
+        // And falls to nought, not to some floor.
+        let gone = out.fade.aged(std::time::Duration::from_millis(160));
+        assert!(gone.level().abs() < 1e-6);
+        // A group not yet visible leaves nothing behind.
+        let mut slot = None;
+        super::hand_over(
+            &mut slot,
+            super::PaneSet::default(),
+            0,
+            1,
+            super::DeckView::card_fade(),
+            0.,
+        );
+        assert!(slot.is_none());
+    }
+
+    #[test]
+    fn words_slide_the_way_you_went_and_never_jump() {
+        // Onward: in from the right, out to the left.
+        assert!((super::slid_in(1, 0.) - 12.).abs() < 1e-6);
+        assert!(super::slid_in(1, 1.).abs() < 1e-6);
+        assert!((super::slid_out(0., 1, 1., 0.) + 12.).abs() < 1e-6);
+        // Back: the reverse.
+        assert!((super::slid_in(-1, 0.) + 12.).abs() < 1e-6);
+        assert!((super::slid_out(0., -1, 1., 0.) - 12.).abs() < 1e-6);
+        // A layer handed over part way starts exactly where it stood.
+        let stood = super::slid_in(1, 0.4);
+        assert!((super::slid_out(stood, 1, 0.4, 0.4) - stood).abs() < 1e-6);
+    }
+
+    #[test]
+    fn the_band_eases_from_the_old_height_to_the_new() {
+        assert!((super::band_floor(200., 0.) - 200.).abs() < 1e-6);
+        assert!((super::band_floor(200., 0.5) - 100.).abs() < 1e-6);
+        assert!(super::band_floor(200., 1.).abs() < 1e-6);
     }
 
     #[test]
     fn a_window_opened_on_a_whole_deck_does_not_fade() {
-        let fade = super::DeckView::group_fade().whole();
+        let fade = super::DeckView::card_fade().whole();
         assert!(!fade.moving());
         assert!((fade.level() - 1.).abs() < f32::EPSILON);
-        assert_eq!(super::arrival_due(None, &fade), None);
     }
 
     #[test]
