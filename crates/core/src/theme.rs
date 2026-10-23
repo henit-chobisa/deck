@@ -498,10 +498,7 @@ const GROUND: f32 = 0.19;
 const TINT: f32 = 0.16;
 /// How far a diff ground is tinted. Further than the lit range, because a
 /// change has to be told apart from the spotlight as well as from the page.
-///
-/// Halved from 0.115, for the reason deck's own palettes give: a change is a
-/// quiet ground under its lines, never the loudest thing in the window.
-const DIFF: f32 = 0.055;
+const DIFF: f32 = 0.115;
 /// Below this lightness a page has no useful room left to darken into, and the
 /// surfaces have to come up instead.
 ///

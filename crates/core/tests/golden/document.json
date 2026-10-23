@@ -25,7 +25,7 @@
       "muted": "#999078",
       "accent": "#fe8019"
     },
-    "going": "#fb5e4b",
+    "going": "#fc6654",
     "arriving": "#b8bb26",
     "levels": {
       "high": "#b8bb26",
@@ -1540,7 +1540,7 @@
               "kind": {
                 "kind": "going"
               },
-              "ground": "#342a29",
+              "ground": "#3f2b28",
               "accent": "#fe8019",
               "spans": [
                 {
@@ -1549,7 +1549,7 @@
                 },
                 {
                   "text": "let",
-                  "ink": "#ac8d6f"
+                  "ink": "#af9275"
                 },
                 {
                   "text": " pending = pending - 1",
@@ -1569,7 +1569,7 @@
               "lit_by": [
                 1
               ],
-              "ground": "#2f2f27",
+              "ground": "#373727",
               "accent": "#fe8019",
               "spans": [
                 {
@@ -1584,7 +1584,7 @@
               "kind": {
                 "kind": "arriving"
               },
-              "ground": "#2f2f27",
+              "ground": "#373727",
               "accent": "#fe8019",
               "spans": [
                 {
@@ -1593,7 +1593,7 @@
                 },
                 {
                   "text": "let",
-                  "ink": "#ae9073"
+                  "ink": "#b5997e"
                 },
                 {
                   "text": " pending = pending - 1",

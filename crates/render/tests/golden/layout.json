@@ -2424,7 +2424,7 @@
           "w": 500.0,
           "h": 12.0
         },
-        "colour": "#342a29"
+        "colour": "#3f2b28"
       },
       {
         "item": "text",
@@ -2442,7 +2442,7 @@
         "text": "−",
         "face": "mono",
         "size": 8.0,
-        "colour": "#fb5e4b"
+        "colour": "#fc6654"
       },
       {
         "item": "text",
@@ -2460,7 +2460,7 @@
         "text": "-=",
         "face": "mono",
         "size": 8.0,
-        "colour": "#9b937b"
+        "colour": "#9f9680"
       },
       {
         "item": "text",
@@ -2479,7 +2479,7 @@
           "w": 500.0,
           "h": 12.0
         },
-        "colour": "#2f2f27"
+        "colour": "#373727"
       },
       {
         "item": "fill",
@@ -2525,7 +2525,7 @@
         "text": "// counted at the tail",
         "face": "monoitalic",
         "size": 8.0,
-        "colour": "#9d957e"
+        "colour": "#a59e89"
       },
       {
         "item": "text",
@@ -6183,7 +6183,7 @@
           "w": 819.0,
           "h": 19.0
         },
-        "colour": "#342a29"
+        "colour": "#3f2b28"
       },
       {
         "item": "text",
@@ -6192,7 +6192,7 @@
         "text": "−",
         "face": "mono",
         "size": 12.0,
-        "colour": "#fb5e4b"
+        "colour": "#fc6654"
       },
       {
         "item": "text",
@@ -6219,7 +6219,7 @@
         "text": "-=",
         "face": "mono",
         "size": 12.0,
-        "colour": "#9b937b"
+        "colour": "#9f9680"
       },
       {
         "item": "text",
@@ -6238,7 +6238,7 @@
           "w": 819.0,
           "h": 19.0
         },
-        "colour": "#2f2f27"
+        "colour": "#373727"
       },
       {
         "item": "text",
@@ -6256,7 +6256,7 @@
         "r": 7.5,
         "numeral": 1,
         "fill": "#fe8019",
-        "ink": "#2f2f27"
+        "ink": "#373727"
       },
       {
         "item": "text",
@@ -6274,7 +6274,7 @@
         "text": "// counted at the tail",
         "face": "monoitalic",
         "size": 12.0,
-        "colour": "#9d957e"
+        "colour": "#a59e89"
       },
       {
         "item": "text",
