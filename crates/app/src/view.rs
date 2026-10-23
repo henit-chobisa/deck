@@ -8553,6 +8553,12 @@ impl DeckView {
                                     deck.rail_wheeled.set(true);
                                     cx.notify();
                                 }))
+                                // With no turns yet, the answer on its way sits
+                                // where the first turn will land: at the top of
+                                // the thread, on its line, with its word. See
+                                // `render_pulse_at_start` for why it is not down
+                                // beside *Latest* then.
+                                .children(nothing.then(|| self.render_pulse_at_start()).flatten())
                                 .children(nothing.then(|| {
                                     div()
                                         .flex_1()
@@ -8631,7 +8637,7 @@ impl DeckView {
                                         })
                                         .child("↓ Latest")
                                 })
-                                .children(self.render_pulse()),
+                                .children((!nothing).then(|| self.render_pulse()).flatten()),
                         )
                         .children(self.render_invite(cx))
                         .children(self.render_making())
@@ -8930,24 +8936,63 @@ impl DeckView {
         if self.conversation.queued() || since >= PATIENCE || self.unheard >= UNHEARD_FOR {
             return None;
         }
+        let dot = div()
+            .flex_none()
+            .size(px(6.))
+            .rounded_full()
+            .bg(paint(self.palette.accent))
+            .with_animation(
+                "answering",
+                // A dozen frames a second is plenty for a breath this
+                // slow, and each one redraws the whole window: at the
+                // screen's own rate that was tens of thousands of
+                // redraws for one dot over a long answer.
+                Animation::new(BREATH)
+                    .repeat()
+                    .with_max_fps(12.)
+                    .with_easing(pulsating_between(0.15, 0.7)),
+                |this, breath| this.opacity(breath),
+            );
         Some(
             div()
+                .h_flex()
                 .flex_none()
-                .size(px(6.))
-                .rounded_full()
-                .bg(paint(self.palette.accent))
-                .with_animation(
-                    "answering",
-                    // A dozen frames a second is plenty for a breath this
-                    // slow, and each one redraws the whole window: at the
-                    // screen's own rate that was tens of thousands of
-                    // redraws for one dot over a long answer.
-                    Animation::new(BREATH)
-                        .repeat()
-                        .with_max_fps(12.)
-                        .with_easing(pulsating_between(0.15, 0.7)),
-                    |this, breath| this.opacity(breath),
+                .items_center()
+                .gap(px(6.))
+                .child(dot)
+                // The word that sat beside the dot when the wait was a bar
+                // and a label (removed in dc3e282 with the bar and the
+                // agent's notes, which cost the agent a tool call a step).
+                // Only the plain word comes back: the notes and the deadline
+                // stay gone, but a dot alone reads as a stray mark.
+                .child(
+                    div()
+                        .text_size(px(10.5))
+                        .text_color(paint(self.palette.accent))
+                        .child("sent"),
                 )
+                .into_any_element(),
+        )
+    }
+
+    /// The pulse for a rail with no turns in it, where the first turn goes.
+    ///
+    /// Beside *Latest* it floated alone above the composer in an empty rail:
+    /// *Latest* has nothing to say yet, so the dot and its word were the only
+    /// thing on the line and read as a stray mark. Here it takes the thread's
+    /// own gutter, so the empty case looks like the first turn arriving.
+    fn render_pulse_at_start(&self) -> Option<AnyElement> {
+        let pulse = self.render_pulse()?;
+        Some(
+            div()
+                .h_flex()
+                .flex_none()
+                .items_center()
+                .pt(px(3.))
+                .pb(px(6.))
+                // The thread's knots start 6px in; the dot starts on that line.
+                .pl(px(7.))
+                .child(pulse)
                 .into_any_element(),
         )
     }
