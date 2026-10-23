@@ -763,6 +763,10 @@ pub struct DeckView {
     /// How many turns the rail held the last time it was at the bottom; a turn
     /// beyond that arrived while the reader was elsewhere.
     rail_seen: std::cell::Cell<usize>,
+    /// How many agent turns the thread held the last frame an answer was
+    /// owed, so that the wait ending with more of them than that means a
+    /// reply landed, and ending with the same means it simply ran out.
+    wait_turns: std::cell::Cell<usize>,
     /// The line chosen for the last wait (an index into [`PHRASES`]), kept so
     /// the next wait never picks the same one.
     phrase: std::cell::Cell<Option<usize>>,
@@ -1277,6 +1281,7 @@ impl DeckView {
             entering: std::cell::RefCell::new(std::collections::HashMap::new()),
             known: std::cell::RefCell::new(std::collections::HashSet::new()),
             rail_seen: std::cell::Cell::new(0),
+            wait_turns: std::cell::Cell::new(0),
             phrase: std::cell::Cell::new(None),
             phrase_for: std::cell::Cell::new(None),
             ages: std::cell::RefCell::new(std::collections::HashMap::new()),
@@ -8324,13 +8329,18 @@ impl DeckView {
             .iter()
             .filter(|(_, moment)| from_the_agent(&moment.what))
             .count();
-        // The reply on its way is part of the thread, so the last real turn's
-        // line has to run on down to it instead of stopping at its own knot.
-        // And a little past that, while the pulse is still going out, so the
-        // line and its tail do not snap away when the wait ends without a
-        // reply.
-        let arriving =
-            self.arrival_shown() && (self.answer_owed() || self.phrase_fade.get().moving());
+        // Whether the wait ended because an agent turn landed, rather than
+        // because it ran out. While it is owed, the count is kept.
+        let owed_now = self.answer_owed();
+        if owed_now {
+            self.wait_turns.set(turns);
+        }
+        let replied = !owed_now && turns > self.wait_turns.get();
+        // The pulse is on screen while owed and while it fades out. The last
+        // real turn's line runs on down to it instead of stopping at its own
+        // knot, and keeps doing so through a fade that is not a reply, which
+        // is the row giving its room back, not a turn coming.
+        let arriving = self.arrival_shown() && !replied;
         let lines: Vec<AnyElement> = shown
             .into_iter()
             .enumerate()
@@ -8615,15 +8625,17 @@ impl DeckView {
         // Nobody has said anything, so the thread is empty and the space is
         // the first thing the reader sees in the panel.
         let nothing = lines.is_empty();
-        let arrival = self.render_arrival(!nothing, mono.clone(), window);
-        let owed_now = self.answer_owed();
-        // The pulse once the answer is here only fades where it stood: an
-        // absolute layer, so it goes in the relative wrapper beside the scroll
-        // container and not among the turns.
-        let (arrival, arrival_going) = if owed_now {
-            (arrival, None)
+        let arrival = self.render_arrival(!nothing, replied, mono.clone(), window);
+        // When a real reply landed the pulse fades where it stood, as an
+        // absolute layer, so the one change in height is the turn coming in.
+        // That layer goes in the relative wrapper beside the scroll container,
+        // not among the turns, and only while the rail is at its tail: pinned
+        // elsewhere it would flash over an old turn. Any other end to the wait
+        // keeps the row in the flow and eases its room away.
+        let (arrival, arrival_going) = if replied {
+            (None, arrival.filter(|_| self.rail_pinned.get()))
         } else {
-            (None, arrival)
+            (arrival, None)
         };
 
         div()
@@ -9132,6 +9144,7 @@ impl DeckView {
     fn render_arrival(
         &self,
         has_turns: bool,
+        replied: bool,
         mono: SharedString,
         window: &Window,
     ) -> Option<AnyElement> {
@@ -9148,14 +9161,12 @@ impl DeckView {
         }
         let palette = self.palette;
         let phrase = PHRASES[self.phrase.get()?];
-        // Once the answer is here the row is only fading out. It stops taking
+        // Once a reply is here the row is only fading out. It stops taking
         // room, and fades where it stood, so the one change in height is the
-        // real turn coming in, not that and the pulse leaving as well.
-        let owed = self.answer_owed();
-        // The line into the dot and the tail below it stay while the row is
-        // still fading out, so a wait that ends without a reply lets go of
-        // them with the rest rather than snapping.
-        let lingering = owed || self.phrase_fade.get().moving();
+        // real turn coming in, not that and the pulse leaving as well. A wait
+        // that ran out with no reply keeps its place in the flow and gives
+        // its room back as it fades, so the thread does not drop.
+        let level = self.phrase_fade.get().level();
         // Centred on the thread line, which is the 1px at x = 10 to 11, the
         // same column the knots are centred on.
         let dot = div()
@@ -9184,7 +9195,7 @@ impl DeckView {
         };
         // Only with turns above it is there a line to continue; the first
         // turn of a thread starts at its dot.
-        let thread = (has_turns && lingering).then(|| {
+        let thread = (has_turns).then(|| {
             div()
                 .absolute()
                 .left(px(10.))
@@ -9193,7 +9204,7 @@ impl DeckView {
                 .h(px((LINE - DOT) / 2.))
                 .bg(paint(palette.edge))
         });
-        let tail = (0..2).filter(|_| lingering).map(|n| {
+        let tail = (0..2).map(|n| {
             div()
                 .absolute()
                 .left(px(10.))
@@ -9206,8 +9217,10 @@ impl DeckView {
             div()
                 .h_flex()
                 .items_start()
-                .when(owed, |this| this.min_h(px(LINE + 10.)))
-                .when(!owed, |this| this.absolute().bottom_0().left_0().right_0())
+                .when(!replied, |this| this.min_h(px((LINE + 10.) * level)))
+                .when(replied, |this| {
+                    this.absolute().bottom_0().left_0().right_0()
+                })
                 .opacity(self.phrase_fade.get().level())
                 .child(
                     div()
@@ -9289,10 +9302,11 @@ impl DeckView {
     }
 }
 
-/// Whether a turn is the agent's to say, and so counts as a reply arriving.
-/// What the reader wrote themselves is `Said`: they were there for it.
+/// Whether a turn is the agent's, and so counts as something arriving.
+/// `Said` is the agent talking and `Shown` the agent moving the reader's eyes;
+/// what the reader did themselves (`Wrote`, `Reacted`) they were there for.
 fn from_the_agent(what: &deck_core::What) -> bool {
-    *what != deck_core::What::Said
+    matches!(what, deck_core::What::Said | deck_core::What::Shown)
 }
 
 /// What the way-back chip says. A turn that arrived while the reader was
@@ -10073,29 +10087,15 @@ impl Render for DeckView {
                                     .when(veil < 1., |this| this.opacity(veil))
                                     .children(rows),
                             )
-                            .children(self.render_help(cx))
-                            // The placeholder going out over the first group
-                            // coming in. Over the panes only, so the chat rail
-                            // stays usable; it takes no input from the panes
-                            // under it.
+                            // Takes the hover and clicks the placeholder
+                            // going out would otherwise let through to the
+                            // panes under it. Over the pane column only, and
+                            // before the dock, so the rail and the dock stay
+                            // usable.
                             .when(waiting_level > 0., |this| {
-                                this.child(
-                                    div()
-                                        .absolute()
-                                        .top_0()
-                                        .left_0()
-                                        .size_full()
-                                        .v_flex()
-                                        .opacity(waiting_level)
-                                        .occlude()
-                                        .child(crate::waiting::render(
-                                            &self.palette,
-                                            self.spread,
-                                            f32::from(window.viewport_size().width)
-                                                >= crate::waiting::ROOM,
-                                        )),
-                                )
-                            }),
+                                this.child(div().absolute().top_0().left_0().size_full().occlude())
+                            })
+                            .children(self.render_help(cx)),
                     )
                     .children(right_spines)
                     // No seam on a folded rail: there is nothing to drag, and
@@ -10105,6 +10105,26 @@ impl Render for DeckView {
                         this.child(self.render_seam(Divide::Rail, cx))
                     })
                     .child(self.render_rail(speaking, window, cx))
+                    // The placeholder going out over the first group coming
+                    // in, across the whole row as it stood before the rail
+                    // existed so it does not shift on landing. It is only
+                    // drawn: the blocker for the panes is in their column.
+                    .when(waiting_level > 0., |this| {
+                        this.child(
+                            div()
+                                .absolute()
+                                .top_0()
+                                .left_0()
+                                .size_full()
+                                .v_flex()
+                                .opacity(waiting_level)
+                                .child(crate::waiting::render(
+                                    &self.palette,
+                                    self.spread,
+                                    f32::from(window.viewport_size().width) >= crate::waiting::ROOM,
+                                )),
+                        )
+                    })
                     .into_any_element()
             })
             .children(self.render_asks(window, cx))
@@ -10297,10 +10317,10 @@ mod tests {
 
     #[test]
     fn the_readers_own_turn_is_not_a_reply() {
-        assert!(!super::from_the_agent(&deck_core::What::Said));
-        assert!(super::from_the_agent(&deck_core::What::Wrote));
-        assert!(super::from_the_agent(&deck_core::What::Reacted));
+        assert!(super::from_the_agent(&deck_core::What::Said));
         assert!(super::from_the_agent(&deck_core::What::Shown));
+        assert!(!super::from_the_agent(&deck_core::What::Wrote));
+        assert!(!super::from_the_agent(&deck_core::What::Reacted));
     }
 
     #[test]
