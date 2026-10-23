@@ -10,14 +10,23 @@
 //! So deck switches the library's caret off (see [`crate::palette::install`])
 //! and paints its own over each field it owns, doing two things differently:
 //!
-//! - **It glides, but never behind the text.** A caret that lags the letters
-//!   being typed reads as the window being slow, so the caret snaps, with no
-//!   glide at all, whenever the text changed (typing, deleting, pasting), and
-//!   whenever a move comes within [`BURST`] of the last one (a held arrow key,
-//!   a quick run of clicks), so moves never queue up glides. Only an isolated
-//!   caret-only move glides: a click, a jump by word or line, a single arrow
-//!   press after a pause. It travels over [`GLIDE`] with a smoothstep, from
-//!   wherever the caret is drawn *now*, and lands exactly on its target.
+//! - **It follows, continuously, and never falls behind the text.** Each
+//!   frame the drawn caret closes a fixed fraction of the gap to where the
+//!   library says the caret belongs, `1 - exp(-dt / TAU)` of it, the way
+//!   smooth-caret terminals do. There is no glide that starts and ends, no
+//!   rule about bursts and no special case for typing: a caret that is far
+//!   from its target moves fast, one that is near moves slowly, and when the
+//!   target moves again mid-flight the follow simply carries on towards the new
+//!   one, so a held arrow key or a run of typed letters is a smooth stream
+//!   rather than a queue of animations. With [`TAU`] at thirty milliseconds the
+//!   caret is within a pixel of a letter about a tenth of a second after it
+//!   lands, so it never reads as trailing the text. It lands exactly on the
+//!   target once the gap is under a quarter of a pixel. It does snap, at once,
+//!   in the four cases where following would be wrong: the first time it
+//!   appears, when the field scrolled (the words moved, not the caret in them),
+//!   when the move is more than [`SNAP_LINES`] lines down or up (a streak down
+//!   the page, not a motion the eye follows), and when the window is in the
+//!   background (nobody is watching, so there is nothing to animate).
 //! - **It breathes.** Instead of blinking, the opacity follows a cosine from
 //!   full down to [`DIM`] and back every [`CYCLE`]. While the reader is typing
 //!   or moving the caret it is held at full, so it can be found; the breathing
@@ -31,17 +40,20 @@
 //! field so that it paints after the field. Painting into the window does not
 //! by itself keep the caret inside the field: when a long text is scrolled so
 //! the caret's line is out of the box, the quad would still land on whatever
-//! neighbours the field. So the overlay clips its own paint to its own bounds,
-//! which are the field's, and the caret cannot escape however the wrapper
-//! around the field is styled.
+//! neighbours the field. So the overlay clips its own paint to the field's
+//! `input_bounds`, never to its own box, and the caret cannot escape however
+//! the wrapper around the field is styled.
 //!
-//! Redraws are paid for only when they show something. While the caret glides,
-//! or is held solid after a change, the overlay asks for a frame every display
+//! Redraws are paid for only when they show something. While the caret is
+//! still following its target, or is held solid after a change, the overlay asks for a frame every display
 //! refresh, because the eye can see those. Once it is only breathing, a slow
 //! cosine, it stops asking and a timer wakes the window about thirty times a
 //! second instead: that is plenty for a curve that takes over a second, and it
 //! stops a quiet, focused field from redrawing the whole window at display
-//! rate for ever. An unfocused field asks for nothing at all.
+//! rate for ever. An unfocused field asks for nothing at all, and neither does a
+//! focused field in a window that is in the background: there the caret is
+//! drawn solid and still, with no breathing and no timer, so a composer left
+//! focused behind another app does not keep repainting deck's window.
 
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -51,11 +63,22 @@ use gpui_kit::{
     Bounds, ContentMask, Hsla, IntoElement, Styled, Task, canvas, fill, point, px, size,
 };
 
-/// How long the caret takes to travel to a new place.
-const GLIDE: f32 = 0.080;
-/// A move this soon after the previous one (or after typing) snaps instead of
-/// gliding. A held arrow key repeats faster than this.
-const BURST: f32 = 0.150;
+/// The follow's time constant, in seconds. Each frame the caret closes
+/// `1 - exp(-dt / TAU)` of the gap to its target, so after `TAU` it has covered
+/// about 63% of it and after 100ms about 96%. Small enough that the caret never
+/// seems to trail typed text, large enough that a jump is seen as a glide.
+const TAU: f32 = 0.030;
+/// Longest step of time one frame may follow for, in seconds. After a stall (a
+/// long frame, a window that was hidden) the caret catches up over a few frames
+/// rather than leaping the whole way in one.
+const MAX_DT: f32 = 0.050;
+/// The frame time assumed for the first frame of a move that starts from rest.
+/// The caret has not been asked for frames while resting, so the time since
+/// the last one says nothing about how long a frame takes.
+const FIRST_DT: f32 = 1. / 60.;
+/// When the caret is this close to its target on both axes, in pixels, it is
+/// put exactly on it, so the follow leaves no sub-pixel residue.
+const SETTLE: f32 = 0.25;
 /// How long the caret stays solid after the last change before it breathes.
 const HOLD: f32 = 0.500;
 /// One full breath, bright to dim to bright.
@@ -63,8 +86,8 @@ const CYCLE: f32 = 1.100;
 /// How faint the caret gets at the bottom of a breath. Not zero: a caret that
 /// vanishes completely is a caret you lose.
 const DIM: f32 = 0.15;
-/// Moves longer than this many lines snap rather than glide. Across that
-/// distance a glide is a streak down the page, not a motion the eye follows.
+/// Moves longer than this many lines snap rather than follow. Across that
+/// distance a follow is a streak down the page, not a motion the eye follows.
 const SNAP_LINES: f32 = 2.0;
 /// How often the window is woken while the caret only breathes. Roughly thirty
 /// times a second.
@@ -82,13 +105,17 @@ pub struct Reading {
     pub height: f32,
     pub line_height: f32,
     /// The field's scroll offset. A change in it moves the target without the
-    /// caret having moved in the text, and that is not worth gliding for.
+    /// caret having moved in the text, and that is not worth following.
     pub scroll: (f32, f32),
-    /// The text's length. A change in it means the text changed, as opposed to
-    /// the caret merely moving through it.
-    pub len: usize,
-    /// Changes whenever the text or the caret position changes.
+    /// The caret's byte offset in the text. A target that moves while this
+    /// stays the same means the letters moved under the caret, as when a Korean
+    /// jamo becomes a wider syllable, which leaves the stamp unchanged.
+    pub cursor: usize,
+    /// Changes whenever the text length or the caret position changes.
     pub stamp: u64,
+    /// Whether the window is the active one. In the background the caret is
+    /// drawn solid, still, and asks for no frames.
+    pub active: bool,
     /// The field's own bounds in window coordinates, as the library lays it
     /// out: origin x, origin y, width, height. The caret is clipped to them.
     pub clip: Option<[f32; 4]>,
@@ -123,7 +150,8 @@ macro_rules! caret_field {
                 height: f32::from(bounds.size.height),
                 line_height: f32::from(line_height),
                 scroll: (f32::from(scroll.x), f32::from(scroll.y)),
-                len: state.text().len(),
+                cursor: state.cursor(),
+                active: $window.is_window_active(),
                 stamp: (state.cursor() as u64) << 32 ^ state.text().len() as u64,
                 clip: {
                     let field = state.input_bounds();
@@ -148,17 +176,6 @@ pub fn smoothstep(t: f32) -> f32 {
     t * t * (3. - 2. * t)
 }
 
-/// Where a glide from `from` to `to` has got to, `t` of the way through its
-/// time.
-#[must_use]
-pub fn glide(from: (f32, f32), to: (f32, f32), t: f32) -> (f32, f32) {
-    let eased = smoothstep(t);
-    (
-        from.0 + (to.0 - from.0) * eased,
-        from.1 + (to.1 - from.1) * eased,
-    )
-}
-
 /// How bright the caret is, `quiet` seconds after the last change.
 ///
 /// Solid until [`HOLD`], then a cosine that starts at the top (so there is no
@@ -173,19 +190,18 @@ pub fn breathe(quiet: f32) -> f32 {
     DIM + (1.0 - DIM) * wave
 }
 
-/// The glide and breathe state of one caret.
+/// The follow and breathe state of one caret.
 #[derive(Debug, Default)]
 pub struct State {
     /// Where the caret is drawn, once it has been placed at all.
     drawn: Option<(f32, f32)>,
-    from: (f32, f32),
+    /// Where the library said the caret belongs, last frame.
     to: (f32, f32),
-    started: Option<Instant>,
+    /// When the previous frame was drawn: what `dt` is measured from.
+    last: Option<Instant>,
+    /// When the caret last moved or the text last changed: what holds it solid.
     changed: Option<Instant>,
-    /// When the caret last moved or the text last changed: what decides
-    /// whether the next move is a burst.
-    moved: Option<Instant>,
-    len: usize,
+    cursor: usize,
     stamp: u64,
     scroll: (f32, f32),
 }
@@ -197,10 +213,14 @@ pub struct Frame {
     pub y: f32,
     pub height: f32,
     pub opacity: f32,
-    /// Whether this frame is part of something quick, a glide or the solid
-    /// hold after a change, that needs a frame every refresh. When false the
-    /// caret is only breathing and a slow timer is enough.
+    /// Whether this frame is part of something quick, the caret still
+    /// following its target or the solid hold after a change, that needs a
+    /// frame every refresh. When false the caret is only breathing and a slow
+    /// timer is enough.
     pub quick: bool,
+    /// Whether nothing is to be woken at all: the caret is solid and still
+    /// because the window is in the background.
+    pub still: bool,
 }
 
 impl State {
@@ -212,71 +232,75 @@ impl State {
             // caret reappears where it belongs rather than flying in from
             // wherever it was last seen.
             self.drawn = None;
-            self.started = None;
+            self.last = None;
             self.changed = None;
-            self.moved = None;
             return None;
         };
         let target = (reading.x, reading.y);
         let secs = |since: Instant| now.saturating_duration_since(since).as_secs_f32();
 
-        if self.drawn.is_none() {
-            self.drawn = Some(target);
-            self.from = target;
-            self.to = target;
+        let first = self.drawn.is_none();
+        let here = self.drawn.unwrap_or(target);
+        let scrolled = !first && reading.scroll != self.scroll;
+        if first {
             self.changed = Some(now);
-            self.stamp = reading.stamp;
-            self.len = reading.len;
-            self.scroll = reading.scroll;
-        }
-        // Typing counts as a move for the burst rule below, so a caret whose
-        // layout lags the text by a frame still snaps when it catches up.
-        let typed = reading.len != self.len;
-        self.len = reading.len;
-        if typed {
-            self.moved = Some(now);
-        }
-        if reading.stamp != self.stamp {
-            self.stamp = reading.stamp;
+        } else if reading.stamp != self.stamp {
+            self.changed = Some(now);
+        } else if target != self.to && reading.cursor == self.cursor && !scrolled {
+            // Same length, same caret offset, yet the caret moved: the letters
+            // shifted under it (a jamo becoming a syllable). Hold it solid
+            // like any other change; the follow carries it across the shift.
             self.changed = Some(now);
         }
-        if target != self.to {
-            // Carry on from the current drawn spot, never the old resting one.
-            let here = self.drawn.unwrap_or(target);
-            let scrolled = reading.scroll != self.scroll;
-            let far = (target.1 - here.1).abs() > reading.line_height * SNAP_LINES;
-            // A scroll moves the target without moving the caret in the text:
-            // gliding would make it trail behind the words it belongs to.
-            let burst = typed || self.moved.is_some_and(|at| secs(at) < BURST);
-            let from = if scrolled || far || burst {
+
+        let far = (target.1 - here.1).abs() > reading.line_height * SNAP_LINES;
+        let at_rest = here == self.to;
+        let drawn = if first || scrolled || far || !reading.active {
+            // Following would be wrong, or nobody is watching.
+            target
+        } else {
+            // Starting from rest, the time since the last frame is time spent
+            // resting, so take one ordinary frame instead of a long stride.
+            let dt = if at_rest {
+                FIRST_DT
+            } else {
+                self.last.map_or(FIRST_DT, secs).min(MAX_DT)
+            };
+            let k = 1. - (-dt / TAU).exp();
+            let x = here.0 + (target.0 - here.0) * k;
+            let y = here.1 + (target.1 - here.1) * k;
+            if (target.0 - x).abs() < SETTLE && (target.1 - y).abs() < SETTLE {
+                // Exactly on the target, with no residue from the arithmetic.
                 target
             } else {
-                here
-            };
-            self.from = from;
-            self.to = target;
-            // A snap has no glide to run, so it asks for no glide frames.
-            self.started = (from != target).then_some(now);
-            self.moved = Some(now);
-        }
+                (x, y)
+            }
+        };
+        self.drawn = Some(drawn);
+        self.to = target;
+        self.last = Some(now);
+        self.stamp = reading.stamp;
+        self.cursor = reading.cursor;
         self.scroll = reading.scroll;
 
-        let t = self.started.map_or(1., |at| secs(at) / GLIDE);
-        // Exactly on the target once the glide is over, with no residue from
-        // the arithmetic of the last step.
-        let here = if t >= 1. {
-            self.to
-        } else {
-            glide(self.from, self.to, t)
-        };
-        self.drawn = Some(here);
+        if !reading.active {
+            return Some(Frame {
+                x: drawn.0,
+                y: drawn.1,
+                height: reading.height,
+                opacity: 1.0,
+                quick: false,
+                still: true,
+            });
+        }
         let quiet = self.changed.map_or(0., secs);
         Some(Frame {
-            x: here.0,
-            y: here.1,
+            x: drawn.0,
+            y: drawn.1,
             height: reading.height,
             opacity: breathe(quiet),
-            quick: t < 1. || quiet < HOLD,
+            quick: drawn != target || quiet < HOLD,
+            still: false,
         })
     }
 }
@@ -341,7 +365,10 @@ pub fn overlay(
                     colour.opacity(frame.opacity),
                 ));
             });
-            if frame.quick {
+            if frame.still {
+                // Background window: nothing to animate, so nothing to wake.
+                caret.wake.borrow_mut().take();
+            } else if frame.quick {
                 caret.wake.borrow_mut().take();
                 window.request_animation_frame();
             } else {
@@ -373,23 +400,14 @@ mod tests {
             height: 16.,
             line_height: 20.,
             scroll: (0., 0.),
-            len: 0,
+            cursor: stamp as usize,
             stamp,
+            active: true,
         })
     }
 
-    /// A reading after the text changed to `len` characters.
-    fn typed(x: f32, y: f32, stamp: u64, len: usize) -> Field {
-        Field::Caret(Reading {
-            clip: None,
-            x,
-            y,
-            height: 16.,
-            line_height: 20.,
-            scroll: (0., 0.),
-            len,
-            stamp,
-        })
+    fn at(start: Instant, ms: u64) -> Instant {
+        start + Duration::from_millis(ms)
     }
 
     #[test]
@@ -399,13 +417,6 @@ mod tests {
         assert!((smoothstep(0.5) - 0.5).abs() < 1e-6);
         assert!(smoothstep(0.1) < 0.1);
         assert!(smoothstep(0.9) > 0.9);
-    }
-
-    #[test]
-    fn glide_goes_from_one_end_to_the_other() {
-        assert_eq!(glide((0., 0.), (10., 4.), 0.), (0., 0.));
-        assert_eq!(glide((0., 0.), (10., 4.), 1.), (10., 4.));
-        assert_eq!(glide((0., 0.), (10., 4.), 0.5), (5., 2.));
     }
 
     #[test]
@@ -424,66 +435,74 @@ mod tests {
     }
 
     #[test]
-    fn an_isolated_move_glides_and_lands_exactly_on_target() {
-        let start = Instant::now();
+    fn first_appearance_snaps() {
         let mut caret = State::default();
-        caret.frame(start, reading(0., 0., 1));
-        // A click a second later, well apart from anything else.
-        let click = start + Duration::from_millis(1000);
-        let first = caret.frame(click, reading(100.3, 0., 2)).unwrap();
-        assert_eq!(first.x, 0.);
-        let mid = click + Duration::from_millis(40);
-        let halfway = caret.frame(mid, reading(100.3, 0., 2)).unwrap();
-        assert!((halfway.x - 50.15).abs() < 1.0, "{}", halfway.x);
-        let done = caret.frame(click + Duration::from_millis(80), reading(100.3, 0., 2));
-        assert_eq!(done.unwrap().x, 100.3);
+        let frame = caret.frame(Instant::now(), reading(40., 12., 1)).unwrap();
+        assert_eq!((frame.x, frame.y), (40., 12.));
     }
 
     #[test]
-    fn a_text_change_snaps_the_caret_at_once() {
-        let start = Instant::now();
-        let mut caret = State::default();
-        caret.frame(start, typed(0., 0., 1, 5));
-        // Long after the last move, so only the text change can explain a snap.
-        let later = start + Duration::from_millis(2000);
-        let frame = caret.frame(later, typed(8., 0., 2, 6)).unwrap();
-        assert_eq!(frame.x, 8.);
-        assert_eq!(frame.opacity, 1.0);
-    }
-
-    #[test]
-    fn a_move_soon_after_another_snaps_instead_of_queueing_glides() {
+    fn a_single_move_follows_smoothly_and_lands_exactly() {
         let start = Instant::now();
         let mut caret = State::default();
         caret.frame(start, reading(0., 0., 1));
-        let first = start + Duration::from_millis(1000);
-        caret.frame(first, reading(10., 0., 2));
-        // 100ms later, like a held arrow key: no glide.
-        let second = first + Duration::from_millis(100);
-        let frame = caret.frame(second, reading(20., 0., 3)).unwrap();
-        assert_eq!(frame.x, 20.);
-        // And 200ms after that is isolated again, so it glides.
-        let third = second + Duration::from_millis(200);
-        let frame = caret.frame(third, reading(40., 0., 4)).unwrap();
-        assert_eq!(frame.x, 20.);
+        let mut ms = 1000;
+        let first = caret.frame(at(start, ms), reading(100., 0., 2)).unwrap();
+        assert!(first.x > 0. && first.x < 100., "{}", first.x);
+        let mut at_100 = None;
+        let mut landed = None;
+        while ms < 1000 + 400 {
+            ms += 16;
+            let frame = caret.frame(at(start, ms), reading(100., 0., 2)).unwrap();
+            assert!(frame.x <= 100.);
+            if ms - 1000 >= 96 && at_100.is_none() {
+                at_100 = Some(frame.x);
+            }
+            if frame.x == 100. && landed.is_none() {
+                landed = Some(ms - 1000);
+            }
+        }
+        assert!(at_100.unwrap() >= 95., "{:?}", at_100);
+        assert!(landed.unwrap() <= 200, "{:?}", landed);
     }
 
     #[test]
-    fn a_far_jump_or_a_scroll_snaps() {
+    fn a_steady_stream_of_moves_stays_close_behind() {
         let start = Instant::now();
         let mut caret = State::default();
         caret.frame(start, reading(0., 0., 1));
-        let frame = caret.frame(start, reading(0., 500., 2)).unwrap();
+        let mut worst: f32 = 0.;
+        let mut ms = 0;
+        while ms < 1500 {
+            ms += 16;
+            let target = 8. * (ms / 60) as f32;
+            let frame = caret
+                .frame(at(start, ms), reading(target, 0., 2 + ms / 60))
+                .unwrap();
+            // Judged just before the next move lands, once the follow has had
+            // its 60ms; right at a move the gap is by nature a whole step.
+            if (ms + 16) / 60 != ms / 60 && ms > 300 {
+                worst = worst.max(target - frame.x);
+            }
+            assert!(target - frame.x < 8. + 1.5, "{}", target - frame.x);
+        }
+        assert!(worst < 3., "{worst}");
+    }
+
+    #[test]
+    fn a_far_jump_snaps() {
+        let start = Instant::now();
+        let mut caret = State::default();
+        caret.frame(start, reading(0., 0., 1));
+        let frame = caret.frame(at(start, 16), reading(0., 500., 2)).unwrap();
         assert_eq!(frame.y, 500.);
     }
 
     #[test]
-    fn a_scroll_moves_the_caret_with_the_words_instead_of_gliding() {
+    fn a_scroll_snaps_instead_of_following() {
         let start = Instant::now();
         let mut caret = State::default();
         caret.frame(start, reading(0., 0., 1));
-        // The same caret place in the text, a short distance down the window
-        // because the field scrolled by 10: no glide, it lands at once.
         let scrolled = Field::Caret(Reading {
             clip: None,
             x: 0.,
@@ -491,11 +510,40 @@ mod tests {
             height: 16.,
             line_height: 20.,
             scroll: (0., 10.),
-            len: 0,
+            cursor: 1,
             stamp: 1,
+            active: true,
         });
-        let frame = caret.frame(start, scrolled).unwrap();
+        let frame = caret.frame(at(start, 16), scrolled).unwrap();
         assert_eq!(frame.y, 10.);
+    }
+
+    #[test]
+    fn a_background_window_gets_a_solid_snapped_caret_and_no_wakes() {
+        let start = Instant::now();
+        let mut caret = State::default();
+        caret.frame(start, reading(0., 0., 1));
+        let Field::Caret(mut r) = reading(50., 0., 2) else {
+            unreachable!()
+        };
+        r.active = false;
+        let frame = caret.frame(at(start, 2000), Field::Caret(r)).unwrap();
+        assert_eq!(frame.x, 50.);
+        assert_eq!(frame.opacity, 1.0);
+        assert!(frame.still && !frame.quick);
+    }
+
+    #[test]
+    fn letters_shifting_under_a_still_cursor_hold_it_solid() {
+        let start = Instant::now();
+        let mut caret = State::default();
+        caret.frame(start, reading(0., 0., 1));
+        let dim = caret.frame(at(start, 1000), reading(0., 0., 1)).unwrap();
+        assert!(dim.opacity < 1.0);
+        // Same stamp and cursor, but the target moved by a glyph width.
+        let shifted = caret.frame(at(start, 1016), reading(3., 0., 1)).unwrap();
+        assert_eq!(shifted.opacity, 1.0);
+        assert!(shifted.x > 0. && shifted.x < 3.);
     }
 
     #[test]
@@ -508,6 +556,7 @@ mod tests {
         assert!(dim.opacity < 1.0);
         let typed = caret.frame(quiet, reading(8., 0., 2)).unwrap();
         assert_eq!(typed.opacity, 1.0);
+        assert!(typed.quick);
     }
 
     #[test]
