@@ -1197,14 +1197,12 @@ impl DeckView {
             attending: None,
             folds: Vec::new(),
             temporary: std::collections::HashSet::new(),
-            // One pace both ways. On the light's own pace it opened in
-            // half a second and took three quarters of one to close, which
-            // read as quick to come and slow to go; the panel is a room
-            // opening and closing, and both directions are the same act.
-            rail_open: crate::pane::Fade::default().paced(
-                std::time::Duration::from_millis(620),
-                std::time::Duration::from_millis(620),
-            ),
+            // One pace both ways, and the same as every other room opening or
+            // closing. On the light's own pace it opened in half a second and
+            // took three quarters of one to close, which read as quick to come
+            // and slow to go; the panel is a room opening and closing, and both
+            // directions are the same act. See [`crate::pane::ROOM`].
+            rail_open: crate::pane::Fade::room(),
             pressed: None,
             said_lit: None,
             said_tick: crate::prose::Tick::hand(),
@@ -2218,6 +2216,17 @@ impl DeckView {
         cx.notify();
     }
 
+    /// The fold of a pane that was just brought in. It starts out folded, with
+    /// no motion, and is set open in the same frame whatever it displaces
+    /// starts folding, so the newcomer unfolds over the same
+    /// [`crate::pane::ROOM`] as its neighbours fold and the window moves as
+    /// one. Pushed as open it appeared whole beside neighbours still closing.
+    fn bring_in_fold(&mut self) {
+        let mut fold = crate::pane::Fade::room_folded();
+        fold.set(false);
+        self.folds.push(fold);
+    }
+
     /// Bring a file the group never showed into the room.
     fn apply_bring(&mut self, brought: Brought, cx: &mut Context<Self>) -> crate::live::ShowAnswer {
         let Brought {
@@ -2258,7 +2267,7 @@ impl DeckView {
         // What it displaces folds in the same movement, so the room moves once.
         self.apply_fold(&fold, fold_group, false, cx);
         self.panes.push(Sheet::Code(Box::new(pane)));
-        self.folds.push(crate::pane::Fade::default());
+        self.bring_in_fold();
         self.temporary.insert(self.panes.len() - 1);
         self.attend();
         self.keep_talking(cx);
@@ -2299,7 +2308,7 @@ impl DeckView {
             self.panes[ix] = Sheet::Drawn(chart);
         } else {
             self.panes.push(Sheet::Drawn(chart));
-            self.folds.push(crate::pane::Fade::default());
+            self.bring_in_fold();
             self.temporary.insert(self.panes.len() - 1);
         }
         self.attend();
@@ -2359,7 +2368,7 @@ impl DeckView {
             self.panes[ix] = Sheet::Page(paper);
         } else {
             self.panes.push(Sheet::Page(paper));
-            self.folds.push(crate::pane::Fade::default());
+            self.bring_in_fold();
             self.temporary.insert(self.panes.len() - 1);
         }
         self.attend();
@@ -5944,7 +5953,7 @@ impl DeckView {
         // Every pane of a new group arrives open. A fold belongs to the group
         // it was made in, and so does anything brought in to answer a question
         // about it.
-        self.folds = vec![crate::pane::Fade::default(); self.panes.len()];
+        self.folds = vec![crate::pane::Fade::room(); self.panes.len()];
         self.temporary.clear();
     }
 

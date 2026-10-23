@@ -85,6 +85,18 @@ pub(crate) const UNFOLD: std::time::Duration = std::time::Duration::from_millis(
 /// put away is out of the way before the next sentence needs the room.
 pub(crate) const REFOLD: std::time::Duration = std::time::Duration::from_millis(320);
 
+/// The one pace for anything that opens or closes space: the chat panel, a
+/// pane folding to its spine or coming back, a pane brought in or taken away.
+///
+/// The same both ways, and the same for all of them, so that when two of these
+/// happen at once (a brought pane opening while its neighbours fold) the whole
+/// window moves as one thing and never as separate motions that start and end
+/// at different times. Slower than the chat panel alone used to be (620ms):
+/// a room changing size is the largest thing that moves in the window, and it
+/// reads as calm only if it is given time. Lights, values, cards and hovers
+/// keep their own, quicker paces; this is for space only.
+pub(crate) const ROOM: std::time::Duration = std::time::Duration::from_millis(720);
+
 /// How long a light the reader raised takes to come up.
 ///
 /// Every timing above this one answers to a voice, and a voice is slow on
@@ -155,6 +167,21 @@ pub(crate) struct Fade {
 }
 
 impl Fade {
+    /// A fade for a room: open, resting, and paced by [`ROOM`] both ways.
+    pub(crate) fn room() -> Self {
+        Self::default().paced(ROOM, ROOM)
+    }
+
+    /// A room's fade that starts out folded, with no motion yet: its level is
+    /// already 1. For a pane that is about to be brought in, which is then set
+    /// open in the same frame its neighbours start folding, so it unfolds
+    /// over [`ROOM`] instead of appearing whole beside them.
+    pub(crate) fn room_folded() -> Self {
+        let mut fade = Self::room();
+        fade.on = true;
+        fade
+    }
+
     /// Head towards `on`. Says whether that was a change.
     pub(crate) fn set(&mut self, on: bool) -> bool {
         if self.on == on {
@@ -3839,6 +3866,22 @@ mod tests {
             stepped_back(palette.fg, &palette),
             palette.fg.mix(palette.wash, 0.08)
         );
+    }
+
+    #[test]
+    fn a_room_fade_is_paced_by_room_both_ways() {
+        let fade = Fade::room();
+        assert_eq!((fade.rise_ms, fade.fall_ms), (ms(ROOM), ms(ROOM)));
+        assert_eq!(ms(ROOM), 720);
+        // Folded and unmoving, it is a whole fold; set open, it leaves that
+        // smoothly from the top rather than starting open.
+        let mut arriving = Fade::room_folded();
+        assert_eq!(arriving.level(), 1.);
+        assert!(!arriving.moving());
+        assert!(arriving.set(false));
+        assert!(arriving.moving());
+        assert_eq!(arriving.level(), 1.);
+        assert_eq!(arriving.fall_ms, ms(ROOM));
     }
 
     #[test]
