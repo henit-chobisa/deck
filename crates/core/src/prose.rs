@@ -208,7 +208,16 @@ pub const BEATS: &[&str] = &["[pause long]", "[pause short]", "[pause]"];
 pub fn unbeat(text: &str) -> String {
     let mut out = text.to_string();
     for beat in BEATS {
-        out = out.replace(beat, "");
+        while let Some(at) = out.find(beat) {
+            let after = out[at + beat.len()..].to_string();
+            let mut before = out[..at].to_string();
+            // A beat written just before a stop leaves a space in front of
+            // it, and "done [pause]." would read "done ." on the page.
+            if after.starts_with(CLOSERS) {
+                before.truncate(before.trim_end().len());
+            }
+            out = before + &after;
+        }
     }
     // A beat sat between two spaces, and removing it leaves both.
     while out.contains("  ") {
@@ -353,6 +362,10 @@ pub fn unchipped(say: &str) -> String {
     out
 }
 
+/// What ends a clause, so a space left in front of one by a removed point or
+/// beat is taken out with it.
+const CLOSERS: [char; 7] = ['.', ',', ';', ':', '!', '?', ')'];
+
 /// The text with every point removed.
 ///
 /// A point is for the code pane. The eye gets the prose and the ear gets the
@@ -372,6 +385,12 @@ pub fn unpoint(text: &str) -> String {
         }
         out.push_str(&rest[..at]);
         rest = &after[end + 1..];
+        // A point written just before a stop leaves a space in front of it:
+        // "open [point 4]." read "open ." in the first line of a deck. The
+        // space it leaves goes when what follows ends the clause.
+        if rest.starts_with(CLOSERS) {
+            out.truncate(out.trim_end().len());
+        }
     }
     out.push_str(rest);
     // A point sat between two spaces, and taking it out leaves both.
@@ -1564,5 +1583,15 @@ mod tests {
             heard[1..],
             found.into_iter().map(Some).collect::<Vec<_>>()[..]
         );
+    }
+
+    #[test]
+    fn a_removed_point_or_beat_leaves_no_space_before_a_stop() {
+        assert_eq!(unpoint("while it is open [point 4]."), "while it is open.");
+        assert_eq!(unpoint("first [point 4-6], then"), "first, then");
+        assert_eq!(unpoint("a [point 4] b"), "a b");
+        assert_eq!(unbeat("It is gone [pause]."), "It is gone.");
+        assert_eq!(unbeat("gone [pause long]? Yes"), "gone? Yes");
+        assert_eq!(unbeat("a [pause] b"), "a b");
     }
 }

@@ -20,7 +20,7 @@ use gpui_kit::*;
 
 use crate::chart::Chart;
 use crate::load::{Deck, Source};
-use crate::palette::{current, paint};
+use crate::palette::{current, hover_on_band, paint};
 use crate::pane::{Away, Mark, Pane};
 use crate::sheet::{Sheet, Slot};
 
@@ -260,6 +260,10 @@ impl Divide {
 /// The band's height before anyone drags it — enough for a title and a few
 /// lines of prose, which is what most groups carry.
 const BAND_NATURAL: f32 = 168.;
+
+/// How long the glow on a key of the help dock takes to go out after the
+/// key is pressed: the pace of every light going out on its own.
+const GLOW: std::time::Duration = std::time::Duration::from_millis(760);
 
 // The group's number and the line that hangs from it, the band's padding and
 // its type, the rail and the strip: measured once, in `deck_render::metrics`,
@@ -575,6 +579,9 @@ pub struct DeckView {
     /// Decided when the remark is finished — *Ask now* or *Add to review* —
     /// and kept here so a draft carried across hiding the window keeps it.
     composing_when: deck_core::When,
+    /// The comment box's caret: where it is drawn and how bright. See
+    /// [`crate::caret`].
+    caret: crate::caret::Caret,
     /// Whether a voice is reading the deck aloud.
     aloud: bool,
     /// The groups whose prose has been read aloud in this walk's session.
@@ -631,6 +638,12 @@ pub struct DeckView {
     /// commented on — and they go when the reader turns to another group,
     /// because they belong to the question and not to the deck.
     temporary: std::collections::HashSet<usize>,
+    /// Which of the `temporary` panes the reader has closed and that are still
+    /// folding away. A closed pane folds over [`crate::pane::ROOM`], like every
+    /// other room, and is only removed once that fold has finished; until then
+    /// it keeps its place so the indexes everything else holds stay true. It
+    /// draws no spine while it goes, because it is not staying.
+    closing: std::collections::HashSet<usize>,
     /// How folded each pane is, by pane index.
     ///
     /// A pane folds to a spine on its own side of the row, the way the
@@ -710,6 +723,59 @@ pub struct DeckView {
     /// *doing* line or the comment box shortened the rail, the bottom moved
     /// away from a reader who had not, and the rail stopped following (#19).
     rail_pinned: std::cell::Cell<bool>,
+    /// How far up deck's line beside the pulse is: on while an answer is owed.
+    /// A cell because the rail is drawn from `&self`.
+    phrase_fade: std::cell::Cell<crate::pane::Fade>,
+    /// How far up the way-back chip is: on only while the rail is scrolled
+    /// away from its newest turn.
+    chip_fade: std::cell::Cell<crate::pane::Fade>,
+    /// What the chip says; see [`chip_label`]. Kept between frames so the chip
+    /// goes on saying what it said while it fades out.
+    chip_label: std::cell::Cell<&'static str>,
+    /// How visible the empty thread's line is: full while the thread is
+    /// empty, going out when the first turn arrives. Starts at rest, so a
+    /// window that opens empty does not fade its line in.
+    quip_fade: std::cell::Cell<crate::pane::Fade>,
+    /// Each turn's entrance, by place in the transcript: a turn that arrives
+    /// while the window is open fades in and rises a few pixels into its
+    /// place. Only turns still coming in are kept.
+    entering: std::cell::RefCell<std::collections::HashMap<usize, crate::pane::Fade>>,
+    /// The turns the rail has already seen, so that only a new one enters.
+    known: std::cell::RefCell<std::collections::HashSet<usize>>,
+    /// Whether the thread the window opened with has been recorded: those
+    /// turns were there already and never animate.
+    entry_primed: std::cell::Cell<bool>,
+    /// How far up the group's own content is: its heading, its prose and its
+    /// panes. Resting whole, so a window that opens on a deck does not fade it
+    /// in. A step to another group dips it to its floor over [`GROUP_FALL_MS`],
+    /// swaps the group there, and brings it back on the card rise.
+    group_fade: crate::pane::Fade,
+    /// The opacity `group_fade` bottoms out at: [`DIP_FLOOR`] for a step, so
+    /// the window is never empty between two groups, and nought for the first
+    /// group landing, where there is nothing on screen to dip from.
+    group_floor: f32,
+    /// The group a step is on its way to, while the one on screen fades out.
+    /// Only ever one: a press mid-fade retargets it rather than stacking.
+    arriving: Option<usize>,
+    /// The waiting placeholder, up while the deck has nothing to read and
+    /// going out when the first group lands.
+    waiting_fade: crate::pane::Fade,
+    /// How many turns the rail held the last time it was at the bottom; a turn
+    /// beyond that arrived while the reader was elsewhere.
+    rail_seen: std::cell::Cell<usize>,
+    /// How many agent turns the thread held the last frame an answer was
+    /// owed, so that the wait ending with more of them than that means a
+    /// reply landed, and ending with the same means it simply ran out.
+    wait_turns: std::cell::Cell<usize>,
+    /// The line chosen for the last wait (an index into [`PHRASES`]), kept so
+    /// the next wait never picks the same one.
+    phrase: std::cell::Cell<Option<usize>>,
+    /// The sign of life the line was chosen for. A new one means a new
+    /// comment was sent, so a new wait began.
+    phrase_for: std::cell::Cell<Option<std::time::Instant>>,
+    /// Where each turn's age was heading, and the fade getting it there, by
+    /// place in the transcript. See [`DeckView::aged`].
+    ages: std::cell::RefCell<std::collections::HashMap<usize, (f32, f32, crate::pane::Fade)>>,
     /// The reader turned the wheel over the rail since it was last drawn, so
     /// whether it is pinned is read from where they left it.
     rail_wheeled: std::cell::Cell<bool>,
@@ -752,6 +818,10 @@ pub struct DeckView {
     helping: Task<()>,
     /// The key last pressed while the dock was up, and when, so it lights.
     help_hit: Option<(&'static str, std::time::Instant)>,
+    /// The strip's export item coming and going: it joins the strip the moment
+    /// the deck is sealed, and a thing that appears in one frame, pushing the
+    /// keys beside it, reads as a glitch.
+    export_fade: crate::pane::Fade,
     /// The key whose card is up, or coming up, and where that key is: the
     /// same key sits in the strip and on the dock, and only the one under the
     /// pointer has a card.
@@ -767,6 +837,22 @@ pub struct DeckView {
     /// scroll to it has been painted and the rows past each edge can be
     /// counted.
     review_settle: bool,
+    /// The words of the picked sentence, and the pick and narration they
+    /// were cut from.
+    ///
+    /// Every frame asks for them, to open the values the sentence names, and
+    /// cutting them meant parsing the whole narration again sixty times a
+    /// second for as long as anything moved. Cut again only when the pick or
+    /// the narration changes.
+    said_memo: Option<((usize, usize), String, Option<String>)>,
+    /// Each group's line in the review column, and the title and narration
+    /// it was made from.
+    ///
+    /// A line with no title is cut from the narration — points, beats and
+    /// names taken out, then the first sentence — and the column is drawn on
+    /// every frame anything in the window moves. Made again only for a group
+    /// whose words changed.
+    review_titles: std::cell::RefCell<Vec<(Option<String>, String, SharedString)>>,
     /// The loop watching the deck directory fill, while there is more coming.
     ///
     /// Dropping it stops it, which is what should happen when the window
@@ -787,6 +873,15 @@ pub struct DeckView {
     /// The animation carrying a pane back to its range, while one is running.
     /// Dropping it stops it, which is what should happen if another starts.
     gliding: Task<()>,
+    /// A pane whose values wait for the glide carrying it to finish.
+    ///
+    /// The narration pointed at lines off screen that hold a value, so the
+    /// pane travels to them — and a value opening while the pane travels is
+    /// two motions at once: the code below the value sliding down while the
+    /// whole pane slides up, at different speeds, with the lines the sentence
+    /// is about moving through both. One thing at a time. The pane arrives,
+    /// then the value opens where the reader is already looking.
+    values_after_glide: Option<usize>,
     /// How each row's width is shared between the panes standing in it.
     ///
     /// One entry per pane rather than one per column: a seam moves width
@@ -1053,7 +1148,7 @@ impl DeckView {
             // reader could see, which looks exactly like nothing having been
             // kept at all.
             if conversation.transcript.is_empty() {
-                conversation.transcript = held.transcript;
+                conversation.restore(held.transcript);
             } else {
                 // The remarks came back onto a transcript they were not written
                 // against, so their places in it mean nothing. Better a mark
@@ -1135,6 +1230,7 @@ impl DeckView {
             remarks,
             composing: None,
             composing_when: deck_core::When::Interrupt,
+            caret: crate::caret::Caret::default(),
             aloud,
             heard_groups,
             seen,
@@ -1153,7 +1249,13 @@ impl DeckView {
             attending: None,
             folds: Vec::new(),
             temporary: std::collections::HashSet::new(),
-            rail_open: crate::pane::Fade::default(),
+            closing: std::collections::HashSet::new(),
+            // One pace both ways, and the same as every other room opening or
+            // closing. On the light's own pace it opened in half a second and
+            // took three quarters of one to close, which read as quick to come
+            // and slow to go; the panel is a room opening and closing, and both
+            // directions are the same act. See [`crate::pane::ROOM`].
+            rail_open: crate::pane::Fade::room(),
             pressed: None,
             said_lit: None,
             said_tick: crate::prose::Tick::hand(),
@@ -1164,6 +1266,25 @@ impl DeckView {
             conversation,
             rail_scroll,
             rail_pinned: std::cell::Cell::new(true),
+            phrase_fade: std::cell::Cell::new(Self::card_fade()),
+            chip_fade: std::cell::Cell::new(Self::card_fade()),
+            chip_label: std::cell::Cell::new("↓ latest"),
+            quip_fade: std::cell::Cell::new(crate::pane::Fade::room_folded().paced(
+                std::time::Duration::from_millis(200),
+                std::time::Duration::from_millis(160),
+            )),
+            entry_primed: std::cell::Cell::new(false),
+            group_fade: Self::group_fade().whole(),
+            group_floor: DIP_FLOOR,
+            arriving: None,
+            waiting_fade: Self::card_fade(),
+            entering: std::cell::RefCell::new(std::collections::HashMap::new()),
+            known: std::cell::RefCell::new(std::collections::HashSet::new()),
+            rail_seen: std::cell::Cell::new(0),
+            wait_turns: std::cell::Cell::new(0),
+            phrase: std::cell::Cell::new(None),
+            phrase_for: std::cell::Cell::new(None),
+            ages: std::cell::RefCell::new(std::collections::HashMap::new()),
             rail_wheeled: std::cell::Cell::new(false),
             picked_said,
             said_from: None,
@@ -1207,6 +1328,7 @@ impl DeckView {
             folded,
             drifting: None,
             gliding: Task::ready(()),
+            values_after_glide: None,
             tailing: Task::ready(()),
             controlling: Task::ready(()),
             spread: false,
@@ -1215,12 +1337,19 @@ impl DeckView {
                 .paced(crate::keys::DOCK_RISE, crate::keys::DOCK_FALL),
             helping: Task::ready(()),
             help_hit: None,
+            // Surface pace, as the cards and tips have.
+            export_fade: crate::pane::Fade::default().paced(
+                std::time::Duration::from_millis(200),
+                std::time::Duration::from_millis(160),
+            ),
             tip: None,
             tip_fade: crate::pane::Fade::default()
                 .paced(crate::keys::TIP_RISE, crate::keys::TIP_FALL),
             tipping: Task::ready(()),
             review_scroll: ScrollHandle::new(),
             review_settle: false,
+            said_memo: None,
+            review_titles: std::cell::RefCell::default(),
             saved,
         };
         if let Some((about, state, when)) = draft {
@@ -1236,6 +1365,11 @@ impl DeckView {
                 let text = unsent.text;
                 state.update(cx, |state, cx| state.set_value(text, window, cx));
             }
+        }
+        // Opened on a deck still being written: the placeholder is up and
+        // stays up. Opened on a whole one it was never there to fade.
+        if view.deck.groups().is_empty() && !view.deck.sealed() {
+            view.waiting_fade = Self::card_fade().whole();
         }
         view.build_panes(cx);
         if let Some(stage) = view.live.stage()
@@ -1356,6 +1490,15 @@ impl DeckView {
                     if changed {
                         if nothing_to_read {
                             deck.build_panes(cx);
+                            // The first group landing while the window watched
+                            // the placeholder: it goes out as the group comes
+                            // in. A window opened on a whole deck never gets
+                            // here with the placeholder up, so it never fades.
+                            if deck.waiting_fade.on() && !deck.deck.groups().is_empty() {
+                                deck.waiting_fade.set(false);
+                                deck.group_floor = 0.;
+                                deck.group_fade.dip(0.);
+                            }
                         }
                         cx.notify();
                     }
@@ -1908,14 +2051,38 @@ impl DeckView {
     /// story, and arriving back at the beginning by pressing `n` reads as
     /// having lost your place.
     fn walk(&mut self, step: isize, cx: &mut Context<Self>) {
-        let Some(next) = self.group_ix.checked_add_signed(step) else {
+        // From where the last press was going, not from the group still
+        // fading out: three quick presses are three steps.
+        let from = self.arriving.unwrap_or(self.group_ix);
+        let Some(next) = walked_to(from, step, self.deck.groups().len()) else {
             return;
         };
-        if next >= self.deck.groups().len() {
-            return;
-        }
         self.live.pause(PauseReason::Navigation);
+        if next == self.group_ix {
+            // Back to the one on screen before it left: nothing to swap, and
+            // it rises again from wherever the fall had got to.
+            self.arriving = None;
+            self.group_fade.set(true);
+        } else {
+            // The group on screen goes out; `render` swaps it at the bottom of
+            // the fall (see `arrival_due`), which is also where the panes are
+            // rebuilt and the voice, if it is reading, picks up in the new one.
+            self.arriving = Some(next);
+            // From what is on screen: a step in mid-rise (the first group
+            // coming up) must not jump.
+            let level = self.group_fade.level();
+            let floor = carried_floor(self.group_floor, level);
+            if self.group_fade.set(false) {
+                self.group_floor = floor;
+            }
+        }
+        cx.notify();
+    }
+
+    /// The swap half of a step, once the outgoing group has gone out.
+    fn arrive(&mut self, next: usize, cx: &mut Context<Self>) {
         self.group_ix = next;
+        // Also puts `group_fade` rising and clears `arriving`.
         self.build_panes(cx);
         // `build_panes` has just stopped the voice mid-sentence, because what
         // it was saying belonged to the group that left the screen. If the
@@ -1923,7 +2090,6 @@ impl DeckView {
         if self.aloud {
             self.speak_unheard(cx);
         }
-        cx.notify();
     }
 
     fn on_next(&mut self, _: &NextGroup, _window: &mut Window, cx: &mut Context<Self>) {
@@ -2157,6 +2323,17 @@ impl DeckView {
         cx.notify();
     }
 
+    /// The fold of a pane that was just brought in. It starts out folded, with
+    /// no motion, and is set open in the same frame whatever it displaces
+    /// starts folding, so the newcomer unfolds over the same
+    /// [`crate::pane::ROOM`] as its neighbours fold and the window moves as
+    /// one. Pushed as open it appeared whole beside neighbours still closing.
+    fn bring_in_fold(&mut self) {
+        let mut fold = crate::pane::Fade::room_folded();
+        fold.set(false);
+        self.folds.push(fold);
+    }
+
     /// Bring a file the group never showed into the room.
     fn apply_bring(&mut self, brought: Brought, cx: &mut Context<Self>) -> crate::live::ShowAnswer {
         let Brought {
@@ -2197,7 +2374,7 @@ impl DeckView {
         // What it displaces folds in the same movement, so the room moves once.
         self.apply_fold(&fold, fold_group, false, cx);
         self.panes.push(Sheet::Code(Box::new(pane)));
-        self.folds.push(crate::pane::Fade::default());
+        self.bring_in_fold();
         self.temporary.insert(self.panes.len() - 1);
         self.attend();
         self.keep_talking(cx);
@@ -2238,7 +2415,7 @@ impl DeckView {
             self.panes[ix] = Sheet::Drawn(chart);
         } else {
             self.panes.push(Sheet::Drawn(chart));
-            self.folds.push(crate::pane::Fade::default());
+            self.bring_in_fold();
             self.temporary.insert(self.panes.len() - 1);
         }
         self.attend();
@@ -2255,10 +2432,12 @@ impl DeckView {
     fn borrowed_as(&self, name: Option<&str>) -> Option<usize> {
         let name = name?;
         self.temporary.iter().copied().find(|&ix| {
-            self.panes
-                .get(ix)
-                .and_then(Sheet::name)
-                .is_some_and(|had| had == name)
+            !self.closing.contains(&ix)
+                && self
+                    .panes
+                    .get(ix)
+                    .and_then(Sheet::name)
+                    .is_some_and(|had| had == name)
         })
     }
 
@@ -2298,7 +2477,7 @@ impl DeckView {
             self.panes[ix] = Sheet::Page(paper);
         } else {
             self.panes.push(Sheet::Page(paper));
-            self.folds.push(crate::pane::Fade::default());
+            self.bring_in_fold();
             self.temporary.insert(self.panes.len() - 1);
         }
         self.attend();
@@ -2311,26 +2490,63 @@ impl DeckView {
     /// The group comes back with it: whatever was folded to make the room is
     /// opened again, because the room was only ever borrowed.
     pub fn close_brought(&mut self, ix: usize, cx: &mut Context<Self>) {
-        if !self.temporary.remove(&ix) {
+        if !self.temporary.contains(&ix) || !self.closing.insert(ix) {
             return;
         }
-        // Whatever the question borrowed, the group has back.
-        self.panes.remove(ix);
-        if ix < self.folds.len() {
-            self.folds.remove(ix);
+        // It folds closed over the room pace like any other pane, and is taken
+        // out of the deck by [`Self::let_closed_go`] once the fold is over.
+        if let Some(fold) = self.folds.get_mut(ix) {
+            fold.set(true);
         }
-        // Indices above it have all moved down by one.
-        self.temporary = self
-            .temporary
-            .iter()
-            .map(|at| if *at > ix { at - 1 } else { *at })
-            .collect();
-        if self.temporary.is_empty() {
-            for fold in &mut self.folds {
-                fold.set(false);
+        // Whatever the question borrowed, the group has back, in the same
+        // movement, so the room moves once.
+        if self.temporary.iter().all(|at| self.closing.contains(at)) {
+            for (at, fold) in self.folds.iter_mut().enumerate() {
+                if !self.closing.contains(&at) {
+                    fold.set(false);
+                }
             }
         }
         cx.notify();
+    }
+
+    /// Take out the closed panes whose fold has finished.
+    ///
+    /// Run once a frame before anything is laid out. Removing a pane shifts
+    /// every pane after it down by one, so the fold list and both sets of
+    /// indexes shift with it.
+    fn let_closed_go(&mut self) {
+        let gone: Vec<usize> = {
+            let mut done: Vec<usize> = self
+                .closing
+                .iter()
+                .copied()
+                .filter(|ix| {
+                    self.folds
+                        .get(*ix)
+                        .is_none_or(|fold| fold.on() && !fold.moving())
+                })
+                .collect();
+            // Highest first, so removing one does not move the next.
+            done.sort_unstable_by(|a, b| b.cmp(a));
+            done
+        };
+        for ix in gone {
+            if ix < self.panes.len() {
+                self.panes.remove(ix);
+            }
+            if ix < self.folds.len() {
+                self.folds.remove(ix);
+            }
+            let down = |set: &std::collections::HashSet<usize>| {
+                set.iter()
+                    .filter(|at| **at != ix)
+                    .map(|at| if *at > ix { at - 1 } else { *at })
+                    .collect()
+            };
+            self.temporary = down(&self.temporary);
+            self.closing = down(&self.closing);
+        }
     }
 
     /// Fold a pane down to its spine, or open it again.
@@ -2409,7 +2625,9 @@ impl DeckView {
             .enumerate()
             .filter(|(_, pane)| {
                 pane.code().is_some_and(|code| code.pointed().is_some())
-                    || pane.chart().is_some_and(|chart| !chart.pointed.is_empty())
+                    || pane
+                        .chart()
+                        .is_some_and(|chart| !chart.pointed().is_empty())
                     || pane.paper().is_some_and(|paper| !paper.pointed.is_empty())
             })
             .map(|(ix, _)| ix)
@@ -2496,9 +2714,6 @@ impl DeckView {
                     code.point_at(want);
                     moved = true;
                 }
-                // The first time the narration reaches a pane's values, they
-                // come out, and stay.
-                code.follow_values();
                 continue;
             }
             if let Some(chart) = pane.chart_mut() {
@@ -2506,8 +2721,8 @@ impl DeckView {
                     (true, Some(id)) => vec![SharedString::from(id.to_string())],
                     _ => Vec::new(),
                 };
-                if chart.pointed != want {
-                    chart.pointed = want;
+                if chart.pointed() != want.as_slice() {
+                    chart.point(want);
                     moved = true;
                 }
                 continue;
@@ -2527,12 +2742,27 @@ impl DeckView {
         // sight — below a tall range, or somewhere the reader wandered from —
         // lit nothing anybody could see. Not while the reader is holding the
         // pane still: their scroll is theirs until it lapses.
-        if moved
+        let gliding = if moved
             && !self.live.reader_holds()
             && let Some(owner) = owner
             && let Some(target) = self.panes[owner].code().and_then(Pane::point_offset)
         {
             self.glide(owner, target, cx);
+            Some(owner)
+        } else {
+            None
+        };
+        // The first time the narration reaches a pane's values, they come out,
+        // and stay: at the same moment as the light on the lines, when those
+        // lines are already in view, and once the pane has got there when it
+        // had to travel. Measured before they open, so the glide is aimed at
+        // where the lines are now and not where the value will push them.
+        for (ix, pane) in self.panes.iter_mut().enumerate() {
+            if Some(ix) == gliding {
+                self.values_after_glide = Some(ix);
+            } else if let Some(code) = pane.code_mut() {
+                code.follow_values();
+            }
         }
         moved
     }
@@ -2744,11 +2974,11 @@ impl DeckView {
         }
     }
 
-    /// Turn the rest of the screen down, or back up.
+    /// Hand the deck back to the agent.
     ///
-    /// The deck does not change. What changes is everything that was competing
-    /// with it, which is the only thing wrong with reading on a screen that
-    /// also has eleven other things on it.
+    /// Scrolling or picking something stops the agent moving the reader
+    /// around; this is how they say they want to be walked again, and the
+    /// next thing the agent shows moves them as before.
     fn on_follow(&mut self, _: &Follow, _window: &mut Window, cx: &mut Context<Self>) {
         self.live.follow();
         cx.notify();
@@ -2974,10 +3204,10 @@ impl DeckView {
                         .w(px(460.))
                         .max_w(relative(0.9))
                         .v_flex()
-                        .rounded(px(10.))
+                        .rounded(px(12.))
                         .border_1()
                         .border_color(paint(palette.edge))
-                        .bg(paint(palette.bg))
+                        .bg(paint(palette.band))
                         .shadow_lg()
                         .on_mouse_down(MouseButton::Left, |_, _window, cx| cx.stop_propagation())
                         .child(
@@ -2991,7 +3221,7 @@ impl DeckView {
                                     div()
                                         .text_size(px(11.))
                                         .text_color(paint(palette.muted))
-                                        .child("ask now is off"),
+                                        .child("Ask now is off"),
                                 )
                                 .child(
                                     div()
@@ -3009,8 +3239,8 @@ impl DeckView {
                                 .pt(px(16.))
                                 .child(para(
                                     "Deck's skill asks your agent to keep listening for what \
-                                     you say here, but no waiter process is running for this \
-                                     deck. A question sent now would reach nobody.",
+                                     you say here, but your agent isn't waiting on this deck \
+                                     any more. A question sent now would reach nobody.",
                                 ))
                                 .child(para(
                                     "Add it to the review instead. It goes back with \
@@ -3058,7 +3288,7 @@ impl DeckView {
                                         .border_1()
                                         .border_color(paint(palette.edge))
                                         .text_color(paint(palette.fg))
-                                        .hover(|style| style.bg(paint(palette.wash)))
+                                        .hover(|style| style.bg(paint(hover_on_band(palette))))
                                         .child("Keep writing")
                                         .child(
                                             div()
@@ -3081,6 +3311,9 @@ impl DeckView {
                                         .text_size(px(11.5))
                                         .bg(paint(palette.accent))
                                         .text_color(paint(palette.on_accent))
+                                        .hover(|style| {
+                                            style.bg(paint(palette.accent.mix(palette.fg, 0.16)))
+                                        })
                                         .child("Add to review")
                                         .on_click(cx.listener(|deck, _, window, cx| {
                                             deck.explaining = false;
@@ -3104,12 +3337,13 @@ impl DeckView {
                                 .text_size(px(13.))
                                 .text_color(paint(palette.muted))
                                 .hover(|this| {
-                                    this.bg(paint(palette.wash)).text_color(paint(palette.fg))
+                                    this.bg(paint(hover_on_band(palette)))
+                                        .text_color(paint(palette.fg))
                                 })
                                 .on_click(
                                     cx.listener(|deck, _, window, cx| deck.understood(window, cx)),
                                 )
-                                .child("✕"),
+                                .child("×"),
                         ),
                 )
                 .into_any_element(),
@@ -3145,12 +3379,13 @@ impl DeckView {
                 .when(primary, |this| {
                     this.bg(paint(palette.accent))
                         .text_color(paint(palette.on_accent))
+                        .hover(|style| style.bg(paint(palette.accent.mix(palette.fg, 0.16))))
                 })
                 .when(!primary, |this| {
                     this.border_1()
                         .border_color(paint(palette.edge))
                         .text_color(paint(palette.fg))
-                        .hover(|style| style.bg(paint(palette.wash)))
+                        .hover(|style| style.bg(paint(hover_on_band(palette))))
                 })
                 .child(label)
                 .child(
@@ -3192,10 +3427,10 @@ impl DeckView {
                         .w(px(440.))
                         .max_w(relative(0.9))
                         .v_flex()
-                        .rounded(px(10.))
+                        .rounded(px(12.))
                         .border_1()
                         .border_color(paint(palette.edge))
-                        .bg(paint(palette.bg))
+                        .bg(paint(palette.band))
                         .shadow_lg()
                         .on_mouse_down(MouseButton::Left, |_, _window, cx| cx.stop_propagation())
                         .child(
@@ -3267,10 +3502,11 @@ impl DeckView {
                                 .text_size(px(13.))
                                 .text_color(paint(palette.muted))
                                 .hover(|this| {
-                                    this.bg(paint(palette.wash)).text_color(paint(palette.fg))
+                                    this.bg(paint(hover_on_band(palette)))
+                                        .text_color(paint(palette.fg))
                                 })
                                 .on_click(cx.listener(|deck, _, window, cx| deck.stay(window, cx)))
-                                .child("✕"),
+                                .child("×"),
                         ),
                 )
                 .into_any_element(),
@@ -3323,10 +3559,10 @@ impl DeckView {
                         .max_w(relative(0.9))
                         .max_h(relative(0.8))
                         .v_flex()
-                        .rounded(px(10.))
+                        .rounded(px(12.))
                         .border_1()
                         .border_color(paint(palette.edge))
-                        .bg(paint(palette.bg))
+                        .bg(paint(palette.band))
                         .shadow_lg()
                         .on_mouse_down(MouseButton::Left, |_, _window, cx| cx.stop_propagation())
                         .child(
@@ -3433,12 +3669,13 @@ impl DeckView {
                                 .text_size(px(13.))
                                 .text_color(paint(palette.muted))
                                 .hover(|this| {
-                                    this.bg(paint(palette.wash)).text_color(paint(palette.fg))
+                                    this.bg(paint(hover_on_band(palette)))
+                                        .text_color(paint(palette.fg))
                                 })
                                 .on_click(cx.listener(|deck, _, window, cx| {
                                     deck.hide_notes(window, cx);
                                 }))
-                                .child("✕"),
+                                .child("×"),
                         ),
                 )
                 .into_any_element(),
@@ -3529,7 +3766,22 @@ impl DeckView {
     }
 
     /// Put the export sheet away and give the keyboard back to the deck.
+    ///
+    /// Not at once: the sheet fades out first, and is let go of — its
+    /// drawings forgotten, the keyboard handed back — only once it has. Until
+    /// then it keeps the keys, so nothing reaches the deck from under a sheet
+    /// that is still on the screen. The sheet says when it is out by closing
+    /// again, so this is asked for the start of the fade and then for the end
+    /// of it.
     fn close_export(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some((sheet, _)) = &self.export else {
+            return;
+        };
+        sheet.update(cx, |sheet, cx| sheet.leave(cx));
+        if !sheet.read(cx).gone() {
+            cx.notify();
+            return;
+        }
         if let Some((sheet, _)) = self.export.take() {
             sheet.read(cx).forget_drawings(window);
         }
@@ -3600,7 +3852,11 @@ impl DeckView {
         if over {
             if self.tip_fade.on() && self.tip != Some(key) {
                 // Already reading cards: the next one comes straight away.
+                // Its words and place change in one frame, so the card dips
+                // to a little under full before it rises again: the change
+                // is seen as a soft one, not a cut.
                 self.tip = Some(key);
+                self.tip_fade.dip(0.6);
                 self.tipping = Task::ready(());
                 cx.notify();
                 return;
@@ -3697,10 +3953,14 @@ impl DeckView {
         let palette = &self.palette;
         let mono = cx.theme().mono_font_family.clone();
         let ready = crate::speech::asked(cx).offered();
+        // The dock's own ground. The glow ends exactly on it, and the keys
+        // are lit and put out against it, so it is one value in one place.
+        let ground = palette.band;
         let lit = |key: &str| {
             self.help_hit.and_then(|(hit, at)| {
-                let t = at.elapsed().as_secs_f32() / crate::keys::HIT.as_secs_f32();
-                (hit == key && t < 1.).then_some(1. - t)
+                let t = (at.elapsed().as_secs_f32() / GLOW.as_secs_f32()).clamp(0., 1.);
+                // Smoothstep, as every other light in the window goes out.
+                (hit == key && t < 1.).then_some(1. - t * t * (3. - 2. * t))
             })
         };
         let keys = crate::keys::TIPS
@@ -3722,7 +3982,7 @@ impl DeckView {
                         .py(px(5.))
                         .rounded(px(8.))
                         .when(glow > 0., |this| {
-                            this.bg(paint(palette.band.mix(palette.accent, 0.28 * glow)))
+                            this.bg(paint(ground.mix(palette.accent, 0.28 * glow)))
                         })
                         .child(crate::keys::cap(key, palette, mono.clone()))
                         .child(*name)
@@ -3730,7 +3990,7 @@ impl DeckView {
                         // knowing a key, so hide is pressed here as well.
                         .when(*key == "h", |this| {
                             this.cursor_pointer()
-                                .hover(|this| this.bg(paint(palette.wash)))
+                                .hover(|this| this.bg(paint(hover_on_band(palette))))
                                 .on_click(cx.listener(|deck, _, window, cx| {
                                     deck.on_hide(&Hide, window, cx);
                                 }))
@@ -3748,12 +4008,17 @@ impl DeckView {
                 .size(px(24.))
                 .ml(px(4.))
                 .h_flex()
+                .items_center()
                 .justify_center()
-                .rounded(px(7.))
+                .rounded(px(6.))
                 .cursor_pointer()
-                .text_size(px(16.))
+                .text_size(px(13.))
                 .text_color(paint(palette.muted))
-                .hover(|style| style.bg(paint(palette.wash)).text_color(paint(palette.fg)))
+                .hover(|style| {
+                    style
+                        .bg(paint(hover_on_band(palette)))
+                        .text_color(paint(palette.fg))
+                })
                 .on_click(cx.listener(|deck, _, _, cx| deck.close_help(cx)))
                 .child("×"),
             cx,
@@ -3789,7 +4054,7 @@ impl DeckView {
                         .pr(px(8.))
                         .py(px(7.))
                         .rounded(px(12.))
-                        .bg(paint(palette.band.mix(palette.fg, 0.03)))
+                        .bg(paint(ground))
                         .border_1()
                         .border_color(paint(palette.edge.mix(palette.fg, 0.06)))
                         .shadow_lg()
@@ -4034,6 +4299,7 @@ impl DeckView {
     /// own pixels and needs no such arrangement; a webview is a stranger in
     /// the window and has to be told where to stand on every frame.
     fn settle_pages(&mut self, window: &Window) {
+        self.let_closed_go();
         let spread = self.spread;
         let moving = self.folds.iter().any(crate::pane::Fade::moving) || self.rail_open.moving();
         if moving {
@@ -4356,7 +4622,7 @@ impl DeckView {
         if let Some(place) = place {
             // Going to an older turn is leaving the tail.
             self.rail_pinned.set(false);
-            self.rail_scroll.scroll_to_item(place);
+            self.rail_scroll.scroll_to_item(rail_child(place));
         }
 
         let mut light = crate::pane::Fade::default();
@@ -4584,6 +4850,9 @@ impl DeckView {
 
     fn open_composer(&mut self, about: About, window: &mut Window, cx: &mut Context<Self>) {
         self.live.pause(PauseReason::Composer);
+        // A new box is a first appearance for the caret: it starts at the
+        // start of the text, not sliding in from where the last box left it.
+        self.caret.reset();
         // The composer lives in the rail. Writing into a folded one would be
         // typing into a box nobody can see.
         self.rail_open.set(true);
@@ -4956,7 +5225,7 @@ impl DeckView {
                 .border_color(paint(if lit { palette.accent } else { palette.edge }))
                 .text_color(paint(if lit { palette.accent } else { palette.fg }))
                 .cursor_pointer()
-                .hover(|style| style.bg(paint(palette.wash)))
+                .hover(|style| style.bg(paint(hover_on_band(&palette))))
                 .child(label)
         };
         let answer = |share: bool| {
@@ -5071,6 +5340,7 @@ impl DeckView {
             return;
         }
         self.composing = None;
+        self.caret.reset();
         // Thrown away, so not kept for next time either.
         self.keep_draft(cx);
         // Thrown away rather than saved, but the anchor still goes back: the
@@ -5280,6 +5550,10 @@ impl DeckView {
     /// remembered choice was a mode: tick *hold* once, forget, and the next
     /// question waited unanswered until the review went back.
     fn save_remark(&mut self, when: deck_core::When, window: &mut Window, cx: &mut Context<Self>) {
+        // Whatever happens next, the box is empty or gone: the caret's next
+        // frame is a first appearance, so it is never seen sliding up from
+        // the last line of what was written.
+        self.caret.reset();
         let Some((about, state, _listen)) = self.composing.take() else {
             return;
         };
@@ -5689,14 +5963,25 @@ impl DeckView {
     /// comment being written — repaints without coming through here, because a
     /// rebuild throws away where the reader had scrolled to.
     fn build_panes(&mut self, cx: &mut App) {
+        // Whatever brought us here is the arrival: a step pending behind it
+        // would swap the group back later. The group comes up from where it
+        // stands, which is nought after a step's fall and whole for a cut.
+        self.arriving = None;
+        self.group_fade.set(true);
         // A card over the band belongs to the group on screen before, however
         // the group changed (a step, a click, the agent jumping): its
         // badge may not exist on the next one, and nothing would ever say the
         // pointer left it.
+        //
+        // It goes out on its normal fall rather than vanishing in the frame
+        // the group changes. The tip is not cleared here: a card is drawn
+        // only while its fade is above nought, so once the fall has reached
+        // nought the key it names draws nothing, which is the same as it
+        // being cleared. It is left set as a card that went out by the
+        // pointer leaving is, and the next rest on a badge replaces it.
         if self.tip.is_some_and(|(_, place)| place == "band") {
             self.tipping = Task::ready(());
             self.tip_fade.set(false);
-            self.tip = None;
         }
         // A deck still waiting on its first group has none to look at.
         if self.group().is_some() {
@@ -5828,11 +6113,33 @@ impl DeckView {
         // Every pane of a new group arrives open. A fold belongs to the group
         // it was made in, and so does anything brought in to answer a question
         // about it.
-        self.folds = vec![crate::pane::Fade::default(); self.panes.len()];
+        self.folds = vec![crate::pane::Fade::room(); self.panes.len()];
         self.temporary.clear();
+        self.closing.clear();
+    }
+
+    /// How far up the group's own content is. The placeholder text of a deck
+    /// with no group yet belongs to no group, so it is never veiled.
+    fn group_level(&self) -> f32 {
+        if self.group().is_some() {
+            self.group_floor + (1. - self.group_floor) * self.group_fade.level()
+        } else {
+            1.
+        }
+    }
+
+    /// How a group steps: out quickly, because the next one is already
+    /// waiting behind it, and in on the card rise. Both ends go through the
+    /// same smoothstep as every other fade.
+    fn group_fade() -> crate::pane::Fade {
+        crate::pane::Fade::default().paced(
+            std::time::Duration::from_millis(200),
+            std::time::Duration::from_millis(GROUP_FALL_MS),
+        )
     }
 
     fn render_band(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        let veil = self.group_level();
         // Nothing to read yet is a real state, not a blank. The agent opens
         // the window and then writes, so an empty deck is the first moment of
         // most decks' lives — and a window that shows nothing at all in it
@@ -5950,6 +6257,7 @@ impl DeckView {
                                                 NUMBER_SIZE
                                             }))
                                             .line_height(px(36.))
+                                            .when(veil < 1., |this| this.opacity(veil))
                                             .font_weight(FontWeight::LIGHT)
                                             .text_color(paint(
                                                 self.palette.band.mix(self.palette.accent, 0.45),
@@ -5983,6 +6291,7 @@ impl DeckView {
                                                 .items_center()
                                                 .gap(px(10.))
                                                 .min_w_0()
+                                                .when(veil < 1., |this| this.opacity(veil))
                                                 .child(
                                                     div()
                                                         .min_w_0()
@@ -5992,7 +6301,15 @@ impl DeckView {
                                                         .overflow_hidden()
                                                         .text_ellipsis()
                                                         .whitespace_nowrap()
-                                                        .child(own.unwrap_or_else(|| self.deck.title())),
+                                                        // A group written with no title of its own
+                                                        // is headed by its opening sentence, as its
+                                                        // row in the review column is: headed by the
+                                                        // deck's title, it repeated the line above.
+                                                        .child(own.unwrap_or_else(|| {
+                                                            self.group()
+                                                                .map(row_title)
+                                                                .unwrap_or_else(|| self.deck.title())
+                                                        })),
                                                 )
                                                 // How sure the agent is, after the claim it
                                                 // qualifies: bars and the level, and on a rest
@@ -6064,6 +6381,7 @@ impl DeckView {
                             // number is the step, and this is what it says.
                             .child(
                                 div()
+                                    .when(veil < 1., |this| this.opacity(veil))
                                     // Only under a group's number: with nothing
                                     // loaded yet there is no number to hang
                                     // from, and the placeholder sits flush.
@@ -6167,7 +6485,8 @@ impl DeckView {
 
     /// Go to a group by its place in the deck.
     fn go_to(&mut self, ix: usize, cx: &mut Context<Self>) {
-        let step = isize::try_from(ix).unwrap_or(0) - isize::try_from(self.group_ix).unwrap_or(0);
+        let from = self.arriving.unwrap_or(self.group_ix);
+        let step = isize::try_from(ix).unwrap_or(0) - isize::try_from(from).unwrap_or(0);
         if step != 0 {
             self.walk(step, cx);
         }
@@ -6205,71 +6524,83 @@ impl DeckView {
             }
         }
 
-        let rows = groups.iter().enumerate().map(|(ix, group)| {
-            let here = ix == self.group_ix;
-            let been = self.seen.contains(&ix) && !here;
-            let said = self
-                .remarks
-                .iter()
-                .filter(|remark| remark.group == group.id)
-                .count();
-            div()
-                .id(("review-row", ix))
-                .h_flex()
-                .items_start()
-                .gap(px(8.))
-                .px(px(4.))
-                .mx(px(-4.))
-                .py(px(2.))
-                .rounded(px(6.))
-                .cursor_pointer()
-                .hover(|style| style.bg(paint(palette.wash)))
-                .on_click(cx.listener(move |deck, _, _, cx| deck.go_to(ix, cx)))
-                .text_size(px(12.))
-                .line_height(px(17.))
-                .text_color(paint(if here {
-                    palette.fg
-                } else if been {
-                    palette.muted.mix(palette.band, 0.2)
-                } else {
-                    palette.muted
-                }))
-                // The tick: the group has been read. Bold and warm enough to
-                // see at a glance, since it is the column's whole progress.
-                .child(
-                    div()
-                        .flex_none()
-                        .w(px(10.))
-                        .text_size(px(10.))
-                        .font_weight(FontWeight::BOLD)
-                        .text_color(paint(palette.accent.mix(palette.band, 0.25)))
-                        .when(been, |this| this.child("✓")),
-                )
-                .child(
-                    div()
-                        .flex_none()
-                        .w(px(14.))
-                        .font_family(mono.clone())
-                        .text_size(px(11.))
-                        .text_color(paint(if here {
-                            palette.accent
-                        } else {
-                            palette.muted.mix(palette.band, 0.3)
-                        }))
-                        .child(format!("{}", ix + 1)),
-                )
-                .child(div().flex_1().min_w_0().child(row_title(group)))
-                .when(said > 0, |this| {
-                    this.child(
+        // How many remarks each group has, counted in one pass rather than
+        // once per group.
+        let mut said_of: std::collections::HashMap<&str, usize> = std::collections::HashMap::new();
+        for remark in &self.remarks {
+            *said_of.entry(remark.group.as_ref()).or_default() += 1;
+        }
+        let titles = self.review_titles();
+
+        let rows = groups
+            .iter()
+            .zip(titles)
+            .enumerate()
+            .map(|(ix, (group, title))| {
+                let here = ix == self.group_ix;
+                let been = self.seen.contains(&ix) && !here;
+                let said = said_of.get(group.id.as_str()).copied().unwrap_or(0);
+                div()
+                    .id(("review-row", ix))
+                    .h_flex()
+                    .items_start()
+                    .gap(px(8.))
+                    .px(px(4.))
+                    .mx(px(-4.))
+                    .py(px(2.))
+                    .rounded(px(6.))
+                    .cursor_pointer()
+                    // The group on screen has a quiet ground of its own, which
+                    // reads as chosen where the hover on the others reads as
+                    // passing; the pointer over it changes nothing.
+                    .when(here, |this| {
+                        this.bg(paint(palette.band.mix(palette.accent, 0.06)))
+                    })
+                    .when(!here, |this| {
+                        this.hover(|style| style.bg(paint(hover_on_band(palette))))
+                    })
+                    .on_click(cx.listener(move |deck, _, _, cx| deck.go_to(ix, cx)))
+                    .text_size(px(12.))
+                    .line_height(px(17.))
+                    .text_color(paint(if here {
+                        palette.fg
+                    } else if been {
+                        palette.muted.mix(palette.band, 0.1)
+                    } else {
+                        palette.muted
+                    }))
+                    // The tick: the group has been read. Bold and warm enough to
+                    // see at a glance, since it is the column's whole progress.
+                    .child(
                         div()
                             .flex_none()
-                            .font_family(mono.clone())
-                            .text_size(px(10.5))
-                            .text_color(paint(palette.muted.mix(palette.band, 0.3)))
-                            .child(format!("✎ {said}")),
+                            .w(px(10.))
+                            .text_size(px(10.))
+                            .font_weight(FontWeight::SEMIBOLD)
+                            .text_color(paint(palette.accent.mix(palette.band, 0.25)))
+                            .when(been, |this| this.child("✓")),
                     )
-                })
-        });
+                    .child(
+                        div()
+                            .flex_none()
+                            .w(px(14.))
+                            .font_family(mono.clone())
+                            .text_size(px(11.))
+                            .text_color(paint(if here { palette.accent } else { palette.muted }))
+                            .child(format!("{}", ix + 1)),
+                    )
+                    .child(div().flex_1().min_w_0().child(title))
+                    .when(said > 0, |this| {
+                        this.child(
+                            div()
+                                .flex_none()
+                                .font_family(mono.clone())
+                                .text_size(px(10.5))
+                                .text_color(paint(palette.muted))
+                                .child(format!("✎ {said}")),
+                        )
+                    })
+            });
 
         let more = |id: &'static str, label: String, down: bool| {
             let scroll = self.review_scroll.clone();
@@ -6329,9 +6660,9 @@ impl DeckView {
                             .items_center()
                             .child(
                                 div()
-                                    .text_size(px(10.))
+                                    .text_size(px(10.5))
                                     .font_weight(FontWeight::SEMIBOLD)
-                                    .text_color(paint(palette.muted.mix(palette.band, 0.3)))
+                                    .text_color(paint(palette.muted))
                                     .child("YOUR REVIEW"),
                             )
                             .child(
@@ -6356,7 +6687,14 @@ impl DeckView {
                                     .on_scroll_wheel(cx.listener(|_, _, _, cx| cx.notify()))
                                     .v_flex()
                                     .gap(px(5.))
-                                    .py(px(6.))
+                                    .pt(px(6.))
+                                    // Room under the last row for the "more"
+                                    // pill to sit in, so that it never covers
+                                    // a title. Always, not only while rows
+                                    // are below: padding that came and went
+                                    // with the scroll would move the list
+                                    // under the reader's hand.
+                                    .pb(px(24.))
                                     .children(rows),
                             )
                             // The edges fade where the list goes on, and only there:
@@ -6394,6 +6732,32 @@ impl DeckView {
                     )
                     .children(self.render_destination(cx)),
             )
+    }
+
+    /// Every group's line in the review column, made again only for a group
+    /// whose title or narration is not what it was made from.
+    fn review_titles(&self) -> Vec<SharedString> {
+        let groups = self.deck.groups();
+        let mut memo = self.review_titles.borrow_mut();
+        memo.truncate(groups.len());
+        for (ix, group) in groups.iter().enumerate() {
+            let fresh = memo
+                .get(ix)
+                .is_some_and(|(title, say, _)| *title == group.title && *say == group.say);
+            if fresh {
+                continue;
+            }
+            let made = (
+                group.title.clone(),
+                group.say.clone(),
+                SharedString::from(row_title(group)),
+            );
+            match memo.get_mut(ix) {
+                Some(slot) => *slot = made,
+                None => memo.push(made),
+            }
+        }
+        memo.iter().map(|(_, _, line)| line.clone()).collect()
     }
 
     /// Where the review of a deck from a `.deck` file goes, in one muted line
@@ -6597,7 +6961,10 @@ impl DeckView {
 
     /// Take hold of a diagram, so moving the pointer moves the drawing.
     pub fn start_pan(&mut self, pane_ix: usize, at: Point<Pixels>) {
-        if let Some(chart) = self.panes.get(pane_ix).and_then(Sheet::chart) {
+        if let Some(chart) = self.panes.get_mut(pane_ix).and_then(Sheet::chart_mut) {
+            // A button's zoom still easing stops where it is drawn: the hand
+            // takes the picture from what the reader sees.
+            chart.settle();
             self.panning = Some((pane_ix, at, chart.nudge));
         }
     }
@@ -6645,13 +7012,25 @@ impl DeckView {
         }
     }
 
-    /// Put a diagram back to the size it was drawn, and where.
+    /// Take a diagram in or out by a button's step, easing to the new size.
+    ///
+    /// The wheel and a pinch go through [`Self::zoom_chart`] and follow the
+    /// hand directly; a button press is one jump of a fifth, which on screen
+    /// would be a cut, so it glides over the room pace instead.
+    pub fn step_chart(&mut self, pane_ix: usize, by: f32, cx: &mut Context<Self>) {
+        /// How much of a turn one pixel of wheel is worth.
+        const PER_PIXEL: f32 = 0.004;
+
+        if let Some(chart) = self.panes.get_mut(pane_ix).and_then(Sheet::chart_mut) {
+            chart.glide_by(1. + by * PER_PIXEL);
+            cx.notify();
+        }
+    }
+
+    /// Put a diagram back to the size it was drawn, and where, easing there.
     pub fn reset_zoom(&mut self, pane_ix: usize, cx: &mut Context<Self>) {
         if let Some(chart) = self.panes.get_mut(pane_ix).and_then(Sheet::chart_mut) {
-            chart.zoom = 1.;
-            // The position goes back with it. A picture put back to its own
-            // size but left half off the pane has not been put back.
-            chart.nudge = point(px(0.), px(0.));
+            chart.glide_home();
             cx.notify();
         }
     }
@@ -6883,6 +7262,10 @@ impl DeckView {
     /// a mouse notch is a glide rather than a jump.
     pub fn wheel(&mut self, pane_ix: usize, by: Point<Pixels>, cx: &mut Context<Self>) {
         self.live.pause(PauseReason::Navigation);
+        // The wheel stops a glide where it is, so a value waiting for it to
+        // land would wait for good. The reader has taken the pane; what the
+        // sentence reached comes out now.
+        self.open_held_values();
         let Some(pane) = self.panes.get(pane_ix).and_then(Sheet::code) else {
             return;
         };
@@ -6975,6 +7358,15 @@ impl DeckView {
         self.glide(pane_ix, target, cx);
     }
 
+    /// Open the values of the pane a glide was carrying, now it has stopped.
+    fn open_held_values(&mut self) {
+        if let Some(ix) = self.values_after_glide.take()
+            && let Some(code) = self.panes.get_mut(ix).and_then(Sheet::code_mut)
+        {
+            code.follow_values();
+        }
+    }
+
     /// Carry a pane's list to `target` over a few frames.
     #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
     fn glide(&mut self, pane_ix: usize, target: Pixels, cx: &mut Context<Self>) {
@@ -6993,6 +7385,7 @@ impl DeckView {
         self.drifting = None;
 
         let Some(pane) = self.panes.get(pane_ix).and_then(Sheet::code) else {
+            self.open_held_values();
             return;
         };
         let scroll = pane.scroll();
@@ -7020,8 +7413,11 @@ impl DeckView {
                 };
                 let y = from.y + (target - from.y) * eased;
 
-                let moved = view.update(cx, |_, cx| {
+                let moved = view.update(cx, |deck, cx| {
                     scroll.0.borrow().base_handle.set_offset(point(from.x, y));
+                    if along >= 1. {
+                        deck.open_held_values();
+                    }
                     cx.notify();
                 });
                 if moved.is_err() || along >= 1. {
@@ -7041,15 +7437,17 @@ impl DeckView {
         let (about, state, _) = self.composing.as_ref()?;
         let where_at = match about {
             About::Lines { file, range, .. } => {
-                format!("comment on {}:{range}", file.display())
+                // The name, not the path, the way a turn in the thread says
+                // it: the full path is long, and the rail is narrow.
+                let name = file.file_name().map_or_else(
+                    || file.display().to_string(),
+                    |name| name.to_string_lossy().to_string(),
+                );
+                format!("comment on {name}:{range}")
             }
             About::Drawn { quote, .. } => format!("comment on {quote}"),
             About::Claim { .. } => "comment on this group".to_string(),
         };
-        let ref_id = Some(match about {
-            About::Lines { ref_id, .. } | About::Drawn { ref_id, .. } => ref_id.clone(),
-            About::Claim { group, .. } => group.clone(),
-        });
 
         Some(
             div()
@@ -7081,8 +7479,7 @@ impl DeckView {
                         .text_color(paint(self.palette.muted))
                         // Cut short with an ellipsis when the rail is narrow,
                         // rather than running out past the window's edge.
-                        .child(div().flex_1().min_w_0().truncate().child(where_at))
-                        .children(ref_id.map(|id| div().flex_none().child(id))),
+                        .child(div().flex_1().min_w_0().truncate().child(where_at)),
                 )
                 // Sized against the narration it answers, not against the
                 // labels around it. What the reader types here is prose, and
@@ -7096,11 +7493,24 @@ impl DeckView {
                 // Set on the textarea, not on a wrapper: the input sets its own
                 // size and leading on its frame, which beat anything inherited,
                 // and a row of the auto-grow is that leading.
-                .child(
-                    Textarea::new(state)
-                        .text_size(px(13.2))
-                        .line_height(px(20.)),
-                )
+                //
+                // The caret is deck's own, drawn over the box: see
+                // [`crate::caret`].
+                .child({
+                    let field = state.clone();
+                    div()
+                        .relative()
+                        .child(
+                            Textarea::new(state)
+                                .text_size(px(13.2))
+                                .line_height(px(20.)),
+                        )
+                        .child(crate::caret::overlay(
+                            &self.caret,
+                            paint(self.palette.fg),
+                            move |window, cx| crate::caret_field!(field, window, cx),
+                        ))
+                })
                 // Under the box, where a hint belongs: beside the location it
                 // competes with the one thing the reader needs to read.
                 .child(
@@ -7175,7 +7585,7 @@ impl DeckView {
                     this.border_1()
                         .border_color(paint(palette.edge))
                         .text_color(paint(palette.fg))
-                        .hover(|style| style.bg(paint(palette.wash)))
+                        .hover(|style| style.bg(paint(hover_on_band(palette))))
                 })
                 .child(label)
                 .when(roomy, |this| {
@@ -7228,7 +7638,7 @@ impl DeckView {
                     .text_size(px(10.5))
                     .text_color(paint(palette.muted))
                     .cursor_pointer()
-                    .hover(|style| style.bg(paint(palette.wash)))
+                    .hover(|style| style.bg(paint(hover_on_band(palette))))
                     .tooltip(|_window, cx| {
                         cx.new(|_| {
                             gpui_kit::component::tooltip::Tooltip::new("Your agent isn't listening")
@@ -7252,7 +7662,7 @@ impl DeckView {
                             .font_family(mono.clone())
                             .text_size(px(8.))
                             .line_height(px(8.))
-                            .font_weight(FontWeight::BOLD)
+                            .font_weight(FontWeight::SEMIBOLD)
                             .text_color(paint(palette.accent))
                             .child("i"),
                     )
@@ -7297,10 +7707,11 @@ impl DeckView {
                     .items_center()
                     .gap(px(14.))
                     // The side that gives way. The right side holds what the
-                    // reader acts on — the comment count, the version, the way
-                    // out — and a narrow window used to push it off the edge,
-                    // out of reach, while this side kept its room. Now this
-                    // side shrinks, and the caution at its end is cut short.
+                    // reader acts on — export, once the deck is sealed, and
+                    // the version — and a narrow window used to push it off
+                    // the edge, out of reach, while this side kept its room.
+                    // Now this side shrinks, and the caution at its end is
+                    // cut short.
                     .flex_1()
                     .min_w_0()
                     .overflow_hidden()
@@ -7308,7 +7719,7 @@ impl DeckView {
                     // Where you are lives down here with the other counts,
                     // rather than beside the title. The title says what the
                     // group is about; the strip says where you are in the deck.
-                    .child(format!("group {}/{}", self.group_ix + 1, total))
+                    .child(format!("group {} of {}", self.group_ix + 1, total))
                     .when(walking, |this| {
                         this.child(
                             div()
@@ -7408,8 +7819,8 @@ impl DeckView {
                             .min_w_0()
                             .overflow_hidden()
                             .text_ellipsis()
-                            .text_color(paint(self.palette.muted.mix(self.palette.band, 0.35)))
-                            .child("Your agent can make incorrect claims"),
+                            .text_color(paint(self.palette.muted))
+                            .child("your agent can make incorrect claims"),
                     ),
             )
             // The three keys used most, each with a card on a rest,
@@ -7441,7 +7852,7 @@ impl DeckView {
                     .min_w_0()
                     .overflow_hidden()
                     .whitespace_nowrap()
-                    .gap(px(12.))
+                    .gap(px(STRIP_GAP))
                     .child(named("n", "next", cx))
                     .child(named("p", "previous", cx))
                     .child(named("c", "comment", cx))
@@ -7461,33 +7872,37 @@ impl DeckView {
             .child(
                 div()
                     .h_flex()
-                    .gap_4()
+                    .gap(px(STRIP_GAP))
                     .flex_none()
                     .whitespace_nowrap()
                     // Export, once there is a whole deck to export. It takes
-                    // the place the deck id had, and is drawn as the keys
-                    // beside it are: a cap and a name, so the strip reads as
-                    // one row. The id is in the card the version opens.
-                    .when(self.exportable(), |this| {
-                        this.child(
-                            div()
-                                .id("strip-export")
-                                .flex_none()
-                                .h_flex()
-                                .items_center()
-                                .gap(px(6.))
-                                .cursor_pointer()
-                                .hover(|this| this.text_color(paint(self.palette.fg)))
-                                .on_click(cx.listener(|deck, _, window, cx| {
-                                    deck.open_export(window, cx);
-                                }))
-                                .child(crate::keys::cap(
-                                    "↓",
-                                    &self.palette,
-                                    cx.theme().mono_font_family.clone(),
-                                ))
-                                .child("export"),
-                        )
+                    // the place the deck id had, and is drawn as the version
+                    // beside it is: a word that brightens under the pointer.
+                    // Not a key cap, because no key opens it, and a cap that
+                    // nothing answers to is a promise the strip cannot keep.
+                    // The id is in the card the version opens.
+                    //
+                    // Always drawn, sealed or not, so that its width is held
+                    // and the words beside it do not shift when it becomes
+                    // available. Until then it is invisible and inert: its
+                    // opacity follows the fade (nought), and it has no
+                    // handler, hover or pointer cursor, so it takes no
+                    // clicks. Once there is a deck to export it comes in on
+                    // the surface fade rather than in one frame.
+                    .child({
+                        let live = self.exportable();
+                        div()
+                            .id("strip-export")
+                            .flex_none()
+                            .opacity(self.export_fade.level())
+                            .when(live, |this| {
+                                this.cursor_pointer()
+                                    .hover(|this| this.text_color(paint(self.palette.fg)))
+                                    .on_click(cx.listener(|deck, _, window, cx| {
+                                        deck.open_export(window, cx);
+                                    }))
+                            })
+                            .child("export")
                     })
                     // Which deck is running. Asked for because there was no way
                     // to tell from inside the window, and the first thing
@@ -7634,7 +8049,7 @@ impl DeckView {
                 .rounded(px(5.))
                 .cursor_pointer()
                 .text_color(paint(palette.fg))
-                .hover(|style| style.bg(paint(palette.wash)))
+                .hover(|style| style.bg(paint(hover_on_band(palette))))
                 .tooltip(move |_window, cx| {
                     cx.new(|_| gpui_kit::component::tooltip::Tooltip::new(tip))
                         .into()
@@ -7842,7 +8257,7 @@ impl DeckView {
     /// popped into place would make the reader find their place again.
     ///
     /// Newest last, because a walk reads forwards.
-    fn render_rail(&self, speaking: bool, cx: &mut Context<Self>) -> AnyElement {
+    fn render_rail(&self, speaking: bool, window: &Window, cx: &mut Context<Self>) -> AnyElement {
         let wide = self.rail_width.unwrap_or(RAIL);
         let open = self.rail_open.level();
         let palette = &self.palette;
@@ -7878,18 +8293,72 @@ impl DeckView {
             })
             .collect();
         let last = shown.len().saturating_sub(1);
+        let empty = shown.is_empty();
+        // Opened with turns already there (restored): they are recorded as
+        // seen so none of them enters, and the empty line is not there to go
+        // out, so it starts gone. Nothing moves on open.
+        if !self.entry_primed.replace(true) {
+            self.known
+                .borrow_mut()
+                .extend(shown.iter().map(|(ix, _)| *ix));
+            if !empty {
+                self.quip_fade.set(Self::card_fade());
+            }
+        }
+        // The empty line goes out as the first turn comes in, on the same
+        // pace as every other card.
+        let mut quip_fade = self.quip_fade.get();
+        quip_fade.set(empty);
+        self.quip_fade.set(quip_fade);
+        // Any turn not seen before enters: from nothing to full on the same
+        // eased level as every card, as the reader's own comment does and the
+        // agent's reply does. A finished entrance is forgotten.
+        {
+            let mut known = self.known.borrow_mut();
+            let mut entering = self.entering.borrow_mut();
+            for (ix, _) in &shown {
+                if known.insert(*ix) {
+                    let mut fade = Self::card_fade();
+                    fade.set(true);
+                    entering.insert(*ix, fade);
+                }
+            }
+            entering.retain(|_, fade| fade.moving());
+        }
+        let turns = shown
+            .iter()
+            .filter(|(_, moment)| from_the_agent(&moment.what))
+            .count();
+        // Whether the wait ended because an agent turn landed, rather than
+        // because it ran out. While it is owed, the count is kept.
+        let owed_now = self.answer_owed();
+        if owed_now {
+            self.wait_turns.set(turns);
+        }
+        let replied = !owed_now && turns > self.wait_turns.get();
+        // The pulse is on screen while owed and while it fades out. The last
+        // real turn's line runs on down to it instead of stopping at its own
+        // knot, and keeps doing so through a fade that is not a reply, which
+        // is the row giving its room back, not a turn coming.
+        let arriving = self.arrival_shown() && !replied;
         let lines: Vec<AnyElement> = shown
             .into_iter()
             .enumerate()
             .map(|(place, (ix, moment))| {
                 let mine = moment.what == deck_core::What::Said;
+                let entrance = self
+                    .entering
+                    .borrow()
+                    .get(&ix)
+                    .map_or(1., |fade| fade.level());
                 let again = self.conversation.spoken.contains_key(&ix);
                 // Older turns sink into the page. What was just said is what
                 // the reader is in the middle of; six turns back is context,
                 // and context as black as the sentence in front of you is
                 // context you have to read past.
                 #[allow(clippy::cast_precision_loss)]
-                let age = ((last - place) as f32 / 6.).clamp(0., 1.) * 0.55;
+                let target = ((last - place) as f32 / 6.).clamp(0., 1.) * 0.30;
+                let age = self.aged(ix, target);
                 let sunk = |tone: deck_core::theme::Rgb| tone.mix(palette.band, age);
                 let reacted = moment.what == deck_core::What::Reacted;
                 let moved = moment.what == deck_core::What::Shown;
@@ -7924,11 +8393,25 @@ impl DeckView {
                             .map_or(name.clone(), |range| format!("{name}:{range}")),
                     )
                 });
+                // The strip counts groups from one, so the thread does too: the
+                // id the deck file gave a group is not what the reader sees
+                // anywhere else.
+                let place_in_deck = || {
+                    let id = moment.group.as_ref()?;
+                    let at = self
+                        .deck
+                        .groups()
+                        .iter()
+                        .position(|group| &group.id == id)?;
+                    Some(format!("group {}", at + 1))
+                };
                 let meta = format!(
                     "{who} · {}{}",
-                    at.unwrap_or_else(|| moment.group.clone().unwrap_or_else(|| "walk".into())),
+                    at.or_else(place_in_deck)
+                        .unwrap_or_else(|| moment.group.clone().unwrap_or_else(|| "walk".into())),
+                    // Pressing Ask now is what makes a turn an interrupt.
                     if moment.when == deck_core::When::Interrupt {
-                        " · interrupted"
+                        " · asked"
                     } else {
                         ""
                     },
@@ -8038,8 +8521,8 @@ impl DeckView {
                     .w(px(1.))
                     .bg(paint(palette.edge))
                     .top(px(if place == 0 { 10. } else { 0. }))
-                    .when(place == last, |this| this.h(px(10.)))
-                    .when(place != last, |this| this.bottom_0());
+                    .when(place == last && !arriving, |this| this.h(px(10.)))
+                    .when(place != last || arriving, |this| this.bottom_0());
 
                 // Brought here from the prose, a moment ago. The light says
                 // which turn the reader was sent to look at, and fades rather
@@ -8055,13 +8538,21 @@ impl DeckView {
                     .h_flex()
                     .items_stretch()
                     .rounded(px(3.))
+                    // A new turn rises a few pixels into its place as it fades
+                    // in. Relative, so it moves without the layout around it
+                    // moving.
+                    .when(entrance < 1., |this| {
+                        this.relative()
+                            .top(px(7. * (1. - entrance)))
+                            .opacity(entrance)
+                    })
                     .bg(paint(palette.band.mix(palette.accent, 0.3 * brought)))
                     .child(
                         div()
                             .relative()
                             .flex_none()
                             .w(px(24.))
-                            .when(last > 0, |this| this.child(thread))
+                            .when(last > 0 || arriving, |this| this.child(thread))
                             .child(knot),
                     )
                     .child(
@@ -8084,7 +8575,7 @@ impl DeckView {
                                     // Who and where, in the reading face: set
                                     // in mono, a label looked like code.
                                     .text_size(px(11.))
-                                    .text_color(paint(sunk(palette.muted)))
+                                    .text_color(paint(palette.muted))
                                     .child(
                                         div().min_w_0().truncate().child(SharedString::from(meta)),
                                     )
@@ -8103,10 +8594,17 @@ impl DeckView {
                                                 this.child(
                                                     div()
                                                         .id(("again", ix))
+                                                        .size(px(18.))
+                                                        .rounded(px(4.))
+                                                        .flex()
+                                                        .items_center()
+                                                        .justify_center()
                                                         .cursor_pointer()
                                                         .text_color(paint(palette.muted))
                                                         .hover(|style| {
-                                                            style.text_color(paint(palette.accent))
+                                                            style
+                                                                .bg(paint(hover_on_band(palette)))
+                                                                .text_color(paint(palette.accent))
                                                         })
                                                         .on_click(cx.listener(
                                                             move |deck, _, _window, cx| {
@@ -8127,6 +8625,18 @@ impl DeckView {
         // Nobody has said anything, so the thread is empty and the space is
         // the first thing the reader sees in the panel.
         let nothing = lines.is_empty();
+        let arrival = self.render_arrival(!nothing, replied, mono.clone(), window);
+        // When a real reply landed the pulse fades where it stood, as an
+        // absolute layer, so the one change in height is the turn coming in.
+        // That layer goes in the relative wrapper beside the scroll container,
+        // not among the turns, and only while the rail is at its tail: pinned
+        // elsewhere it would flash over an old turn. Any other end to the wait
+        // keeps the row in the flow and eases its room away.
+        let (arrival, arrival_going) = if replied {
+            (None, arrival.filter(|_| self.rail_pinned.get()))
+        } else {
+            (arrival, None)
+        };
 
         div()
             .id("live-rail")
@@ -8188,9 +8698,13 @@ impl DeckView {
                                                 .items_center()
                                                 .justify_center()
                                                 .cursor_pointer()
-                                                .text_size(px(13.))
+                                                .border_1()
+                                                .border_color(paint(palette.edge))
+                                                .text_size(px(12.))
                                                 .text_color(paint(palette.muted))
-                                                .hover(|style| style.bg(paint(palette.wash)))
+                                                .hover(|style| {
+                                                    style.bg(paint(hover_on_band(palette)))
+                                                })
                                                 .on_click(cx.listener(|deck, _, window, cx| {
                                                     // Even with a comment
                                                     // being written: the
@@ -8215,9 +8729,11 @@ impl DeckView {
                                         )
                                         .child(
                                             div()
-                                                .font_family(mono.clone())
-                                                .text_size(px(9.5))
-                                                .text_color(paint(palette.fg))
+                                                // The house small-caps label: the
+                                                // reading face, not mono.
+                                                .text_size(px(10.5))
+                                                .font_weight(FontWeight::SEMIBOLD)
+                                                .text_color(paint(palette.muted))
                                                 .child("CHAT"),
                                         )
                                         // How much of this is going back with
@@ -8236,36 +8752,72 @@ impl DeckView {
                                 ),
                         )
                         .child(
+                            // The thread, and over its bottom-right corner the
+                            // way back to it. The chip floats rather than
+                            // sitting under the thread, so idle at the bottom
+                            // the footer is nothing at all.
                             div()
-                                .v_flex()
-                                .id("said-rail")
+                                .relative()
                                 .flex_1()
                                 .min_h_0()
-                                .overflow_y_scroll()
-                                .track_scroll(&self.rail_scroll)
-                                // Only drawn while the rail is open, so a
-                                // folded rail never piles up a scroll to the
-                                // bottom that would land over a remark the
-                                // reader went to when it opened.
-                                .map(|this| {
-                                    let scroll = &self.rail_scroll;
-                                    if self.rail_wheeled.take() {
-                                        let tail =
-                                            -scroll.offset().y >= scroll.max_offset().y - px(24.);
-                                        self.rail_pinned.set(tail);
-                                    }
-                                    if self.rail_pinned.get() {
-                                        scroll.scroll_to_bottom();
-                                    }
-                                    this
-                                })
-                                .on_scroll_wheel(cx.listener(|deck, _, _window, cx| {
-                                    deck.rail_wheeled.set(true);
-                                    cx.notify();
-                                }))
-                                .children(nothing.then(|| {
+                                .v_flex()
+                                .child(
                                     div()
+                                        .v_flex()
+                                        .id("said-rail")
                                         .flex_1()
+                                        .min_h_0()
+                                        .overflow_y_scroll()
+                                        .track_scroll(&self.rail_scroll)
+                                        // Only drawn while the rail is open, so a
+                                        // folded rail never piles up a scroll to the
+                                        // bottom that would land over a remark the
+                                        // reader went to when it opened.
+                                        .map(|this| {
+                                            let scroll = &self.rail_scroll;
+                                            if self.rail_wheeled.take() {
+                                                let tail = -scroll.offset().y
+                                                    >= scroll.max_offset().y - px(24.);
+                                                self.rail_pinned.set(tail);
+                                            }
+                                            if self.rail_pinned.get() {
+                                                scroll.scroll_to_bottom();
+                                            }
+                                            this
+                                        })
+                                        .on_scroll_wheel(cx.listener(|deck, _, _window, cx| {
+                                            deck.rail_wheeled.set(true);
+                                            cx.notify();
+                                        }))
+                                        // The turns sit at the bottom of the rail and
+                                        // grow upward as more arrive. A leading
+                                        // spacer that grows to fill the rail when
+                                        // the turns are short pushes them down, and
+                                        // shrinks to nothing when they are long, so
+                                        // the scroll container still sees all of
+                                        // them and `scroll_to_bottom` reaches the
+                                        // true end. The turns stay direct children
+                                        // of the container, which is what
+                                        // `scroll_to_item` indexes: see
+                                        // [`rail_child`].
+                                        .child(div().flex_grow_1().flex_shrink_0())
+                                        .children(lines)
+                                        .children(arrival.filter(|_| owed_now)),
+                                )
+                                // The pulse going out is laid over the thread's
+                                // bottom, from outside the scroll container
+                                // so it needs no place among the turns.
+                                .children(arrival_going)
+                                .children(self.render_way_back(turns, cx))
+                                .children(quip_shown(nothing, quip_fade.moving()).then(|| {
+                                    div()
+                                        // Over the whole rail rather than in the
+                                        // flow, so the line stays where it is
+                                        // centred while it goes out and the first
+                                        // turn takes its room below.
+                                        .absolute()
+                                        .inset_0()
+                                        .opacity(quip_fade.level())
                                         .flex()
                                         .items_center()
                                         .justify_center()
@@ -8287,44 +8839,12 @@ impl DeckView {
                                                 // nothing could draw and it came out upright.
                                                 .font_family(mono.clone())
                                                 .italic()
-                                                .text_color(paint(
-                                                    palette.muted.mix(palette.band, 0.35),
-                                                ))
+                                                .text_color(paint(palette.muted))
                                                 .child(self.nothing_yet()),
                                         )
-                                }))
-                                .children(lines),
-                        )
-                        .child(
-                            // The way to the newest turn, and beside it the
-                            // pulse that says one is on its way — the two are
-                            // about the same thing, so they share a line and
-                            // nothing below them moves when the pulse comes
-                            // or goes.
-                            div()
-                                .flex_none()
-                                .h_flex()
-                                .items_center()
-                                .gap(px(8.))
-                                .child(
-                                    div()
-                                        .id("latest-reply")
-                                        .flex_none()
-                                        .py(px(5.))
-                                        .text_size(px(10.))
-                                        .text_color(paint(palette.muted))
-                                        .cursor_pointer()
-                                        .on_click(cx.listener(|deck, _, _window, cx| {
-                                            deck.rail_pinned.set(true);
-                                            deck.rail_scroll.scroll_to_bottom();
-                                            cx.notify();
-                                        }))
-                                        .child("Latest ↓"),
-                                )
-                                .children(self.render_pulse()),
+                                })),
                         )
                         .children(self.render_invite(cx))
-                        .children(self.render_making())
                         .children(self.render_pending())
                         // The composer belongs here while live, not floating over
                         // the code. A reader writing a reply is talking to the
@@ -8342,6 +8862,28 @@ impl DeckView {
 }
 
 impl DeckView {
+    /// How far turn `ix` has sunk into the page, given where it is heading.
+    ///
+    /// A turn's age steps each time a newer one arrives. Drawn as given, every
+    /// older turn in the rail would lighten by a shade in one frame, which
+    /// reads as a flicker. So each turn remembers where it was and eases to the
+    /// new value over the layout pace. A turn seen for the first time, such as
+    /// one restored from a draft, simply starts where it belongs.
+    fn aged(&self, ix: usize, target: f32) -> f32 {
+        let mut ages = self.ages.borrow_mut();
+        let entry = ages
+            .entry(ix)
+            .or_insert((target, target, crate::pane::Fade::default()));
+        let now = entry.0 + (entry.1 - entry.0) * entry.2.level();
+        if (entry.1 - target).abs() > f32::EPSILON {
+            let mut fade = crate::pane::Fade::default();
+            fade.set(true);
+            *entry = (now, target, fade);
+            return now;
+        }
+        now
+    }
+
     /// Say one of the agent's turns again.
     ///
     /// The words as they were written, so the beats and the pointing come back
@@ -8397,7 +8939,6 @@ impl DeckView {
             .pt(px(12.))
             .pb(px(14.))
             .cursor_pointer()
-            .hover(|style| style.bg(paint(palette.band.mix(palette.wash, 0.5))))
             .on_click(cx.listener(|deck, _, window, cx| {
                 // Opening it onto a draft is going back to the draft.
                 if !deck.back_to_the_box(window, cx) {
@@ -8416,6 +8957,7 @@ impl DeckView {
                     .border_color(paint(palette.edge))
                     .text_size(px(12.))
                     .text_color(paint(palette.muted))
+                    .hover(|style| style.bg(paint(hover_on_band(&palette))))
                     .child("‹"),
             )
             .child(
@@ -8516,7 +9058,7 @@ impl DeckView {
                 .cursor_pointer()
                 .text_size(px(11.))
                 .text_color(paint(palette.muted))
-                .hover(|style| style.bg(paint(palette.wash)))
+                .hover(|style| style.bg(paint(hover_on_band(palette))))
                 .on_click(cx.listener(|deck, _, window, cx| {
                     deck.on_comment(&Comment, window, cx);
                 }))
@@ -8525,29 +9067,9 @@ impl DeckView {
         )
     }
 
-    /// Say that a voice is being made, while it is being made.
-    ///
-    /// A cloud voice takes a second or two, and the reader who hears nothing in
-    /// that gap concludes the answer never arrived — one of them pressed replay
-    /// on a turn that was already on its way.
-    fn render_making(&self) -> Option<AnyElement> {
-        if !self.voice.making() {
-            return None;
-        }
-        Some(
-            div()
-                .flex_none()
-                .pt(px(8.))
-                .text_size(px(10.5))
-                .text_color(paint(self.palette.accent))
-                .child("making the voice…")
-                .into_any_element(),
-        )
-    }
-
     /// A question still held for a gap in the agent's turn: say so.
     ///
-    /// The pulse for one that has gone is [`Self::render_pulse`].
+    /// The reply on its way for one that has gone is [`Self::render_arrival`].
     fn render_pending(&self) -> Option<AnyElement> {
         let palette = &self.palette;
         self.conversation.latest_sign()?;
@@ -8569,56 +9091,240 @@ impl DeckView {
         None
     }
 
-    /// A question on its way to an answer: a slow breath, and no words.
+    /// Whether an answer is owed: the reader asked, nobody has answered, and
+    /// it is still worth waiting on.
     ///
-    /// This was a bar filling over two minutes, the agent's own notes about
-    /// what it was doing, and then *no answer yet*. Every part of that asked
-    /// something of somebody. The notes cost the agent a tool call a step,
-    /// which made the answer slower to say it was coming (#23); the bar put a
-    /// deadline on screen that an honest answer often outlived, and the label
-    /// at the end of it read as a verdict (#24).
+    /// Held behind speech is said in words elsewhere. Past any answer worth
+    /// waiting on it simply stops: no verdict. Nor while nobody is there to
+    /// answer: the strip along the bottom is saying so, and a reply drawn as
+    /// coming would be saying the opposite.
+    fn answer_owed(&self) -> bool {
+        self.conversation.latest_sign().is_some_and(|at| {
+            !self.conversation.queued() && at.elapsed() < PATIENCE && self.unheard < UNHEARD_FOR
+        })
+    }
+
+    /// Keep the arriving turn's line and fade up to date, and say whether it
+    /// is on screen (owed, or still fading out).
     ///
-    /// What the reader needs is smaller than any of that: *it went, and
-    /// something is happening*. One dot, breathing slowly enough to be looked
-    /// away from. Whether anybody is there at all is the strip's to say, not
-    /// this panel's.
+    /// The line is chosen when the reader sends a comment (the wait begins,
+    /// which is when the time of the last sign changes) and never changed
+    /// during that wait. It is kept after the wait so the fade out says what
+    /// it said.
+    fn arrival_shown(&self) -> bool {
+        let sign = self.conversation.latest_sign();
+        let owed = self.answer_owed();
+        if owed && self.phrase_for.get() != sign {
+            self.phrase_for.set(sign);
+            self.phrase
+                .set(Some(pick_phrase(self.phrase.get(), roll())));
+        }
+        let mut fade = self.phrase_fade.get();
+        fade.set(owed);
+        self.phrase_fade.set(fade);
+        self.phrase.get().is_some() && (fade.on() || fade.moving())
+    }
+
+    /// The reply that has not arrived yet, drawn where it will land: at the
+    /// bottom of the thread, the line running down into a breathing dot on the
+    /// same column as the knots, a short dashed tail below it, and beside it
+    /// one of deck's own lines.
     ///
-    /// It sits beside *Latest*, while an answer is owed.
-    fn render_pulse(&self) -> Option<AnyElement> {
+    /// It is an indicator, not a turn. A hollow knot with words beside it read
+    /// as another comment from the reader, so this is the pulse the footer had
+    /// in 0.1.6 (the same dot, size, colour and slow pace) moved onto the
+    /// thread, where the answer will be, and the line is in deck's own voice:
+    /// small, italic, mono and muted, the way the empty thread's line is. When
+    /// the answer comes the real turn takes this place.
+    ///
+    /// Frames come from the breath alone, and it is only given one while the
+    /// window is active: an inactive window draws the dot still, at the
+    /// breath's rest level, faint, because a solid orange dot would read as
+    /// a knot of the reader's own, and nothing asks for frames.
+    fn render_arrival(
+        &self,
+        has_turns: bool,
+        replied: bool,
+        mono: SharedString,
+        window: &Window,
+    ) -> Option<AnyElement> {
         /// One breath, in and out. Slow on purpose: a pulse at a heartbeat's
         /// pace reads as urgency, and this is the opposite of that.
         const BREATH: std::time::Duration = std::time::Duration::from_millis(2800);
+        /// The height of the line of text, and so of the dot's row.
+        const LINE: f32 = 16.;
+        /// The dot's size, and where its top sits so it is centred on the line.
+        const DOT: f32 = 6.;
 
-        let since = self.conversation.latest_sign()?.elapsed();
-        // Held behind speech is said in words, below. Past any answer worth
-        // waiting on, the pulse simply stops: no verdict.
-        //
-        // Nor while nobody is there to answer: the strip along the bottom is
-        // saying so, and a pulse above it would be saying the opposite.
-        if self.conversation.queued() || since >= PATIENCE || self.unheard >= UNHEARD_FOR {
+        if !self.arrival_shown() {
             return None;
         }
+        let palette = self.palette;
+        let phrase = PHRASES[self.phrase.get()?];
+        // Once a reply is here the row is only fading out. It stops taking
+        // room, and fades where it stood, so the one change in height is the
+        // real turn coming in, not that and the pulse leaving as well. A wait
+        // that ran out with no reply keeps its place in the flow and gives
+        // its room back as it fades, so the thread does not drop.
+        let level = self.phrase_fade.get().level();
+        // Centred on the thread line, which is the 1px at x = 10 to 11, the
+        // same column the knots are centred on.
+        let dot = div()
+            .absolute()
+            .top(px((LINE - DOT) / 2.))
+            .left(px(10.5 - DOT / 2.))
+            .size(px(DOT))
+            .rounded_full()
+            .bg(paint(palette.accent));
+        let dot = if window.is_window_active() {
+            dot.with_animation(
+                "answering",
+                // A dozen frames a second is plenty for a breath this slow,
+                // and each one redraws the whole window: at the screen's own
+                // rate that was tens of thousands of redraws for one dot over
+                // a long answer.
+                Animation::new(BREATH)
+                    .repeat()
+                    .with_max_fps(12.)
+                    .with_easing(pulsating_between(0.15, 0.7)),
+                |this, breath| this.opacity(breath),
+            )
+            .into_any_element()
+        } else {
+            dot.opacity(0.15).into_any_element()
+        };
+        // Only with turns above it is there a line to continue; the first
+        // turn of a thread starts at its dot.
+        let thread = (has_turns).then(|| {
+            div()
+                .absolute()
+                .left(px(10.))
+                .top_0()
+                .w(px(1.))
+                .h(px((LINE - DOT) / 2.))
+                .bg(paint(palette.edge))
+        });
+        let tail = (0..2).map(|n| {
+            div()
+                .absolute()
+                .left(px(10.))
+                .top(px(LINE / 2. + DOT / 2. + 3. + 5. * n as f32))
+                .w(px(1.))
+                .h(px(3.))
+                .bg(paint(palette.edge))
+        });
         Some(
             div()
-                .flex_none()
-                .size(px(6.))
-                .rounded_full()
-                .bg(paint(self.palette.accent))
-                .with_animation(
-                    "answering",
-                    // A dozen frames a second is plenty for a breath this
-                    // slow, and each one redraws the whole window: at the
-                    // screen's own rate that was tens of thousands of
-                    // redraws for one dot over a long answer.
-                    Animation::new(BREATH)
-                        .repeat()
-                        .with_max_fps(12.)
-                        .with_easing(pulsating_between(0.15, 0.7)),
-                    |this, breath| this.opacity(breath),
+                .h_flex()
+                .items_start()
+                .when(!replied, |this| this.min_h(px((LINE + 10.) * level)))
+                .when(replied, |this| {
+                    this.absolute().bottom_0().left_0().right_0()
+                })
+                .opacity(self.phrase_fade.get().level())
+                .child(
+                    div()
+                        .relative()
+                        .flex_none()
+                        .w(px(24.))
+                        .h(px(LINE))
+                        .children(thread)
+                        .child(dot)
+                        .children(tail),
+                )
+                .child(
+                    div()
+                        .flex_1()
+                        .min_w_0()
+                        .h(px(LINE))
+                        .flex()
+                        .items_center()
+                        .text_size(px(11.))
+                        // The window's mono, as the empty thread's line has:
+                        // without it the line inherits the panel's UI font,
+                        // which has no italic face, and `italic` draws upright.
+                        .font_family(mono)
+                        .italic()
+                        .text_color(paint(palette.muted))
+                        .child(phrase),
                 )
                 .into_any_element(),
         )
     }
+
+    /// The way back to the newest turn, shown only while the rail is scrolled
+    /// away from it: "↓ new reply" if a turn arrived since the reader left the
+    /// bottom, "↓ latest" otherwise. It floats over the thread's corner and
+    /// takes no room, fades in and out, and draws nothing at all when the rail
+    /// is pinned and the fade has run out.
+    fn render_way_back(&self, turns: usize, cx: &mut Context<Self>) -> Option<AnyElement> {
+        let palette = &self.palette;
+        let away = !self.rail_pinned.get();
+        if away {
+            self.chip_label
+                .set(chip_label(turns > self.rail_seen.get(), self.answer_owed()));
+        } else {
+            self.rail_seen.set(turns);
+        }
+        let mut fade = self.chip_fade.get();
+        fade.set(away);
+        self.chip_fade.set(fade);
+        if !fade.on() && !fade.moving() {
+            return None;
+        }
+        Some(
+            div()
+                .id("latest-reply")
+                .absolute()
+                .bottom(px(8.))
+                .right(px(8.))
+                .px(px(8.))
+                .py(px(3.))
+                .rounded(px(6.))
+                .border_1()
+                .border_color(paint(palette.edge))
+                .bg(paint(palette.band))
+                .text_size(px(11.))
+                .text_color(paint(palette.fg))
+                .opacity(fade.level())
+                .when(fade.on(), |this| {
+                    this.cursor_pointer()
+                        .hover(|style| style.bg(paint(hover_on_band(palette))))
+                        .on_click(cx.listener(|deck, _, _window, cx| {
+                            deck.rail_pinned.set(true);
+                            deck.rail_scroll.scroll_to_bottom();
+                            cx.notify();
+                        }))
+                })
+                .child(self.chip_label.get())
+                .into_any_element(),
+        )
+    }
+}
+
+/// Whether a turn is the agent's, and so counts as something arriving.
+/// `Said` is the agent talking and `Shown` the agent moving the reader's eyes;
+/// what the reader did themselves (`Wrote`, `Reacted`) they were there for.
+fn from_the_agent(what: &deck_core::What) -> bool {
+    matches!(what, deck_core::What::Said | deck_core::What::Shown)
+}
+
+/// What the way-back chip says. A turn that arrived while the reader was
+/// away comes first, then a reply that is on its way, then the plain way back.
+fn chip_label(arrived: bool, owed: bool) -> &'static str {
+    if arrived {
+        "↓ new reply"
+    } else if owed {
+        "↓ reply coming"
+    } else {
+        "↓ latest"
+    }
+}
+
+/// Whether the empty thread's line is still drawn: while the thread is empty,
+/// and while it is going out after the first turn arrived.
+fn quip_shown(empty: bool, going: bool) -> bool {
+    empty || going
 }
 
 /// Something to read while nobody has said anything yet.
@@ -8640,6 +9346,100 @@ const NOTHING_YET: &[&str] = &[
     "Go on, then",
     "The agent is listening",
 ];
+
+/// deck's own lines, shown beside the pulse while the agent prepares a reply
+/// in a discussion. They are fixed and not written by the agent; the founder
+/// chose them. One is picked per wait.
+const PHRASES: &[&str] = &[
+    "hold my coffee",
+    "sudo think harder",
+    "grepping my brain",
+    "retrying with --prayer",
+    "git blame-ing myself",
+    "ctrl+f my memory",
+    "brain.exe loading",
+    "recompiling my thoughts",
+    "rebasing my thoughts",
+    "stashing my ego",
+    "linting my answer",
+    "compiling a comeback",
+    "cherry-picking facts",
+    "force-pushing neurons",
+    "touché, one sec",
+    "squinting at it",
+    "hmm, plot twist",
+    "napkin math time",
+    "one sec, genius",
+    "hold that thought",
+    "ooh, spicy question",
+    "okay, game on",
+    "challenge accepted",
+    "fair, fair, fair",
+    "brb, thinking",
+    "pinging my neurons",
+    "mounting my brain",
+    "sharpening my pointers",
+    "dereferencing your question",
+    "unit-testing my logic",
+    "spinning up workers",
+    "garbage-collecting doubts",
+    "hot-reloading",
+    "npm install thoughts",
+    "rubber-banding ideas",
+    "profiling my argument",
+    "type-checking my take",
+    "compiling with care",
+    "grep -r answers",
+    "debugging my take",
+    "forking my thoughts",
+    "pull-requesting wisdom",
+    "deploying a rebuttal",
+    "untangling the spaghetti",
+    "ooh, good one",
+    "let me cook",
+    "give me a sec",
+    "hmm, hmm, hmm",
+    "okay, you win",
+    "you got me",
+    "thinking cap on",
+    "wait for it",
+    "on the case",
+    "ahh, I see",
+    "one moment, please",
+    "this is good",
+    "brain go brrr",
+    "deep breath first",
+    "say less",
+];
+
+/// Which phrase to show: any but `previous`, so two waits in a row never say
+/// the same thing. `roll` is any number; it is the only randomness, passed in
+/// so the choice can be tested.
+#[allow(clippy::cast_possible_truncation)] // bounded by the list's length
+fn pick_phrase(previous: Option<usize>, roll: u64) -> usize {
+    let count = PHRASES.len() as u64;
+    match previous {
+        // One fewer to choose from, then step over the one to avoid.
+        Some(avoid) if avoid < PHRASES.len() => {
+            let ix = (roll % (count - 1)) as usize;
+            if ix >= avoid { ix + 1 } else { ix }
+        }
+        _ => (roll % count) as usize,
+    }
+}
+
+/// A number that differs from wait to wait. Hashing the clock is enough for
+/// choosing a line; nothing here needs real randomness, or a crate for it.
+fn roll() -> u64 {
+    use std::hash::{BuildHasher, Hasher};
+    let mut hasher = std::collections::hash_map::RandomState::new().build_hasher();
+    hasher.write_u128(
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |since| since.as_nanos()),
+    );
+    hasher.finish()
+}
 
 /// How long the pulse goes on breathing for an answer that has not come.
 ///
@@ -8693,30 +9493,42 @@ use crate::pane::SPINE;
 
 impl Render for DeckView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        if let Some(next) = arrival_due(self.arriving, &self.group_fade) {
+            self.arrive(next, cx);
+        }
         self.settle_said_light();
         self.settle_ticks();
         #[cfg(debug_assertions)]
         self.debug_sheet(window, cx);
         // The dock, a key's card, and a key lit on the dock all move on their
-        // own clock.
-        let hit = self
-            .help_hit
-            .is_some_and(|(_, at)| at.elapsed() < crate::keys::HIT);
-        if self.help.moving() || self.tip_fade.moving() || hit {
+        // own clock. The glow is asked for frames for exactly as long as it
+        // takes to go out, which is the pace it is drawn at.
+        let hit = self.help_hit.is_some_and(|(_, at)| at.elapsed() < GLOW);
+        self.export_fade.set(self.exportable());
+        if self.help.moving() || self.tip_fade.moving() || self.export_fade.moving() || hit {
             window.request_animation_frame();
         }
         if std::mem::take(&mut self.review_settle) {
             cx.on_next_frame(window, |_, _, cx| cx.notify());
         }
         // The picked sentence opens the values whose keys it names.
-        let said = self.picked_said.and_then(|(from, to)| {
-            let group = self.group()?;
-            let words = crate::prose::words(&group.say);
-            let (a, b) = (
-                from.min(to),
-                from.max(to).min(words.len().saturating_sub(1)),
-            );
-            Some(words.get(a..=b)?.concat())
+        let said = self.picked_said.and_then(|picked| {
+            let say = &self.group()?.say;
+            let fresh = self
+                .said_memo
+                .as_ref()
+                .is_some_and(|(at, was, _)| *at == picked && was == say);
+            if !fresh {
+                let (from, to) = picked;
+                let words = crate::prose::words(say);
+                let (a, b) = (
+                    from.min(to),
+                    from.max(to).min(words.len().saturating_sub(1)),
+                );
+                let cut = words.get(a..=b).map(<[String]>::concat);
+                self.said_memo = Some((picked, say.clone(), cut));
+            }
+            self.said_memo.as_ref().and_then(|(_, _, cut)| cut.clone())
         });
         // Values that have finished closing are taken out of their panes.
         for pane in &mut self.panes {
@@ -8775,6 +9587,25 @@ impl Render for DeckView {
                 .flatten()
                 .any(|(_, light)| light.moving())
             || self.rail_open.moving()
+            || self.phrase_fade.get().moving()
+            || self.chip_fade.get().moving()
+            // `arriving` too: the fall can end between the swap check at the
+            // top of this frame and here, and a swap nobody asks a frame for
+            // would leave the old group frozen at its floor.
+            || self.group_fade.moving()
+            || self.arriving.is_some()
+            || self.waiting_fade.moving()
+            || self.quip_fade.get().moving()
+            || self
+                .entering
+                .borrow()
+                .values()
+                .any(crate::pane::Fade::moving)
+            || self
+                .ages
+                .borrow()
+                .values()
+                .any(|(_, _, fade)| fade.moving())
             || self.notes_fade.moving()
             || self.quit_fade.moving()
             || self.explain_fade.moving()
@@ -8809,6 +9640,14 @@ impl Render for DeckView {
         // wide one gets the full width and the row below, where it fits and the
         // reader can see all of it without dragging.
         let count = self.panes.len();
+        let veil = self.group_level();
+        // Only once the first group is in: before that the placeholder is the
+        // pane area itself and needs no layer.
+        let waiting_level = if self.deck.groups().is_empty() {
+            0.
+        } else {
+            self.waiting_fade.level()
+        };
         let drawings: Vec<f32> = self
             .panes
             .iter()
@@ -8953,7 +9792,7 @@ impl Render for DeckView {
                 view: &me,
                 scale,
             };
-            if slot.fold > 0. {
+            if slot.fold > 0. && !self.closing.contains(&ix) {
                 // A folded pane leaves the grid and becomes a spine at the
                 // window's edge. Left in the row it kept the row's height, so
                 // folding one of two stacked panes left a strip of nothing
@@ -8963,7 +9802,17 @@ impl Render for DeckView {
                 } else {
                     &mut right_spines
                 };
-                side.push(self.panes[ix].render_folded(&slot, cx));
+                let spine = self.panes[ix].render_folded(&slot, cx);
+                side.push(if veil < 1. {
+                    div()
+                        .flex_none()
+                        .h_full()
+                        .opacity(veil)
+                        .child(spine)
+                        .into_any_element()
+                } else {
+                    spine
+                });
             }
             panes.push(self.panes[ix].render(&slot, &marks, self.render_focus_button(ix, cx), cx));
         }
@@ -9210,6 +10059,7 @@ impl Render for DeckView {
                     .h_flex()
                     .flex_1()
                     .min_h_0()
+                    .relative()
                     .children(left_spines)
                     .child(
                         // `h_full` is not decoration. Beside the rail these
@@ -9227,7 +10077,24 @@ impl Render for DeckView {
                             .h_full()
                             .min_h_0()
                             .relative()
-                            .children(rows)
+                            // The group's panes fade; the window around them
+                            // does not.
+                            .child(
+                                div()
+                                    .v_flex()
+                                    .size_full()
+                                    .min_h_0()
+                                    .when(veil < 1., |this| this.opacity(veil))
+                                    .children(rows),
+                            )
+                            // Takes the hover and clicks the placeholder
+                            // going out would otherwise let through to the
+                            // panes under it. Over the pane column only, and
+                            // before the dock, so the rail and the dock stay
+                            // usable.
+                            .when(waiting_level > 0., |this| {
+                                this.child(div().absolute().top_0().left_0().size_full().occlude())
+                            })
                             .children(self.render_help(cx)),
                     )
                     .children(right_spines)
@@ -9237,7 +10104,27 @@ impl Render for DeckView {
                     .when(self.rail_open.on(), |this| {
                         this.child(self.render_seam(Divide::Rail, cx))
                     })
-                    .child(self.render_rail(speaking, cx))
+                    .child(self.render_rail(speaking, window, cx))
+                    // The placeholder going out over the first group coming
+                    // in, across the whole row as it stood before the rail
+                    // existed so it does not shift on landing. It is only
+                    // drawn: the blocker for the panes is in their column.
+                    .when(waiting_level > 0., |this| {
+                        this.child(
+                            div()
+                                .absolute()
+                                .top_0()
+                                .left_0()
+                                .size_full()
+                                .v_flex()
+                                .opacity(waiting_level)
+                                .child(crate::waiting::render(
+                                    &self.palette,
+                                    self.spread,
+                                    f32::from(window.viewport_size().width) >= crate::waiting::ROOM,
+                                )),
+                        )
+                    })
                     .into_any_element()
             })
             .children(self.render_asks(window, cx))
@@ -9291,6 +10178,53 @@ fn about(
         None if pointed.is_empty() => shown.into_iter().collect(),
         None => pointed.to_vec(),
     }
+}
+
+/// How far down the group dips on a step, as an opacity.
+///
+/// Not nought: at nought the window is empty for a moment between two groups,
+/// which read as a flash of nothing. Held at this, there is always content on
+/// screen and the swap happens under it, as one soft dip in brightness.
+const DIP_FLOOR: f32 = 0.35;
+
+/// How long the group takes to dip on a step, in milliseconds.
+///
+/// The Feedback pace: quick enough that the swap under the dip goes
+/// unnoticed, slow enough to read as a dip and not a cut.
+const GROUP_FALL_MS: u64 = 120;
+
+/// Where turn `place` sits among the rail's children: after the spacer that
+/// anchors the turns to the bottom. `scroll_to_item` indexes children, so every
+/// turn goes through this.
+fn rail_child(place: usize) -> usize {
+    place + 1
+}
+
+/// The floor a dip should bottom out at when a step lands while the group is
+/// at `level` of a rise from `floor`.
+///
+/// Dipping to the usual floor from a group that is shown lower than it would
+/// jump the picture up; this solves for the floor that makes the first frame
+/// of the fall equal what is on screen.
+fn carried_floor(floor: f32, level: f32) -> f32 {
+    if level >= 1. - 1e-4 {
+        return DIP_FLOOR;
+    }
+    let shown = floor + (1. - floor) * level;
+    ((shown - level) / (1. - level)).clamp(0., DIP_FLOOR)
+}
+
+/// The group a step of `step` from `from` lands on, if the deck has one there.
+///
+/// From the group the last press was heading for, so pressing `n` three times
+/// quickly is three steps however far the first fade got.
+fn walked_to(from: usize, step: isize, len: usize) -> Option<usize> {
+    from.checked_add_signed(step).filter(|next| *next < len)
+}
+
+/// The group to swap to, once the one on screen has finished going out.
+fn arrival_due(arriving: Option<usize>, fade: &crate::pane::Fade) -> Option<usize> {
+    arriving.filter(|_| !fade.on() && !fade.moving())
 }
 
 /// A group's name in the review column: its title, or for a group written
@@ -9373,6 +10307,112 @@ fn review_of(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn the_chip_says_what_is_most_useful_first() {
+        assert_eq!(super::chip_label(true, true), "↓ new reply");
+        assert_eq!(super::chip_label(true, false), "↓ new reply");
+        assert_eq!(super::chip_label(false, true), "↓ reply coming");
+        assert_eq!(super::chip_label(false, false), "↓ latest");
+    }
+
+    #[test]
+    fn the_readers_own_turn_is_not_a_reply() {
+        assert!(super::from_the_agent(&deck_core::What::Said));
+        assert!(super::from_the_agent(&deck_core::What::Shown));
+        assert!(!super::from_the_agent(&deck_core::What::Wrote));
+        assert!(!super::from_the_agent(&deck_core::What::Reacted));
+    }
+
+    #[test]
+    fn the_rail_indexes_its_turns_past_the_spacer() {
+        assert_eq!(super::rail_child(0), 1);
+        assert_eq!(super::rail_child(4), 5);
+    }
+
+    #[test]
+    fn a_step_in_mid_rise_starts_from_what_is_shown() {
+        let shown = |floor: f32, level: f32| floor + (1. - floor) * level;
+        // Whole: the usual floor.
+        assert!((super::carried_floor(0.35, 1.) - super::DIP_FLOOR).abs() < 1e-6);
+        // Half way up from nothing: the dip starts from where it stands.
+        let floor = super::carried_floor(0., 0.5);
+        assert!((shown(floor, 0.5) - 0.5).abs() < 1e-6);
+        // Never above the floor.
+        assert!(super::carried_floor(0., 0.9) <= super::DIP_FLOOR);
+    }
+
+    #[test]
+    fn three_quick_presses_are_three_steps() {
+        // Each press starts from where the last was heading, not from the
+        // group still fading out.
+        let mut heading = 0;
+        for _ in 0..3 {
+            heading = super::walked_to(heading, 1, 5).unwrap();
+        }
+        assert_eq!(heading, 3);
+        // Neither end wraps or overshoots.
+        assert_eq!(super::walked_to(4, 1, 5), None);
+        assert_eq!(super::walked_to(0, -1, 5), None);
+    }
+
+    #[test]
+    fn a_second_press_mid_fade_keeps_one_arrival() {
+        let fall = std::time::Duration::from_millis(super::GROUP_FALL_MS);
+        let mut fade = super::DeckView::group_fade().whole();
+        fade.set(false);
+        let mut arriving = Some(1);
+        // Mid-fall nothing swaps.
+        assert_eq!(super::arrival_due(arriving, &fade), None);
+        // A second press retargets; there is still exactly one arrival, and
+        // the fall that was running is not restarted.
+        arriving = Some(2);
+        assert!(!fade.set(false));
+        assert_eq!(super::arrival_due(arriving, &fade), None);
+        // Only the last target arrives, once the fall has run out.
+        let fade = fade.aged(fall);
+        assert_eq!(super::arrival_due(arriving, &fade), Some(2));
+    }
+
+    #[test]
+    fn a_step_never_empties_the_group() {
+        // The deepest the dip goes is the floor, not nought.
+        let mut fade = super::DeckView::group_fade().whole();
+        fade.set(false);
+        let fade = fade.aged(std::time::Duration::from_millis(super::GROUP_FALL_MS));
+        let shown = super::DIP_FLOOR + (1. - super::DIP_FLOOR) * fade.level();
+        assert!((shown - super::DIP_FLOOR).abs() < 1e-6);
+        assert!(shown > 0.);
+    }
+
+    #[test]
+    fn a_window_opened_on_a_whole_deck_does_not_fade() {
+        let fade = super::DeckView::group_fade().whole();
+        assert!(!fade.moving());
+        assert!((fade.level() - 1.).abs() < f32::EPSILON);
+        assert_eq!(super::arrival_due(None, &fade), None);
+    }
+
+    #[test]
+    fn the_empty_line_stays_while_it_goes_out() {
+        assert!(super::quip_shown(true, false));
+        assert!(super::quip_shown(false, true));
+        assert!(!super::quip_shown(false, false));
+    }
+
+    #[test]
+    fn the_next_phrase_is_never_the_one_before() {
+        // Every roll against every previous phrase, including the edges: a
+        // repeat reads as the line being stuck rather than chosen.
+        for previous in 0..super::PHRASES.len() {
+            for roll in 0..(super::PHRASES.len() as u64 * 3) {
+                let next = super::pick_phrase(Some(previous), roll);
+                assert_ne!(next, previous);
+                assert!(next < super::PHRASES.len());
+            }
+        }
+        assert!(super::pick_phrase(None, 12345) < super::PHRASES.len());
+    }
+
     #[test]
     fn moving_to_another_sentence_starts_the_light_again() {
         // Reported from inside a deck: the first press eased in, and every

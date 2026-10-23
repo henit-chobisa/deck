@@ -141,6 +141,8 @@ fn read(
 pub(super) struct Picking {
     /// The filter box over the list.
     pub filter: Entity<InputState>,
+    /// The caret drawn over it: see [`crate::caret`].
+    pub caret: crate::caret::Caret,
     _typed: Subscription,
 }
 
@@ -263,14 +265,24 @@ impl ExportSheet {
         cx.defer_in(window, move |_, window, cx| focus.focus(window, cx));
         self.picking = Some(Picking {
             filter,
+            caret: crate::caret::Caret::default(),
             _typed: typed,
         });
+        // Opened again before the last one had gone: that one is let go.
+        self.parting = None;
+        self.list_fade.set(true);
         cx.notify();
     }
 
     /// Put the list away, with the focus back on the field that opened it.
     pub(super) fn close_themes(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        self.picking = None;
+        // Shut but not gone: it is drawn until it has faded, and the sheet
+        // lets go of it then. Shut twice, the second finds nothing to keep
+        // and leaves the first fading.
+        if let Some(picking) = self.picking.take() {
+            self.parting = Some(picking);
+        }
+        self.list_fade.set(false);
         // Every pick shuts the list through here, and so does walking away
         // from it: either way Neovim's answer is no longer the one asked for.
         self.nvim_on_answer = false;
@@ -292,6 +304,7 @@ impl ExportSheet {
         let typed = self
             .picking
             .as_ref()
+            .or(self.parting.as_ref())
             .map(|picking| picking.filter.read(cx).value().to_lowercase())
             .unwrap_or_default();
         let matches = |text: &str, editor: &str| {
@@ -338,6 +351,10 @@ impl ExportSheet {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        // A list on its way out is a picture of itself.
+        if self.picking.is_none() {
+            return;
+        }
         let theme = match control {
             Control::Own(0) => Theme::Window,
             Control::Own(1) => Theme::Dark,
@@ -420,7 +437,9 @@ impl ExportSheet {
         stops: &HashMap<Control, FocusHandle>,
         cx: &Context<Self>,
     ) -> Option<AnyElement> {
-        let picking = self.picking.as_ref()?;
+        let open = self.picking.is_some();
+        let picking = self.picking.as_ref().or(self.parting.as_ref())?;
+        let shown = self.list_fade.level();
         let palette = self.palette;
         let field = self.field;
         let mono = cx.theme().mono_font_family.clone();
@@ -461,7 +480,7 @@ impl ExportSheet {
                 .text_size(px(12.5))
                 .when(ready, |this| {
                     this.cursor_pointer()
-                        .hover(|this| this.bg(paint(palette.wash)))
+                        .hover(|this| this.bg(paint(crate::palette::hover_on_band(&palette))))
                 })
                 .when(!ready, |this| this.text_color(paint(palette.muted)))
                 .on_click(cx.listener(move |sheet, _, window, cx| {
@@ -592,7 +611,8 @@ impl ExportSheet {
         }
         let panel = div()
             .id("x-themes")
-            .occlude()
+            .when(open, |this| this.occlude())
+            .opacity(shown)
             // As wide as the field it drops from, so it stays in the options column.
             .w(field.size.width)
             .v_flex()
@@ -607,7 +627,7 @@ impl ExportSheet {
             .on_mouse_down_out(
                 cx.listener(move |sheet, event: &MouseDownEvent, window, cx| {
                     // The field opens and closes the list itself.
-                    if !field.contains(&event.position) {
+                    if sheet.picking.is_some() && !field.contains(&event.position) {
                         sheet.close_themes(window, cx);
                     }
                 }),
@@ -625,15 +645,28 @@ impl ExportSheet {
                         div()
                             .flex_1()
                             .min_w_0()
-                            .child(Input::new(&picking.filter).appearance(false)),
+                            .relative()
+                            .child(Input::new(&picking.filter).appearance(false))
+                            .child({
+                                let field = picking.filter.clone();
+                                crate::caret::overlay(
+                                    &picking.caret,
+                                    paint(palette.fg),
+                                    move |window, cx| crate::caret_field!(field, window, cx),
+                                )
+                            }),
                     )
                     .child(
                         div()
                             .flex_none()
-                            .font_family(mono)
+                            .h_flex()
+                            .items_center()
+                            .gap(px(5.))
+                            .font_family(mono.clone())
                             .text_size(px(10.5))
                             .text_color(paint(palette.muted))
-                            .child("esc closes this first"),
+                            .child(crate::keys::cap("esc", &palette, mono))
+                            .child("to close"),
                     ),
             )
             .child(
@@ -647,7 +680,11 @@ impl ExportSheet {
         Some(
             deferred(
                 anchored()
-                    .position(point(field.left(), field.bottom() + px(4.)))
+                    // Drops the last few points into place as it comes in.
+                    .position(point(
+                        field.left(),
+                        field.bottom() + px(4. - 4. * (1. - shown)),
+                    ))
                     .snap_to_window_with_margin(px(8.))
                     .child(panel),
             )

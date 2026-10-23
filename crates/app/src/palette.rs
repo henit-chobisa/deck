@@ -17,6 +17,21 @@ use deck_core::theme::{Imported, Overrides, Palette, Paper, Rgb, Syntax, derive,
 use gpui_kit::component::{Theme, ThemeMode};
 use gpui_kit::{App, Hsla, Rgba, SharedString, px};
 
+/// The ground a surface drawn on the band takes while the pointer is over it.
+///
+/// One token, so every hover on band-coloured ground (the cards, the rail, the
+/// strip, the review rows, the pills) moves the same way. Washing them with
+/// `wash` used to be the rule, but `wash` and `band` have traded places and on
+/// a dark theme `wash` is now the darker of the two, so those hovers went dark
+/// while the cards beside them went light. Mixing a tenth of the ink into the
+/// band is lighter on a dark theme and a touch darker on a light one, which is
+/// right for each. Not for surfaces drawn on `wash` itself (pane headers and
+/// their controls): those answer against their own ground.
+#[must_use]
+pub(crate) fn hover_on_band(palette: &Palette) -> Rgb {
+    palette.band.mix(palette.fg, 0.10)
+}
+
 /// What the reader asked for, read once.
 ///
 /// A global because it is wanted from every view that paints and settled before
@@ -97,8 +112,8 @@ pub fn current_on(dark: bool, paper: Paper) -> Palette {
         (true, Paper::Grey) => Palette {
             bg: hex("#282828"),
             fg: hex("#ebdbb2"),
-            band: hex("#191b1b"),
-            wash: hex("#1f1f1f"),
+            band: hex("#1f1f1f"),
+            wash: hex("#191b1b"),
             focus: hex("#332b21"),
             accent: hex("#fe8019"),
             on_accent: hex("#282828"),
@@ -106,6 +121,7 @@ pub fn current_on(dark: bool, paper: Paper) -> Palette {
             del: hex("#fb4934"),
             comment: hex("#a89984"),
             muted: hex("#a89984"),
+            punctuation: hex("#a89984"),
             edge: hex("#3a3735"),
             ground: hex("#0d0e0e"),
             gone: Rgb::new(0, 0, 0),
@@ -114,16 +130,16 @@ pub fn current_on(dark: bool, paper: Paper) -> Palette {
             fresh_deep: Rgb::new(0, 0, 0),
         },
         (true, Paper::Warm) => Palette {
-            band: hex("#1c1a19"),
-            wash: hex("#232120"),
+            band: hex("#232120"),
+            wash: hex("#1c1a19"),
             ground: hex("#121110"),
             ..current_on(true, Paper::Grey)
         },
         (false, Paper::Grey) => Palette {
             bg: hex("#dfdfdf"),
             fg: hex("#3c3836"),
-            band: hex("#c6c6c6"),
-            wash: hex("#d4d4d4"),
+            band: hex("#d4d4d4"),
+            wash: hex("#c6c6c6"),
             focus: hex("#d7cbbb"),
             accent: hex("#af3a03"),
             on_accent: hex("#f2e5d5"),
@@ -131,6 +147,7 @@ pub fn current_on(dark: bool, paper: Paper) -> Palette {
             del: hex("#9d0006"),
             comment: hex("#7c6f64"),
             muted: hex("#7c6f64"),
+            punctuation: hex("#7c6f64"),
             edge: hex("#a9a7a3"),
             ground: hex("#b4b2ae"),
             gone: Rgb::new(0, 0, 0),
@@ -140,8 +157,8 @@ pub fn current_on(dark: bool, paper: Paper) -> Palette {
         },
         (false, Paper::Warm) => Palette {
             bg: hex("#e2ded7"),
-            band: hex("#cbc5bb"),
-            wash: hex("#d8d3cb"),
+            band: hex("#d8d3cb"),
+            wash: hex("#cbc5bb"),
             edge: hex("#aaa49a"),
             ground: hex("#b6afa5"),
             ..current_on(false, Paper::Grey)
@@ -198,6 +215,7 @@ pub fn current_on(dark: bool, paper: Paper) -> Palette {
     // matched weight barely moved, so a pointed arriving line looked the same
     // as an unpointed one.
     palette.fresh_deep = tint(palette.bg, green, matched * 3.4);
+    deck_core::theme::readable(&mut palette);
     palette
 }
 
@@ -235,6 +253,16 @@ pub fn install(palette: &Palette, dark: bool, cx: &mut App) {
     // — left unset it fell back to something near-white, which on the band
     // read as a hole rather than a chip.
     theme.colors.accent = paint(palette.wash);
+    // The library's own caret is switched off: deck draws one itself
+    // (`crate::caret`), one that glides to each new place and breathes rather
+    // than blinking, because a caret that jumps and strobes is the one thing
+    // in deck that moves without easing. Only `caret` is touched; the
+    // selection colour comes from `accent` and is unaffected.
+    //
+    // Not alpha zero: the library reads a fully transparent colour as "unset"
+    // and falls back to the text colour, which would put the old caret right
+    // back. An alpha too small to see survives that check.
+    theme.colors.caret = paint(palette.fg).opacity(0.0001);
 
     // Code wants to be dense. The component default is sized for prose, and at
     // that size a pane holds a dozen lines and the deck reads as a slideshow.
@@ -324,6 +352,24 @@ fn first_installed(names: &[&str], cx: &App) -> Option<SharedString> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn deck_own_palettes_read_muted_text_on_every_surface() {
+        // The strip, the review column and the sheet's labels are muted text
+        // on the band; light grey used to land at 2.85:1 there.
+        for dark in [true, false] {
+            for paper in [Paper::Grey, Paper::Warm] {
+                let p = current_on(dark, paper);
+                for ground in [p.bg, p.wash, p.band] {
+                    let got = p.muted.contrast(ground);
+                    assert!(
+                        got >= deck_core::theme::LEGIBLE - 0.01,
+                        "dark {dark} {paper:?}: muted on {ground:?} is {got:.2}"
+                    );
+                }
+            }
+        }
+    }
 
     #[test]
     fn a_pointed_line_deepens_into_its_own_colour() {

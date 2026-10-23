@@ -243,9 +243,12 @@ pub struct Palette {
     pub bg: Rgb,
     /// Text.
     pub fg: Rgb,
-    /// The narration band and the legend — a distinct panel.
+    /// The narration band and the legend — a distinct panel. The nearer of the
+    /// two surfaces: the words you read come forward, so the band recedes
+    /// from the page less than the code panes do.
     pub band: Rgb,
-    /// A code pane at rest, scrimmed back.
+    /// A code pane at rest, scrimmed back. The further surface: the code sits
+    /// back so it never pushes at the reader.
     pub wash: Rgb,
     /// The lit range: the page again, tinted toward the accent.
     pub focus: Rgb,
@@ -291,6 +294,10 @@ pub struct Palette {
     pub comment: Rgb,
     /// Labels, line numbers, anything said quietly.
     pub muted: Rgb,
+    /// The colour code's punctuation, operators and attributes are drawn in:
+    /// muted as the theme gave it. It is kept apart because muted is lifted
+    /// for reading, and code must keep the colours it was drawn in.
+    pub punctuation: Rgb,
     /// Hairlines: the edge of the card, the rule between panes, the border of
     /// a key. Deeper than any surface, because it has to read against all of
     /// them.
@@ -435,6 +442,7 @@ impl Overrides {
         over(&mut palette.fresh, self.fresh);
         over(&mut palette.comment, self.comment);
         over(&mut palette.muted, self.muted);
+        over(&mut palette.punctuation, self.muted);
         over(&mut palette.edge, self.edge);
         over(&mut palette.ground, self.ground);
     }
@@ -477,8 +485,14 @@ pub fn pick_accent(bg: Rgb, fg: Rgb, candidates: &[Rgb]) -> Rgb {
 /// How far each surface recedes from the page, and how far the lit range is
 /// tinted. Small numbers on purpose: the page is meant to be quiet, not
 /// striped.
-const WASH: f32 = 0.05;
-const BAND: f32 = 0.11;
+///
+/// The band recedes least and the code panes most, so the band is the nearer
+/// surface. The reading band comes forward and the code sits back: the words
+/// you read are the nearest thing in the window, and code does not push at the
+/// reader. They were the other way round once, and on a dark page the code read
+/// as nearer while the prose receded.
+const BAND: f32 = 0.05;
+const WASH: f32 = 0.11;
 const EDGE: f32 = 0.24;
 const GROUND: f32 = 0.19;
 const TINT: f32 = 0.16;
@@ -495,7 +509,7 @@ const DIFF: f32 = 0.115;
 const NO_ROOM_BELOW: f32 = 0.12;
 /// How far a hairline lifts off a dark page.
 ///
-/// Further than [`BAND`], because on a page with no room below it the band
+/// Further than [`WASH`], because on a page with no room below it the panes
 /// lifts too, and a hairline that only cleared the *page* would sit inside the
 /// panel it is supposed to be the edge of.
 const EDGE_UP: f32 = 0.18;
@@ -523,7 +537,7 @@ pub fn derive(imported: Imported) -> Palette {
     let marks_del =
         del.unwrap_or_else(|| toward(bg, Rgb::new(0x9d, 0x00, 0x06), Rgb::new(0xfb, 0x49, 0x34)));
 
-    Palette {
+    let mut palette = Palette {
         bg,
         fg,
         wash: recede(bg, WASH),
@@ -551,11 +565,29 @@ pub fn derive(imported: Imported) -> Palette {
             .unwrap_or_else(|| toward(bg, Rgb::new(0x42, 0x7b, 0x58), Rgb::new(0x8e, 0xc0, 0x7c))),
         // Text pulled back toward the page until it reads as an aside.
         muted: fg.mix(bg, 0.42),
+        punctuation: fg.mix(bg, 0.42),
         edge: hairline(bg),
         // The desk always goes down. It is what the deck lies *on*, and on a
         // page too dark to darken it simply stops moving — which is fine once
         // the surfaces above it have lifted.
         ground: bg.mix(Rgb::new(0, 0, 0), GROUND),
+    };
+    readable(&mut palette);
+    palette
+}
+
+/// Muted text lifted until it reads on every surface it is drawn on.
+///
+/// Muted is the ink stepped toward the page, a fixed step, and on many themes
+/// that step went too far: the strip, the review column, the line numbers and
+/// the sheet's labels came out near 3:1 on a dark theme and under it on a
+/// light one. A secondary line is still a line somebody reads. So it keeps its
+/// hue and is moved by the least that reads at [`LEGIBLE`] on the page, the
+/// pane and the band. A colour written by hand is applied after this and is
+/// left as the reader wrote it.
+pub fn readable(palette: &mut Palette) {
+    for ground in [palette.bg, palette.wash, palette.band] {
+        palette.muted = legible(palette.muted, ground, LEGIBLE);
     }
 }
 
@@ -1179,6 +1211,38 @@ mod tests {
     }
 
     #[test]
+    fn muted_text_reads_on_every_surface_without_lifting() {
+        // The window draws muted as it is, with no lift at paint time, so the
+        // palette itself has to read: on the page, the pane and the band.
+        let themes = [
+            light(),
+            dark(),
+            Imported::plain(
+                Rgb::new(0x0d, 0x11, 0x17),
+                Rgb::new(0xe6, 0xed, 0xf3),
+                Rgb::new(0x2f, 0x81, 0xf7),
+            ),
+            Imported::plain(
+                Rgb::new(0xfd, 0xf6, 0xe3),
+                Rgb::new(0x65, 0x7b, 0x83),
+                Rgb::new(0xb5, 0x89, 0x00),
+            ),
+        ];
+        for theme in themes {
+            let p = derive(theme);
+            for ground in [p.bg, p.wash, p.band] {
+                assert!(
+                    p.muted.contrast(ground) >= LEGIBLE - 0.01,
+                    "muted {:?} on {:?} is {:.2}",
+                    p.muted,
+                    ground,
+                    p.muted.contrast(ground)
+                );
+            }
+        }
+    }
+
+    #[test]
     fn every_token_an_export_writes_reads_on_every_ground_it_sits_on() {
         // Both of deck's palettes and two imported themes: text, muted text,
         // the accent as text, and a comment at the window's own blend, on the
@@ -1283,7 +1347,9 @@ mod tests {
     fn receding_is_darker_on_a_light_theme() {
         let p = derive(light());
         assert!(p.wash.lightness() < p.bg.lightness());
-        assert!(p.band.lightness() < p.wash.lightness());
+        // The code panes recede furthest and the band, the surface you read
+        // from, least, so the band is the nearer of the two.
+        assert!(p.wash.lightness() < p.band.lightness());
     }
 
     #[test]
@@ -1292,7 +1358,9 @@ mod tests {
         // near-black one has to lift instead.
         let p = derive(dark());
         assert!(p.wash.lightness() < p.bg.lightness());
-        assert!(p.band.lightness() < p.wash.lightness());
+        // The code panes recede furthest and the band, the surface you read
+        // from, least, so the band is the nearer of the two.
+        assert!(p.wash.lightness() < p.band.lightness());
     }
 
     #[test]
@@ -1302,7 +1370,12 @@ mod tests {
             ..dark()
         });
         assert!(p.wash.lightness() > 0.0, "black cannot darken any further");
-        assert!(p.band.lightness() > p.wash.lightness());
+        // Both come up, and the panes, which move furthest, come up furthest.
+        // Brighter reads as nearer, so on a black ground the panes, not the
+        // band, would be the nearer surface; the band is lifted less so it
+        // still sits closer to the page it is read against.
+        assert!(p.band.lightness() > 0.0, "the band lifts too");
+        assert!(p.wash.lightness() > p.band.lightness());
     }
 
     #[test]

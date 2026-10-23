@@ -71,20 +71,40 @@ const FALL: std::time::Duration = std::time::Duration::from_millis(760);
 /// Leaving is not the same act as being replaced. Out of the way, and quickly.
 const HAND_OVER: std::time::Duration = std::time::Duration::from_millis(200);
 
+/// How long a value takes to open: the code below glides down to make room,
+/// and the value's words come up into it.
+///
+/// A value is a room like any other, so it opens at [`ROOM`], the pace of the
+/// chat panel and of a pane folding. Rows appearing at once pushed the rest of
+/// the file down in a jump, and a jump is the reader losing their place, so it
+/// moves; and it moves at the same pace as everything else that makes space, so
+/// a value opening while a pane folds is one motion and not two that end at
+/// different times. Inside that time it still has two parts, the room opening
+/// first and the words coming up into it (see the `steps` curve where values
+/// are laid out); only the total is the room pace.
+pub(crate) const UNFOLD: std::time::Duration = ROOM;
+/// How long it takes to close: [`ROOM`] again, the same both ways, like every
+/// other room.
+pub(crate) const REFOLD: std::time::Duration = ROOM;
+
+/// The one pace for anything that opens or closes space: the chat panel, a
+/// pane folding to its spine or coming back, a pane brought in or taken away.
+///
+/// The same both ways, and the same for all of them, so that when two of these
+/// happen at once (a brought pane opening while its neighbours fold) the whole
+/// window moves as one thing and never as separate motions that start and end
+/// at different times. Slower than the chat panel alone used to be (620ms):
+/// a room changing size is the largest thing that moves in the window, and it
+/// reads as calm only if it is given time. Lights, values, cards and hovers
+/// keep their own, quicker paces; this is for space only.
+pub(crate) const ROOM: std::time::Duration = std::time::Duration::from_millis(840);
+
 /// How long a light the reader raised takes to come up.
 ///
 /// Every timing above this one answers to a voice, and a voice is slow on
 /// purpose. A light that answers a hand is a different thing: the reader
 /// already knows what they did, and anything that takes half a second to agree
 /// with them reads as the window thinking about it.
-/// How long a value takes to open: the code below glides down to make room.
-///
-/// Slow on purpose. Rows appearing at once pushed the rest of the file down in
-/// a jump, and a jump is the reader losing their place.
-pub(crate) const UNFOLD: std::time::Duration = std::time::Duration::from_millis(1000);
-/// How long it takes to close, a little quicker than it opened.
-pub(crate) const REFOLD: std::time::Duration = std::time::Duration::from_millis(820);
-
 pub(crate) const HAND_RISE: std::time::Duration = std::time::Duration::from_millis(150);
 
 /// And how long it takes to go out.
@@ -149,6 +169,29 @@ pub(crate) struct Fade {
 }
 
 impl Fade {
+    /// A fade for a room: open, resting, and paced by [`ROOM`] both ways.
+    pub(crate) fn room() -> Self {
+        Self::default().paced(ROOM, ROOM)
+    }
+
+    /// A room's fade that starts out folded, with no motion yet: its level is
+    /// already 1. For a pane that is about to be brought in, which is then set
+    /// open in the same frame its neighbours start folding, so it unfolds
+    /// over [`ROOM`] instead of appearing whole beside them.
+    pub(crate) fn room_folded() -> Self {
+        let mut fade = Self::room();
+        fade.on = true;
+        fade
+    }
+
+    /// Resting on, with no motion yet: its level is already 1. For a light
+    /// that must not fade in because the window opened with it up.
+    #[must_use]
+    pub(crate) fn whole(mut self) -> Self {
+        self.on = true;
+        self
+    }
+
     /// Head towards `on`. Says whether that was a change.
     pub(crate) fn set(&mut self, on: bool) -> bool {
         if self.on == on {
@@ -160,6 +203,17 @@ impl Fade {
         self.on = on;
         self.since = Some(std::time::Instant::now());
         true
+    }
+
+    /// Stay on, but start rising again from no higher than `to`.
+    ///
+    /// For a light whose content changes in one frame while it is up: dipping
+    /// it a little and letting it rise on its normal fade makes the change
+    /// something seen rather than a cut.
+    pub(crate) fn dip(&mut self, to: f32) {
+        self.from = self.level().min(to);
+        self.on = true;
+        self.since = Some(std::time::Instant::now());
     }
 
     /// Give this light its own pace.
@@ -225,6 +279,14 @@ impl Fade {
         };
         let along = (since.elapsed().as_secs_f32() / whole.as_secs_f32()).clamp(0., 1.);
         self.from + (to - self.from) * along
+    }
+
+    /// The same light, as if it had been told `by` ago. For tests that cannot
+    /// wait on the real clock.
+    #[cfg(test)]
+    pub(crate) fn aged(mut self, by: std::time::Duration) -> Self {
+        self.since = self.since.and_then(|at| at.checked_sub(by));
+        self
     }
 
     /// Whether it is on, or on its way there.
@@ -489,7 +551,11 @@ pub struct Pane {
     /// The note at the end of the header, for a deck from a `.deck` file
     /// opened inside the repo it came from. See [`Aside`].
     pub aside: Option<Aside>,
-    rows: Vec<Row>,
+    /// Shared rather than owned, because every frame hands the whole list to
+    /// the closure that draws it, and a frame of a value opening is sixty of
+    /// them a second: copying every line of the file, runs and all, to draw
+    /// the forty on screen was most of what a frame cost.
+    rows: std::rc::Rc<[Row]>,
     /// The rows of the file and its change, before any value rows go in.
     base: Vec<Row>,
     /// The values the ref carries, as written.
@@ -854,7 +920,7 @@ impl Pane {
         let mut pane = Self {
             missing,
             aside: None,
-            rows: Vec::new(),
+            rows: std::rc::Rc::from(Vec::new()),
             base: rows,
             values: code.values.clone(),
             open: std::collections::HashSet::new(),
@@ -1108,7 +1174,7 @@ impl Pane {
             })
             .max()
             .unwrap_or(0);
-        self.rows = rows;
+        self.rows = rows.into();
     }
 
     /// Open or close the value under `line`.
@@ -1370,6 +1436,12 @@ impl Pane {
 
     /// Let go of values that have finished closing. Called once a frame.
     pub fn settle(&mut self) {
+        // A pane with no value moving, closing or kept away has nothing to
+        // settle, and that is nearly every pane on nearly every frame: this
+        // runs for each of them whenever anything in the window moves.
+        if !self.hiding && self.unfolding.is_empty() && self.presence.is_empty() {
+            return;
+        }
         // Nothing closing and nothing arriving: nothing to let go of, and no
         // reason to look through the rows on every frame.
         let gone = self.hiding
@@ -1888,26 +1960,29 @@ impl Pane {
         let size = cx.theme().mono_font_size;
 
         // Everything a row needs is copied in: the closure outlives this call
-        // and so cannot borrow the pane.
-        let rows = self.rows.clone();
+        // and so cannot borrow the pane. The rows are shared, not copied.
+        let rows = std::rc::Rc::clone(&self.rows);
         // For each value in motion: the last of its key rows, how many there
         // are, and how far open it is. Everything below a block is drawn that
         // much higher while it opens, so the code glides down to make room
         // rather than jumping; the keys under it are covered and uncovered as
         // it goes.
-        // Two steps, not one. The code slides down first and leaves an empty
-        // gap, and only then does what goes in it come in; going away runs the
-        // other way. Moving and appearing at once was two things competing for
-        // the same glance.
-        // The slide eases in and out the same way both directions, and the
-        // fade comes after it, straight. An ease-out run backwards for a close
-        // sped up into its end and stopped hard; the room appears empty and
-        // only then fills, so nothing is seen swelling.
+        // Room first, words after, but not one and then the other. The code
+        // slides down over the first two thirds and the words come up from a
+        // third of the way in, so by the time they are anything to look at the
+        // gap is most of the way open; going away runs the other way. Moving
+        // and appearing at exactly once was two things competing for the same
+        // glance — and the two strictly in turn, the words waiting for the room
+        // to finish, made a value the slowest thing on the screen.
+        // Both eased in and out, the same curve a light uses, so a value comes
+        // up the way a pointed line does. An ease-out run backwards for a
+        // close sped up into its end and stopped hard, and words fading in
+        // straight arrived with a corner at the end of them.
         let slide = |x: f32| {
             let x = x.clamp(0., 1.);
             x * x * (3. - 2. * x)
         };
-        let steps = move |t: f32| (slide(t / 0.6), ((t - 0.6) / 0.4).clamp(0., 1.));
+        let steps = move |t: f32| (slide(t / 0.65), slide((t - 0.35) / 0.65));
         // Each stretch of rows in motion: its first and last row, how far the
         // room for it has opened, and how far its words are in.
         let mut blocks: Vec<(usize, usize, f32, f32)> = Vec::new();
@@ -1964,6 +2039,7 @@ impl Pane {
             }
         }
         let lit = self.spotlight;
+        let file_lines = self.source_lines;
         let point = self.point;
         let rising = self.rising.level();
         let was: Vec<(LineRange, crate::prose::Side, f32)> = self
@@ -1985,7 +2061,15 @@ impl Pane {
         // arrive; a warm flash that settles into the diff colour is one nobody
         // misses.
         let flash = palette.focus.mix(palette.accent, 0.3);
-        let gutter_fg = palette.fg.mix(palette.wash, 0.6);
+        // Quiet, but never so quiet it cannot be read: on a light editor
+        // theme the fixed mix landed near 1.6:1. Lifted by the least that
+        // reads at 3:1 on the pane and the page, which keeps it well behind
+        // the code it numbers.
+        let gutter_fg = deck_core::theme::legible(
+            deck_core::theme::legible(palette.fg.mix(palette.wash, 0.6), palette.wash, 3.0),
+            palette.bg,
+            3.0,
+        );
         let held = self.held;
         // A comment covers a range, so its bar covers the range: a mark on the
         // first line alone leaves the reader guessing how far down the remark
@@ -2037,378 +2121,445 @@ impl Pane {
         let across = self.across.clone();
         let sans = cx.theme().font_family.clone();
 
-        let list = uniform_list("deck-code", rows.len(), move |visible, _window, _cx| {
-            visible
-                .map(|ix| {
-                    let row = rows[ix].clone();
+        let count = rows.len();
+        let reach = blocks.clone();
+        // One row, in its slot, drawn wherever the values in motion above it
+        // have it right now.
+        let draw = move |ix: usize| {
+            let mut row = rows[ix].clone();
+            let lift = lift_at(&blocks, ix);
+            // A row inside a stretch in motion is only there once the
+            // room has opened as far as it, ground and all, and its
+            // words come in after the room is whole.
+            let (cover, reveal) = blocks
+                .iter()
+                .find(|(first, last, _, _)| ix >= *first && ix <= *last)
+                .map_or((1., 1.), |(first, last, slide, show)| {
                     #[allow(clippy::cast_precision_loss)]
-                    let lift: f32 = blocks
+                    let nth = (ix - first) as f32;
+                    #[allow(clippy::cast_precision_loss)]
+                    let room = (last - first + 1) as f32 * slide;
+                    // Its ground is simply there once the gap reaches
+                    // it — uncovered by the code sliding off it, not
+                    // faded in, which read as the row swelling.
+                    (if room > nth { 1. } else { 0. }, *show)
+                });
+            let grow: Vec<(f32, f32)> = row
+                .inlay
+                .iter()
+                .map(|(_, _, _, who)| {
+                    arrivals
                         .iter()
-                        .filter(|(_, last, _, _)| ix > *last)
-                        .map(|(first, last, slide, _)| (last - first + 1) as f32 * (1. - slide))
-                        .sum();
-                    // A row inside a stretch in motion is only there once the
-                    // room has opened as far as it, ground and all, and its
-                    // words come in after the room is whole.
-                    let (cover, reveal) = blocks
-                        .iter()
-                        .find(|(first, last, _, _)| ix >= *first && ix <= *last)
-                        .map_or((1., 1.), |(first, last, slide, show)| {
-                            #[allow(clippy::cast_precision_loss)]
-                            let nth = (ix - first) as f32;
-                            #[allow(clippy::cast_precision_loss)]
-                            let room = (last - first + 1) as f32 * slide;
-                            // Its ground is simply there once the gap reaches
-                            // it — uncovered by the code sliding off it, not
-                            // faded in, which read as the row swelling.
-                            (if room > nth { 1. } else { 0. }, *show)
-                        });
-                    let grow: Vec<(f32, f32)> = row
-                        .inlay
-                        .iter()
-                        .map(|(_, _, _, who)| {
-                            arrivals
-                                .iter()
-                                .find(|(at, _, _)| at == who)
-                                .map_or((1., 1.), |(_, slide, show)| (*slide, *show))
-                        })
-                        .collect();
-                    // What a press on this row means.
-                    //
-                    // The gutter still shows nothing for a spliced line — it is
-                    // not in the file, and a number there would be a lie the
-                    // reader would quote back. This is the other question. Zero is not a line, so a spliced row answered
-                    // the mouse with a range nothing could contain: pressing a
-                    // proposed line selected nothing and a diff could not be
-                    // commented on at all.
-                    //
-                    // It stands in for the line the splice hangs off — the last
-                    // line going, for an `after`; the one above the arrival,
-                    // for a `before`. That is the honest pin, because a comment
-                    // about a line that is not in the file yet is a comment
-                    // about the range it would replace.
-                    let pick_at = row.pin;
-                    // All of these ask the same question — *is this row part of
-                    // what is being talked about* — and all of them used to
-                    // answer no for a spliced line, because they asked it in
-                    // file lines and a proposed line has none. So a point could
-                    // not light the half of a change that was arriving, which
-                    // is usually the half the sentence is about.
-                    let is_lit = lit.overlaps(row.answers);
-                    // By row, because every arriving line of a change answers
-                    // for the same file line and a range of those cannot tell
-                    // the first from the fourth.
-                    let holding = held.map_or(0., |((first, last), light)| {
-                        if ix >= first && ix <= last {
-                            light.level()
-                        } else {
-                            0.
+                        .find(|(at, _, _)| at == who)
+                        .map_or((1., 1.), |(_, slide, show)| (*slide, *show))
+                })
+                .collect();
+            // What a press on this row means.
+            //
+            // The gutter still shows nothing for a spliced line — it is
+            // not in the file, and a number there would be a lie the
+            // reader would quote back. This is the other question. Zero is not a line, so a spliced row answered
+            // the mouse with a range nothing could contain: pressing a
+            // proposed line selected nothing and a diff could not be
+            // commented on at all.
+            //
+            // It stands in for the line the splice hangs off — the last
+            // line going, for an `after`; the one above the arrival,
+            // for a `before`. That is the honest pin, because a comment
+            // about a line that is not in the file yet is a comment
+            // about the range it would replace.
+            let pick_at = row.pin;
+            // All of these ask the same question — *is this row part of
+            // what is being talked about* — and all of them used to
+            // answer no for a spliced line, because they asked it in
+            // file lines and a proposed line has none. So a point could
+            // not light the half of a change that was arriving, which
+            // is usually the half the sentence is about.
+            let is_lit = lit.overlaps(row.answers);
+            // By row, because every arriving line of a change answers
+            // for the same file line and a range of those cannot tell
+            // the first from the fourth.
+            let holding = held.map_or(0., |((first, last), light)| {
+                if ix >= first && ix <= last {
+                    light.level()
+                } else {
+                    0.
+                }
+            });
+            let has_mark = marked.contains(&pick_at);
+            // The side as well as the lines. A pane showing a change
+            // has two rows answering to each number — the one going and
+            // the one arriving — so a point that only knew the numbers
+            // matched both and lit red and green together. Walking a
+            // change is two sentences, and wants two lights.
+            let in_point =
+                point.is_some_and(|(at, side)| at.overlaps(row.answers) && row.takes(side));
+            // The brightest of everything still on its way out. Several
+            // ranges can be fading at once — somebody moving quickly
+            // leaves a trail of them — and a row caught by two should
+            // go out from the higher, not flicker between them.
+            let leaving = was
+                .iter()
+                .filter(|(range, side, _)| range.overlaps(row.answers) && row.takes(*side))
+                .map(|(_, _, level)| *level)
+                .fold(0., f32::max);
+            // How strongly this row is pointed at, right now. A line in
+            // both the old range and the new one never dips: it was lit
+            // and it stays lit.
+            // Whichever of the two is brighter, and never a number of
+            // its own.
+            //
+            // This used to answer a flat 1.0 for a row that was both
+            // arriving and leaving, meaning to say *a line in both
+            // ranges never dips*. It created the dip it was avoiding:
+            // the row snapped to full, held while the old light
+            // decayed, then dropped to however far the new one had
+            // actually risen and climbed again. On, off, on — which is
+            // why it only ever showed between two points that share
+            // lines, and never between two that do not.
+            // Added, not compared. Two smoothstep curves crossing
+            // each other peak at a half apiece, so taking the brighter
+            // still dips through the middle of a crossing — which is
+            // the blink, one layer down from where it looked like it
+            // was. Summed, a light handing over to another holds steady
+            // the whole way across.
+            let pointed = if in_point {
+                (rising + leaving).min(1.)
+            } else {
+                leaving
+            };
+
+            // The code the deck is not about sits back.
+            //
+            // A pane shows the whole file so the cited lines can be found in
+            // it, but painting every line at full syntax colour put a wall of
+            // colour in front of the reader and drew the eye away from the
+            // prose and from the few lines being talked about. So only the
+            // cited lines keep their colours; the rest is context and is drawn
+            // quieter.
+            //
+            // It follows the lights rather than the cited range alone. A line
+            // the agent points at, or the reader selects, is being talked
+            // about whether or not the ref cited it, so it comes back to full
+            // colour by the level of that light. A level and not a switch: the
+            // light fades in and out, and the colour has to travel with it or
+            // the line would snap.
+            //
+            // Done here, on the row about to be drawn, and not in the
+            // highlighter: exports and the highlight cache keep the true
+            // colours. Diff rows, value rows and edge rows are not code that
+            // is being set aside, so they are left as they are.
+            let back_by = if row.change.is_none()
+                && row.extra.is_none()
+                && steps_back(lit, file_lines, row.answers)
+            {
+                1. - pointed.max(holding)
+            } else {
+                0.
+            };
+            if back_by > 0. {
+                // Each distinct colour worked out once for the row, not once
+                // per run: a line repeats a handful of colours many times.
+                let mut worked: Vec<(Hsla, Hsla)> = Vec::new();
+                for (_, style) in &mut row.runs {
+                    let Some(colour) = style.color else { continue };
+                    style.color = Some(match worked.iter().find(|(from, _)| *from == colour) {
+                        Some((_, to)) => *to,
+                        None => {
+                            let to = eased_back(colour, &palette, back_by);
+                            worked.push((colour, to));
+                            to
                         }
                     });
-                    let has_mark = marked.contains(&pick_at);
-                    // The side as well as the lines. A pane showing a change
-                    // has two rows answering to each number — the one going and
-                    // the one arriving — so a point that only knew the numbers
-                    // matched both and lit red and green together. Walking a
-                    // change is two sentences, and wants two lights.
-                    let in_point =
-                        point.is_some_and(|(at, side)| at.overlaps(row.answers) && row.takes(side));
-                    // The brightest of everything still on its way out. Several
-                    // ranges can be fading at once — somebody moving quickly
-                    // leaves a trail of them — and a row caught by two should
-                    // go out from the higher, not flicker between them.
-                    let leaving = was
-                        .iter()
-                        .filter(|(range, side, _)| range.overlaps(row.answers) && row.takes(*side))
-                        .map(|(_, _, level)| *level)
-                        .fold(0., f32::max);
-                    // How strongly this row is pointed at, right now. A line in
-                    // both the old range and the new one never dips: it was lit
-                    // and it stays lit.
-                    // Whichever of the two is brighter, and never a number of
-                    // its own.
-                    //
-                    // This used to answer a flat 1.0 for a row that was both
-                    // arriving and leaving, meaning to say *a line in both
-                    // ranges never dips*. It created the dip it was avoiding:
-                    // the row snapped to full, held while the old light
-                    // decayed, then dropped to however far the new one had
-                    // actually risen and climbed again. On, off, on — which is
-                    // why it only ever showed between two points that share
-                    // lines, and never between two that do not.
-                    // Added, not compared. Two smoothstep curves crossing
-                    // each other peak at a half apiece, so taking the brighter
-                    // still dips through the middle of a crossing — which is
-                    // the blink, one layer down from where it looked like it
-                    // was. Summed, a light handing over to another holds steady
-                    // the whole way across.
-                    let pointed = if in_point {
-                        (rising + leaving).min(1.)
-                    } else {
-                        leaving
-                    };
+                }
+            }
+            // Text no run covers is drawn in the ink the pane inherits, so
+            // that steps back with the rest.
+            let ink = (back_by > 0.).then(|| eased_back(paint(palette.fg), &palette, back_by));
 
-                    // What the row *is*: going, arriving, lit, or plain.
-                    let base = match row.change {
-                        Some(Change::Gone) => flash.mix(palette.gone, arrived),
-                        Some(Change::New) => flash.mix(palette.fresh, arrived),
-                        None if is_lit => palette.focus,
-                        None => palette.wash,
-                    };
-                    // Then what is being *said* about it, over the top.
-                    //
-                    // A pointed line deepens into more of its own colour rather
-                    // than taking the accent. Washing orange over the arriving
-                    // green gave a muddy brown and took away the one thing the
-                    // row was saying — that it is the half arriving. Red goes to
-                    // a darker red, green to a darker green, and only ordinary
-                    // paper takes the accent, where there is no meaning of its
-                    // own to drown.
-                    let said = match row.change {
-                        Some(Change::Gone) => base.mix(palette.gone_deep, pointed),
-                        Some(Change::New) => base.mix(palette.fresh_deep, pointed),
-                        None => base.mix(palette.accent, 0.26 * pointed),
-                    };
-                    let ground = said.mix(palette.accent, 0.14 * holding);
-                    // The edge of the deck's copy sits on a ground of its
-                    // own, a step down toward the desk, so it reads as the
-                    // end of what is here rather than as an empty line.
-                    let absent = matches!(row.extra, Some(Extra::Absent { .. }));
-                    let ground = if absent {
-                        palette.wash.mix(palette.ground, 0.45)
-                    } else {
-                        ground
-                    };
-                    // A key row is drawn half a row up, all of it — ground, bar
-                    // and words — into the blank row above the first key. That
-                    // leaves half a row clear above the keys and, under the last
-                    // one, half a row its own ground fills, so every band still
-                    // runs the width of the pane and lines up with its words.
-                    let keyed = matches!(row.extra, Some(Extra::Key { pad: false, .. }));
-                    let half = if keyed { row_px * 0.5 } else { px(0.) };
-                    // Where the trail runs: past the bar and the gutter, at
-                    // the key's indent.
-                    #[allow(clippy::cast_precision_loss)]
-                    let trail_at = match row.extra {
-                        Some(Extra::Key { indent, .. }) => px(56.) + advance * indent as f32,
-                        _ => px(0.),
-                    };
-                    let last_key = keyed
-                        && !matches!(
-                            rows.get(ix + 1).and_then(|next| next.extra.as_ref()),
-                            Some(Extra::Key { pad: false, .. })
-                        );
-                    // The row's slot holds still and what is drawn in it moves.
-                    // The list places each row itself and ignores an offset on
-                    // the row, so moving the row did nothing and the code below
-                    // a value jumped instead of gliding.
+            // What the row *is*: going, arriving, lit, or plain.
+            let base = match row.change {
+                Some(Change::Gone) => flash.mix(palette.gone, arrived),
+                Some(Change::New) => flash.mix(palette.fresh, arrived),
+                None if is_lit => palette.focus,
+                None => palette.wash,
+            };
+            // Then what is being *said* about it, over the top.
+            //
+            // A pointed line deepens into more of its own colour rather
+            // than taking the accent. Washing orange over the arriving
+            // green gave a muddy brown and took away the one thing the
+            // row was saying — that it is the half arriving. Red goes to
+            // a darker red, green to a darker green, and only ordinary
+            // paper takes the accent, where there is no meaning of its
+            // own to drown.
+            let said = match row.change {
+                Some(Change::Gone) => base.mix(palette.gone_deep, pointed),
+                Some(Change::New) => base.mix(palette.fresh_deep, pointed),
+                None => base.mix(palette.accent, 0.26 * pointed),
+            };
+            let ground = said.mix(palette.accent, 0.14 * holding);
+            // The edge of the deck's copy sits on a ground of its
+            // own, a step down toward the desk, so it reads as the
+            // end of what is here rather than as an empty line.
+            let absent = matches!(row.extra, Some(Extra::Absent { .. }));
+            let ground = if absent {
+                palette.wash.mix(palette.ground, 0.45)
+            } else {
+                ground
+            };
+            // A key row is drawn half a row up, all of it — ground, bar
+            // and words — into the blank row above the first key. That
+            // leaves half a row clear above the keys and, under the last
+            // one, half a row its own ground fills, so every band still
+            // runs the width of the pane and lines up with its words.
+            let keyed = matches!(row.extra, Some(Extra::Key { pad: false, .. }));
+            let half = if keyed { row_px * 0.5 } else { px(0.) };
+            // Where the trail runs: past the bar and the gutter, at
+            // the key's indent.
+            #[allow(clippy::cast_precision_loss)]
+            let trail_at = match row.extra {
+                Some(Extra::Key { indent, .. }) => px(56.) + advance * indent as f32,
+                _ => px(0.),
+            };
+            let last_key = keyed
+                && !matches!(
+                    rows.get(ix + 1).and_then(|next| next.extra.as_ref()),
+                    Some(Extra::Key { pad: false, .. })
+                );
+            // The row's slot holds still and what is drawn in it moves.
+            // The list places each row itself and ignores an offset on
+            // the row, so moving the row did nothing and the code below
+            // a value jumped instead of gliding.
+            div()
+                .h(row_px)
+                .w_full()
+                .relative()
+                .child(
                     div()
+                        .id(("row", ix))
                         .h(row_px)
+                        .absolute()
+                        .left_0()
+                        .right_0()
+                        .top(row_px * -lift - half)
+                        .opacity(cover)
+                        // The row's ground has to span the pane, not stop
+                        // where its text does: a lit range that ends ragged
+                        // down its right edge reads as damage, not emphasis.
                         .w_full()
-                        .relative()
+                        .h_flex()
+                        .items_center()
+                        .font_family(mono.clone())
+                        .text_size(size)
+                        // Press, drag, release — the way selecting lines works
+                        // everywhere else. Shift extends an existing selection
+                        // without dragging.
+                        .on_mouse_down(MouseButton::Left, {
+                            let view = view.clone();
+                            let handle = match row.extra {
+                                Some(Extra::Chip { ref who, .. }) => Some(who.clone()),
+                                _ => None,
+                            };
+                            move |event: &MouseDownEvent, _window, cx| {
+                                // Lines that are not here cannot be
+                                // picked or commented on.
+                                if absent {
+                                    return;
+                                }
+                                let extend = event.modifiers.shift;
+                                let _ = view.update(cx, |deck, cx| {
+                                    // A value's handle opens it; it is not code to pick.
+                                    if let Some(who) = handle.clone() {
+                                        deck.toggle_value(pane_ix, who, cx);
+                                    } else {
+                                        deck.start_pick(pane_ix, ix, extend, cx);
+                                    }
+                                });
+                            }
+                        })
+                        // Hover, not mouse-move. A move handler is not
+                        // bounds-checked: it runs for every move anywhere in
+                        // the window, on every row at once, so whichever row
+                        // was laid out last decided what was selected. Hover
+                        // fires only for the row under the pointer — and it
+                        // records that row rather than acting on it, because
+                        // hover cannot tell whether a button is held.
+                        .on_hover({
+                            let view = view.clone();
+                            move |entered: &bool, _window, cx| {
+                                let entered = *entered;
+                                let _ = view.update(cx, |deck, _| {
+                                    deck.hover_row(pane_ix, ix, entered);
+                                });
+                            }
+                        })
+                        // One row, one background. The bar, the number and the
+                        // code sit on it together, so the lit range can never
+                        // drift away from the lines it lights.
+                        // A picked range is one band, not a box round every
+                        // row. Outlining each row drew a ladder of rectangles
+                        // down the pane and hid the very thing being selected;
+                        // the mock only ever outlined a single line, so the
+                        // multi-line case had no design and I invented a bad
+                        // one. A continuous ground reads as one selection
+                        // however many lines it covers.
+                        // A proposed change outranks the spotlight: the range
+                        // is lit *because* it is going, and painting it with
+                        // the ordinary focus colour would say the opposite of
+                        // what the ref came to say. Mixed into the ground
+                        // rather than filled with — a diff that shouts is a
+                        // diff nobody reads the code of.
+                        // A point is drawn by contrast, not by a colour of
+                        // its own. A quarter of the accent rather than a
+                        // tenth: a tenth is legible on paper and all but gone
+                        // on a dark theme, where the lit ground is already
+                        // close to the page. The lit ground already fills the range; the
+                        // pointed lines take a little of the accent into it and
+                        // the rest of the range gives up its bar, so the eye is
+                        // pulled to the sentence being said without the page
+                        // gaining a third kind of highlight to learn.
+                        .bg(paint(ground))
+                        // A dashed hairline between the edge and the code it
+                        // borders, on whichever side the code is: dashed, as
+                        // a cut is drawn, and not the solid rule between
+                        // panes.
+                        .when(absent && ix > 0, |row| {
+                            row.border_t_1()
+                                .border_dashed()
+                                .border_color(paint(palette.edge))
+                        })
+                        .when(absent && ix + 1 < rows.len(), |row| {
+                            row.border_b_1()
+                                .border_dashed()
+                                .border_color(paint(palette.edge))
+                        })
                         .child(
                             div()
-                                .id(("row", ix))
-                                .h(row_px)
-                                .absolute()
-                                .left_0()
-                                .right_0()
-                                .top(row_px * -lift - half)
-                                .opacity(cover)
-                                // The row's ground has to span the pane, not stop
-                                // where its text does: a lit range that ends ragged
-                                // down its right edge reads as damage, not emphasis.
-                                .w_full()
-                                .h_flex()
-                                .items_center()
-                                .font_family(mono.clone())
-                                .text_size(size)
-                                // Press, drag, release — the way selecting lines works
-                                // everywhere else. Shift extends an existing selection
-                                // without dragging.
-                                .on_mouse_down(MouseButton::Left, {
-                                    let view = view.clone();
-                                    let handle = match row.extra {
-                                        Some(Extra::Chip { ref who, .. }) => Some(who.clone()),
-                                        _ => None,
-                                    };
-                                    move |event: &MouseDownEvent, _window, cx| {
-                                        // Lines that are not here cannot be
-                                        // picked or commented on.
-                                        if absent {
-                                            return;
-                                        }
-                                        let extend = event.modifiers.shift;
-                                        let _ = view.update(cx, |deck, cx| {
-                                            // A value's handle opens it; it is not code to pick.
-                                            if let Some(who) = handle.clone() {
-                                                deck.toggle_value(pane_ix, who, cx);
-                                            } else {
-                                                deck.start_pick(pane_ix, ix, extend, cx);
-                                            }
-                                        });
+                                .w(px(12.))
+                                .flex_none()
+                                .text_center()
+                                .text_color(paint(match row.change {
+                                    // The bar takes the point too, so a
+                                    // sub-highlight inside a diff has an edge
+                                    // as well as a ground.
+                                    Some(Change::Gone) => palette
+                                        .accent
+                                        .mix(palette.del, arrived)
+                                        .mix(palette.accent, pointed),
+                                    Some(Change::New) => palette
+                                        .accent
+                                        .mix(palette.add, arrived)
+                                        .mix(palette.accent, pointed),
+                                    None if has_mark => palette.add,
+                                    None if holding > 0. => {
+                                        palette.wash.mix(palette.accent, holding.max(pointed))
                                     }
-                                })
-                                // Hover, not mouse-move. A move handler is not
-                                // bounds-checked: it runs for every move anywhere in
-                                // the window, on every row at once, so whichever row
-                                // was laid out last decided what was selected. Hover
-                                // fires only for the row under the pointer — and it
-                                // records that row rather than acting on it, because
-                                // hover cannot tell whether a button is held.
-                                .on_hover({
-                                    let view = view.clone();
-                                    move |entered: &bool, _window, cx| {
-                                        let entered = *entered;
-                                        let _ = view.update(cx, |deck, _| {
-                                            deck.hover_row(pane_ix, ix, entered);
-                                        });
+                                    // While the narration is pointing, the rest
+                                    // of the lit range steps back. Two ranges
+                                    // with the same bar is two claims about
+                                    // where to look.
+                                    None if is_lit => {
+                                        palette.accent.mix(palette.muted, pointing * (1. - pointed))
                                     }
-                                })
-                                // One row, one background. The bar, the number and the
-                                // code sit on it together, so the lit range can never
-                                // drift away from the lines it lights.
-                                // A picked range is one band, not a box round every
-                                // row. Outlining each row drew a ladder of rectangles
-                                // down the pane and hid the very thing being selected;
-                                // the mock only ever outlined a single line, so the
-                                // multi-line case had no design and I invented a bad
-                                // one. A continuous ground reads as one selection
-                                // however many lines it covers.
-                                // A proposed change outranks the spotlight: the range
-                                // is lit *because* it is going, and painting it with
-                                // the ordinary focus colour would say the opposite of
-                                // what the ref came to say. Mixed into the ground
-                                // rather than filled with — a diff that shouts is a
-                                // diff nobody reads the code of.
-                                // A point is drawn by contrast, not by a colour of
-                                // its own. A quarter of the accent rather than a
-                                // tenth: a tenth is legible on paper and all but gone
-                                // on a dark theme, where the lit ground is already
-                                // close to the page. The lit ground already fills the range; the
-                                // pointed lines take a little of the accent into it and
-                                // the rest of the range gives up its bar, so the eye is
-                                // pulled to the sentence being said without the page
-                                // gaining a third kind of highlight to learn.
-                                .bg(paint(ground))
-                                // A dashed hairline between the edge and the code it
-                                // borders, on whichever side the code is: dashed, as
-                                // a cut is drawn, and not the solid rule between
-                                // panes.
-                                .when(absent && ix > 0, |row| {
-                                    row.border_t_1()
-                                        .border_dashed()
-                                        .border_color(paint(palette.edge))
-                                })
-                                .when(absent && ix + 1 < rows.len(), |row| {
-                                    row.border_b_1()
-                                        .border_dashed()
-                                        .border_color(paint(palette.edge))
-                                })
+                                    None => palette.wash.mix(palette.accent, pointed),
+                                }))
+                                .child(match row.change {
+                                    Some(Change::Gone) => "−",
+                                    Some(Change::New) => "+",
+                                    None if absent => "",
+                                    None => "▌",
+                                }),
+                        )
+                        .child(
+                            div()
+                                .w(px(44.))
+                                .flex_none()
+                                .pr(px(12.))
+                                .text_right()
+                                .text_color(paint(if is_lit { palette.muted } else { gutter_fg }))
+                                // Blank for a line that is not in the file.
                                 .child(
-                                    div()
-                                        .w(px(12.))
-                                        .flex_none()
-                                        .text_center()
-                                        .text_color(paint(match row.change {
-                                            // The bar takes the point too, so a
-                                            // sub-highlight inside a diff has an edge
-                                            // as well as a ground.
-                                            Some(Change::Gone) => palette
-                                                .accent
-                                                .mix(palette.del, arrived)
-                                                .mix(palette.accent, pointed),
-                                            Some(Change::New) => palette
-                                                .accent
-                                                .mix(palette.add, arrived)
-                                                .mix(palette.accent, pointed),
-                                            None if has_mark => palette.add,
-                                            None if holding > 0. => palette
-                                                .wash
-                                                .mix(palette.accent, holding.max(pointed)),
-                                            // While the narration is pointing, the rest
-                                            // of the lit range steps back. Two ranges
-                                            // with the same bar is two claims about
-                                            // where to look.
-                                            None if is_lit => palette
-                                                .accent
-                                                .mix(palette.muted, pointing * (1. - pointed)),
-                                            None => palette.wash.mix(palette.accent, pointed),
-                                        }))
-                                        .child(match row.change {
-                                            Some(Change::Gone) => "−",
-                                            Some(Change::New) => "+",
-                                            None if absent => "",
-                                            None => "▌",
-                                        }),
-                                )
-                                .child(
-                                    div()
-                                        .w(px(44.))
-                                        .flex_none()
-                                        .pr(px(12.))
-                                        .text_right()
-                                        .text_color(paint(if is_lit {
-                                            palette.muted
-                                        } else {
-                                            gutter_fg
-                                        }))
-                                        // Blank for a line that is not in the file.
-                                        .child(
-                                            row.number
-                                                .map(|number| number.to_string())
-                                                .unwrap_or_default(),
-                                        ),
-                                )
-                                .child(
-                                    div()
-                                        .flex_1()
-                                        .min_w_0()
-                                        .h_full()
-                                        .pr(px(18.))
-                                        .h_flex()
-                                        .items_center()
-                                        .gap_3()
-                                        .overflow_hidden()
-                                        // The words come in, the ground under them was
-                                        // already there: a gap the colour of the lit
-                                        // range, not a hole in it.
-                                        .opacity(reveal)
-                                        .child(row_content(
-                                            &row,
-                                            &sans,
-                                            &palette,
-                                            advance,
-                                            small_advance,
-                                            size,
-                                            &grow,
-                                        )),
+                                    row.number
+                                        .map(|number| number.to_string())
+                                        .unwrap_or_default(),
                                 ),
                         )
-                        // Under the last key, the half row the keys moved up
-                        // out of, in the same ground, with the trail running on.
-                        .when(last_key, |slot| {
-                            slot.child(
+                        .child(
+                            div()
+                                .flex_1()
+                                .min_w_0()
+                                .h_full()
+                                .pr(px(18.))
+                                .h_flex()
+                                .items_center()
+                                .gap_3()
+                                .overflow_hidden()
+                                // The words come in, the ground under them was
+                                // already there: a gap the colour of the lit
+                                // range, not a hole in it.
+                                .opacity(reveal)
+                                .when_some(ink, |content, ink| content.text_color(ink))
+                                .child(row_content(
+                                    &row,
+                                    &sans,
+                                    &palette,
+                                    advance,
+                                    small_advance,
+                                    size,
+                                    &grow,
+                                )),
+                        ),
+                )
+                // Under the last key, the half row the keys moved up
+                // out of, in the same ground, with the trail running on.
+                .when(last_key, |slot| {
+                    slot.child(
+                        div()
+                            .absolute()
+                            .left_0()
+                            .right_0()
+                            .top(row_px * (0.5 - lift))
+                            .h(row_px * 0.5)
+                            .opacity(cover)
+                            .bg(paint(ground))
+                            .child(
                                 div()
                                     .absolute()
-                                    .left_0()
-                                    .right_0()
-                                    .top(row_px * (0.5 - lift))
-                                    .h(row_px * 0.5)
-                                    .opacity(cover)
-                                    .bg(paint(ground))
-                                    .child(
-                                        div()
-                                            .absolute()
-                                            .top_0()
-                                            .bottom_0()
-                                            .left(trail_at)
-                                            .w(px(1.))
-                                            .bg(paint(palette.edge.mix(palette.muted, 0.55))),
-                                    ),
-                            )
-                        })
-                        .into_any_element()
+                                    .top_0()
+                                    .bottom_0()
+                                    .left(trail_at)
+                                    .w(px(1.))
+                                    .bg(paint(palette.edge.mix(palette.muted, 0.55))),
+                            ),
+                    )
+                })
+        };
+        let list = uniform_list("deck-code", count, move |visible, _window, _cx| {
+            let end = visible.end;
+            visible
+                .map(|ix| {
+                    let slot = draw(ix);
+                    let lift = lift_at(&reach, end);
+                    if ix + 1 != end || lift <= 0. {
+                        return slot.into_any_element();
+                    }
+                    // The rows just past the bottom edge, hung under the last
+                    // one the list asked for. While a value opens, everything
+                    // under it is drawn higher than its slot, and the list only
+                    // builds the rows whose slots are on screen — so the rows
+                    // that should have slid up into the bottom of the pane were
+                    // never built, and a blank strip sat there, shrinking as
+                    // the room opened. As many as the code is lifted, and one
+                    // for the part of a row.
+                    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+                    let under = lift.ceil() as usize + 1;
+                    slot.children((1..=under).filter(|k| ix + k < count).map(|k| {
+                        #[allow(clippy::cast_precision_loss)]
+                        let down = row_px * k as f32;
+                        draw(ix + k).absolute().left_0().right_0().top(down)
+                    }))
+                    .into_any_element()
                 })
                 .collect()
         })
@@ -2964,6 +3115,16 @@ fn same(a: &str, b: &str) -> bool {
     a.trim() == b.trim()
 }
 
+/// A header's label cut where the file's name begins: the folders, ending in
+/// their slash, and the name with its range. A label with no slash is all
+/// name, and has no folders.
+fn split_path(label: &str) -> (String, String) {
+    match label.rfind('/') {
+        Some(at) => (label[..=at].to_string(), label[at + 1..].to_string()),
+        None => (String::new(), label.to_string()),
+    }
+}
+
 /// A pane folded down to its spine at the window's edge.
 ///
 /// `title` is what the prose calls it, `under` whatever says which one it is
@@ -3110,7 +3271,24 @@ pub fn chrome(
                                 .text_color(paint(palette.accent))
                                 .child(name)
                         }))
-                        .children(label.map(|label| div().min_w_0().truncate().child(label))),
+                        // The folders give way and the file never does: a path
+                        // cut from its end lost the file's name and its range,
+                        // the two things a reader looks up here for. A label
+                        // with no folders is cut from its end, as before.
+                        .children(label.map(|label| {
+                            let (folders, file) = split_path(&label);
+                            if folders.is_empty() {
+                                div().min_w_0().truncate().child(file).into_any_element()
+                            } else {
+                                div()
+                                    .h_flex()
+                                    .min_w_0()
+                                    .overflow_hidden()
+                                    .child(div().min_w_0().truncate().child(folders))
+                                    .child(div().flex_none().whitespace_nowrap().child(file))
+                                    .into_any_element()
+                            }
+                        })),
                 )
                 .children(
                     note.as_deref()
@@ -3186,6 +3364,19 @@ fn emphasise(note: &str, palette: &Palette) -> impl IntoElement {
 fn row_of(number: u32, added_at: u32, added: usize) -> usize {
     let ix = (number.max(1) - 1) as usize;
     if number > added_at { ix + added } else { ix }
+}
+
+/// How many rows above its own slot row `ix` is drawn, for the values in
+/// motion over it: each stretch above it still opening, or closing, lifts it
+/// by however much of the stretch's room is not there yet. Nought when
+/// nothing above it is moving.
+#[allow(clippy::cast_precision_loss)]
+fn lift_at(blocks: &[(usize, usize, f32, f32)], ix: usize) -> f32 {
+    blocks
+        .iter()
+        .filter(|(_, last, _, _)| ix > *last)
+        .map(|(first, last, slide, _)| (last - first + 1) as f32 * (1. - slide))
+        .sum()
 }
 
 /// Where a pick from row `from` towards row `to` stops: at `to`, or at the
@@ -3276,6 +3467,50 @@ fn absent(first: u32, last: Option<u32>) -> Row {
         inlay: Vec::new(),
         extra: Some(Extra::Absent { first, last }),
     }
+}
+
+/// Whether a row of code is outside what the deck is about, so it sits back.
+///
+/// `cited` is the range the ref cites. A pane with nothing to single out, a
+/// whole file brought in or a range that covers every line, has no outside, so
+/// it keeps full colour everywhere instead of dimming a file the reader was
+/// handed to read.
+fn steps_back(cited: LineRange, file_lines: u32, row: LineRange) -> bool {
+    let everything = cited.first <= 1 && cited.last >= file_lines;
+    !everything && !cited.overlaps(row)
+}
+
+/// A colour of drawn code, stepped back toward the pane's ground.
+///
+/// Plain ink keeps 92% of itself and a syntax colour keeps 85%: the hues have
+/// more to lose, being the loud part of the wall, but the step is a gentle
+/// one, enough to tell what is cited without making the rest hard to read. A
+/// colour already drawn quiet, a comment or punctuation, is left alone, because
+/// mixing it further would make it vanish and it is already doing the job of
+/// sitting back.
+fn stepped_back(colour: Rgb, palette: &Palette) -> Rgb {
+    let near =
+        |a: Rgb, b: Rgb| a.r.abs_diff(b.r) <= 1 && a.g.abs_diff(b.g) <= 1 && a.b.abs_diff(b.b) <= 1;
+    if near(colour, palette.muted) || near(colour, palette.punctuation) {
+        colour
+    } else if near(colour, palette.fg) {
+        colour.mix(palette.wash, 0.08)
+    } else {
+        colour.mix(palette.wash, 0.15)
+    }
+}
+
+/// `colour` stepped back, `back_by` of the way: 1 is fully stepped back, 0 is
+/// the colour untouched. The run colours come from the highlighter as GPUI
+/// colours, so they are read back to the model's before they are mixed.
+fn eased_back(colour: Hsla, palette: &Palette, back_by: f32) -> Hsla {
+    let shown = Rgba::from(colour);
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    let channel = |value: f32| (value * 255.0).round().clamp(0., 255.) as u8;
+    let from = Rgb::new(channel(shown.r), channel(shown.g), channel(shown.b));
+    let mut out = paint(from.mix(stepped_back(from, palette), back_by));
+    out.a = colour.a;
+    out
 }
 
 /// What a row shows to the right of its number: the code, with a single value
@@ -3422,10 +3657,17 @@ fn row_content(
                         .text_size(small)
                         .cursor_pointer()
                         .child(
+                            // A fixed box, so the preview beside it does not
+                            // move under the pointer when the caret turns; and
+                            // the small carets every other disclosure uses.
                             div()
+                                .flex_none()
+                                .w(px(9.))
+                                .flex()
+                                .justify_center()
                                 .text_color(paint(palette.accent))
                                 .text_size(size * 0.7)
-                                .child(if *open { "▼" } else { "▶" }),
+                                .child(if *open { "▾" } else { "▸" }),
                         )
                         .child(div().text_color(paint(soft)).child(preview)),
                 )
@@ -3593,6 +3835,103 @@ mod tests {
 
     use super::*;
 
+    #[test]
+    fn a_header_label_splits_at_the_file_name() {
+        assert_eq!(
+            split_path("apps/web/store/option.store.ts:217-228"),
+            (
+                "apps/web/store/".to_string(),
+                "option.store.ts:217-228".to_string()
+            )
+        );
+        assert_eq!(
+            split_path("README.md:1-4"),
+            (String::new(), "README.md:1-4".to_string())
+        );
+    }
+
+    fn quiet_palette() -> Palette {
+        deck_core::theme::derive(deck_core::theme::Imported {
+            bg: Rgb::new(250, 250, 250),
+            fg: Rgb::new(30, 30, 30),
+            accent: Rgb::new(220, 120, 40),
+            comment: None,
+            add: None,
+            del: None,
+            syntax: deck_core::theme::Syntax {
+                keyword: None,
+                string: None,
+                function: None,
+                type_: None,
+                literal: None,
+            },
+        })
+    }
+
+    #[test]
+    fn stepping_back_keeps_ninety_two_of_ink_and_eighty_five_of_a_hue() {
+        let palette = quiet_palette();
+        let hue = Rgb::new(200, 40, 40);
+        assert_eq!(stepped_back(hue, &palette), hue.mix(palette.wash, 0.15));
+        assert_eq!(
+            stepped_back(palette.fg, &palette),
+            palette.fg.mix(palette.wash, 0.08)
+        );
+    }
+
+    #[test]
+    fn a_room_fade_is_paced_by_room_both_ways() {
+        let fade = Fade::room();
+        assert_eq!((fade.rise_ms, fade.fall_ms), (ms(ROOM), ms(ROOM)));
+        assert_eq!(ms(ROOM), 840);
+        // Folded and unmoving, it is a whole fold; set open, it leaves that
+        // smoothly from the top rather than starting open.
+        let mut arriving = Fade::room_folded();
+        assert_eq!(arriving.level(), 1.);
+        assert!(!arriving.moving());
+        assert!(arriving.set(false));
+        assert!(arriving.moving());
+        assert_eq!(arriving.level(), 1.);
+        assert_eq!(arriving.fall_ms, ms(ROOM));
+    }
+
+    #[test]
+    fn a_colour_already_quiet_is_left_as_it_is() {
+        let palette = quiet_palette();
+        assert_eq!(stepped_back(palette.muted, &palette), palette.muted);
+        assert_eq!(
+            stepped_back(palette.punctuation, &palette),
+            palette.punctuation
+        );
+    }
+
+    #[test]
+    fn a_light_brings_a_stepped_back_colour_home_by_its_level() {
+        let palette = quiet_palette();
+        let hue = paint(Rgb::new(200, 40, 40));
+        assert_eq!(eased_back(hue, &palette, 0.), hue);
+        assert_ne!(eased_back(hue, &palette, 1.), hue);
+        let half = Rgba::from(eased_back(hue, &palette, 0.5));
+        let full = Rgba::from(eased_back(hue, &palette, 1.));
+        let home = Rgba::from(hue);
+        assert!(full.g > home.g && half.g < full.g && half.g > home.g);
+    }
+
+    #[test]
+    fn only_lines_outside_the_cited_range_step_back() {
+        let cited = LineRange::new(10, 12);
+        assert!(!steps_back(cited, 100, LineRange::single(11)));
+        assert!(steps_back(cited, 100, LineRange::single(13)));
+        assert!(steps_back(cited, 100, LineRange::single(1)));
+        // A change answers for the whole range it replaces.
+        assert!(!steps_back(cited, 100, LineRange::new(12, 20)));
+        // Nothing singled out: nothing sits back.
+        assert!(!steps_back(
+            LineRange::new(1, 100),
+            100,
+            LineRange::single(50)
+        ));
+    }
     /// A plain line of the file, numbered `n`.
     fn line(n: u32) -> Row {
         Row {
@@ -3605,6 +3944,31 @@ mod tests {
             inlay: Vec::new(),
             extra: None,
         }
+    }
+
+    #[test]
+    fn a_value_opens_and_closes_at_the_room_pace() {
+        // A value is a room like any other: it opens and closes at the one
+        // room pace, the same both ways.
+        assert_eq!(UNFOLD, ROOM);
+        assert_eq!(REFOLD, ROOM);
+    }
+
+    #[test]
+    fn only_the_rows_under_a_moving_value_are_lifted() {
+        // Rows 3 to 5 opening, a quarter of the way: the room for them is a
+        // quarter there, so everything under them is drawn three quarters of
+        // three rows higher than its slot, and nothing above them moves.
+        let blocks = [(3, 5, 0.25, 0.)];
+        assert!(lift_at(&blocks, 2).abs() < f32::EPSILON);
+        assert!(lift_at(&blocks, 5).abs() < f32::EPSILON);
+        assert!((lift_at(&blocks, 6) - 2.25).abs() < 1e-5);
+        assert!((lift_at(&blocks, 400) - 2.25).abs() < 1e-5);
+        // Two at once add up below both.
+        let blocks = [(3, 5, 0.25, 0.), (10, 10, 0., 0.)];
+        assert!((lift_at(&blocks, 11) - 3.25).abs() < 1e-5);
+        // And a value at rest lifts nothing.
+        assert!(lift_at(&[(3, 5, 1., 1.)], 9).abs() < f32::EPSILON);
     }
 
     /// What a pane's rows say, one word per row: the number of a line, or the

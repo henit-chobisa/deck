@@ -139,8 +139,21 @@ pub enum Lit {
     /// the deck's own accent — which is the right answer for a picture with
     /// one path through it.
     On(f32, Option<Rgb>),
-    /// Not on the path, while a path is being shown.
-    Aside,
+    /// Not on the path, while a path is being shown, and this far stepped
+    /// back: zero is the picture at rest, one is all the way back.
+    ///
+    /// A level rather than a switch so that the agent's point can ease the
+    /// rest of the picture back instead of cutting it. A flow always passes
+    /// one, and `Aside(1.)` is exactly what plain `Aside` used to draw.
+    Aside(f32),
+    /// The block the agent is pointing at, part way up. The first number is
+    /// how much the block is lit (zero is as far back as the rest of the
+    /// picture, one is as the path would show it) and the second is how far
+    /// back the rest of the picture is.
+    ///
+    /// Not `On`, because `On` starts from stepped-back and a block that has
+    /// just been pointed at starts from where it was resting.
+    Held(f32, f32),
 }
 
 /// How a node is coloured: by how much it matters, whether the reader has
@@ -160,11 +173,25 @@ pub fn skin(weight: Weight, picked: bool, lit: Lit, palette: &Palette) -> Skin {
     // not have to learn it again while a flow is playing.
     let (fill, edge, width) = match lit {
         Lit::Resting => (fill, edge, width),
-        Lit::Aside => (
-            fill.mix(palette.bg, ASIDE),
-            edge.mix(palette.bg, ASIDE),
+        Lit::Aside(back) => (
+            fill.mix(palette.bg, ASIDE * back),
+            edge.mix(palette.bg, ASIDE * back),
             width,
         ),
+        // Between the block stepped back by `back` and the block fully lit.
+        Lit::Held(much, back) => {
+            let lit = palette.accent;
+            let from = (
+                fill.mix(palette.bg, ASIDE * back),
+                edge.mix(palette.bg, ASIDE * back),
+            );
+            let to = (fill.mix(lit, 0.16), lit);
+            (
+                from.0.mix(to.0, much),
+                from.1.mix(to.1, much),
+                width + (1.5_f32 - width).max(0.) * much,
+            )
+        }
         // Mixed rather than switched. A box on the path is drawn between where
         // it was and where the current will leave it, so the light arrives
         // through it instead of landing on it.
@@ -211,7 +238,10 @@ pub fn arrow_colour(lit: Lit, back: bool, palette: &Palette) -> Rgb {
         Lit::On(much, tint) => quiet
             .mix(palette.bg, ASIDE)
             .mix(tint.unwrap_or(palette.accent), much),
-        Lit::Aside => quiet.mix(palette.bg, ASIDE),
+        Lit::Aside(back) => quiet.mix(palette.bg, ASIDE * back),
+        Lit::Held(much, back) => quiet
+            .mix(palette.bg, ASIDE * back)
+            .mix(palette.accent, much),
         Lit::Resting => {
             if back {
                 palette.accent
@@ -536,6 +566,20 @@ mod tests {
     use super::*;
     use crate::theme::{Imported, Syntax, derive};
 
+    #[test]
+    fn a_stepped_back_level_runs_from_resting_to_the_old_aside() {
+        // The point eases the picture back, so the ends have to be the looks
+        // the drawing always had: none stepped back is resting, all the way
+        // is what `Aside` used to be, and a block fully held is a block on.
+        let palette = palette();
+        let at = |lit| skin(Weight::Normal, false, lit, &palette);
+        assert_eq!(at(Lit::Aside(0.)), at(Lit::Resting));
+        assert_eq!(at(Lit::Held(0., 0.)), at(Lit::Resting));
+        assert_eq!(at(Lit::Held(1., 1.)), at(Lit::On(1., None)));
+        assert_ne!(at(Lit::Aside(1.)), at(Lit::Resting));
+        assert_eq!(at(Lit::Aside(1.)).edge, palette.edge.mix(palette.bg, ASIDE));
+    }
+
     fn palette() -> Palette {
         let hex = |s: &str| Rgb::from_hex(s).expect("a colour");
         derive(Imported {
@@ -609,7 +653,7 @@ mod tests {
                 ("accent", Weight::Accent, false, Lit::Resting),
                 ("muted", Weight::Muted, false, Lit::Resting),
                 ("picked", Weight::Normal, true, Lit::Resting),
-                ("aside", Weight::Normal, false, Lit::Aside),
+                ("aside", Weight::Normal, false, Lit::Aside(1.)),
                 ("half lit", Weight::Normal, false, Lit::On(0.5, None)),
             ] {
                 let mut prims = Vec::new();

@@ -97,13 +97,17 @@ pub const fn chip_size(prose: f32) -> f32 {
 }
 
 /// The rail beside the panes and the band, before anyone drags it.
-pub const RAIL: f32 = 365.;
+pub const RAIL: f32 = 400.;
 
 /// What the rail's own record of the conversation is set in, and its pitch.
 pub const RAIL_SIZE: f32 = 12.5;
 
 /// See [`RAIL_SIZE`].
 pub const RAIL_LEADING: f32 = 19.;
+
+/// The header over a pane, naming its file: set in the code face, a size
+/// under the code beneath it.
+pub const PANE_HEAD: f32 = 10.5;
 
 /// The strip along the bottom: its text size, its padding across and down,
 /// and the gap between what it says.
@@ -151,9 +155,10 @@ mod tests {
             (PROSE_LEADING, 20.),
             (PROSE_SPACING, 10.),
             (CHIP_SIZE, 11.4),
-            (RAIL, 365.),
+            (RAIL, 400.),
             (RAIL_SIZE, 12.5),
             (RAIL_LEADING, 19.),
+            (PANE_HEAD, 10.5),
             (STRIP_SIZE, 10.5),
             (STRIP_SIDE, 14.),
             (STRIP_ROW, 7.),

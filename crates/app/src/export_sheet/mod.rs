@@ -49,7 +49,7 @@ use gpui_kit::*;
 pub use model::quoted;
 pub use model::{Borrowed, Choice, Format, Layout, Look, Saved, Theme};
 
-use crate::palette::paint;
+use crate::palette::{hover_on_band, paint};
 
 gpui_kit::actions!(
     deck_export,
@@ -108,6 +108,10 @@ enum Control {
     /// Changing your mind between the two.
     AllowCancel(usize),
     Export,
+    /// Once a file is saved: put the sheet away.
+    Done,
+    /// Once a file is saved: back to the choices, to write another.
+    Again,
 }
 
 /// The answer a save dialog will give: the path chosen, `None` for Cancel,
@@ -236,6 +240,67 @@ enum Phase {
     Failed(String),
 }
 
+impl Phase {
+    /// Where *Export again* goes: back to ready, with every choice as it
+    /// was, from a file saved or an export that failed. Nothing else is
+    /// taken back; a dialog or a write under way is not the reader's to
+    /// restart.
+    fn again(&self) -> Self {
+        match self {
+            Self::Saved(_) | Self::Failed(_) => Self::Ready,
+            other => other.clone(),
+        }
+    }
+}
+
+/// How the sheet and the theme list come and go: the surface pace the cards
+/// over the window have, in quick enough to feel like the press caused it,
+/// out a little quicker, so putting it away is something you see happen.
+fn surface() -> crate::pane::Fade {
+    crate::pane::Fade::default().paced(
+        std::time::Duration::from_millis(200),
+        std::time::Duration::from_millis(160),
+    )
+}
+
+/// How a thumbnail answers a pointer or a choice: the feedback pace.
+fn feedback() -> crate::pane::Fade {
+    crate::pane::Fade::default().paced(
+        std::time::Duration::from_millis(120),
+        std::time::Duration::from_millis(200),
+    )
+}
+
+/// How far a small page is lit: chosen, and under the pointer.
+#[derive(Debug, Clone, Copy)]
+struct Thumb {
+    chosen: crate::pane::Fade,
+    hovered: crate::pane::Fade,
+}
+
+impl Thumb {
+    fn new() -> Self {
+        Self {
+            chosen: feedback(),
+            hovered: feedback(),
+        }
+    }
+
+    /// How opaque it is drawn, from the level it is dimmed to when it is
+    /// neither chosen nor under the pointer, to whole when it is either.
+    fn opacity(&self) -> f32 {
+        let lit = self.chosen.level().max(self.hovered.level());
+        DIMMED + (1. - DIMMED) * lit
+    }
+
+    fn moving(&self) -> bool {
+        self.chosen.moving() || self.hovered.moving()
+    }
+}
+
+/// How dim a small page is while it is not the big one.
+const DIMMED: f32 = 0.7;
+
 /// One option set's pages, laid out.
 struct Laid {
     pages: Vec<Arc<Page>>,
@@ -311,6 +376,16 @@ pub struct ExportSheet {
     /// groups it runs well past the sheet's edge.
     thumbs: ScrollHandle,
     phase: Phase,
+    /// How far the sheet has come in. Put away, it goes out on this, and is
+    /// let go of by the window only once it is out.
+    fade: crate::pane::Fade,
+    /// How far the theme list has come in.
+    list_fade: crate::pane::Fade,
+    /// The theme list on its way out: shut, but still drawn until it has
+    /// faded, with the filter it had.
+    parting: Option<themes::Picking>,
+    /// The small pages' lights, one for each.
+    thumb_lights: Vec<Thumb>,
     /// Takes the save dialog down, while it is up and the deck has a way to:
     /// for when the reader stops waiting on it from the sheet.
     put_away: Option<Box<dyn FnOnce()>>,
@@ -370,6 +445,10 @@ impl ExportSheet {
             drawings: Arc::new(preview::Drawings::new()),
             thumbs: ScrollHandle::new(),
             phase: Phase::Ready,
+            fade: surface(),
+            list_fade: surface(),
+            parting: None,
+            thumb_lights: Vec::new(),
             put_away: None,
             reading: Task::ready(()),
             laying: Task::ready(()),
@@ -378,6 +457,7 @@ impl ExportSheet {
             #[cfg(debug_assertions)]
             debug: None,
         };
+        sheet.fade.set(true);
         sheet.read(cx);
         sheet.discover(cx);
         sheet
@@ -751,8 +831,30 @@ impl ExportSheet {
         }
     }
 
+    /// Put the sheet away: it starts to fade, and says so. It is the window
+    /// that lets go of it, once [`Self::gone`].
     fn close(&mut self, cx: &mut Context<Self>) {
+        self.leave(cx);
         cx.emit(Closed);
+    }
+
+    /// Start fading out, if it has not.
+    pub fn leave(&mut self, cx: &mut Context<Self>) {
+        if self.fade.set(false) {
+            cx.notify();
+        }
+    }
+
+    /// Whether it has faded out all the way, and can be let go of.
+    #[must_use]
+    pub fn gone(&self) -> bool {
+        !self.fade.on() && !self.fade.moving()
+    }
+
+    /// Again: back to the choices, as they were.
+    fn again(&mut self, cx: &mut Context<Self>) {
+        self.phase = self.phase.again();
+        cx.notify();
     }
 
     /// Whether a file is being asked for or written: the sheet stays up
@@ -778,6 +880,10 @@ impl ExportSheet {
     /// While a file is being written, nothing: the write is the reader's
     /// answer already, and what came of it is said on the sheet when it ends.
     fn escape(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        // On its way out: the keys are still the sheet's, and do nothing.
+        if !self.fade.on() {
+            return;
+        }
         if self.picking.is_some() {
             self.close_themes(window, cx);
             return;
@@ -830,7 +936,9 @@ impl ExportSheet {
                 }
             }
         }
-        if !matches!(self.phase, Phase::Saved(_)) {
+        if matches!(self.phase, Phase::Saved(_)) {
+            order.extend([Control::Done, Control::Again]);
+        } else {
             order.push(Control::Export);
         }
         order
@@ -880,7 +988,7 @@ impl ExportSheet {
     /// secret let through then would be let through for an export already
     /// on its way. Paging the preview is not a press, and goes on.
     fn press(&mut self, control: Control, window: &mut Window, cx: &mut Context<Self>) {
-        if self.busy() {
+        if self.busy() || !self.fade.on() {
             return;
         }
         let fingerprint = |sheet: &Self, ix: usize| match &sheet.scan {
@@ -952,6 +1060,8 @@ impl ExportSheet {
                 cx.notify();
             }
             Control::Export => self.export(window, cx),
+            Control::Done => self.close(cx),
+            Control::Again => self.again(cx),
         }
     }
 
@@ -1165,7 +1275,7 @@ fn ground(filled: bool, palette: &Palette) -> Div {
 fn label(text: &'static str, palette: &Palette) -> Div {
     div()
         .text_size(px(10.5))
-        .font_weight(FontWeight::MEDIUM)
+        .font_weight(FontWeight::SEMIBOLD)
         .text_color(paint(palette.muted))
         .child(text.to_uppercase())
 }
@@ -1205,6 +1315,23 @@ impl Render for ExportSheet {
         #[cfg(debug_assertions)]
         self.debug_render(window, cx);
         let palette = self.palette;
+        // Out all the way: the window may let go of it now. Said from here,
+        // where the last frame of the fade has just been worked out, rather
+        // than by a timer that could land before or after it.
+        if self.gone() {
+            cx.emit(Closed);
+        }
+        // The theme list, once it has faded, is let go with its filter.
+        if self.picking.is_none() && !self.list_fade.moving() {
+            self.parting = None;
+        }
+        let shown_sheet = self.fade.level();
+        if self.fade.moving()
+            || self.list_fade.moving()
+            || self.thumb_lights.iter().any(Thumb::moving)
+        {
+            window.request_animation_frame();
+        }
         self.order = self.tab_order(cx);
         let stops: HashMap<Control, FocusHandle> = self
             .order
@@ -1420,9 +1547,8 @@ impl Render for ExportSheet {
                     .child(
                         div()
                             .flex_none()
-                            .text_size(px(11.5))
                             .text_color(paint(palette.accent))
-                            .child("▾"),
+                            .child(Icon::new(IconName::ChevronDown).size(px(12.))),
                     ),
             );
         let list = self.theme_list(&stops, cx);
@@ -1488,7 +1614,7 @@ impl Render for ExportSheet {
                                 .flex_none()
                                 .text_size(px(11.5))
                                 .text_color(paint(palette.muted))
-                                .child(format!("{said} said")),
+                                .child(model::comments(said)),
                         )
                     })
             }));
@@ -1531,7 +1657,7 @@ impl Render for ExportSheet {
                         div()
                             .font_weight(FontWeight::SEMIBOLD)
                             .text_color(paint(warn))
-                            .child("Before you export."),
+                            .child("Before you export"),
                     )
                     .children(laid.notices.iter().map(|said| div().child(sentence(said))))
             });
@@ -1625,26 +1751,27 @@ impl Render for ExportSheet {
             .text_size(px(11.5))
             .line_height(px(16.5))
             .text_color(paint(palette.muted))
-            .child(
-                div()
-                    .flex_none()
-                    .mt(px(1.))
-                    .size(px(14.))
-                    .rounded(px(3.))
-                    .border_1()
-                    .border_color(paint(good))
-                    .flex()
-                    .items_center()
-                    .justify_center()
-                    .text_size(px(10.))
-                    .line_height(px(10.))
-                    .text_color(paint(good))
-                    .child("✓"),
-            )
+            // No mark: deck's icons have no lock or shield, and a tick box here
+            // read as one more setting beside the real ones. The text keeps
+            // the column a mark would have had (14px and the gap), so it
+            // lines up with the tick boxes' text.
+            .child(div().flex_none().w(px(14.)))
             .child(div().flex_1().min_w_0().child(
                 "Leaves the machine the way a .deck does: paths taken out, scanned for \
                  secrets, the deck itself inside.",
             ));
+        // A button that is a button beside the real ones: edged, washed on
+        // hover. Reveal and Open are small ones; Export again is a large one.
+        let secondary = |id: &'static str| {
+            div()
+                .id(id)
+                .flex_none()
+                .cursor_pointer()
+                .border_1()
+                .border_color(paint(palette.edge))
+                .text_color(paint(palette.fg))
+                .hover(|this| this.bg(paint(hover_on_band(&palette))))
+        };
         let go = match &self.phase {
             Phase::Saved(saved) => {
                 let (reveal, open) = (saved.path.clone(), saved.path.clone());
@@ -1674,20 +1801,20 @@ impl Render for ExportSheet {
                             )
                             .child(saved.line())
                             .child(
-                                div()
-                                    .id("x-reveal")
-                                    .cursor_pointer()
-                                    .text_color(paint(palette.accent))
-                                    .hover(|this| this.text_color(paint(palette.fg)))
+                                secondary("x-reveal")
+                                    .px(px(10.))
+                                    .py(px(4.))
+                                    .rounded(px(6.))
+                                    .text_size(px(12.))
                                     .on_click(move |_, _, cx| cx.reveal_path(&reveal))
                                     .child("Reveal"),
                             )
                             .child(
-                                div()
-                                    .id("x-open")
-                                    .cursor_pointer()
-                                    .text_color(paint(palette.accent))
-                                    .hover(|this| this.text_color(paint(palette.fg)))
+                                secondary("x-open")
+                                    .px(px(10.))
+                                    .py(px(4.))
+                                    .rounded(px(6.))
+                                    .text_size(px(12.))
                                     .on_click(move |_, _, cx| cx.open_with_system(&open))
                                     .child("Open"),
                             ),
@@ -1705,6 +1832,54 @@ impl Render for ExportSheet {
                                 deck_core::home::home().as_deref(),
                             )),
                     )
+                    // Where it goes from here: out, or round again with the
+                    // same choices. A saved sheet was a dead end that only
+                    // escape got out of.
+                    .child(
+                        div()
+                            .h_flex()
+                            .gap(px(8.))
+                            .child(
+                                ring(div().id("x-done"), Control::Done)
+                                    .flex_1()
+                                    .h_flex()
+                                    .justify_center()
+                                    .items_center()
+                                    .px(px(12.))
+                                    .py(px(10.))
+                                    .rounded(px(8.))
+                                    .border_1()
+                                    .border_color(paint(palette.accent))
+                                    .text_size(px(13.5))
+                                    .font_weight(FontWeight::SEMIBOLD)
+                                    .bg(paint(palette.accent))
+                                    .text_color(paint(palette.on_accent))
+                                    .cursor_pointer()
+                                    .hover(|this| {
+                                        let lit = palette.accent.mix(palette.fg, 0.16);
+                                        this.bg(paint(lit)).border_color(paint(lit))
+                                    })
+                                    .on_click(cx.listener(|sheet, _, window, cx| {
+                                        sheet.press(Control::Done, window, cx);
+                                    }))
+                                    .child("Done"),
+                            )
+                            .child(
+                                ring(secondary("x-again"), Control::Again)
+                                    .h_flex()
+                                    .justify_center()
+                                    .items_center()
+                                    .px(px(14.))
+                                    .py(px(10.))
+                                    .rounded(px(8.))
+                                    .text_size(px(13.5))
+                                    .font_weight(FontWeight::SEMIBOLD)
+                                    .on_click(cx.listener(|sheet, _, window, cx| {
+                                        sheet.press(Control::Again, window, cx);
+                                    }))
+                                    .child("Export again"),
+                            ),
+                    )
             }
             _ => div().v_flex().gap(px(8.)).child(
                 ring(div().id("x-export"), Control::Export)
@@ -1714,18 +1889,28 @@ impl Render for ExportSheet {
                     .px(px(12.))
                     .py(px(10.))
                     .rounded(px(8.))
+                    .border_1()
                     .text_size(px(13.5))
                     .font_weight(FontWeight::SEMIBOLD)
                     .on_click(cx.listener(|sheet, _, window, cx| {
                         sheet.press(Control::Export, window, cx);
                     }))
+                    // The same size ready or not: the edge is there either way.
                     .when(ready, |this| {
                         this.bg(paint(palette.accent))
+                            .border_color(paint(palette.accent))
                             .text_color(paint(palette.on_accent))
                             .cursor_pointer()
+                            .hover(|this| {
+                                let lit = palette.accent.mix(palette.fg, 0.16);
+                                this.bg(paint(lit)).border_color(paint(lit))
+                            })
                     })
+                    // Muted text on the edge colour was barely there in the
+                    // light themes; this is a field with nothing to press.
                     .when(!ready, |this| {
-                        this.bg(paint(palette.edge))
+                        this.bg(paint(palette.wash))
+                            .border_color(paint(palette.edge))
                             .text_color(paint(palette.muted))
                     })
                     .child(match waiting {
@@ -1744,7 +1929,7 @@ impl Render for ExportSheet {
                 .gap(px(2.))
                 .child(
                     div()
-                        .text_size(px(15.))
+                        .text_size(px(18.))
                         .font_weight(FontWeight::SEMIBOLD)
                         .child("Export this deck"),
                 )
@@ -1844,8 +2029,16 @@ impl Render for ExportSheet {
             .and_then(|l| l.labels.get(self.page).cloned())
             .unwrap_or_else(|| "laying it out".to_string());
         let unit = if pdf { "page" } else { "view" };
+        // The small pages' lights follow the choice, a pointer at a time:
+        // one for each page, kept as pages come and go.
+        self.thumb_lights.resize_with(pages.len(), Thumb::new);
+        let at = self.page;
+        for (ix, light) in self.thumb_lights.iter_mut().enumerate() {
+            light.chosen.set(ix == at);
+        }
+        let lights = self.thumb_lights.clone();
         let meta = match self.choice.shape() {
-            None => "HTML · shown as landscape pages, a browser sets the file",
+            None => "HTML · previewed as landscape pages",
             Some(export::Format::Portrait) => "portrait · A4",
             Some(export::Format::Landscape) => "landscape · A4",
         };
@@ -1982,7 +2175,7 @@ impl Render for ExportSheet {
                     .children(pages.iter().enumerate().map(|(ix, page)| {
                         let height = 84.;
                         let width = height * page.width / page.height;
-                        let current = ix == self.page;
+                        let light = lights.get(ix).copied().unwrap_or_else(Thumb::new);
                         div()
                             .id(("x-thumb", ix))
                             .flex_none()
@@ -1990,13 +2183,19 @@ impl Render for ExportSheet {
                             .h(px(height + 2.))
                             .rounded(px(4.))
                             .border_1()
-                            .border_color(paint(if current {
-                                palette.accent
-                            } else {
-                                palette.edge
-                            }))
-                            .when(!current, |this| this.opacity(0.7))
+                            .border_color(paint(palette.edge.mix(
+                                palette.accent,
+                                light.chosen.level().max(light.hovered.level() * 0.5),
+                            )))
+                            .opacity(light.opacity())
                             .cursor_pointer()
+                            .on_hover(cx.listener(move |sheet, hovered: &bool, _, cx| {
+                                if let Some(light) = sheet.thumb_lights.get_mut(ix)
+                                    && light.hovered.set(*hovered)
+                                {
+                                    cx.notify();
+                                }
+                            }))
                             .on_click(cx.listener(move |sheet, _, _, cx| {
                                 sheet.page = ix;
                                 cx.notify();
@@ -2049,13 +2248,36 @@ impl Render for ExportSheet {
                     ),
             )
             .child(
+                // The strip's keys, drawn as the strip draws them, each with
+                // its word.
                 div()
                     .flex_none()
-                    .text_center()
+                    .h_flex()
+                    .justify_center()
+                    .items_center()
+                    .gap(px(14.))
                     .font_family(mono.clone())
                     .text_size(px(11.))
                     .text_color(paint(palette.muted))
-                    .child("esc close · ← → page · tab move · space choose"),
+                    .children(
+                        [
+                            (&["esc"][..], "close"),
+                            (&["←", "→"][..], "page"),
+                            (&["tab"][..], "move"),
+                            (&["space"][..], "choose"),
+                        ]
+                        .map(|(keys, word)| {
+                            div()
+                                .h_flex()
+                                .items_center()
+                                .gap(px(5.))
+                                .children(
+                                    keys.iter()
+                                        .map(|key| crate::keys::cap(key, &palette, mono.clone())),
+                                )
+                                .child(word)
+                        }),
+                    ),
             );
 
         div()
@@ -2097,10 +2319,15 @@ impl Render for ExportSheet {
             .px(px(16.))
             .pt(px(34.))
             .pb(px(52.))
+            .opacity(shown_sheet)
             .bg(paint(palette.bg).opacity(0.72))
             .child(
                 div()
                     .id("export-sheet")
+                    // Rises the last few points into place as it comes in,
+                    // and sinks back as it goes.
+                    .relative()
+                    .top(px(8. * (1. - shown_sheet)))
                     .flex_1()
                     .min_h_0()
                     .w_full()

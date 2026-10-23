@@ -103,9 +103,9 @@ impl Render for NotesBody {
                 .map(|(ix, block)| match block {
                     Block::Heading(text) => div()
                         .when(ix > 0, |this| this.pt(px(10.)))
-                        .text_size(px(11.))
+                        .text_size(px(10.5))
                         .font_weight(FontWeight::SEMIBOLD)
-                        .text_color(paint(palette.accent))
+                        .text_color(paint(palette.muted))
                         .child(text.to_uppercase())
                         .into_any_element(),
                     Block::Para(text) => prose(text),

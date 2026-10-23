@@ -156,9 +156,9 @@ pub fn captures(palette: &Palette, dark: bool, imported: Syntax) -> Vec<Capture>
         one("number", literal),
         one("boolean", literal),
         one("constant", literal),
-        one("attribute", palette.muted),
-        one("operator", palette.muted),
-        one("punctuation", palette.muted),
+        one("attribute", palette.punctuation),
+        one("operator", palette.punctuation),
+        one("punctuation", palette.punctuation),
         one("variable", palette.fg),
         one("property", palette.fg),
     ]
@@ -206,7 +206,7 @@ pub fn theme(palette: &Palette, dark: bool, imported: Syntax) -> Arc<HighlightTh
         // The gutter recedes further than any label: line numbers are there to
         // be referred to, not read.
         gutter = palette.fg.mix(palette.wash, 0.62).to_hex(),
-        muted = palette.muted.to_hex(),
+        muted = palette.punctuation.to_hex(),
         syntax = syntax.join(", "),
     );
 

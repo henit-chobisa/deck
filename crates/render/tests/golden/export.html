@@ -14,13 +14,13 @@
 @font-face{font-family:'IBM Plex Sans';font-weight:400;font-style:italic;src:url(data:font/ttf;base64,…) format('truetype')}
 @font-face{font-family:'JetBrains Mono';font-weight:400;font-style:normal;src:url(data:font/ttf;base64,…) format('truetype')}
 @font-face{font-family:'JetBrains Mono';font-weight:400;font-style:italic;src:url(data:font/ttf;base64,…) format('truetype')}
-:root{color-scheme:dark;--page:#282828;--band:#242424;--pane:#262626;--edge:#4f4f4f;--page-text:#ebdbb2;--page-muted:#999078;--page-accent:#fe8019;--band-text:#ebdbb2;--band-muted:#999078;--band-accent:#fe8019;--pane-text:#ebdbb2;--pane-muted:#999078;--pane-accent:#fe8019;--prose:#e8d8b0;--number:#864d1f;--chip-ground:#2f2f2f;--name:#fe8019;--name-ground:#3e2f23;--name-edge:#654021;--quiet:#5b5a57;--stem:#625f59;--going:#fc6654;--arriving:#b8bb26;--high:#b8bb26;--medium:#f89b47;--low:#fb4934;--sans:'IBM Plex Sans',system-ui,sans-serif;--mono:'JetBrains Mono',ui-monospace,monospace}
+:root{color-scheme:dark;--page:#282828;--band:#262626;--pane:#242424;--edge:#4f4f4f;--page-text:#ebdbb2;--page-muted:#999078;--page-accent:#fe8019;--band-text:#ebdbb2;--band-muted:#999078;--band-accent:#fe8019;--pane-text:#ebdbb2;--pane-muted:#999078;--pane-accent:#fe8019;--prose:#eadab2;--number:#874f20;--chip-ground:#313131;--name:#fe8019;--name-ground:#403124;--name-edge:#674122;--quiet:#5b5a57;--stem:#625f59;--going:#fc6654;--arriving:#b8bb26;--high:#b8bb26;--medium:#f89b47;--low:#fb4e39;--sans:'IBM Plex Sans',system-ui,sans-serif;--mono:'JetBrains Mono',ui-monospace,monospace}
 *{box-sizing:border-box}
 html{scroll-snap-type:y mandatory}
 body{margin:0;background:var(--page);color:var(--page-text);font:400 13.2px/1.4 var(--sans);font-kerning:normal;-webkit-print-color-adjust:exact;print-color-adjust:exact}
 a{color:inherit;text-decoration:none}
 a:focus-visible{outline:2px solid var(--band-accent);outline-offset:2px;border-radius:2px}
-.stop{position:relative;width:100%;height:100vh;min-height:560px;display:grid;grid-template-columns:minmax(0,1fr) 365px;grid-template-rows:auto minmax(0,1fr) auto;scroll-snap-align:start;overflow:hidden;background:var(--page);border-bottom:1px solid var(--edge)}
+.stop{position:relative;width:100%;height:100vh;min-height:560px;display:grid;grid-template-columns:minmax(0,1fr) 400px;grid-template-rows:auto minmax(0,1fr) auto;scroll-snap-align:start;overflow:hidden;background:var(--page);border-bottom:1px solid var(--edge)}
 .stop.empty{display:grid;place-items:center;color:var(--page-muted)}
 .band{grid-column:1;background:var(--band);color:var(--band-text);display:flex;flex-direction:column;gap:9px;padding-bottom:14px;min-height:231px;max-height:300px;border-bottom:1px solid var(--edge);min-width:0}
 .head{display:flex;align-items:center;gap:14px;padding:15px 18px 0;min-width:0}
@@ -50,7 +50,7 @@ h2{margin:0;font-size:15px;font-weight:600;color:var(--band-text);white-space:no
 .pane{flex:1 1 0;display:flex;flex-direction:column;min-width:0;min-height:0;border-right:1px solid var(--edge);overflow:hidden}
 .pane.code{flex-grow:1.3}
 .pane:last-child{border-right:0}
-.ph{flex:none;display:flex;gap:8px;align-items:baseline;padding:12px 16px 6px;font:400 11.5px var(--mono);color:var(--pane-muted);white-space:nowrap;overflow:hidden}
+.ph{flex:none;display:flex;gap:8px;align-items:baseline;padding:12px 16px 6px;font:400 10.5px var(--mono);color:var(--pane-muted);white-space:nowrap;overflow:hidden}
 .ph b{font-weight:400;color:var(--pane-accent)}
 .ph .file{overflow:hidden;text-overflow:ellipsis}
 .ph a{color:inherit;text-decoration:underline;text-decoration-color:var(--edge);text-underline-offset:3px}
@@ -78,7 +78,7 @@ h2{margin:0;font-size:15px;font-weight:600;color:var(--band-text);white-space:no
 .marks{flex:none;display:flex;flex-wrap:wrap;gap:4px 12px;padding:0 16px 10px;font:400 11px var(--mono);color:var(--pane-muted)}
 iframe.page{flex:1;min-height:0;width:100%;border:0;background:transparent}
 .side{grid-column:2;grid-row:1/3;background:var(--band);border-left:1px solid var(--edge);padding:26px 22px;display:flex;flex-direction:column;gap:14px;overflow:hidden;color:var(--band-muted)}
-.side h4{margin:0;display:flex;justify-content:space-between;font:500 11px var(--sans);letter-spacing:.08em;text-transform:uppercase;color:var(--band-muted)}
+.side h4{margin:0;display:flex;justify-content:space-between;font:600 10.5px var(--sans);text-transform:uppercase;color:var(--band-muted)}
 .toc{margin:0;padding:0;list-style:none;display:grid;gap:9px;font-size:12.5px;line-height:19px}
 .toc a{display:grid;grid-template-columns:18px minmax(0,1fr);gap:6px}
 .toc a:hover{color:var(--band-text)}
@@ -100,7 +100,7 @@ iframe.page{flex:1;min-height:0;width:100%;border:0;background:transparent}
 .thin .count{margin-left:auto;flex:none;font:400 11px var(--mono);color:var(--band-muted)}
 .thread{grid-column:1;min-height:0;overflow:auto;padding:24px 30px;background:var(--page)}
 .cols{column-width:340px;column-count:2;column-gap:34px;column-rule:1px solid var(--edge)}
-.msg{break-inside:avoid;display:grid;grid-template-columns:10px minmax(0,1fr);gap:8px;margin:0 0 16px;font-size:13px;line-height:1.55;color:var(--page-text)}
+.msg{break-inside:avoid;display:grid;grid-template-columns:10px minmax(0,1fr);gap:8px;margin:0 0 16px;font-size:12.5px;line-height:19px;color:var(--page-text)}
 .msg .dot{width:8px;height:8px;border-radius:50%;margin-top:6px;border:1.5px solid var(--page-muted)}
 .msg.reader .dot{background:var(--page-accent);border-color:var(--page-accent)}
 .who{display:flex;gap:6px;font-size:10.5px;color:var(--page-muted)}
@@ -112,22 +112,22 @@ iframe.page{flex:1;min-height:0;width:100%;border:0;background:transparent}
 .q .quote{padding:2px 10px;white-space:pre-wrap;background:var(--pane);color:var(--pane-text)}
 @page{size:297mm 210mm;margin:0}
 @media print{html{scroll-snap-type:none}.stop{width:297mm;height:210mm;min-height:0;break-before:page;border:0}.stop:first-child{break-before:auto}.go{display:none}.prose,.rows,.dg,.thread{overflow:hidden}}
-.i5{color:#739666}
+.i5{color:#719464}
 .i14{color:#8ec07c}
-.i4{color:#938c78}
-.i13{color:#938c7a}
+.i13{color:#918a76}
+.i4{color:#918a77}
 .i10{color:#9f9680}
+.i2{color:#a59b80}
 .i12{color:#a59e89}
-.i2{color:#a69c81}
 .i8{color:#a8a08c}
-.i1{color:#ab818c}
-.i3{color:#b0882c}
+.i1{color:#a97f8a}
+.i3{color:#af872b}
 .i11{color:#d3869b}
 .i7{color:#d58ca0}
 .i6{color:#ebdbb2}
 .i9{color:#fabd2f}
 .i0{color:#fe8019}
-.b0{background:#262626}
+.b0{background:#242424}
 .b3{background:#373727}
 .b2{background:#3f2b28}
 .b1{background:#483425}
@@ -162,10 +162,10 @@ iframe.page{flex:1;min-height:0;width:100%;border:0;background:transparent}
 </div></section>
 <section class="pane diagram" id="pane-g1d1"><div class="ph"><b>path</b><span class="file">diagram</span></div><div class="dg"><svg xmlns="http://www.w3.org/2000/svg" width="216" height="210" viewBox="0 0 216 210" role="img" aria-label="diagram" font-family="'IBM Plex Sans', sans-serif" style="font-kerning:normal">
 <title>diagram</title>
-<rect x="0" y="0" width="216" height="210" fill="#262626"/>
-<rect x="107.38" y="84" width="1.25" height="21" rx="0" fill="#928a73"/>
-<rect x="107.38" y="105" width="1.25" height="21" rx="0" fill="#928a73"/>
-<path d="M108 126L104.75 117L111.25 117Z" fill="#928a73"/>
+<rect x="0" y="0" width="216" height="210" fill="#242424"/>
+<rect x="107.38" y="84" width="1.25" height="21" rx="0" fill="#918972"/>
+<rect x="107.38" y="105" width="1.25" height="21" rx="0" fill="#918972"/>
+<path d="M108 126L104.75 117L111.25 117Z" fill="#918972"/>
 <g data-top="26" data-bottom="88">
 <path d="M53 26L163 26L194 57L163 88L53 88L22 57Z" fill="#4f4f4f"/>
 <path d="M53 27L163 27L193 57L163 87L53 87L23 57Z" fill="#282828"/>
@@ -178,7 +178,7 @@ iframe.page{flex:1;min-height:0;width:100%;border:0;background:transparent}
 <text x="99.56" y="157.5" font-size="12" font-weight="400" fill="#ebdbb2" xml:space="preserve">tail</text>
 </svg>
 </div></section>
-<section class="pane page" id="pane-g1p1"><div class="ph"><b>shown</b><span class="file">page</span></div><iframe class="page" sandbox="" referrerpolicy="no-referrer" title="shown" srcdoc="&lt;!doctype html&gt;&lt;meta charset=&quot;utf-8&quot;&gt;&lt;style&gt;:root{--deck-bg:#282828;--deck-fg:#ebdbb2;--deck-accent:#fe8019;--deck-on-accent:#282828;--deck-muted:#999078;--deck-edge:#4f4f4f;--deck-wash:#262626;--deck-add:#b8bb26;--deck-del:#fc6654;--deck-comment:#999078;}html,body{background:transparent;color:var(--deck-fg);font:12px ui-monospace,SFMono-Regular,Menlo,monospace;}[data-show]:not(.deck-seen),[data-from]:not(.deck-seen){opacity:0!important;pointer-events:none!important}&lt;/style&gt;&lt;h1 id=&quot;hi&quot;&gt;Hello&lt;/h1&gt;&lt;script&gt;parent.document.body.remove()&lt;/script&gt;&lt;img src=&quot;https://example.com/x.png&quot; srcset=&quot;//cdn.example.com/y.png 2x&quot;&gt;"></iframe></section>
+<section class="pane page" id="pane-g1p1"><div class="ph"><b>shown</b><span class="file">page</span></div><iframe class="page" sandbox="" referrerpolicy="no-referrer" title="shown" srcdoc="&lt;!doctype html&gt;&lt;meta charset=&quot;utf-8&quot;&gt;&lt;style&gt;:root{--deck-bg:#282828;--deck-fg:#ebdbb2;--deck-accent:#fe8019;--deck-on-accent:#282828;--deck-muted:#999078;--deck-edge:#4f4f4f;--deck-wash:#242424;--deck-add:#b8bb26;--deck-del:#fc6654;--deck-comment:#999078;}html,body{background:transparent;color:var(--deck-fg);font:12px ui-monospace,SFMono-Regular,Menlo,monospace;}[data-show]:not(.deck-seen),[data-from]:not(.deck-seen){opacity:0!important;pointer-events:none!important}&lt;/style&gt;&lt;h1 id=&quot;hi&quot;&gt;Hello&lt;/h1&gt;&lt;script&gt;parent.document.body.remove()&lt;/script&gt;&lt;img src=&quot;https://example.com/x.png&quot; srcset=&quot;//cdn.example.com/y.png 2x&quot;&gt;"></iframe></section>
 </div>
 <nav class="side" aria-label="Contents"><h4><span>Contents</span><span>1 of 3</span></h4><ol class="toc"><li class="on"><a href="#g1"><b>1</b><span>The error path &lt;script&gt;alert(1)&lt;/script&gt; counts twice</span></a><a class="said" href="#g1-argument">the argument · 2</a></li><li><a href="#g2"><b>2</b><span>Count once</span></a></li><li><a href="#g3"><b>3</b><span>Nothing else moves</span></a><a class="said" href="#g3-argument">the argument · 1</a></li></ol><ol class="toc"><li><a href="#said"><b>·</b><span>What was said about the deck</span></a></li></ol></nav>
 <footer class="strip"><a class="brand" href="https://trydeck.dev/?ref=export" rel="noopener noreferrer" target="_blank"><i></i>Powered by Deck</a><span>group 1/3</span><span class="fill">Why the batch counter stalls at 63</span><span>acme/ingest@a1b2c3d</span><span>20 Oct 2026</span><span>page 1 of 6</span><span class="go"><span aria-hidden="true">←</span><a href="#g1-argument" aria-label="Next">→</a></span></footer>

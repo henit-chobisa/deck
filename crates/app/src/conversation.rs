@@ -35,6 +35,25 @@ impl Default for Conversation {
 }
 
 impl Conversation {
+    /// Puts back a transcript that was held on disk.
+    ///
+    /// The clock has to follow it. `began` is when this process made the
+    /// conversation, so new moments count from zero again, and a restored
+    /// draft showed turns at 0:11, 0:25 and then 0:19. Moving `began` back by
+    /// the last restored moment keeps every new turn after the ones it sits
+    /// below. Should the machine's clock be too young to step back that far,
+    /// starting from now is the best that can be done.
+    pub fn restore(&mut self, transcript: Vec<Moment>) {
+        let last = transcript.iter().map(|moment| moment.at_ms).max();
+        self.transcript = transcript;
+        if let Some(last) = last {
+            let now = Instant::now();
+            self.began = now
+                .checked_sub(std::time::Duration::from_millis(last))
+                .unwrap_or(now);
+        }
+    }
+
     /// The record never waits for speech; only delivery waits for a gap.
     pub fn record(&mut self, moment: Moment, speaking: bool) -> Vec<Moment> {
         self.transcript.push(moment.clone());
@@ -93,6 +112,17 @@ mod tests {
             kind: Some(deck_core::Kind::Question),
             when,
         }
+    }
+
+    #[test]
+    fn a_restored_transcript_leaves_the_clock_after_its_last_moment() {
+        let mut conversation = Conversation::default();
+        let mut held = remark("before", When::Queue);
+        held.at_ms = 41_000;
+        conversation.restore(vec![held]);
+
+        let now = u64::try_from(conversation.began.elapsed().as_millis()).unwrap();
+        assert!(now >= 41_000, "a new moment must not be earlier: {now}");
     }
 
     #[test]

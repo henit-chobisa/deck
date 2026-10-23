@@ -505,6 +505,7 @@ mod tests {
             del: hex("#fb4934"),
             comment: hex("#a89984"),
             muted: hex("#a89984"),
+            punctuation: hex("#a89984"),
             edge: hex("#3a3735"),
             ground: hex("#0d0e0e"),
             gone: Rgb::new(0, 0, 0),

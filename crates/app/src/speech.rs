@@ -205,16 +205,6 @@ impl Voice {
         !self.next.is_empty() || self.fetching.is_some() || self.playing.is_some()
     }
 
-    /// Whether a passage is being made right now.
-    ///
-    /// Worth saying out loud in the panel. A cloud voice takes a second or two
-    /// to answer, and silence with nothing on screen to explain it reads as a
-    /// reply that never came.
-    #[must_use]
-    pub fn making(&self) -> bool {
-        self.fetching.is_some()
-    }
-
     /// The lines the narration is pointing at, if it is pointing anywhere.
     #[must_use]
     pub fn pointing(&self) -> Option<crate::prose::Spot> {

@@ -7,8 +7,8 @@
   "created": "2026-10-20T09:30:00Z",
   "inks": {
     "page": "#282828",
-    "band": "#242424",
-    "pane": "#262626",
+    "band": "#262626",
+    "pane": "#242424",
     "edge": "#4f4f4f",
     "on_page": {
       "text": "#ebdbb2",
@@ -30,7 +30,7 @@
     "levels": {
       "high": "#b8bb26",
       "medium": "#f89b47",
-      "low": "#fb4934"
+      "low": "#fb4e39"
     }
   },
   "contents": [
@@ -162,7 +162,7 @@
                 "kind": "context",
                 "distance": 8
               },
-              "ground": "#262626",
+              "ground": "#242424",
               "accent": "#fe8019",
               "spans": [
                 {
@@ -178,7 +178,7 @@
                 "kind": "context",
                 "distance": 7
               },
-              "ground": "#262626",
+              "ground": "#242424",
               "accent": "#fe8019",
               "spans": [
                 {
@@ -194,7 +194,7 @@
                 "kind": "context",
                 "distance": 6
               },
-              "ground": "#262626",
+              "ground": "#242424",
               "accent": "#fe8019",
               "spans": [
                 {
@@ -210,7 +210,7 @@
                 "kind": "context",
                 "distance": 5
               },
-              "ground": "#262626",
+              "ground": "#242424",
               "accent": "#fe8019",
               "spans": [
                 {
@@ -226,7 +226,7 @@
                 "kind": "context",
                 "distance": 4
               },
-              "ground": "#262626",
+              "ground": "#242424",
               "accent": "#fe8019",
               "spans": [
                 {
@@ -242,7 +242,7 @@
                 "kind": "context",
                 "distance": 3
               },
-              "ground": "#262626",
+              "ground": "#242424",
               "accent": "#fe8019",
               "spans": [
                 {
@@ -258,7 +258,7 @@
                 "kind": "context",
                 "distance": 2
               },
-              "ground": "#262626",
+              "ground": "#242424",
               "accent": "#fe8019",
               "spans": [
                 {
@@ -274,7 +274,7 @@
                 "kind": "context",
                 "distance": 1
               },
-              "ground": "#262626",
+              "ground": "#242424",
               "accent": "#fe8019",
               "spans": [
                 {
@@ -453,7 +453,7 @@
                 "kind": "context",
                 "distance": 1
               },
-              "ground": "#262626",
+              "ground": "#242424",
               "accent": "#fe8019",
               "spans": [
                 {
@@ -469,7 +469,7 @@
                 "kind": "context",
                 "distance": 2
               },
-              "ground": "#262626",
+              "ground": "#242424",
               "accent": "#fe8019",
               "spans": [
                 {
@@ -485,7 +485,7 @@
                 "kind": "context",
                 "distance": 3
               },
-              "ground": "#262626",
+              "ground": "#242424",
               "accent": "#fe8019",
               "spans": [
                 {
@@ -501,7 +501,7 @@
                 "kind": "context",
                 "distance": 4
               },
-              "ground": "#262626",
+              "ground": "#242424",
               "accent": "#fe8019",
               "spans": [
                 {
@@ -517,7 +517,7 @@
                 "kind": "context",
                 "distance": 5
               },
-              "ground": "#262626",
+              "ground": "#242424",
               "accent": "#fe8019",
               "spans": [
                 {
@@ -533,7 +533,7 @@
                 "kind": "context",
                 "distance": 6
               },
-              "ground": "#262626",
+              "ground": "#242424",
               "accent": "#fe8019",
               "spans": [
                 {
@@ -549,7 +549,7 @@
                 "kind": "context",
                 "distance": 7
               },
-              "ground": "#262626",
+              "ground": "#242424",
               "accent": "#fe8019",
               "spans": [
                 {
@@ -565,7 +565,7 @@
                 "kind": "context",
                 "distance": 8
               },
-              "ground": "#262626",
+              "ground": "#242424",
               "accent": "#fe8019",
               "spans": [
                 {
@@ -606,7 +606,7 @@
                 "kind": "context",
                 "distance": 8
               },
-              "ground": "#262626",
+              "ground": "#242424",
               "accent": "#fe8019",
               "spans": [
                 {
@@ -622,7 +622,7 @@
                 "kind": "context",
                 "distance": 7
               },
-              "ground": "#262626",
+              "ground": "#242424",
               "accent": "#fe8019",
               "spans": [
                 {
@@ -638,7 +638,7 @@
                 "kind": "context",
                 "distance": 6
               },
-              "ground": "#262626",
+              "ground": "#242424",
               "accent": "#fe8019",
               "spans": [
                 {
@@ -654,7 +654,7 @@
                 "kind": "context",
                 "distance": 5
               },
-              "ground": "#262626",
+              "ground": "#242424",
               "accent": "#fe8019",
               "spans": [
                 {
@@ -670,7 +670,7 @@
                 "kind": "context",
                 "distance": 4
               },
-              "ground": "#262626",
+              "ground": "#242424",
               "accent": "#fe8019",
               "spans": [
                 {
@@ -686,7 +686,7 @@
                 "kind": "context",
                 "distance": 3
               },
-              "ground": "#262626",
+              "ground": "#242424",
               "accent": "#fe8019",
               "spans": [
                 {
@@ -702,7 +702,7 @@
                 "kind": "context",
                 "distance": 2
               },
-              "ground": "#262626",
+              "ground": "#242424",
               "accent": "#fe8019",
               "spans": [
                 {
@@ -718,7 +718,7 @@
                 "kind": "context",
                 "distance": 1
               },
-              "ground": "#262626",
+              "ground": "#242424",
               "accent": "#fe8019",
               "spans": [
                 {
@@ -779,7 +779,7 @@
                 "kind": "context",
                 "distance": 1
               },
-              "ground": "#262626",
+              "ground": "#242424",
               "accent": "#fe8019",
               "spans": [
                 {
@@ -795,7 +795,7 @@
                 "kind": "context",
                 "distance": 2
               },
-              "ground": "#262626",
+              "ground": "#242424",
               "accent": "#fe8019",
               "spans": [
                 {
@@ -811,7 +811,7 @@
                 "kind": "context",
                 "distance": 3
               },
-              "ground": "#262626",
+              "ground": "#242424",
               "accent": "#fe8019",
               "spans": [
                 {
@@ -827,7 +827,7 @@
                 "kind": "context",
                 "distance": 4
               },
-              "ground": "#262626",
+              "ground": "#242424",
               "accent": "#fe8019",
               "spans": [
                 {
@@ -843,7 +843,7 @@
                 "kind": "context",
                 "distance": 5
               },
-              "ground": "#262626",
+              "ground": "#242424",
               "accent": "#fe8019",
               "spans": [
                 {
@@ -859,7 +859,7 @@
                 "kind": "context",
                 "distance": 6
               },
-              "ground": "#262626",
+              "ground": "#242424",
               "accent": "#fe8019",
               "spans": [
                 {
@@ -875,7 +875,7 @@
                 "kind": "context",
                 "distance": 7
               },
-              "ground": "#262626",
+              "ground": "#242424",
               "accent": "#fe8019",
               "spans": [
                 {
@@ -891,7 +891,7 @@
                 "kind": "context",
                 "distance": 8
               },
-              "ground": "#262626",
+              "ground": "#242424",
               "accent": "#fe8019",
               "spans": [
                 {
@@ -975,7 +975,7 @@
                 "kind": "context",
                 "distance": 8
               },
-              "ground": "#262626",
+              "ground": "#242424",
               "accent": "#fe8019",
               "spans": [
                 {
@@ -991,7 +991,7 @@
                 "kind": "context",
                 "distance": 7
               },
-              "ground": "#262626",
+              "ground": "#242424",
               "accent": "#fe8019",
               "spans": [
                 {
@@ -1007,7 +1007,7 @@
                 "kind": "context",
                 "distance": 6
               },
-              "ground": "#262626",
+              "ground": "#242424",
               "accent": "#fe8019",
               "spans": [
                 {
@@ -1023,7 +1023,7 @@
                 "kind": "context",
                 "distance": 5
               },
-              "ground": "#262626",
+              "ground": "#242424",
               "accent": "#fe8019",
               "spans": [
                 {
@@ -1039,7 +1039,7 @@
                 "kind": "context",
                 "distance": 4
               },
-              "ground": "#262626",
+              "ground": "#242424",
               "accent": "#fe8019",
               "spans": [
                 {
@@ -1055,7 +1055,7 @@
                 "kind": "context",
                 "distance": 3
               },
-              "ground": "#262626",
+              "ground": "#242424",
               "accent": "#fe8019",
               "spans": [
                 {
@@ -1071,7 +1071,7 @@
                 "kind": "context",
                 "distance": 2
               },
-              "ground": "#262626",
+              "ground": "#242424",
               "accent": "#fe8019",
               "spans": [
                 {
@@ -1087,7 +1087,7 @@
                 "kind": "context",
                 "distance": 1
               },
-              "ground": "#262626",
+              "ground": "#242424",
               "accent": "#fe8019",
               "spans": [
                 {
@@ -1252,7 +1252,7 @@
                 "kind": "context",
                 "distance": 1
               },
-              "ground": "#262626",
+              "ground": "#242424",
               "accent": "#fe8019",
               "spans": [
                 {
@@ -1268,7 +1268,7 @@
                 "kind": "context",
                 "distance": 2
               },
-              "ground": "#262626",
+              "ground": "#242424",
               "accent": "#fe8019",
               "spans": [
                 {
@@ -1284,7 +1284,7 @@
                 "kind": "context",
                 "distance": 3
               },
-              "ground": "#262626",
+              "ground": "#242424",
               "accent": "#fe8019",
               "spans": [
                 {
@@ -1300,7 +1300,7 @@
                 "kind": "context",
                 "distance": 4
               },
-              "ground": "#262626",
+              "ground": "#242424",
               "accent": "#fe8019",
               "spans": [
                 {
@@ -1316,7 +1316,7 @@
                 "kind": "context",
                 "distance": 5
               },
-              "ground": "#262626",
+              "ground": "#242424",
               "accent": "#fe8019",
               "spans": [
                 {
@@ -1332,7 +1332,7 @@
                 "kind": "context",
                 "distance": 6
               },
-              "ground": "#262626",
+              "ground": "#242424",
               "accent": "#fe8019",
               "spans": [
                 {
@@ -1348,7 +1348,7 @@
                 "kind": "context",
                 "distance": 7
               },
-              "ground": "#262626",
+              "ground": "#242424",
               "accent": "#fe8019",
               "spans": [
                 {
@@ -1364,7 +1364,7 @@
                 "kind": "context",
                 "distance": 8
               },
-              "ground": "#262626",
+              "ground": "#242424",
               "accent": "#fe8019",
               "spans": [
                 {
@@ -1413,7 +1413,7 @@
                 "kind": "context",
                 "distance": 8
               },
-              "ground": "#262626",
+              "ground": "#242424",
               "accent": "#fe8019",
               "spans": [
                 {
@@ -1429,7 +1429,7 @@
                 "kind": "context",
                 "distance": 7
               },
-              "ground": "#262626",
+              "ground": "#242424",
               "accent": "#fe8019",
               "spans": [
                 {
@@ -1445,7 +1445,7 @@
                 "kind": "context",
                 "distance": 6
               },
-              "ground": "#262626",
+              "ground": "#242424",
               "accent": "#fe8019",
               "spans": [
                 {
@@ -1461,7 +1461,7 @@
                 "kind": "context",
                 "distance": 5
               },
-              "ground": "#262626",
+              "ground": "#242424",
               "accent": "#fe8019",
               "spans": [
                 {
@@ -1477,7 +1477,7 @@
                 "kind": "context",
                 "distance": 4
               },
-              "ground": "#262626",
+              "ground": "#242424",
               "accent": "#fe8019",
               "spans": [
                 {
@@ -1493,7 +1493,7 @@
                 "kind": "context",
                 "distance": 3
               },
-              "ground": "#262626",
+              "ground": "#242424",
               "accent": "#fe8019",
               "spans": [
                 {
@@ -1509,7 +1509,7 @@
                 "kind": "context",
                 "distance": 2
               },
-              "ground": "#262626",
+              "ground": "#242424",
               "accent": "#fe8019",
               "spans": [
                 {
@@ -1525,7 +1525,7 @@
                 "kind": "context",
                 "distance": 1
               },
-              "ground": "#262626",
+              "ground": "#242424",
               "accent": "#fe8019",
               "spans": [
                 {
@@ -1608,7 +1608,7 @@
                 "kind": "context",
                 "distance": 1
               },
-              "ground": "#262626",
+              "ground": "#242424",
               "accent": "#fe8019",
               "spans": [
                 {
@@ -1624,7 +1624,7 @@
                 "kind": "context",
                 "distance": 2
               },
-              "ground": "#262626",
+              "ground": "#242424",
               "accent": "#fe8019",
               "spans": [
                 {
@@ -1640,7 +1640,7 @@
                 "kind": "context",
                 "distance": 3
               },
-              "ground": "#262626",
+              "ground": "#242424",
               "accent": "#fe8019",
               "spans": [
                 {
@@ -1649,7 +1649,7 @@
                 },
                 {
                   "text": "let",
-                  "ink": "#a78666"
+                  "ink": "#a58465"
                 },
                 {
                   "text": " pending = pending - 1",
@@ -1664,7 +1664,7 @@
                 "kind": "context",
                 "distance": 4
               },
-              "ground": "#262626",
+              "ground": "#242424",
               "accent": "#fe8019",
               "spans": [
                 {
@@ -1680,7 +1680,7 @@
                 "kind": "context",
                 "distance": 5
               },
-              "ground": "#262626",
+              "ground": "#242424",
               "accent": "#fe8019",
               "spans": [
                 {
@@ -1696,7 +1696,7 @@
                 "kind": "context",
                 "distance": 6
               },
-              "ground": "#262626",
+              "ground": "#242424",
               "accent": "#fe8019",
               "spans": [
                 {
@@ -1712,7 +1712,7 @@
                 "kind": "context",
                 "distance": 7
               },
-              "ground": "#262626",
+              "ground": "#242424",
               "accent": "#fe8019",
               "spans": [
                 {
@@ -1728,7 +1728,7 @@
                 "kind": "context",
                 "distance": 8
               },
-              "ground": "#262626",
+              "ground": "#242424",
               "accent": "#fe8019",
               "spans": [
                 {
