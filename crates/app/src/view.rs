@@ -726,6 +726,15 @@ pub struct DeckView {
     /// How far up deck's line beside the pulse is: on while an answer is owed.
     /// A cell because the rail is drawn from `&self`.
     phrase_fade: std::cell::Cell<crate::pane::Fade>,
+    /// How far up the way-back chip is: on only while the rail is scrolled
+    /// away from its newest turn.
+    chip_fade: std::cell::Cell<crate::pane::Fade>,
+    /// Whether the chip says "new reply" rather than "latest". Kept between
+    /// frames so the chip goes on saying what it said while it fades out.
+    chip_new: std::cell::Cell<bool>,
+    /// How many turns the rail held the last time it was at the bottom; a turn
+    /// beyond that arrived while the reader was elsewhere.
+    rail_seen: std::cell::Cell<usize>,
     /// The line chosen for the last wait (an index into [`PHRASES`]), kept so
     /// the next wait never picks the same one.
     phrase: std::cell::Cell<Option<usize>>,
@@ -1226,6 +1235,9 @@ impl DeckView {
             rail_scroll,
             rail_pinned: std::cell::Cell::new(true),
             phrase_fade: std::cell::Cell::new(Self::card_fade()),
+            chip_fade: std::cell::Cell::new(Self::card_fade()),
+            chip_new: std::cell::Cell::new(false),
+            rail_seen: std::cell::Cell::new(0),
             phrase: std::cell::Cell::new(None),
             phrase_for: std::cell::Cell::new(None),
             ages: std::cell::RefCell::new(std::collections::HashMap::new()),
@@ -8134,7 +8146,7 @@ impl DeckView {
     /// popped into place would make the reader find their place again.
     ///
     /// Newest last, because a walk reads forwards.
-    fn render_rail(&self, speaking: bool, cx: &mut Context<Self>) -> AnyElement {
+    fn render_rail(&self, speaking: bool, window: &Window, cx: &mut Context<Self>) -> AnyElement {
         let wide = self.rail_width.unwrap_or(RAIL);
         let open = self.rail_open.level();
         let palette = &self.palette;
@@ -8170,6 +8182,10 @@ impl DeckView {
             })
             .collect();
         let last = shown.len().saturating_sub(1);
+        let turns = shown.len();
+        // The reply on its way is part of the thread, so the last real turn's
+        // line has to run on down to it instead of stopping at its own knot.
+        let arriving = self.arrival_shown();
         let lines: Vec<AnyElement> = shown
             .into_iter()
             .enumerate()
@@ -8345,8 +8361,8 @@ impl DeckView {
                     .w(px(1.))
                     .bg(paint(palette.edge))
                     .top(px(if place == 0 { 10. } else { 0. }))
-                    .when(place == last, |this| this.h(px(10.)))
-                    .when(place != last, |this| this.bottom_0());
+                    .when(place == last && !arriving, |this| this.h(px(10.)))
+                    .when(place != last || arriving, |this| this.bottom_0());
 
                 // Brought here from the prose, a moment ago. The light says
                 // which turn the reader was sent to look at, and fades rather
@@ -8368,7 +8384,7 @@ impl DeckView {
                             .relative()
                             .flex_none()
                             .w(px(24.))
-                            .when(last > 0, |this| this.child(thread))
+                            .when(last > 0 || arriving, |this| this.child(thread))
                             .child(knot),
                     )
                     .child(
@@ -8441,6 +8457,7 @@ impl DeckView {
         // Nobody has said anything, so the thread is empty and the space is
         // the first thing the reader sees in the panel.
         let nothing = lines.is_empty();
+        let arrival = self.render_arrival(!nothing, window);
 
         div()
             .id("live-rail")
@@ -8556,75 +8573,75 @@ impl DeckView {
                                 ),
                         )
                         .child(
+                            // The thread, and over its bottom-right corner the
+                            // way back to it. The chip floats rather than
+                            // sitting under the thread, so idle at the bottom
+                            // the footer is nothing at all.
                             div()
-                                .v_flex()
-                                .id("said-rail")
+                                .relative()
                                 .flex_1()
                                 .min_h_0()
-                                .overflow_y_scroll()
-                                .track_scroll(&self.rail_scroll)
-                                // Only drawn while the rail is open, so a
-                                // folded rail never piles up a scroll to the
-                                // bottom that would land over a remark the
-                                // reader went to when it opened.
-                                .map(|this| {
-                                    let scroll = &self.rail_scroll;
-                                    if self.rail_wheeled.take() {
-                                        let tail =
-                                            -scroll.offset().y >= scroll.max_offset().y - px(24.);
-                                        self.rail_pinned.set(tail);
-                                    }
-                                    if self.rail_pinned.get() {
-                                        scroll.scroll_to_bottom();
-                                    }
-                                    this
-                                })
-                                .on_scroll_wheel(cx.listener(|deck, _, _window, cx| {
-                                    deck.rail_wheeled.set(true);
-                                    cx.notify();
-                                }))
-                                .children(nothing.then(|| {
+                                .v_flex()
+                                .child(
                                     div()
+                                        .v_flex()
+                                        .id("said-rail")
                                         .flex_1()
-                                        .flex()
-                                        .items_center()
-                                        .justify_center()
-                                        .px(px(12.))
-                                        // The words go in a child of their own, with a
-                                        // width. A string handed straight to a flex row is
-                                        // laid out at whatever width it asks for and runs off
-                                        // both edges of a rail somebody has dragged narrow —
-                                        // there is nothing for it to wrap inside. The row
-                                        // centres this; this is what the line breaks against.
-                                        .child(
+                                        .min_h_0()
+                                        .overflow_y_scroll()
+                                        .track_scroll(&self.rail_scroll)
+                                        // Only drawn while the rail is open, so a
+                                        // folded rail never piles up a scroll to the
+                                        // bottom that would land over a remark the
+                                        // reader went to when it opened.
+                                        .map(|this| {
+                                            let scroll = &self.rail_scroll;
+                                            if self.rail_wheeled.take() {
+                                                let tail = -scroll.offset().y
+                                                    >= scroll.max_offset().y - px(24.);
+                                                self.rail_pinned.set(tail);
+                                            }
+                                            if self.rail_pinned.get() {
+                                                scroll.scroll_to_bottom();
+                                            }
+                                            this
+                                        })
+                                        .on_scroll_wheel(cx.listener(|deck, _, _window, cx| {
+                                            deck.rail_wheeled.set(true);
+                                            cx.notify();
+                                        }))
+                                        .children(nothing.then(|| {
                                             div()
-                                                .w_full()
-                                                .text_center()
-                                                .text_size(px(11.))
-                                                // The window's mono. Without this the line
-                                                // inherits the panel's UI font, which has no
-                                                // italic face — so `italic` set a style
-                                                // nothing could draw and it came out upright.
-                                                .font_family(mono.clone())
-                                                .italic()
-                                                .text_color(paint(palette.muted))
-                                                .child(self.nothing_yet()),
-                                        )
-                                }))
-                                .children(lines),
-                        )
-                        .child(
-                            // deck's own line while an answer is on its way, and beside
-                            // it the pulse. The two are about the same thing, so they
-                            // share a line, and the line keeps its height when both
-                            // are gone so nothing below it moves when they come.
-                            div()
-                                .flex_none()
-                                .h_flex()
-                                .items_center()
-                                .gap(px(8.))
-                                .child(self.render_phrase())
-                                .children(self.render_pulse()),
+                                                .flex_1()
+                                                .flex()
+                                                .items_center()
+                                                .justify_center()
+                                                .px(px(12.))
+                                                // The words go in a child of their own, with a
+                                                // width. A string handed straight to a flex row is
+                                                // laid out at whatever width it asks for and runs off
+                                                // both edges of a rail somebody has dragged narrow —
+                                                // there is nothing for it to wrap inside. The row
+                                                // centres this; this is what the line breaks against.
+                                                .child(
+                                                    div()
+                                                        .w_full()
+                                                        .text_center()
+                                                        .text_size(px(11.))
+                                                        // The window's mono. Without this the line
+                                                        // inherits the panel's UI font, which has no
+                                                        // italic face — so `italic` set a style
+                                                        // nothing could draw and it came out upright.
+                                                        .font_family(mono.clone())
+                                                        .italic()
+                                                        .text_color(paint(palette.muted))
+                                                        .child(self.nothing_yet()),
+                                                )
+                                        }))
+                                        .children(lines)
+                                        .children(arrival),
+                                )
+                                .children(self.render_way_back(turns, cx)),
                         )
                         .children(self.render_invite(cx))
                         .children(self.render_making())
@@ -8872,7 +8889,7 @@ impl DeckView {
 
     /// A question still held for a gap in the agent's turn: say so.
     ///
-    /// The pulse for one that has gone is [`Self::render_pulse`].
+    /// The reply on its way for one that has gone is [`Self::render_arrival`].
     fn render_pending(&self) -> Option<AnyElement> {
         let palette = &self.palette;
         self.conversation.latest_sign()?;
@@ -8894,101 +8911,196 @@ impl DeckView {
         None
     }
 
-    /// A question on its way to an answer: a slow breath, and no words.
+    /// Whether an answer is owed: the reader asked, nobody has answered, and
+    /// it is still worth waiting on.
     ///
-    /// This was a bar filling over two minutes, the agent's own notes about
-    /// what it was doing, and then *no answer yet*. Every part of that asked
-    /// something of somebody. The notes cost the agent a tool call a step,
-    /// which made the answer slower to say it was coming (#23); the bar put a
-    /// deadline on screen that an honest answer often outlived, and the label
-    /// at the end of it read as a verdict (#24).
-    ///
-    /// What the reader needs is smaller than any of that: *it went, and
-    /// something is happening*. One dot, breathing slowly enough to be looked
-    /// away from. Whether anybody is there at all is the strip's to say, not
-    /// this panel's.
-    ///
-    /// It sits beside deck's line (see [`Self::render_phrase`]), while an
-    /// answer is owed.
-    fn render_pulse(&self) -> Option<AnyElement> {
-        /// One breath, in and out. Slow on purpose: a pulse at a heartbeat's
-        /// pace reads as urgency, and this is the opposite of that.
-        const BREATH: std::time::Duration = std::time::Duration::from_millis(2800);
-
-        let since = self.conversation.latest_sign()?.elapsed();
-        // Held behind speech is said in words, below. Past any answer worth
-        // waiting on, the pulse simply stops: no verdict.
-        //
-        // Nor while nobody is there to answer: the strip along the bottom is
-        // saying so, and a pulse above it would be saying the opposite.
-        if self.conversation.queued() || since >= PATIENCE || self.unheard >= UNHEARD_FOR {
-            return None;
-        }
-        Some(
-            div()
-                .flex_none()
-                .size(px(6.))
-                .rounded_full()
-                .bg(paint(self.palette.accent))
-                .with_animation(
-                    "answering",
-                    // A dozen frames a second is plenty for a breath this
-                    // slow, and each one redraws the whole window: at the
-                    // screen's own rate that was tens of thousands of
-                    // redraws for one dot over a long answer.
-                    Animation::new(BREATH)
-                        .repeat()
-                        .with_max_fps(12.)
-                        .with_easing(pulsating_between(0.15, 0.7)),
-                    |this, breath| this.opacity(breath),
-                )
-                .into_any_element(),
-        )
-    }
-
-    /// Whether an answer is owed: the condition the pulse draws under, and so
-    /// the one the line beside it follows.
+    /// Held behind speech is said in words elsewhere. Past any answer worth
+    /// waiting on it simply stops: no verdict. Nor while nobody is there to
+    /// answer: the strip along the bottom is saying so, and a reply drawn as
+    /// coming would be saying the opposite.
     fn answer_owed(&self) -> bool {
         self.conversation.latest_sign().is_some_and(|at| {
             !self.conversation.queued() && at.elapsed() < PATIENCE && self.unheard < UNHEARD_FOR
         })
     }
 
-    /// One of deck's own lines, beside the pulse, while an answer is owed;
-    /// nothing at all otherwise.
-    ///
-    /// It sat as "Latest ↓" before, a control that said nothing while the
-    /// reader waited. Now the same place, size and ink say something small
-    /// while they do. It is plain text: no motion of its own beyond fading in
-    /// and out with the wait, so the pulse stays the only thing that moves.
+    /// Keep the arriving turn's line and fade up to date, and say whether it
+    /// is on screen (owed, or still fading out).
     ///
     /// The line is chosen when the reader sends a comment (the wait begins,
-    /// which is when the time of the last sign changes) and is never changed
-    /// during that wait. It is kept after the wait ends so that it can fade
-    /// out saying what it said, and the line keeps its height so that nothing
-    /// below moves when it comes or goes.
-    fn render_phrase(&self) -> AnyElement {
+    /// which is when the time of the last sign changes) and never changed
+    /// during that wait. It is kept after the wait so the fade out says what
+    /// it said.
+    fn arrival_shown(&self) -> bool {
         let sign = self.conversation.latest_sign();
         let owed = self.answer_owed();
         if owed && self.phrase_for.get() != sign {
             self.phrase_for.set(sign);
-            let ix = pick_phrase(self.phrase.get(), roll());
-            self.phrase.set(Some(ix));
+            self.phrase
+                .set(Some(pick_phrase(self.phrase.get(), roll())));
         }
         let mut fade = self.phrase_fade.get();
         fade.set(owed);
         self.phrase_fade.set(fade);
-        div()
-            .flex_none()
-            .py(px(5.))
-            .text_size(px(10.))
-            .text_color(paint(self.palette.muted))
-            .opacity(fade.level())
-            // A no-break space when there is nothing to say: an empty element
-            // has no line, and the row would shrink.
-            .child(self.phrase.get().map_or("\u{a0}", |ix| PHRASES[ix]))
-            .into_any_element()
+        self.phrase.get().is_some() && (fade.on() || fade.moving())
     }
+
+    /// The turn that has not arrived yet, drawn where it will land: at the
+    /// bottom of the thread, a hollow knot exactly like an agent turn's with
+    /// the line running down to it and a short dashed tail below it, and beside
+    /// it one of deck's own lines.
+    ///
+    /// The knot breathes. It is what says *something is happening*: the pulse
+    /// that used to be a dot in the footer, at the same slow pace, now on the
+    /// thread where the answer will be. The line is plain text. When the
+    /// answer comes the real turn takes this place and the knot simply gets
+    /// words, as any turn's does.
+    ///
+    /// Frames come from the breath alone, and it is only given one while the
+    /// window is active: an inactive window draws the knot still, and nothing
+    /// asks for frames.
+    fn render_arrival(&self, has_turns: bool, window: &Window) -> Option<AnyElement> {
+        /// One breath, in and out. Slow on purpose: a pulse at a heartbeat's
+        /// pace reads as urgency, and this is the opposite of that.
+        const BREATH: std::time::Duration = std::time::Duration::from_millis(2800);
+
+        if !self.arrival_shown() {
+            return None;
+        }
+        let palette = self.palette;
+        let phrase = PHRASES[self.phrase.get()?];
+        let knot = div()
+            .absolute()
+            .top(px(6.))
+            .left(px(6.))
+            .size(px(9.))
+            .rounded_full()
+            .border_1()
+            .border_color(paint(palette.muted))
+            .bg(paint(palette.band));
+        let knot = if window.is_window_active() {
+            knot.with_animation(
+                "answering",
+                // A dozen frames a second is plenty for a breath this slow,
+                // and each one redraws the whole window.
+                Animation::new(BREATH)
+                    .repeat()
+                    .with_max_fps(12.)
+                    .with_easing(pulsating_between(0.0, 1.0)),
+                move |this, breath| {
+                    this.border_color(paint(palette.muted.mix(palette.fg, breath)))
+                        .bg(paint(palette.band.mix(palette.muted, 0.7 * breath)))
+                },
+            )
+            .into_any_element()
+        } else {
+            knot.into_any_element()
+        };
+        // Only with turns above it is there a line to continue; the first
+        // turn of a thread starts at its knot.
+        let thread = has_turns.then(|| {
+            div()
+                .absolute()
+                .left(px(10.))
+                .top_0()
+                .w(px(1.))
+                .h(px(10.))
+                .bg(paint(palette.edge))
+        });
+        let tail = (0..3).map(|n| {
+            div()
+                .absolute()
+                .left(px(10.))
+                .top(px(18. + 5. * n as f32))
+                .w(px(1.))
+                .h(px(3.))
+                .bg(paint(palette.edge))
+        });
+        Some(
+            div()
+                .h_flex()
+                .items_stretch()
+                .min_h(px(32.))
+                .opacity(self.phrase_fade.get().level())
+                .child(
+                    div()
+                        .relative()
+                        .flex_none()
+                        .w(px(24.))
+                        .children(thread)
+                        .child(knot)
+                        .children(tail),
+                )
+                .child(
+                    div()
+                        .flex_1()
+                        .min_w_0()
+                        .pt(px(2.))
+                        .text_size(px(12.))
+                        .text_color(paint(palette.fg))
+                        .child(phrase),
+                )
+                .into_any_element(),
+        )
+    }
+
+    /// The way back to the newest turn, shown only while the rail is scrolled
+    /// away from it: "↓ new reply" if a turn arrived since the reader left the
+    /// bottom, "↓ latest" otherwise. It floats over the thread's corner and
+    /// takes no room, fades in and out, and draws nothing at all when the rail
+    /// is pinned and the fade has run out.
+    fn render_way_back(&self, turns: usize, cx: &mut Context<Self>) -> Option<AnyElement> {
+        let palette = &self.palette;
+        let away = !self.rail_pinned.get();
+        if away {
+            self.chip_new.set(chip_is_new(turns, self.rail_seen.get()));
+        } else {
+            self.rail_seen.set(turns);
+        }
+        let mut fade = self.chip_fade.get();
+        fade.set(away);
+        self.chip_fade.set(fade);
+        if !fade.on() && !fade.moving() {
+            return None;
+        }
+        Some(
+            div()
+                .id("latest-reply")
+                .absolute()
+                .bottom(px(8.))
+                .right(px(8.))
+                .px(px(8.))
+                .py(px(3.))
+                .rounded(px(6.))
+                .border_1()
+                .border_color(paint(palette.edge))
+                .bg(paint(palette.band))
+                .text_size(px(11.))
+                .text_color(paint(palette.fg))
+                .opacity(fade.level())
+                .when(fade.on(), |this| {
+                    this.cursor_pointer()
+                        .hover(|style| style.bg(paint(hover_on_band(palette))))
+                        .on_click(cx.listener(|deck, _, _window, cx| {
+                            deck.rail_pinned.set(true);
+                            deck.rail_scroll.scroll_to_bottom();
+                            cx.notify();
+                        }))
+                })
+                .child(if self.chip_new.get() {
+                    "↓ new reply"
+                } else {
+                    "↓ latest"
+                })
+                .into_any_element(),
+        )
+    }
+}
+
+/// Whether the way-back chip says "new reply": the rail holds more turns than
+/// it did when the reader last saw the bottom.
+fn chip_is_new(turns: usize, seen: usize) -> bool {
+    turns > seen
 }
 
 /// Something to read while nobody has said anything yet.
@@ -9249,6 +9361,7 @@ impl Render for DeckView {
                 .any(|(_, light)| light.moving())
             || self.rail_open.moving()
             || self.phrase_fade.get().moving()
+            || self.chip_fade.get().moving()
             || self
                 .ages
                 .borrow()
@@ -9716,7 +9829,7 @@ impl Render for DeckView {
                     .when(self.rail_open.on(), |this| {
                         this.child(self.render_seam(Divide::Rail, cx))
                     })
-                    .child(self.render_rail(speaking, cx))
+                    .child(self.render_rail(speaking, window, cx))
                     .into_any_element()
             })
             .children(self.render_asks(window, cx))
@@ -9852,6 +9965,13 @@ fn review_of(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn the_chip_says_new_reply_only_when_a_turn_arrived_while_away() {
+        assert!(super::chip_is_new(5, 4));
+        assert!(!super::chip_is_new(4, 4));
+        assert!(!super::chip_is_new(3, 4));
+    }
+
     #[test]
     fn the_next_phrase_is_never_the_one_before() {
         // Every roll against every previous phrase, including the edges: a
