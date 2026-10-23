@@ -20,7 +20,7 @@ use gpui_kit::*;
 
 use crate::chart::Chart;
 use crate::load::{Deck, Source};
-use crate::palette::{current, paint};
+use crate::palette::{current, hover_on_band, paint};
 use crate::pane::{Away, Mark, Pane};
 use crate::sheet::{Sheet, Slot};
 
@@ -3133,9 +3133,7 @@ impl DeckView {
                                         .border_1()
                                         .border_color(paint(palette.edge))
                                         .text_color(paint(palette.fg))
-                                        .hover(|style| {
-                                            style.bg(paint(palette.band.mix(palette.fg, 0.10)))
-                                        })
+                                        .hover(|style| style.bg(paint(hover_on_band(&palette))))
                                         .child("Keep writing")
                                         .child(
                                             div()
@@ -3184,7 +3182,7 @@ impl DeckView {
                                 .text_size(px(13.))
                                 .text_color(paint(palette.muted))
                                 .hover(|this| {
-                                    this.bg(paint(palette.band.mix(palette.fg, 0.10)))
+                                    this.bg(paint(hover_on_band(&palette)))
                                         .text_color(paint(palette.fg))
                                 })
                                 .on_click(
@@ -3232,7 +3230,7 @@ impl DeckView {
                     this.border_1()
                         .border_color(paint(palette.edge))
                         .text_color(paint(palette.fg))
-                        .hover(|style| style.bg(paint(palette.band.mix(palette.fg, 0.10))))
+                        .hover(|style| style.bg(paint(hover_on_band(&palette))))
                 })
                 .child(label)
                 .child(
@@ -3349,7 +3347,7 @@ impl DeckView {
                                 .text_size(px(13.))
                                 .text_color(paint(palette.muted))
                                 .hover(|this| {
-                                    this.bg(paint(palette.band.mix(palette.fg, 0.10)))
+                                    this.bg(paint(hover_on_band(&palette)))
                                         .text_color(paint(palette.fg))
                                 })
                                 .on_click(cx.listener(|deck, _, window, cx| deck.stay(window, cx)))
@@ -3516,7 +3514,7 @@ impl DeckView {
                                 .text_size(px(13.))
                                 .text_color(paint(palette.muted))
                                 .hover(|this| {
-                                    this.bg(paint(palette.band.mix(palette.fg, 0.10)))
+                                    this.bg(paint(hover_on_band(&palette)))
                                         .text_color(paint(palette.fg))
                                 })
                                 .on_click(cx.listener(|deck, _, window, cx| {
@@ -3837,7 +3835,7 @@ impl DeckView {
                         // knowing a key, so hide is pressed here as well.
                         .when(*key == "h", |this| {
                             this.cursor_pointer()
-                                .hover(|this| this.bg(paint(palette.band.mix(palette.fg, 0.10))))
+                                .hover(|this| this.bg(paint(hover_on_band(&palette))))
                                 .on_click(cx.listener(|deck, _, window, cx| {
                                     deck.on_hide(&Hide, window, cx);
                                 }))
@@ -3863,7 +3861,7 @@ impl DeckView {
                 .text_color(paint(palette.muted))
                 .hover(|style| {
                     style
-                        .bg(paint(palette.band.mix(palette.fg, 0.10)))
+                        .bg(paint(hover_on_band(&palette)))
                         .text_color(paint(palette.fg))
                 })
                 .on_click(cx.listener(|deck, _, _, cx| deck.close_help(cx)))
@@ -6364,7 +6362,7 @@ impl DeckView {
                         this.bg(paint(palette.band.mix(palette.accent, 0.06)))
                     })
                     .when(!here, |this| {
-                        this.hover(|style| style.bg(paint(palette.wash)))
+                        this.hover(|style| style.bg(paint(hover_on_band(&palette))))
                     })
                     .on_click(cx.listener(move |deck, _, _, cx| deck.go_to(ix, cx)))
                     .text_size(px(12.))
@@ -7377,7 +7375,7 @@ impl DeckView {
                     this.border_1()
                         .border_color(paint(palette.edge))
                         .text_color(paint(palette.fg))
-                        .hover(|style| style.bg(paint(palette.wash)))
+                        .hover(|style| style.bg(paint(hover_on_band(&palette))))
                 })
                 .child(label)
                 .when(roomy, |this| {
@@ -7430,7 +7428,7 @@ impl DeckView {
                     .text_size(px(10.5))
                     .text_color(paint(palette.muted))
                     .cursor_pointer()
-                    .hover(|style| style.bg(paint(palette.wash)))
+                    .hover(|style| style.bg(paint(hover_on_band(&palette))))
                     .tooltip(|_window, cx| {
                         cx.new(|_| {
                             gpui_kit::component::tooltip::Tooltip::new("Your agent isn't listening")
@@ -8421,7 +8419,9 @@ impl DeckView {
                                                 .border_color(paint(palette.edge))
                                                 .text_size(px(12.))
                                                 .text_color(paint(palette.muted))
-                                                .hover(|style| style.bg(paint(palette.wash)))
+                                                .hover(|style| {
+                                                    style.bg(paint(hover_on_band(&palette)))
+                                                })
                                                 .on_click(cx.listener(|deck, _, window, cx| {
                                                     // Even with a comment
                                                     // being written: the
@@ -8563,7 +8563,7 @@ impl DeckView {
                                             this.cursor_pointer()
                                                 .hover(|style| {
                                                     style
-                                                        .bg(paint(palette.wash))
+                                                        .bg(paint(hover_on_band(&palette)))
                                                         .text_color(paint(palette.fg))
                                                 })
                                                 .on_click(cx.listener(|deck, _, _window, cx| {
@@ -8672,7 +8672,7 @@ impl DeckView {
             .pt(px(12.))
             .pb(px(14.))
             .cursor_pointer()
-            .hover(|style| style.bg(paint(palette.band.mix(palette.wash, 0.5))))
+            .hover(|style| style.bg(paint(hover_on_band(&palette))))
             .on_click(cx.listener(|deck, _, window, cx| {
                 // Opening it onto a draft is going back to the draft.
                 if !deck.back_to_the_box(window, cx) {
@@ -8691,7 +8691,7 @@ impl DeckView {
                     .border_color(paint(palette.edge))
                     .text_size(px(12.))
                     .text_color(paint(palette.muted))
-                    .hover(|style| style.bg(paint(palette.wash)))
+                    .hover(|style| style.bg(paint(hover_on_band(&palette))))
                     .child("‹"),
             )
             .child(
@@ -8792,7 +8792,7 @@ impl DeckView {
                 .cursor_pointer()
                 .text_size(px(11.))
                 .text_color(paint(palette.muted))
-                .hover(|style| style.bg(paint(palette.wash)))
+                .hover(|style| style.bg(paint(hover_on_band(&palette))))
                 .on_click(cx.listener(|deck, _, window, cx| {
                     deck.on_comment(&Comment, window, cx);
                 }))

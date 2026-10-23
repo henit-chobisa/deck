@@ -22,7 +22,7 @@ use gpui_kit::component::*;
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::*;
 
-use crate::palette::paint;
+use crate::palette::{hover_on_band, paint};
 
 /// How tall a pill is.
 pub const PILL: f32 = 30.;
@@ -809,7 +809,7 @@ pub fn render(
             .text_color(paint(if live { palette.fg } else { palette.muted }))
             .when(live, |this| {
                 this.cursor_pointer()
-                    .hover(|style| style.bg(paint(palette.wash)))
+                    .hover(|style| style.bg(paint(hover_on_band(&palette))))
             })
     };
     // An arrow with nowhere to go is drawn quiet, takes no pointer and does

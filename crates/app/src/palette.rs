@@ -17,6 +17,21 @@ use deck_core::theme::{Imported, Overrides, Palette, Paper, Rgb, Syntax, derive,
 use gpui_kit::component::{Theme, ThemeMode};
 use gpui_kit::{App, Hsla, Rgba, SharedString, px};
 
+/// The ground a surface drawn on the band takes while the pointer is over it.
+///
+/// One token, so every hover on band-coloured ground (the cards, the rail, the
+/// strip, the review rows, the pills) moves the same way. Washing them with
+/// `wash` used to be the rule, but `wash` and `band` have traded places and on
+/// a dark theme `wash` is now the darker of the two, so those hovers went dark
+/// while the cards beside them went light. Mixing a tenth of the ink into the
+/// band is lighter on a dark theme and a touch darker on a light one, which is
+/// right for each. Not for surfaces drawn on `wash` itself (pane headers and
+/// their controls): those answer against their own ground.
+#[must_use]
+pub(crate) fn hover_on_band(palette: &Palette) -> Rgb {
+    palette.band.mix(palette.fg, 0.10)
+}
+
 /// What the reader asked for, read once.
 ///
 /// A global because it is wanted from every view that paints and settled before

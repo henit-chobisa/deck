@@ -49,7 +49,7 @@ use gpui_kit::*;
 pub use model::quoted;
 pub use model::{Borrowed, Choice, Format, Layout, Look, Saved, Theme};
 
-use crate::palette::paint;
+use crate::palette::{hover_on_band, paint};
 
 gpui_kit::actions!(
     deck_export,
@@ -1770,7 +1770,7 @@ impl Render for ExportSheet {
                 .border_1()
                 .border_color(paint(palette.edge))
                 .text_color(paint(palette.fg))
-                .hover(|this| this.bg(paint(palette.wash)))
+                .hover(|this| this.bg(paint(hover_on_band(&palette))))
         };
         let go = match &self.phase {
             Phase::Saved(saved) => {
