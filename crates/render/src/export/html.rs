@@ -248,7 +248,7 @@ fn style(out: &mut String, inks: &Inks, writer: &Writer, dark: bool) {
         medium = hex(inks.levels.medium),
         low = hex(inks.levels.low),
     );
-    // The rail's column is the window's own `RAIL`, 365. The HTML export is
+    // The rail's column is the window's own `RAIL`, 400. The HTML export is
     // the window laid out in a browser, and a reader who opens it should find
     // the rail where the window keeps it. The paged PDF is the one place that
     // keeps the old 304 (see `landscape::PAGE_RAIL`), because a sheet of A4

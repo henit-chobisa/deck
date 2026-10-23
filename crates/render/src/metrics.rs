@@ -97,7 +97,7 @@ pub const fn chip_size(prose: f32) -> f32 {
 }
 
 /// The rail beside the panes and the band, before anyone drags it.
-pub const RAIL: f32 = 365.;
+pub const RAIL: f32 = 400.;
 
 /// What the rail's own record of the conversation is set in, and its pitch.
 pub const RAIL_SIZE: f32 = 12.5;
@@ -155,7 +155,7 @@ mod tests {
             (PROSE_LEADING, 20.),
             (PROSE_SPACING, 10.),
             (CHIP_SIZE, 11.4),
-            (RAIL, 365.),
+            (RAIL, 400.),
             (RAIL_SIZE, 12.5),
             (RAIL_LEADING, 19.),
             (PANE_HEAD, 10.5),

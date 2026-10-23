@@ -1193,7 +1193,14 @@ impl DeckView {
             attending: None,
             folds: Vec::new(),
             temporary: std::collections::HashSet::new(),
-            rail_open: crate::pane::Fade::default(),
+            // One pace both ways. On the light's own pace it opened in
+            // half a second and took three quarters of one to close, which
+            // read as quick to come and slow to go; the panel is a room
+            // opening and closing, and both directions are the same act.
+            rail_open: crate::pane::Fade::default().paced(
+                std::time::Duration::from_millis(620),
+                std::time::Duration::from_millis(620),
+            ),
             pressed: None,
             said_lit: None,
             said_tick: crate::prose::Tick::hand(),
