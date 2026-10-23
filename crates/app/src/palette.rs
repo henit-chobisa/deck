@@ -238,6 +238,16 @@ pub fn install(palette: &Palette, dark: bool, cx: &mut App) {
     // — left unset it fell back to something near-white, which on the band
     // read as a hole rather than a chip.
     theme.colors.accent = paint(palette.wash);
+    // The library's own caret is switched off: deck draws one itself
+    // (`crate::caret`), one that glides to each new place and breathes rather
+    // than blinking, because a caret that jumps and strobes is the one thing
+    // in deck that moves without easing. Only `caret` is touched; the
+    // selection colour comes from `accent` and is unaffected.
+    //
+    // Not alpha zero: the library reads a fully transparent colour as "unset"
+    // and falls back to the text colour, which would put the old caret right
+    // back. An alpha too small to see survives that check.
+    theme.colors.caret = paint(palette.fg).opacity(0.0001);
 
     // Code wants to be dense. The component default is sized for prose, and at
     // that size a pane holds a dozen lines and the deck reads as a slideshow.

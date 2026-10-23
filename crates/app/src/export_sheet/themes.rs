@@ -141,6 +141,8 @@ fn read(
 pub(super) struct Picking {
     /// The filter box over the list.
     pub filter: Entity<InputState>,
+    /// The caret drawn over it: see [`crate::caret`].
+    pub caret: crate::caret::Caret,
     _typed: Subscription,
 }
 
@@ -263,6 +265,7 @@ impl ExportSheet {
         cx.defer_in(window, move |_, window, cx| focus.focus(window, cx));
         self.picking = Some(Picking {
             filter,
+            caret: crate::caret::Caret::default(),
             _typed: typed,
         });
         // Opened again before the last one had gone: that one is let go.
@@ -642,7 +645,16 @@ impl ExportSheet {
                         div()
                             .flex_1()
                             .min_w_0()
-                            .child(Input::new(&picking.filter).appearance(false)),
+                            .relative()
+                            .child(Input::new(&picking.filter).appearance(false))
+                            .child({
+                                let field = picking.filter.clone();
+                                crate::caret::overlay(
+                                    &picking.caret,
+                                    paint(palette.fg),
+                                    move |window, cx| crate::caret_field!(field, window, cx),
+                                )
+                            }),
                     )
                     .child(
                         div()

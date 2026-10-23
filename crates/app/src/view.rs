@@ -579,6 +579,9 @@ pub struct DeckView {
     /// Decided when the remark is finished — *Ask now* or *Add to review* —
     /// and kept here so a draft carried across hiding the window keeps it.
     composing_when: deck_core::When,
+    /// The comment box's caret: where it is drawn and how bright. See
+    /// [`crate::caret`].
+    caret: crate::caret::Caret,
     /// Whether a voice is reading the deck aloud.
     aloud: bool,
     /// The groups whose prose has been read aloud in this walk's session.
@@ -1175,6 +1178,7 @@ impl DeckView {
             remarks,
             composing: None,
             composing_when: deck_core::When::Interrupt,
+            caret: crate::caret::Caret::default(),
             aloud,
             heard_groups,
             seen,
@@ -7281,11 +7285,24 @@ impl DeckView {
                 // Set on the textarea, not on a wrapper: the input sets its own
                 // size and leading on its frame, which beat anything inherited,
                 // and a row of the auto-grow is that leading.
-                .child(
-                    Textarea::new(state)
-                        .text_size(px(13.2))
-                        .line_height(px(20.)),
-                )
+                //
+                // The caret is deck's own, drawn over the box: see
+                // [`crate::caret`].
+                .child({
+                    let field = state.clone();
+                    div()
+                        .relative()
+                        .child(
+                            Textarea::new(state)
+                                .text_size(px(13.2))
+                                .line_height(px(20.)),
+                        )
+                        .child(crate::caret::overlay(
+                            &self.caret,
+                            paint(self.palette.fg),
+                            move |window, cx| crate::caret_field!(field, window, cx),
+                        ))
+                })
                 // Under the box, where a hint belongs: beside the location it
                 // competes with the one thing the reader needs to read.
                 .child(

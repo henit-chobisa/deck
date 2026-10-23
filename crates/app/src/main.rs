@@ -15,6 +15,7 @@
 //! deck does not get to decide when it is read.
 
 mod asks;
+mod caret;
 mod chart;
 mod cli;
 mod config;
