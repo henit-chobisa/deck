@@ -1994,6 +1994,7 @@ impl Pane {
             }
         }
         let lit = self.spotlight;
+        let file_lines = self.source_lines;
         let point = self.point;
         let rising = self.rising.level();
         let was: Vec<(LineRange, crate::prose::Side, f32)> = self
@@ -2080,7 +2081,7 @@ impl Pane {
         // One row, in its slot, drawn wherever the values in motion above it
         // have it right now.
         let draw = move |ix: usize| {
-            let row = rows[ix].clone();
+            let mut row = rows[ix].clone();
             let lift = lift_at(&blocks, ix);
             // A row inside a stretch in motion is only there once the
             // room has opened as far as it, ground and all, and its
@@ -2182,6 +2183,54 @@ impl Pane {
             } else {
                 leaving
             };
+
+            // The code the deck is not about sits back.
+            //
+            // A pane shows the whole file so the cited lines can be found in
+            // it, but painting every line at full syntax colour put a wall of
+            // colour in front of the reader and drew the eye away from the
+            // prose and from the few lines being talked about. So only the
+            // cited lines keep their colours; the rest is context and is drawn
+            // quieter.
+            //
+            // It follows the lights rather than the cited range alone. A line
+            // the agent points at, or the reader selects, is being talked
+            // about whether or not the ref cited it, so it comes back to full
+            // colour by the level of that light. A level and not a switch: the
+            // light fades in and out, and the colour has to travel with it or
+            // the line would snap.
+            //
+            // Done here, on the row about to be drawn, and not in the
+            // highlighter: exports and the highlight cache keep the true
+            // colours. Diff rows, value rows and edge rows are not code that
+            // is being set aside, so they are left as they are.
+            let back_by = if row.change.is_none()
+                && row.extra.is_none()
+                && steps_back(lit, file_lines, row.answers)
+            {
+                1. - pointed.max(holding)
+            } else {
+                0.
+            };
+            if back_by > 0. {
+                // Each distinct colour worked out once for the row, not once
+                // per run: a line repeats a handful of colours many times.
+                let mut worked: Vec<(Hsla, Hsla)> = Vec::new();
+                for (_, style) in &mut row.runs {
+                    let Some(colour) = style.color else { continue };
+                    style.color = Some(match worked.iter().find(|(from, _)| *from == colour) {
+                        Some((_, to)) => *to,
+                        None => {
+                            let to = eased_back(colour, &palette, back_by);
+                            worked.push((colour, to));
+                            to
+                        }
+                    });
+                }
+            }
+            // Text no run covers is drawn in the ink the pane inherits, so
+            // that steps back with the rest.
+            let ink = (back_by > 0.).then(|| eased_back(paint(palette.fg), &palette, back_by));
 
             // What the row *is*: going, arriving, lit, or plain.
             let base = match row.change {
@@ -2405,6 +2454,7 @@ impl Pane {
                                 // already there: a gap the colour of the lit
                                 // range, not a hole in it.
                                 .opacity(reveal)
+                                .when_some(ink, |content, ink| content.text_color(ink))
                                 .child(row_content(
                                     &row,
                                     &sans,
@@ -3374,6 +3424,48 @@ fn absent(first: u32, last: Option<u32>) -> Row {
     }
 }
 
+/// Whether a row of code is outside what the deck is about, so it sits back.
+///
+/// `cited` is the range the ref cites. A pane with nothing to single out, a
+/// whole file brought in or a range that covers every line, has no outside, so
+/// it keeps full colour everywhere instead of dimming a file the reader was
+/// handed to read.
+fn steps_back(cited: LineRange, file_lines: u32, row: LineRange) -> bool {
+    let everything = cited.first <= 1 && cited.last >= file_lines;
+    !everything && !cited.overlaps(row)
+}
+
+/// A colour of drawn code, stepped back toward the pane's ground.
+///
+/// Plain ink keeps 80% of itself and a syntax colour keeps 70%: the hues have
+/// more to lose, being the loud part of the wall. A colour already drawn
+/// quiet, a comment or punctuation, is left alone, because mixing it further
+/// would make it vanish and it is already doing the job of sitting back.
+fn stepped_back(colour: Rgb, palette: &Palette) -> Rgb {
+    let near =
+        |a: Rgb, b: Rgb| a.r.abs_diff(b.r) <= 1 && a.g.abs_diff(b.g) <= 1 && a.b.abs_diff(b.b) <= 1;
+    if near(colour, palette.muted) || near(colour, palette.punctuation) {
+        colour
+    } else if near(colour, palette.fg) {
+        colour.mix(palette.wash, 0.2)
+    } else {
+        colour.mix(palette.wash, 0.3)
+    }
+}
+
+/// `colour` stepped back, `back_by` of the way: 1 is fully stepped back, 0 is
+/// the colour untouched. The run colours come from the highlighter as GPUI
+/// colours, so they are read back to the model's before they are mixed.
+fn eased_back(colour: Hsla, palette: &Palette, back_by: f32) -> Hsla {
+    let shown = Rgba::from(colour);
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    let channel = |value: f32| (value * 255.0).round().clamp(0., 255.) as u8;
+    let from = Rgb::new(channel(shown.r), channel(shown.g), channel(shown.b));
+    let mut out = paint(from.mix(stepped_back(from, palette), back_by));
+    out.a = colour.a;
+    out
+}
+
 /// What a row shows to the right of its number: the code, with a single value
 /// after its name, or a value's handle, or one of its keys.
 fn row_content(
@@ -3711,6 +3803,72 @@ mod tests {
         );
     }
 
+    fn quiet_palette() -> Palette {
+        deck_core::theme::derive(deck_core::theme::Imported {
+            bg: Rgb::new(250, 250, 250),
+            fg: Rgb::new(30, 30, 30),
+            accent: Rgb::new(220, 120, 40),
+            comment: None,
+            add: None,
+            del: None,
+            syntax: deck_core::theme::Syntax {
+                keyword: None,
+                string: None,
+                function: None,
+                type_: None,
+                literal: None,
+            },
+        })
+    }
+
+    #[test]
+    fn stepping_back_keeps_eighty_of_ink_and_seventy_of_a_hue() {
+        let palette = quiet_palette();
+        let hue = Rgb::new(200, 40, 40);
+        assert_eq!(stepped_back(hue, &palette), hue.mix(palette.wash, 0.3));
+        assert_eq!(
+            stepped_back(palette.fg, &palette),
+            palette.fg.mix(palette.wash, 0.2)
+        );
+    }
+
+    #[test]
+    fn a_colour_already_quiet_is_left_as_it_is() {
+        let palette = quiet_palette();
+        assert_eq!(stepped_back(palette.muted, &palette), palette.muted);
+        assert_eq!(
+            stepped_back(palette.punctuation, &palette),
+            palette.punctuation
+        );
+    }
+
+    #[test]
+    fn a_light_brings_a_stepped_back_colour_home_by_its_level() {
+        let palette = quiet_palette();
+        let hue = paint(Rgb::new(200, 40, 40));
+        assert_eq!(eased_back(hue, &palette, 0.), hue);
+        assert_ne!(eased_back(hue, &palette, 1.), hue);
+        let half = Rgba::from(eased_back(hue, &palette, 0.5));
+        let full = Rgba::from(eased_back(hue, &palette, 1.));
+        let home = Rgba::from(hue);
+        assert!(full.g > home.g && half.g < full.g && half.g > home.g);
+    }
+
+    #[test]
+    fn only_lines_outside_the_cited_range_step_back() {
+        let cited = LineRange::new(10, 12);
+        assert!(!steps_back(cited, 100, LineRange::single(11)));
+        assert!(steps_back(cited, 100, LineRange::single(13)));
+        assert!(steps_back(cited, 100, LineRange::single(1)));
+        // A change answers for the whole range it replaces.
+        assert!(!steps_back(cited, 100, LineRange::new(12, 20)));
+        // Nothing singled out: nothing sits back.
+        assert!(!steps_back(
+            LineRange::new(1, 100),
+            100,
+            LineRange::single(50)
+        ));
+    }
     /// A plain line of the file, numbered `n`.
     fn line(n: u32) -> Row {
         Row {
