@@ -169,13 +169,6 @@ macro_rules! caret_field {
     }};
 }
 
-/// Ease in and out: slow, quick, slow. `t` is clamped to `0..=1`.
-#[must_use]
-pub fn smoothstep(t: f32) -> f32 {
-    let t = t.clamp(0., 1.);
-    t * t * (3. - 2. * t)
-}
-
 /// How bright the caret is, `quiet` seconds after the last change.
 ///
 /// Solid until [`HOLD`], then a cosine that starts at the top (so there is no
@@ -242,14 +235,12 @@ impl State {
         let first = self.drawn.is_none();
         let here = self.drawn.unwrap_or(target);
         let scrolled = !first && reading.scroll != self.scroll;
-        if first {
-            self.changed = Some(now);
-        } else if reading.stamp != self.stamp {
-            self.changed = Some(now);
-        } else if target != self.to && reading.cursor == self.cursor && !scrolled {
-            // Same length, same caret offset, yet the caret moved: the letters
-            // shifted under it (a jamo becoming a syllable). Hold it solid
-            // like any other change; the follow carries it across the shift.
+        // A first sight or a new stamp is a change. So is a target that moved
+        // while the stamp and caret offset did not: the letters shifted under
+        // the caret (a jamo becoming a syllable, same length). Hold it solid
+        // like any other change; the follow carries it across the shift.
+        let shifted = target != self.to && reading.cursor == self.cursor && !scrolled;
+        if first || reading.stamp != self.stamp || shifted {
             self.changed = Some(now);
         }
 
@@ -400,7 +391,7 @@ mod tests {
             height: 16.,
             line_height: 20.,
             scroll: (0., 0.),
-            cursor: stamp as usize,
+            cursor: usize::try_from(stamp).unwrap(),
             stamp,
             active: true,
         })
@@ -408,15 +399,6 @@ mod tests {
 
     fn at(start: Instant, ms: u64) -> Instant {
         start + Duration::from_millis(ms)
-    }
-
-    #[test]
-    fn smoothstep_is_slow_at_both_ends() {
-        assert_eq!(smoothstep(0.), 0.);
-        assert_eq!(smoothstep(1.), 1.);
-        assert!((smoothstep(0.5) - 0.5).abs() < 1e-6);
-        assert!(smoothstep(0.1) < 0.1);
-        assert!(smoothstep(0.9) > 0.9);
     }
 
     #[test]
