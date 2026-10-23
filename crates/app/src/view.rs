@@ -638,6 +638,12 @@ pub struct DeckView {
     /// commented on — and they go when the reader turns to another group,
     /// because they belong to the question and not to the deck.
     temporary: std::collections::HashSet<usize>,
+    /// Which of the `temporary` panes the reader has closed and that are still
+    /// folding away. A closed pane folds over [`crate::pane::ROOM`], like every
+    /// other room, and is only removed once that fold has finished; until then
+    /// it keeps its place so the indexes everything else holds stay true. It
+    /// draws no spine while it goes, because it is not staying.
+    closing: std::collections::HashSet<usize>,
     /// How folded each pane is, by pane index.
     ///
     /// A pane folds to a spine on its own side of the row, the way the
@@ -1197,6 +1203,7 @@ impl DeckView {
             attending: None,
             folds: Vec::new(),
             temporary: std::collections::HashSet::new(),
+            closing: std::collections::HashSet::new(),
             // One pace both ways, and the same as every other room opening or
             // closing. On the light's own pace it opened in half a second and
             // took three quarters of one to close, which read as quick to come
@@ -2325,10 +2332,12 @@ impl DeckView {
     fn borrowed_as(&self, name: Option<&str>) -> Option<usize> {
         let name = name?;
         self.temporary.iter().copied().find(|&ix| {
-            self.panes
-                .get(ix)
-                .and_then(Sheet::name)
-                .is_some_and(|had| had == name)
+            !self.closing.contains(&ix)
+                && self
+                    .panes
+                    .get(ix)
+                    .and_then(Sheet::name)
+                    .is_some_and(|had| had == name)
         })
     }
 
@@ -2381,26 +2390,63 @@ impl DeckView {
     /// The group comes back with it: whatever was folded to make the room is
     /// opened again, because the room was only ever borrowed.
     pub fn close_brought(&mut self, ix: usize, cx: &mut Context<Self>) {
-        if !self.temporary.remove(&ix) {
+        if !self.temporary.contains(&ix) || !self.closing.insert(ix) {
             return;
         }
-        // Whatever the question borrowed, the group has back.
-        self.panes.remove(ix);
-        if ix < self.folds.len() {
-            self.folds.remove(ix);
+        // It folds closed over the room pace like any other pane, and is taken
+        // out of the deck by [`Self::let_closed_go`] once the fold is over.
+        if let Some(fold) = self.folds.get_mut(ix) {
+            fold.set(true);
         }
-        // Indices above it have all moved down by one.
-        self.temporary = self
-            .temporary
-            .iter()
-            .map(|at| if *at > ix { at - 1 } else { *at })
-            .collect();
-        if self.temporary.is_empty() {
-            for fold in &mut self.folds {
-                fold.set(false);
+        // Whatever the question borrowed, the group has back, in the same
+        // movement, so the room moves once.
+        if self.temporary.iter().all(|at| self.closing.contains(at)) {
+            for (at, fold) in self.folds.iter_mut().enumerate() {
+                if !self.closing.contains(&at) {
+                    fold.set(false);
+                }
             }
         }
         cx.notify();
+    }
+
+    /// Take out the closed panes whose fold has finished.
+    ///
+    /// Run once a frame before anything is laid out. Removing a pane shifts
+    /// every pane after it down by one, so the fold list and both sets of
+    /// indexes shift with it.
+    fn let_closed_go(&mut self) {
+        let gone: Vec<usize> = {
+            let mut done: Vec<usize> = self
+                .closing
+                .iter()
+                .copied()
+                .filter(|ix| {
+                    self.folds
+                        .get(*ix)
+                        .is_none_or(|fold| fold.on() && !fold.moving())
+                })
+                .collect();
+            // Highest first, so removing one does not move the next.
+            done.sort_unstable_by(|a, b| b.cmp(a));
+            done
+        };
+        for ix in gone {
+            if ix < self.panes.len() {
+                self.panes.remove(ix);
+            }
+            if ix < self.folds.len() {
+                self.folds.remove(ix);
+            }
+            let down = |set: &std::collections::HashSet<usize>| {
+                set.iter()
+                    .filter(|at| **at != ix)
+                    .map(|at| if *at > ix { at - 1 } else { *at })
+                    .collect()
+            };
+            self.temporary = down(&self.temporary);
+            self.closing = down(&self.closing);
+        }
     }
 
     /// Fold a pane down to its spine, or open it again.
@@ -4153,6 +4199,7 @@ impl DeckView {
     /// own pixels and needs no such arrangement; a webview is a stranger in
     /// the window and has to be told where to stand on every frame.
     fn settle_pages(&mut self, window: &Window) {
+        self.let_closed_go();
         let spread = self.spread;
         let moving = self.folds.iter().any(crate::pane::Fade::moving) || self.rail_open.moving();
         if moving {
@@ -5955,6 +6002,7 @@ impl DeckView {
         // about it.
         self.folds = vec![crate::pane::Fade::room(); self.panes.len()];
         self.temporary.clear();
+        self.closing.clear();
     }
 
     fn render_band(&self, cx: &mut Context<Self>) -> impl IntoElement {
@@ -9253,7 +9301,7 @@ impl Render for DeckView {
                 view: &me,
                 scale,
             };
-            if slot.fold > 0. {
+            if slot.fold > 0. && !self.closing.contains(&ix) {
                 // A folded pane leaves the grid and becomes a spine at the
                 // window's edge. Left in the row it kept the row's height, so
                 // folding one of two stacked panes left a strip of nothing
