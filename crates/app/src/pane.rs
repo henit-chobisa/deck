@@ -244,6 +244,14 @@ impl Fade {
         self.from + (to - self.from) * along
     }
 
+    /// The same light, as if it had been told `by` ago. For tests that cannot
+    /// wait on the real clock.
+    #[cfg(test)]
+    pub(crate) fn aged(mut self, by: std::time::Duration) -> Self {
+        self.since = self.since.and_then(|at| at.checked_sub(by));
+        self
+    }
+
     /// Whether it is on, or on its way there.
     pub(crate) fn on(&self) -> bool {
         self.on

@@ -230,11 +230,13 @@ pub struct Chart {
     /// the same pace, so the agent's finger moves the same way on either kind
     /// of pane. See [`Self::point`].
     light: crate::pane::Fade,
-    /// The blocks that were pointed at before the last point, still going out.
-    prior: Vec<SharedString>,
-    /// Their light, on its way down. A hand-over: while it falls the new
-    /// blocks rise, so a point moving from one block to the next crosses over.
-    prior_light: crate::pane::Fade,
+    /// Every earlier point that is still going out, each with the light it is
+    /// falling on. A hand-over: while they fall the new blocks rise, so a point
+    /// moving from one block to the next crosses over. There can be several
+    /// at once: pointing A, then B, then C inside one fall leaves A still
+    /// going out when B starts to, and A must not be dropped to dark in a
+    /// single frame because a newer point arrived.
+    prior: Vec<(Vec<SharedString>, crate::pane::Fade)>,
     /// Whether the agent is talking about this pane. See [`Self::heed`].
     heeded: crate::pane::Fade,
     /// The node the reader has picked, if any.
@@ -323,7 +325,6 @@ impl Chart {
             pointed: Vec::new(),
             light: crate::pane::Fade::default(),
             prior: Vec::new(),
-            prior_light: crate::pane::Fade::default(),
             heeded: crate::pane::Fade::default(),
             diagram: spec.diagram.clone(),
             plan,
@@ -380,7 +381,9 @@ impl Chart {
     /// Whether the outline is still coming up or going out.
     #[must_use]
     pub fn fading(&self) -> bool {
-        self.heeded.moving() || self.light.moving() || self.prior_light.moving()
+        self.heeded.moving()
+            || self.light.moving()
+            || self.prior.iter().any(|(_, light)| light.moving())
     }
 
     /// The blocks a point is holding a light on.
@@ -403,10 +406,12 @@ impl Chart {
         if ids == self.pointed {
             return;
         }
+        // Forget the ones that have finished going out; keep the rest falling.
+        self.prior.retain(|(_, light)| light.moving());
         if !self.pointed.is_empty() {
-            self.prior = std::mem::take(&mut self.pointed);
-            self.prior_light = self.light;
-            self.prior_light.set(false);
+            let mut light = self.light;
+            light.set(false);
+            self.prior.push((std::mem::take(&mut self.pointed), light));
         }
         self.light = crate::pane::Fade::default();
         if !ids.is_empty() {
@@ -424,11 +429,11 @@ impl Chart {
         } else {
             self.light.level()
         };
-        let falling = if self.prior.is_empty() {
-            0.
-        } else {
-            self.prior_light.level()
-        };
+        let falling = self
+            .prior
+            .iter()
+            .map(|(_, light)| light.level())
+            .fold(0., f32::max);
         rising.max(falling)
     }
 
@@ -439,11 +444,13 @@ impl Chart {
         } else {
             0.
         };
-        let falling = if self.prior.iter().any(|lit| lit == id) {
-            self.prior_light.level()
-        } else {
-            0.
-        };
+        // The strongest light among everything still falling on this block.
+        let falling = self
+            .prior
+            .iter()
+            .filter(|(ids, _)| ids.iter().any(|lit| lit == id))
+            .map(|(_, light)| light.level())
+            .fold(0., f32::max);
         rising.max(falling)
     }
 
@@ -1485,6 +1492,29 @@ mod tests {
                 flows: Vec::new(),
             },
         })
+    }
+
+    #[test]
+    fn a_three_step_hand_over_never_drops_a_falling_light_to_dark() {
+        let mut chart = charted(&["a", "b", "c", "d"], &[]);
+        chart.point(vec!["a".into()]);
+        // Let A be fully up, as if it had been pointed at a while.
+        chart.light = chart.light.aged(std::time::Duration::from_millis(900));
+        chart.point(vec!["b".into()]);
+        // A is now falling. Point again before it has gone out.
+        let before = chart.pointed_much("a");
+        chart.point(vec!["c".into()]);
+        let after = chart.pointed_much("a");
+        assert!(before > 0.9, "{before}");
+        assert!(after > 0.9, "A jumped to {after} when C arrived");
+        assert!(chart.pointed_much("b") > 0. || chart.pointed_much("c") >= 0.);
+        assert!(chart.fading());
+        // Once the falls have run out, the list empties on the next point.
+        for (_, light) in &mut chart.prior {
+            *light = light.aged(std::time::Duration::from_millis(2000));
+        }
+        chart.point(vec!["d".into()]);
+        assert_eq!(chart.prior.len(), 1, "only C, which is still falling");
     }
 
     #[test]
