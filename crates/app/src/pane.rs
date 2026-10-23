@@ -95,7 +95,7 @@ pub(crate) const REFOLD: std::time::Duration = std::time::Duration::from_millis(
 /// a room changing size is the largest thing that moves in the window, and it
 /// reads as calm only if it is given time. Lights, values, cards and hovers
 /// keep their own, quicker paces; this is for space only.
-pub(crate) const ROOM: std::time::Duration = std::time::Duration::from_millis(720);
+pub(crate) const ROOM: std::time::Duration = std::time::Duration::from_millis(840);
 
 /// How long a light the reader raised takes to come up.
 ///
@@ -3872,7 +3872,7 @@ mod tests {
     fn a_room_fade_is_paced_by_room_both_ways() {
         let fade = Fade::room();
         assert_eq!((fade.rise_ms, fade.fall_ms), (ms(ROOM), ms(ROOM)));
-        assert_eq!(ms(ROOM), 720);
+        assert_eq!(ms(ROOM), 840);
         // Folded and unmoving, it is a whole fold; set open, it leaves that
         // smoothly from the top rather than starting open.
         let mut arriving = Fade::room_folded();

@@ -89,6 +89,9 @@ pub struct Reading {
     pub len: usize,
     /// Changes whenever the text or the caret position changes.
     pub stamp: u64,
+    /// The field's own bounds in window coordinates, as the library lays it
+    /// out: origin x, origin y, width, height. The caret is clipped to them.
+    pub clip: Option<[f32; 4]>,
 }
 
 /// What a field is doing, as far as the caret cares: not focused, focused with
@@ -122,6 +125,15 @@ macro_rules! caret_field {
                 scroll: (f32::from(scroll.x), f32::from(scroll.y)),
                 len: state.text().len(),
                 stamp: (state.cursor() as u64) << 32 ^ state.text().len() as u64,
+                clip: {
+                    let field = state.input_bounds();
+                    Some([
+                        f32::from(field.origin.x),
+                        f32::from(field.origin.y),
+                        f32::from(field.size.width),
+                        f32::from(field.size.height),
+                    ])
+                },
             })
         } else {
             $crate::caret::Field::Idle
@@ -298,8 +310,17 @@ pub fn overlay(
     let caret = caret.clone();
     canvas(
         |_, _, _| (),
-        move |field_bounds, (), window, cx| {
+        move |_, (), window, cx| {
             let field = read(window, cx);
+            // Clipped to the field itself, as the library lays it out, never
+            // to this overlay's own box: the overlay can be laid out with no
+            // size at all, and clipping to it hid the caret entirely.
+            let clip = match field {
+                Field::Caret(reading) => reading.clip.and_then(|[x, y, w, h]| {
+                    (w > 0. && h > 0.).then(|| Bounds::new(point(px(x), px(y)), size(px(w), px(h))))
+                }),
+                _ => None,
+            };
             let frame = caret.state.borrow_mut().frame(Instant::now(), field);
             let Some(frame) = frame else {
                 // Not focused: no caret, and no wake-up either.
@@ -311,20 +332,15 @@ pub fn overlay(
             } else {
                 1.0
             };
-            window.with_content_mask(
-                Some(ContentMask {
-                    bounds: field_bounds,
-                }),
-                |window| {
-                    window.paint_quad(fill(
-                        Bounds::new(
-                            point(px(frame.x), px(frame.y)),
-                            size(px(width), px(frame.height)),
-                        ),
-                        colour.opacity(frame.opacity),
-                    ));
-                },
-            );
+            window.with_content_mask(clip.map(|bounds| ContentMask { bounds }), |window| {
+                window.paint_quad(fill(
+                    Bounds::new(
+                        point(px(frame.x), px(frame.y)),
+                        size(px(width), px(frame.height)),
+                    ),
+                    colour.opacity(frame.opacity),
+                ));
+            });
             if frame.quick {
                 caret.wake.borrow_mut().take();
                 window.request_animation_frame();
@@ -351,6 +367,7 @@ mod tests {
 
     fn reading(x: f32, y: f32, stamp: u64) -> Field {
         Field::Caret(Reading {
+            clip: None,
             x,
             y,
             height: 16.,
@@ -364,6 +381,7 @@ mod tests {
     /// A reading after the text changed to `len` characters.
     fn typed(x: f32, y: f32, stamp: u64, len: usize) -> Field {
         Field::Caret(Reading {
+            clip: None,
             x,
             y,
             height: 16.,
@@ -467,6 +485,7 @@ mod tests {
         // The same caret place in the text, a short distance down the window
         // because the field scrolled by 10: no glide, it lands at once.
         let scrolled = Field::Caret(Reading {
+            clip: None,
             x: 0.,
             y: 10.,
             height: 16.,
