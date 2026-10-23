@@ -482,12 +482,15 @@ pub use sheets::{behind, on};
 /// smoothness and never the pace.
 const STEP: Duration = Duration::from_millis(16);
 
-/// How long the lights take to go down. The light and layout pace.
-const DOWN: Duration = Duration::from_millis(760);
+/// How long the lights take to go down. This keeps 0.1.6's pace: it was
+/// eighteen steps of 16ms, about 288ms, and is now measured by the clock
+/// instead of by counting steps, so the pace holds on any screen.
+const DOWN: Duration = Duration::from_millis(288);
 
-/// And to come back up. Quicker: going dark is something a reader settles into,
-/// and coming back is something they are waiting on.
-const UP: Duration = Duration::from_millis(520);
+/// And to come back up, also as in 0.1.6: eleven steps of 16ms, about 176ms.
+/// Quicker than down: going dark is something a reader settles into, and
+/// coming back is something they are waiting on.
+const UP: Duration = Duration::from_millis(176);
 
 /// Turn the lights off, or back on. Returns whether they ended up off.
 pub fn toggle(dim: f32, blur: bool, cx: &mut App) -> bool {
@@ -531,7 +534,7 @@ pub fn lights_on(cx: &mut App) {
 /// the bar keeps that alive.
 ///
 /// One at a time. A fade that has been overtaken stops: the lights going
-/// down take 760ms and coming up 520ms, so `z` pressed twice in a
+/// down take longer than coming up, so `z` pressed twice in a
 /// hurry left the slower one to finish last, and the screen stayed dark with
 /// the lights nominally on.
 fn fade(to: f64, over: Duration, cx: &mut App) {
