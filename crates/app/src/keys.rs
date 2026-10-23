@@ -38,9 +38,6 @@ pub(crate) const DOCK_FALL: Duration = Duration::from_millis(160);
 /// goes only after the reader has looked away for this long.
 pub(crate) const DOCK_STAYS: Duration = Duration::from_secs(15);
 
-/// How long a key on the dock stays lit after it is pressed.
-pub(crate) const HIT: Duration = Duration::from_millis(900);
-
 /// The key that brings the dock up, and the name its card goes by.
 pub(crate) const HELP: &str = "?";
 /// The dock's close button, which has a card like a key.

@@ -185,10 +185,7 @@ pub fn skin(weight: Weight, picked: bool, lit: Lit, palette: &Palette) -> Skin {
                 fill.mix(palette.bg, ASIDE * back),
                 edge.mix(palette.bg, ASIDE * back),
             );
-            let to = (
-                fill.mix(palette.bg, ASIDE).mix(fill.mix(lit, 0.16), 1.),
-                edge.mix(palette.bg, ASIDE).mix(lit, 1.),
-            );
+            let to = (fill.mix(lit, 0.16), lit);
             (
                 from.0.mix(to.0, much),
                 from.1.mix(to.1, much),

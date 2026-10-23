@@ -8974,10 +8974,9 @@ impl Render for DeckView {
         #[cfg(debug_assertions)]
         self.debug_sheet(window, cx);
         // The dock, a key's card, and a key lit on the dock all move on their
-        // own clock.
-        let hit = self
-            .help_hit
-            .is_some_and(|(_, at)| at.elapsed() < crate::keys::HIT);
+        // own clock. The glow is asked for frames for exactly as long as it
+        // takes to go out, which is the pace it is drawn at.
+        let hit = self.help_hit.is_some_and(|(_, at)| at.elapsed() < GLOW);
         self.export_fade.set(self.exportable());
         if self.help.moving() || self.tip_fade.moving() || self.export_fade.moving() || hit {
             window.request_animation_frame();
