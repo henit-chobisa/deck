@@ -184,6 +184,14 @@ impl Fade {
         fade
     }
 
+    /// Resting on, with no motion yet: its level is already 1. For a light
+    /// that must not fade in because the window opened with it up.
+    #[must_use]
+    pub(crate) fn whole(mut self) -> Self {
+        self.on = true;
+        self
+    }
+
     /// Head towards `on`. Says whether that was a change.
     pub(crate) fn set(&mut self, on: bool) -> bool {
         if self.on == on {

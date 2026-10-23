@@ -745,6 +745,17 @@ pub struct DeckView {
     /// Whether the thread the window opened with has been recorded: those
     /// turns were there already and never animate.
     entry_primed: std::cell::Cell<bool>,
+    /// How far up the group's own content is: its heading, its prose and its
+    /// panes. Resting whole, so a window that opens on a deck does not fade it
+    /// in. A step to another group takes it out on the card fall, swaps the
+    /// group at the bottom, and brings it back on the card rise.
+    group_fade: crate::pane::Fade,
+    /// The group a step is on its way to, while the one on screen fades out.
+    /// Only ever one: a press mid-fade retargets it rather than stacking.
+    arriving: Option<usize>,
+    /// The waiting placeholder, up while the deck has nothing to read and
+    /// going out when the first group lands.
+    waiting_fade: crate::pane::Fade,
     /// How many turns the rail held the last time it was at the bottom; a turn
     /// beyond that arrived while the reader was elsewhere.
     rail_seen: std::cell::Cell<usize>,
@@ -1255,6 +1266,9 @@ impl DeckView {
                 std::time::Duration::from_millis(160),
             )),
             entry_primed: std::cell::Cell::new(false),
+            group_fade: Self::card_fade().whole(),
+            arriving: None,
+            waiting_fade: Self::card_fade(),
             entering: std::cell::RefCell::new(std::collections::HashMap::new()),
             known: std::cell::RefCell::new(std::collections::HashSet::new()),
             rail_seen: std::cell::Cell::new(0),
@@ -1341,6 +1355,11 @@ impl DeckView {
                 let text = unsent.text;
                 state.update(cx, |state, cx| state.set_value(text, window, cx));
             }
+        }
+        // Opened on a deck still being written: the placeholder is up and
+        // stays up. Opened on a whole one it was never there to fade.
+        if view.deck.groups().is_empty() && !view.deck.sealed() {
+            view.waiting_fade = Self::card_fade().whole();
         }
         view.build_panes(cx);
         if let Some(stage) = view.live.stage()
@@ -1461,6 +1480,14 @@ impl DeckView {
                     if changed {
                         if nothing_to_read {
                             deck.build_panes(cx);
+                            // The first group landing while the window watched
+                            // the placeholder: it goes out as the group comes
+                            // in. A window opened on a whole deck never gets
+                            // here with the placeholder up, so it never fades.
+                            if deck.waiting_fade.on() && !deck.deck.groups().is_empty() {
+                                deck.waiting_fade.set(false);
+                                deck.group_fade.dip(0.);
+                            }
                         }
                         cx.notify();
                     }
@@ -2013,14 +2040,32 @@ impl DeckView {
     /// story, and arriving back at the beginning by pressing `n` reads as
     /// having lost your place.
     fn walk(&mut self, step: isize, cx: &mut Context<Self>) {
-        let Some(next) = self.group_ix.checked_add_signed(step) else {
+        // From where the last press was going, not from the group still
+        // fading out: three quick presses are three steps.
+        let from = self.arriving.unwrap_or(self.group_ix);
+        let Some(next) = walked_to(from, step, self.deck.groups().len()) else {
             return;
         };
-        if next >= self.deck.groups().len() {
-            return;
-        }
         self.live.pause(PauseReason::Navigation);
+        if next == self.group_ix {
+            // Back to the one on screen before it left: nothing to swap, and
+            // it rises again from wherever the fall had got to.
+            self.arriving = None;
+            self.group_fade.set(true);
+        } else {
+            // The group on screen goes out; `render` swaps it at the bottom of
+            // the fall (see `arrival_due`), which is also where the panes are
+            // rebuilt and the voice, if it is reading, picks up in the new one.
+            self.arriving = Some(next);
+            self.group_fade.set(false);
+        }
+        cx.notify();
+    }
+
+    /// The swap half of a step, once the outgoing group has gone out.
+    fn arrive(&mut self, next: usize, cx: &mut Context<Self>) {
         self.group_ix = next;
+        // Also puts `group_fade` rising and clears `arriving`.
         self.build_panes(cx);
         // `build_panes` has just stopped the voice mid-sentence, because what
         // it was saying belonged to the group that left the screen. If the
@@ -2028,7 +2073,6 @@ impl DeckView {
         if self.aloud {
             self.speak_unheard(cx);
         }
-        cx.notify();
     }
 
     fn on_next(&mut self, _: &NextGroup, _window: &mut Window, cx: &mut Context<Self>) {
@@ -5902,6 +5946,11 @@ impl DeckView {
     /// comment being written — repaints without coming through here, because a
     /// rebuild throws away where the reader had scrolled to.
     fn build_panes(&mut self, cx: &mut App) {
+        // Whatever brought us here is the arrival: a step pending behind it
+        // would swap the group back later. The group comes up from where it
+        // stands, which is nought after a step's fall and whole for a cut.
+        self.arriving = None;
+        self.group_fade.set(true);
         // A card over the band belongs to the group on screen before, however
         // the group changed (a step, a click, the agent jumping): its
         // badge may not exist on the next one, and nothing would ever say the
@@ -6052,7 +6101,18 @@ impl DeckView {
         self.closing.clear();
     }
 
+    /// How far up the group's own content is. The placeholder text of a deck
+    /// with no group yet belongs to no group, so it is never veiled.
+    fn group_level(&self) -> f32 {
+        if self.group().is_some() {
+            self.group_fade.level()
+        } else {
+            1.
+        }
+    }
+
     fn render_band(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        let veil = self.group_level();
         // Nothing to read yet is a real state, not a blank. The agent opens
         // the window and then writes, so an empty deck is the first moment of
         // most decks' lives — and a window that shows nothing at all in it
@@ -6170,6 +6230,7 @@ impl DeckView {
                                                 NUMBER_SIZE
                                             }))
                                             .line_height(px(36.))
+                                            .when(veil < 1., |this| this.opacity(veil))
                                             .font_weight(FontWeight::LIGHT)
                                             .text_color(paint(
                                                 self.palette.band.mix(self.palette.accent, 0.45),
@@ -6203,6 +6264,7 @@ impl DeckView {
                                                 .items_center()
                                                 .gap(px(10.))
                                                 .min_w_0()
+                                                .when(veil < 1., |this| this.opacity(veil))
                                                 .child(
                                                     div()
                                                         .min_w_0()
@@ -6292,6 +6354,7 @@ impl DeckView {
                             // number is the step, and this is what it says.
                             .child(
                                 div()
+                                    .when(veil < 1., |this| this.opacity(veil))
                                     // Only under a group's number: with nothing
                                     // loaded yet there is no number to hang
                                     // from, and the placeholder sits flush.
@@ -6395,7 +6458,8 @@ impl DeckView {
 
     /// Go to a group by its place in the deck.
     fn go_to(&mut self, ix: usize, cx: &mut Context<Self>) {
-        let step = isize::try_from(ix).unwrap_or(0) - isize::try_from(self.group_ix).unwrap_or(0);
+        let from = self.arriving.unwrap_or(self.group_ix);
+        let step = isize::try_from(ix).unwrap_or(0) - isize::try_from(from).unwrap_or(0);
         if step != 0 {
             self.walk(step, cx);
         }
@@ -9372,6 +9436,9 @@ use crate::pane::SPINE;
 
 impl Render for DeckView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        if let Some(next) = arrival_due(self.arriving, &self.group_fade) {
+            self.arrive(next, cx);
+        }
         self.settle_said_light();
         self.settle_ticks();
         #[cfg(debug_assertions)]
@@ -9465,6 +9532,8 @@ impl Render for DeckView {
             || self.rail_open.moving()
             || self.phrase_fade.get().moving()
             || self.chip_fade.get().moving()
+            || self.group_fade.moving()
+            || self.waiting_fade.moving()
             || self.quip_fade.get().moving()
             || self
                 .entering
@@ -9510,6 +9579,14 @@ impl Render for DeckView {
         // wide one gets the full width and the row below, where it fits and the
         // reader can see all of it without dragging.
         let count = self.panes.len();
+        let veil = self.group_level();
+        // Only once the first group is in: before that the placeholder is the
+        // pane area itself and needs no layer.
+        let waiting_level = if self.deck.groups().is_empty() {
+            0.
+        } else {
+            self.waiting_fade.level()
+        };
         let drawings: Vec<f32> = self
             .panes
             .iter()
@@ -9664,7 +9741,17 @@ impl Render for DeckView {
                 } else {
                     &mut right_spines
                 };
-                side.push(self.panes[ix].render_folded(&slot, cx));
+                let spine = self.panes[ix].render_folded(&slot, cx);
+                side.push(if veil < 1. {
+                    div()
+                        .flex_none()
+                        .h_full()
+                        .opacity(veil)
+                        .child(spine)
+                        .into_any_element()
+                } else {
+                    spine
+                });
             }
             panes.push(self.panes[ix].render(&slot, &marks, self.render_focus_button(ix, cx), cx));
         }
@@ -9911,6 +9998,7 @@ impl Render for DeckView {
                     .h_flex()
                     .flex_1()
                     .min_h_0()
+                    .relative()
                     .children(left_spines)
                     .child(
                         // `h_full` is not decoration. Beside the rail these
@@ -9928,6 +10016,9 @@ impl Render for DeckView {
                             .h_full()
                             .min_h_0()
                             .relative()
+                            // The group's panes fade; the window around them
+                            // does not.
+                            .when(veil < 1., |this| this.opacity(veil))
                             .children(rows)
                             .children(self.render_help(cx)),
                     )
@@ -9939,6 +10030,25 @@ impl Render for DeckView {
                         this.child(self.render_seam(Divide::Rail, cx))
                     })
                     .child(self.render_rail(speaking, window, cx))
+                    // The placeholder going out over the first group coming
+                    // in. Drawn over the panes and taking no input.
+                    .when(waiting_level > 0., |this| {
+                        this.child(
+                            div()
+                                .absolute()
+                                .top_0()
+                                .left_0()
+                                .size_full()
+                                .v_flex()
+                                .opacity(waiting_level)
+                                .occlude()
+                                .child(crate::waiting::render(
+                                    &self.palette,
+                                    self.spread,
+                                    f32::from(window.viewport_size().width) >= crate::waiting::ROOM,
+                                )),
+                        )
+                    })
                     .into_any_element()
             })
             .children(self.render_asks(window, cx))
@@ -9996,6 +10106,19 @@ fn about(
 
 /// A group's name in the review column: its title, or for a group written
 /// without one, the opening of what it says.
+/// The group a step of `step` from `from` lands on, if the deck has one there.
+///
+/// From the group the last press was heading for, so pressing `n` three times
+/// quickly is three steps however far the first fade got.
+fn walked_to(from: usize, step: isize, len: usize) -> Option<usize> {
+    from.checked_add_signed(step).filter(|next| *next < len)
+}
+
+/// The group to swap to, once the one on screen has finished going out.
+fn arrival_due(arriving: Option<usize>, fade: &crate::pane::Fade) -> Option<usize> {
+    arriving.filter(|_| !fade.on() && !fade.moving())
+}
+
 fn row_title(group: &Group) -> String {
     if let Some(title) = group
         .title
@@ -10080,6 +10203,46 @@ mod tests {
         assert_eq!(super::chip_label(true, false), "↓ new reply");
         assert_eq!(super::chip_label(false, true), "↓ reply coming");
         assert_eq!(super::chip_label(false, false), "↓ latest");
+    }
+
+    #[test]
+    fn three_quick_presses_are_three_steps() {
+        // Each press starts from where the last was heading, not from the
+        // group still fading out.
+        let mut heading = 0;
+        for _ in 0..3 {
+            heading = super::walked_to(heading, 1, 5).unwrap();
+        }
+        assert_eq!(heading, 3);
+        // Neither end wraps or overshoots.
+        assert_eq!(super::walked_to(4, 1, 5), None);
+        assert_eq!(super::walked_to(0, -1, 5), None);
+    }
+
+    #[test]
+    fn a_second_press_mid_fade_keeps_one_arrival() {
+        let fall = std::time::Duration::from_millis(160);
+        let mut fade = super::DeckView::card_fade().whole();
+        fade.set(false);
+        let mut arriving = Some(1);
+        // Mid-fall nothing swaps.
+        assert_eq!(super::arrival_due(arriving, &fade), None);
+        // A second press retargets; there is still exactly one arrival, and
+        // the fall that was running is not restarted.
+        arriving = Some(2);
+        assert!(!fade.set(false));
+        assert_eq!(super::arrival_due(arriving, &fade), None);
+        // Only the last target arrives, once the fall has run out.
+        let fade = fade.aged(fall);
+        assert_eq!(super::arrival_due(arriving, &fade), Some(2));
+    }
+
+    #[test]
+    fn a_window_opened_on_a_whole_deck_does_not_fade() {
+        let fade = super::DeckView::card_fade().whole();
+        assert!(!fade.moving());
+        assert!((fade.level() - 1.).abs() < f32::EPSILON);
+        assert_eq!(super::arrival_due(None, &fade), None);
     }
 
     #[test]
