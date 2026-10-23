@@ -750,6 +750,10 @@ pub struct DeckView {
     /// in. A step to another group takes it out on the card fall, swaps the
     /// group at the bottom, and brings it back on the card rise.
     group_fade: crate::pane::Fade,
+    /// The opacity `group_fade` bottoms out at: [`DIP_FLOOR`] for a step, so
+    /// the window is never empty between two groups, and nought for the first
+    /// group landing, where there is nothing on screen to dip from.
+    group_floor: f32,
     /// The group a step is on its way to, while the one on screen fades out.
     /// Only ever one: a press mid-fade retargets it rather than stacking.
     arriving: Option<usize>,
@@ -1266,7 +1270,8 @@ impl DeckView {
                 std::time::Duration::from_millis(160),
             )),
             entry_primed: std::cell::Cell::new(false),
-            group_fade: Self::card_fade().whole(),
+            group_fade: Self::group_fade().whole(),
+            group_floor: DIP_FLOOR,
             arriving: None,
             waiting_fade: Self::card_fade(),
             entering: std::cell::RefCell::new(std::collections::HashMap::new()),
@@ -1486,6 +1491,7 @@ impl DeckView {
                             // here with the placeholder up, so it never fades.
                             if deck.waiting_fade.on() && !deck.deck.groups().is_empty() {
                                 deck.waiting_fade.set(false);
+                                deck.group_floor = 0.;
                                 deck.group_fade.dip(0.);
                             }
                         }
@@ -2057,6 +2063,7 @@ impl DeckView {
             // the fall (see `arrival_due`), which is also where the panes are
             // rebuilt and the voice, if it is reading, picks up in the new one.
             self.arriving = Some(next);
+            self.group_floor = DIP_FLOOR;
             self.group_fade.set(false);
         }
         cx.notify();
@@ -6105,10 +6112,20 @@ impl DeckView {
     /// with no group yet belongs to no group, so it is never veiled.
     fn group_level(&self) -> f32 {
         if self.group().is_some() {
-            self.group_fade.level()
+            self.group_floor + (1. - self.group_floor) * self.group_fade.level()
         } else {
             1.
         }
+    }
+
+    /// How a group steps: out quickly, because the next one is already
+    /// waiting behind it, and in on the card rise. Both ends go through the
+    /// same smoothstep as every other fade.
+    fn group_fade() -> crate::pane::Fade {
+        crate::pane::Fade::default().paced(
+            std::time::Duration::from_millis(200),
+            std::time::Duration::from_millis(100),
+        )
     }
 
     fn render_band(&self, cx: &mut Context<Self>) -> impl IntoElement {
@@ -10106,6 +10123,13 @@ fn about(
 
 /// A group's name in the review column: its title, or for a group written
 /// without one, the opening of what it says.
+/// How far down the group dips on a step, as an opacity.
+///
+/// Not nought: at nought the window is empty for a moment between two groups,
+/// which read as a flash of nothing. Held at this, there is always content on
+/// screen and the swap happens under it, as one soft dip in brightness.
+const DIP_FLOOR: f32 = 0.35;
+
 /// The group a step of `step` from `from` lands on, if the deck has one there.
 ///
 /// From the group the last press was heading for, so pressing `n` three times
@@ -10221,8 +10245,8 @@ mod tests {
 
     #[test]
     fn a_second_press_mid_fade_keeps_one_arrival() {
-        let fall = std::time::Duration::from_millis(160);
-        let mut fade = super::DeckView::card_fade().whole();
+        let fall = std::time::Duration::from_millis(100);
+        let mut fade = super::DeckView::group_fade().whole();
         fade.set(false);
         let mut arriving = Some(1);
         // Mid-fall nothing swaps.
@@ -10238,8 +10262,19 @@ mod tests {
     }
 
     #[test]
+    fn a_step_never_empties_the_group() {
+        // The deepest the dip goes is the floor, not nought.
+        let mut fade = super::DeckView::group_fade().whole();
+        fade.set(false);
+        let fade = fade.aged(std::time::Duration::from_millis(100));
+        let shown = super::DIP_FLOOR + (1. - super::DIP_FLOOR) * fade.level();
+        assert!((shown - super::DIP_FLOOR).abs() < 1e-6);
+        assert!(shown > 0.);
+    }
+
+    #[test]
     fn a_window_opened_on_a_whole_deck_does_not_fade() {
-        let fade = super::DeckView::card_fade().whole();
+        let fade = super::DeckView::group_fade().whole();
         assert!(!fade.moving());
         assert!((fade.level() - 1.).abs() < f32::EPSILON);
         assert_eq!(super::arrival_due(None, &fade), None);
