@@ -223,7 +223,18 @@ pub struct Chart {
     /// A picture's answer to a code pane's spotlight. The ids are the
     /// diagram's own, so the agent points at `[point checkout]` with the same
     /// word it wrote into the file.
-    pub pointed: Vec<SharedString>,
+    pointed: Vec<SharedString>,
+    /// The light on the blocks being pointed at, rising when a point lands.
+    ///
+    /// The point on a code pane rises over 520ms, and this is the same fade at
+    /// the same pace, so the agent's finger moves the same way on either kind
+    /// of pane. See [`Self::point`].
+    light: crate::pane::Fade,
+    /// The blocks that were pointed at before the last point, still going out.
+    prior: Vec<SharedString>,
+    /// Their light, on its way down. A hand-over: while it falls the new
+    /// blocks rise, so a point moving from one block to the next crosses over.
+    prior_light: crate::pane::Fade,
     /// Whether the agent is talking about this pane. See [`Self::heed`].
     heeded: crate::pane::Fade,
     /// The node the reader has picked, if any.
@@ -310,6 +321,9 @@ impl Chart {
             ref_id: spec.id.clone().into(),
             name: spec.name.clone().map(SharedString::from),
             pointed: Vec::new(),
+            light: crate::pane::Fade::default(),
+            prior: Vec::new(),
+            prior_light: crate::pane::Fade::default(),
             heeded: crate::pane::Fade::default(),
             diagram: spec.diagram.clone(),
             plan,
@@ -366,7 +380,71 @@ impl Chart {
     /// Whether the outline is still coming up or going out.
     #[must_use]
     pub fn fading(&self) -> bool {
-        self.heeded.moving()
+        self.heeded.moving() || self.light.moving() || self.prior_light.moving()
+    }
+
+    /// The blocks a point is holding a light on.
+    #[must_use]
+    pub fn pointed(&self) -> &[SharedString] {
+        &self.pointed
+    }
+
+    /// Point at these blocks, or at none.
+    ///
+    /// A point on code rises over 520ms and falls over 760, and the diagram's
+    /// used to land in one frame: the block lit and every other block stepped
+    /// back at once, while only the outline round the pane had a fade. That is
+    /// the lapse this closes. The new blocks rise on their own light; the ones
+    /// that were pointed at go out on theirs, kept here until they are dark so
+    /// that moving from one block to the next crosses over rather than jumps;
+    /// and the rest of the picture steps back by the same amount, so letting go
+    /// of the point returns everything to rest by fading too.
+    pub fn point(&mut self, ids: Vec<SharedString>) {
+        if ids == self.pointed {
+            return;
+        }
+        if !self.pointed.is_empty() {
+            self.prior = std::mem::take(&mut self.pointed);
+            self.prior_light = self.light;
+            self.prior_light.set(false);
+        }
+        self.light = crate::pane::Fade::default();
+        if !ids.is_empty() {
+            self.light.set(true);
+        }
+        self.pointed = ids;
+    }
+
+    /// How far the point has the rest of the picture stepped back: the higher
+    /// of the rising light and the falling one, so a hand-over from one block
+    /// to the next never lets the picture relax in the middle.
+    fn pointed_back(&self) -> f32 {
+        let rising = if self.pointed.is_empty() {
+            0.
+        } else {
+            self.light.level()
+        };
+        let falling = if self.prior.is_empty() {
+            0.
+        } else {
+            self.prior_light.level()
+        };
+        rising.max(falling)
+    }
+
+    /// How lit the block called `id` is by the point.
+    fn pointed_much(&self, id: &str) -> f32 {
+        let rising = if self.pointed.iter().any(|lit| lit == id) {
+            self.light.level()
+        } else {
+            0.
+        };
+        let falling = if self.prior.iter().any(|lit| lit == id) {
+            self.prior_light.level()
+        } else {
+            0.
+        };
+        rising.max(falling)
     }
 
     pub fn render(&self, slot: &Slot, cx: &App) -> impl IntoElement {
@@ -984,14 +1062,22 @@ impl Chart {
             // button. Their path wins over the agent's finger for as long as it
             // runs, and the finger is still there when it finishes — the same
             // rule as a reader who scrolls a pane the agent was moving.
-            if !self.pointed.is_empty() {
-                return if self.pointed.iter().any(|lit| lit == id) {
-                    Lit::On(1., None)
-                } else {
-                    Lit::Aside
-                };
-            }
-            return Lit::Resting;
+            //
+            // It eases in and out rather than landing, for the same reason the
+            // point on code does: a snap reads as a glitch, and a fade reads as
+            // someone looking. At rest and at full the answers are the ones it
+            // always gave.
+            let back = self.pointed_back();
+            let much = self.pointed_much(id);
+            return if much >= 1. {
+                Lit::On(1., None)
+            } else if much > 0. {
+                Lit::Held(much, back)
+            } else if back > 0. {
+                Lit::Aside(back)
+            } else {
+                Lit::Resting
+            };
         };
         let Some(flow) = self.diagram.flows.get(playing.flow) else {
             return Lit::Resting;
@@ -1001,7 +1087,7 @@ impl Chart {
         // what a reader watching it travel would expect: it lights when it is
         // first reached and stays lit.
         let Some(at) = walk.iter().position(|step| step.node() == id) else {
-            return Lit::Aside;
+            return Lit::Aside(1.);
         };
         // The front is measured in steps, so how far this node has been
         // reached is simply how far past it the front has got — clamped, so a
@@ -1035,7 +1121,7 @@ impl Chart {
                 );
             }
         }
-        Lit::Aside
+        Lit::Aside(1.)
     }
 
     /// The flows this diagram offers, by name.
@@ -1412,9 +1498,14 @@ mod tests {
         assert!(!chart.has_block("nowhere"));
         assert_eq!(chart.lit("checkout"), Lit::Resting);
 
-        chart.pointed = vec!["checkout".into()];
+        chart.point(vec!["checkout".into()]);
+        // It rises rather than lands: the instant after, the block is barely
+        // lit and the rest has barely stepped back.
+        assert!(matches!(chart.lit("checkout"), Lit::Held(much, _) if much < 0.1));
+        assert!(matches!(chart.lit("fetch"), Lit::Aside(back) if back < 0.1));
+        std::thread::sleep(std::time::Duration::from_millis(560));
         assert_eq!(chart.lit("checkout"), Lit::On(1., None));
-        assert_eq!(chart.lit("fetch"), Lit::Aside);
+        assert_eq!(chart.lit("fetch"), Lit::Aside(1.));
 
         // And a flow the reader pressed play on wins while it runs: their path
         // is theirs, and the finger is still there when it ends.

@@ -2459,7 +2459,9 @@ impl DeckView {
             .enumerate()
             .filter(|(_, pane)| {
                 pane.code().is_some_and(|code| code.pointed().is_some())
-                    || pane.chart().is_some_and(|chart| !chart.pointed.is_empty())
+                    || pane
+                        .chart()
+                        .is_some_and(|chart| !chart.pointed().is_empty())
                     || pane.paper().is_some_and(|paper| !paper.pointed.is_empty())
             })
             .map(|(ix, _)| ix)
@@ -2553,8 +2555,8 @@ impl DeckView {
                     (true, Some(id)) => vec![SharedString::from(id.to_string())],
                     _ => Vec::new(),
                 };
-                if chart.pointed != want {
-                    chart.pointed = want;
+                if chart.pointed() != want.as_slice() {
+                    chart.point(want);
                     moved = true;
                 }
                 continue;
