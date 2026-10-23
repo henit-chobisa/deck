@@ -8729,7 +8729,6 @@ impl DeckView {
             .pt(px(12.))
             .pb(px(14.))
             .cursor_pointer()
-            .hover(|style| style.bg(paint(hover_on_band(&palette))))
             .on_click(cx.listener(|deck, _, window, cx| {
                 // Opening it onto a draft is going back to the draft.
                 if !deck.back_to_the_box(window, cx) {
