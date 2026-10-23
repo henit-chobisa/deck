@@ -480,7 +480,7 @@ impl ExportSheet {
                 .text_size(px(12.5))
                 .when(ready, |this| {
                     this.cursor_pointer()
-                        .hover(|this| this.bg(paint(palette.wash)))
+                        .hover(|this| this.bg(paint(crate::palette::hover_on_band(&palette))))
                 })
                 .when(!ready, |this| this.text_color(paint(palette.muted)))
                 .on_click(cx.listener(move |sheet, _, window, cx| {

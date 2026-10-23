@@ -5075,7 +5075,7 @@ impl DeckView {
                 .border_color(paint(if lit { palette.accent } else { palette.edge }))
                 .text_color(paint(if lit { palette.accent } else { palette.fg }))
                 .cursor_pointer()
-                .hover(|style| style.bg(paint(palette.wash)))
+                .hover(|style| style.bg(paint(hover_on_band(&palette))))
                 .child(label)
         };
         let answer = |share: bool| {
@@ -7848,7 +7848,7 @@ impl DeckView {
                 .rounded(px(5.))
                 .cursor_pointer()
                 .text_color(paint(palette.fg))
-                .hover(|style| style.bg(paint(palette.wash)))
+                .hover(|style| style.bg(paint(hover_on_band(&palette))))
                 .tooltip(move |_window, cx| {
                     cx.new(|_| gpui_kit::component::tooltip::Tooltip::new(tip))
                         .into()
@@ -8341,7 +8341,7 @@ impl DeckView {
                                                         .text_color(paint(palette.muted))
                                                         .hover(|style| {
                                                             style
-                                                                .bg(paint(palette.wash))
+                                                                .bg(paint(hover_on_band(&palette)))
                                                                 .text_color(paint(palette.accent))
                                                         })
                                                         .on_click(cx.listener(
