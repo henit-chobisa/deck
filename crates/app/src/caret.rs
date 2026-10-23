@@ -25,16 +25,28 @@
 //! scroll is not folded in there — the library adds it when it paints — so
 //! [`Reading`] adds it back. Because the position is in window coordinates the
 //! overlay can paint straight into the window; it only needs a box over the
-//! field so that it paints after, and inside the clip of, the field.
+//! field so that it paints after the field. Painting into the window does not
+//! by itself keep the caret inside the field: when a long text is scrolled so
+//! the caret's line is out of the box, the quad would still land on whatever
+//! neighbours the field. So the overlay clips its own paint to its own bounds,
+//! which are the field's, and the caret cannot escape however the wrapper
+//! around the field is styled.
 //!
-//! The window only redraws while the caret is on screen and breathing, which
-//! is to say while a field is focused. An unfocused field asks for no frames.
+//! Redraws are paid for only when they show something. While the caret glides,
+//! or is held solid after a change, the overlay asks for a frame every display
+//! refresh, because the eye can see those. Once it is only breathing, a slow
+//! cosine, it stops asking and a timer wakes the window about thirty times a
+//! second instead: that is plenty for a curve that takes over a second, and it
+//! stops a quiet, focused field from redrawing the whole window at display
+//! rate for ever. An unfocused field asks for nothing at all.
 
 use std::cell::RefCell;
 use std::rc::Rc;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
-use gpui_kit::{Bounds, Hsla, IntoElement, Styled, canvas, fill, point, px, size};
+use gpui_kit::{
+    Bounds, ContentMask, Hsla, IntoElement, Styled, Task, canvas, fill, point, px, size,
+};
 
 /// How long the caret takes to travel to a new place.
 const GLIDE: f32 = 0.100;
@@ -48,6 +60,9 @@ const DIM: f32 = 0.15;
 /// Moves longer than this many lines snap rather than glide. Across that
 /// distance a glide is a streak down the page, not a motion the eye follows.
 const SNAP_LINES: f32 = 2.0;
+/// How often the window is woken while the caret only breathes. Roughly thirty
+/// times a second.
+const BREATH_TICK: Duration = Duration::from_millis(33);
 /// The caret's width on macOS, in points.
 const WIDTH: f32 = 1.5;
 
@@ -156,6 +171,10 @@ pub struct Frame {
     pub y: f32,
     pub height: f32,
     pub opacity: f32,
+    /// Whether this frame is part of something quick, a glide or the solid
+    /// hold after a change, that needs a frame every refresh. When false the
+    /// caret is only breathing and a slow timer is enough.
+    pub quick: bool,
 }
 
 impl State {
@@ -203,23 +222,38 @@ impl State {
         let t = self.started.map_or(1., |at| secs(at) / GLIDE);
         let here = glide(self.from, self.to, t);
         self.drawn = Some(here);
+        let quiet = self.changed.map_or(0., secs);
         Some(Frame {
             x: here.0,
             y: here.1,
             height: reading.height,
-            opacity: breathe(self.changed.map_or(0., secs)),
+            opacity: breathe(quiet),
+            quick: t < 1. || quiet < HOLD,
         })
     }
 }
 
 /// A caret's state, shared between the view that owns the field and the
 /// paint that draws over it.
-#[derive(Debug, Clone, Default)]
-pub struct Caret(Rc<RefCell<State>>);
+#[derive(Clone, Default)]
+pub struct Caret {
+    state: Rc<RefCell<State>>,
+    /// The pending wake-up while the caret only breathes. Replacing it drops
+    /// (and so cancels) the one before; clearing it cancels it.
+    wake: Rc<RefCell<Option<Task<()>>>>,
+}
+
+impl std::fmt::Debug for Caret {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Caret")
+            .field("state", &self.state)
+            .finish_non_exhaustive()
+    }
+}
 
 /// An overlay to put over a field, as a sibling after it, inside a parent that
-/// is `relative()`. It paints the caret and asks for the next frame only while
-/// a caret is showing.
+/// is `relative()`. It paints the caret, clipped to the field, and asks for
+/// the next frame only while a caret is showing.
 pub fn overlay(
     caret: &Caret,
     colour: Hsla,
@@ -228,23 +262,45 @@ pub fn overlay(
     let caret = caret.clone();
     canvas(
         |_, _, _| (),
-        move |_, (), window, cx| {
+        move |field_bounds, (), window, cx| {
             let field = read(window, cx);
-            let frame = caret.0.borrow_mut().frame(Instant::now(), field);
-            if let Some(frame) = frame {
-                let width = if cfg!(target_os = "macos") {
-                    WIDTH
-                } else {
-                    1.0
-                };
-                window.paint_quad(fill(
-                    Bounds::new(
-                        point(px(frame.x), px(frame.y)),
-                        size(px(width), px(frame.height)),
-                    ),
-                    colour.opacity(frame.opacity),
-                ));
+            let frame = caret.state.borrow_mut().frame(Instant::now(), field);
+            let Some(frame) = frame else {
+                // Not focused: no caret, and no wake-up either.
+                caret.wake.borrow_mut().take();
+                return;
+            };
+            let width = if cfg!(target_os = "macos") {
+                WIDTH
+            } else {
+                1.0
+            };
+            window.with_content_mask(
+                Some(ContentMask {
+                    bounds: field_bounds,
+                }),
+                |window| {
+                    window.paint_quad(fill(
+                        Bounds::new(
+                            point(px(frame.x), px(frame.y)),
+                            size(px(width), px(frame.height)),
+                        ),
+                        colour.opacity(frame.opacity),
+                    ));
+                },
+            );
+            if frame.quick {
+                caret.wake.borrow_mut().take();
                 window.request_animation_frame();
+            } else {
+                // Only breathing: wake the window from a timer instead of
+                // every refresh. A new paint replaces the timer, so there is
+                // never more than one pending.
+                let task = window.spawn(cx, async move |cx| {
+                    cx.background_executor().timer(BREATH_TICK).await;
+                    cx.update(|window, _| window.refresh()).ok();
+                });
+                *caret.wake.borrow_mut() = Some(task);
             }
         },
     )
@@ -328,6 +384,25 @@ mod tests {
         caret.frame(start, reading(0., 0., 1));
         let frame = caret.frame(start, reading(0., 500., 2)).unwrap();
         assert_eq!(frame.y, 500.);
+    }
+
+    #[test]
+    fn a_scroll_moves_the_caret_with_the_words_instead_of_gliding() {
+        let start = Instant::now();
+        let mut caret = State::default();
+        caret.frame(start, reading(0., 0., 1));
+        // The same caret place in the text, a short distance down the window
+        // because the field scrolled by 10: no glide, it lands at once.
+        let scrolled = Field::Caret(Reading {
+            x: 0.,
+            y: 10.,
+            height: 16.,
+            line_height: 20.,
+            scroll: (0., 10.),
+            stamp: 1,
+        });
+        let frame = caret.frame(start, scrolled).unwrap();
+        assert_eq!(frame.y, 10.);
     }
 
     #[test]
