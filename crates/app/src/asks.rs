@@ -257,6 +257,10 @@ pub struct Carousel {
     /// its place in the row, except while the row renews: then questions on
     /// their way out are still drawn among them.
     places: Rc<std::cell::RefCell<Vec<usize>>>,
+    /// How far the two arrows are in, from none at 0 to whole at 1. See
+    /// [`Self::arrows`]. Made on first use, because a [`crate::pane::Fade`]
+    /// has to be given its pace and `Default` cannot.
+    arrows: Rc<Cell<Option<crate::pane::Fade>>>,
     /// Until when a renewal is playing: the row is moving even when the pill
     /// under the pointer has settled.
     renewing: Rc<Cell<Option<Instant>>>,
@@ -301,6 +305,24 @@ fn age(since: Instant) -> f32 {
 }
 
 impl Carousel {
+    /// How far in the arrows are, this frame, given whether the row is wider
+    /// than its window. They fade in over 200ms and out over 160, like the
+    /// other lights on the shelf, and ask for frames while they do. Before,
+    /// they appeared in the frame the row was found to overflow, and the row's
+    /// visible width jumped by two arrows with them.
+    fn arrows(&self, wanted: bool, window: &Window) -> f32 {
+        let mut fade = self.arrows.get().unwrap_or_else(|| {
+            crate::pane::Fade::default()
+                .paced(Duration::from_millis(200), Duration::from_millis(160))
+        });
+        fade.set(wanted);
+        self.arrows.set(Some(fade));
+        if fade.moving() {
+            window.request_animation_frame();
+        }
+        fade.level()
+    }
+
     /// Back to the first question, at once: a new group's row starts there.
     pub fn reset(&self) {
         self.glide.set(None);
@@ -1100,12 +1122,41 @@ pub fn render(
                 .collect()
         }
     };
+    // Each arrow gets a slot that grows and fades with the light, holding the
+    // arrow and the gap beside it, so the row's window narrows smoothly as the
+    // arrows come in rather than by two arrows at once. Whether the row
+    // overflows is judged from the row's length and the width it is drawn
+    // across, never from this window, so animating it cannot feed back into
+    // the judgement and flicker.
+    let shown = carousel.arrows(reach.overflows, window);
+    let slot = move |arrow: Stateful<Div>, first: bool| {
+        let gap = div().flex_none().w(px(GAP));
+        let held = div()
+            .flex_none()
+            .h_flex()
+            .overflow_hidden()
+            .w(px((ARROW + GAP) * shown))
+            .opacity(shown);
+        if first {
+            held.child(arrow.flex_none()).child(gap)
+        } else {
+            held.child(gap).child(arrow.flex_none())
+        }
+    };
+    let slotted = reach.overflows || shown > 0.;
     div()
         .w(px(wide))
         .h_flex()
-        .gap(px(GAP))
-        .when(reach.overflows, |this| {
-            this.child(arrow("ask-back", "\u{2039}", -1, !reach.at_start))
+        .when(slotted, |this| {
+            this.child(slot(
+                arrow(
+                    "ask-back",
+                    "\u{2039}",
+                    -1,
+                    reach.overflows && !reach.at_start,
+                ),
+                true,
+            ))
         })
         .child(
             div()
@@ -1119,8 +1170,11 @@ pub fn render(
                 .gap(px(GAP))
                 .children(pills),
         )
-        .when(reach.overflows, |this| {
-            this.child(arrow("ask-on", "\u{203a}", 1, !reach.at_end))
+        .when(slotted, |this| {
+            this.child(slot(
+                arrow("ask-on", "\u{203a}", 1, reach.overflows && !reach.at_end),
+                false,
+            ))
         })
 }
 
@@ -1256,6 +1310,29 @@ pub fn open_shelf(deck_window: WindowHandle<Root>, cx: &mut App) {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn reach_tells_fits_ends_and_the_middle() {
+        let wide = 500.;
+        let window = wide - 2. * (ARROW + GAP);
+        // Fits: exactly the window, and a pixel over, which is tolerated.
+        assert!(!Reach::of(window, wide, 0.).overflows);
+        assert!(!Reach::of(window + 1., wide, 0.).overflows);
+        // A hair past the tolerance overflows.
+        assert!(Reach::of(window + 1.5, wide, 0.).overflows);
+        let content = window + 100.;
+        // At the start, with one pixel of slack either way.
+        assert!(Reach::of(content, wide, 0.).at_start);
+        assert!(Reach::of(content, wide, 1.).at_start);
+        assert!(!Reach::of(content, wide, 1.5).at_start);
+        // In the middle: neither end.
+        let middle = Reach::of(content, wide, 50.);
+        assert!(middle.overflows && !middle.at_start && !middle.at_end);
+        // At the end, likewise.
+        assert!(Reach::of(content, wide, 100.).at_end);
+        assert!(Reach::of(content, wide, 99.).at_end);
+        assert!(!Reach::of(content, wide, 98.5).at_end);
+    }
+
     // Spelled out: the gpui glob above exports a `test` attribute of its own.
     use core::prelude::v1::test;
 
