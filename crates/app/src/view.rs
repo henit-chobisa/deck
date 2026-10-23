@@ -747,8 +747,8 @@ pub struct DeckView {
     entry_primed: std::cell::Cell<bool>,
     /// How far up the group's own content is: its heading, its prose and its
     /// panes. Resting whole, so a window that opens on a deck does not fade it
-    /// in. A step to another group takes it out on the card fall, swaps the
-    /// group at the bottom, and brings it back on the card rise.
+    /// in. A step to another group dips it to its floor over [`GROUP_FALL_MS`],
+    /// swaps the group there, and brings it back on the card rise.
     group_fade: crate::pane::Fade,
     /// The opacity `group_fade` bottoms out at: [`DIP_FLOOR`] for a step, so
     /// the window is never empty between two groups, and nought for the first
@@ -2063,8 +2063,13 @@ impl DeckView {
             // the fall (see `arrival_due`), which is also where the panes are
             // rebuilt and the voice, if it is reading, picks up in the new one.
             self.arriving = Some(next);
-            self.group_floor = DIP_FLOOR;
-            self.group_fade.set(false);
+            // From what is on screen: a step in mid-rise (the first group
+            // coming up) must not jump.
+            let level = self.group_fade.level();
+            let floor = carried_floor(self.group_floor, level);
+            if self.group_fade.set(false) {
+                self.group_floor = floor;
+            }
         }
         cx.notify();
     }
@@ -4612,7 +4617,7 @@ impl DeckView {
         if let Some(place) = place {
             // Going to an older turn is leaving the tail.
             self.rail_pinned.set(false);
-            self.rail_scroll.scroll_to_item(place);
+            self.rail_scroll.scroll_to_item(rail_child(place));
         }
 
         let mut light = crate::pane::Fade::default();
@@ -6124,7 +6129,7 @@ impl DeckView {
     fn group_fade() -> crate::pane::Fade {
         crate::pane::Fade::default().paced(
             std::time::Duration::from_millis(200),
-            std::time::Duration::from_millis(100),
+            std::time::Duration::from_millis(GROUP_FALL_MS),
         )
     }
 
@@ -8315,10 +8320,17 @@ impl DeckView {
             }
             entering.retain(|_, fade| fade.moving());
         }
-        let turns = shown.len();
+        let turns = shown
+            .iter()
+            .filter(|(_, moment)| from_the_agent(&moment.what))
+            .count();
         // The reply on its way is part of the thread, so the last real turn's
         // line has to run on down to it instead of stopping at its own knot.
-        let arriving = self.arrival_shown() && self.answer_owed();
+        // And a little past that, while the pulse is still going out, so the
+        // line and its tail do not snap away when the wait ends without a
+        // reply.
+        let arriving =
+            self.arrival_shown() && (self.answer_owed() || self.phrase_fade.get().moving());
         let lines: Vec<AnyElement> = shown
             .into_iter()
             .enumerate()
@@ -8604,6 +8616,15 @@ impl DeckView {
         // the first thing the reader sees in the panel.
         let nothing = lines.is_empty();
         let arrival = self.render_arrival(!nothing, mono.clone(), window);
+        let owed_now = self.answer_owed();
+        // The pulse once the answer is here only fades where it stood: an
+        // absolute layer, so it goes in the relative wrapper beside the scroll
+        // container and not among the turns.
+        let (arrival, arrival_going) = if owed_now {
+            (arrival, None)
+        } else {
+            (None, arrival)
+        };
 
         div()
             .id("live-rail")
@@ -8757,29 +8778,24 @@ impl DeckView {
                                             cx.notify();
                                         }))
                                         // The turns sit at the bottom of the rail and
-                                        // grow upward as more arrive. Not
-                                        // `justify_end` on the scroll container
-                                        // itself, which can break its scroll
-                                        // range: they go in a column of their
-                                        // own that grows to fill the rail when
-                                        // the turns are short (so `justify_end`
-                                        // has room to push them down) and is no
-                                        // shorter than its content when they
-                                        // are long (so the scroll container
-                                        // still sees all of it, top turn
-                                        // included, and `scroll_to_bottom`
-                                        // reaches the true end).
-                                        .child(
-                                            div()
-                                                .v_flex()
-                                                .relative()
-                                                .flex_grow_1()
-                                                .flex_shrink_0()
-                                                .justify_end()
-                                                .children(lines)
-                                                .children(arrival),
-                                        ),
+                                        // grow upward as more arrive. A leading
+                                        // spacer that grows to fill the rail when
+                                        // the turns are short pushes them down, and
+                                        // shrinks to nothing when they are long, so
+                                        // the scroll container still sees all of
+                                        // them and `scroll_to_bottom` reaches the
+                                        // true end. The turns stay direct children
+                                        // of the container, which is what
+                                        // `scroll_to_item` indexes: see
+                                        // [`rail_child`].
+                                        .child(div().flex_grow_1().flex_shrink_0())
+                                        .children(lines)
+                                        .children(arrival.filter(|_| owed_now)),
                                 )
+                                // The pulse going out is laid over the thread's
+                                // bottom, from outside the scroll container
+                                // so it needs no place among the turns.
+                                .children(arrival_going)
                                 .children(self.render_way_back(turns, cx))
                                 .children(quip_shown(nothing, quip_fade.moving()).then(|| {
                                     div()
@@ -9136,6 +9152,10 @@ impl DeckView {
         // room, and fades where it stood, so the one change in height is the
         // real turn coming in, not that and the pulse leaving as well.
         let owed = self.answer_owed();
+        // The line into the dot and the tail below it stay while the row is
+        // still fading out, so a wait that ends without a reply lets go of
+        // them with the rest rather than snapping.
+        let lingering = owed || self.phrase_fade.get().moving();
         // Centred on the thread line, which is the 1px at x = 10 to 11, the
         // same column the knots are centred on.
         let dot = div()
@@ -9164,7 +9184,7 @@ impl DeckView {
         };
         // Only with turns above it is there a line to continue; the first
         // turn of a thread starts at its dot.
-        let thread = (has_turns && owed).then(|| {
+        let thread = (has_turns && lingering).then(|| {
             div()
                 .absolute()
                 .left(px(10.))
@@ -9173,7 +9193,7 @@ impl DeckView {
                 .h(px((LINE - DOT) / 2.))
                 .bg(paint(palette.edge))
         });
-        let tail = (0..2).filter(|_| owed).map(|n| {
+        let tail = (0..2).filter(|_| lingering).map(|n| {
             div()
                 .absolute()
                 .left(px(10.))
@@ -9267,6 +9287,12 @@ impl DeckView {
                 .into_any_element(),
         )
     }
+}
+
+/// Whether a turn is the agent's to say, and so counts as a reply arriving.
+/// What the reader wrote themselves is `Said`: they were there for it.
+fn from_the_agent(what: &deck_core::What) -> bool {
+    *what != deck_core::What::Said
 }
 
 /// What the way-back chip says. A turn that arrived while the reader was
@@ -9549,7 +9575,11 @@ impl Render for DeckView {
             || self.rail_open.moving()
             || self.phrase_fade.get().moving()
             || self.chip_fade.get().moving()
+            // `arriving` too: the fall can end between the swap check at the
+            // top of this frame and here, and a swap nobody asks a frame for
+            // would leave the old group frozen at its floor.
             || self.group_fade.moving()
+            || self.arriving.is_some()
             || self.waiting_fade.moving()
             || self.quip_fade.get().moving()
             || self
@@ -10035,9 +10065,37 @@ impl Render for DeckView {
                             .relative()
                             // The group's panes fade; the window around them
                             // does not.
-                            .when(veil < 1., |this| this.opacity(veil))
-                            .children(rows)
-                            .children(self.render_help(cx)),
+                            .child(
+                                div()
+                                    .v_flex()
+                                    .size_full()
+                                    .min_h_0()
+                                    .when(veil < 1., |this| this.opacity(veil))
+                                    .children(rows),
+                            )
+                            .children(self.render_help(cx))
+                            // The placeholder going out over the first group
+                            // coming in. Over the panes only, so the chat rail
+                            // stays usable; it takes no input from the panes
+                            // under it.
+                            .when(waiting_level > 0., |this| {
+                                this.child(
+                                    div()
+                                        .absolute()
+                                        .top_0()
+                                        .left_0()
+                                        .size_full()
+                                        .v_flex()
+                                        .opacity(waiting_level)
+                                        .occlude()
+                                        .child(crate::waiting::render(
+                                            &self.palette,
+                                            self.spread,
+                                            f32::from(window.viewport_size().width)
+                                                >= crate::waiting::ROOM,
+                                        )),
+                                )
+                            }),
                     )
                     .children(right_spines)
                     // No seam on a folded rail: there is nothing to drag, and
@@ -10047,25 +10105,6 @@ impl Render for DeckView {
                         this.child(self.render_seam(Divide::Rail, cx))
                     })
                     .child(self.render_rail(speaking, window, cx))
-                    // The placeholder going out over the first group coming
-                    // in. Drawn over the panes and taking no input.
-                    .when(waiting_level > 0., |this| {
-                        this.child(
-                            div()
-                                .absolute()
-                                .top_0()
-                                .left_0()
-                                .size_full()
-                                .v_flex()
-                                .opacity(waiting_level)
-                                .occlude()
-                                .child(crate::waiting::render(
-                                    &self.palette,
-                                    self.spread,
-                                    f32::from(window.viewport_size().width) >= crate::waiting::ROOM,
-                                )),
-                        )
-                    })
                     .into_any_element()
             })
             .children(self.render_asks(window, cx))
@@ -10121,14 +10160,39 @@ fn about(
     }
 }
 
-/// A group's name in the review column: its title, or for a group written
-/// without one, the opening of what it says.
 /// How far down the group dips on a step, as an opacity.
 ///
 /// Not nought: at nought the window is empty for a moment between two groups,
 /// which read as a flash of nothing. Held at this, there is always content on
 /// screen and the swap happens under it, as one soft dip in brightness.
 const DIP_FLOOR: f32 = 0.35;
+
+/// How long the group takes to dip on a step, in milliseconds.
+///
+/// The Feedback pace: quick enough that the swap under the dip goes
+/// unnoticed, slow enough to read as a dip and not a cut.
+const GROUP_FALL_MS: u64 = 120;
+
+/// Where turn `place` sits among the rail's children: after the spacer that
+/// anchors the turns to the bottom. `scroll_to_item` indexes children, so every
+/// turn goes through this.
+fn rail_child(place: usize) -> usize {
+    place + 1
+}
+
+/// The floor a dip should bottom out at when a step lands while the group is
+/// at `level` of a rise from `floor`.
+///
+/// Dipping to the usual floor from a group that is shown lower than it would
+/// jump the picture up; this solves for the floor that makes the first frame
+/// of the fall equal what is on screen.
+fn carried_floor(floor: f32, level: f32) -> f32 {
+    if level >= 1. - 1e-4 {
+        return DIP_FLOOR;
+    }
+    let shown = floor + (1. - floor) * level;
+    ((shown - level) / (1. - level)).clamp(0., DIP_FLOOR)
+}
 
 /// The group a step of `step` from `from` lands on, if the deck has one there.
 ///
@@ -10143,6 +10207,8 @@ fn arrival_due(arriving: Option<usize>, fade: &crate::pane::Fade) -> Option<usiz
     arriving.filter(|_| !fade.on() && !fade.moving())
 }
 
+/// A group's name in the review column: its title, or for a group written
+/// without one, the opening of what it says.
 fn row_title(group: &Group) -> String {
     if let Some(title) = group
         .title
@@ -10230,6 +10296,32 @@ mod tests {
     }
 
     #[test]
+    fn the_readers_own_turn_is_not_a_reply() {
+        assert!(!super::from_the_agent(&deck_core::What::Said));
+        assert!(super::from_the_agent(&deck_core::What::Wrote));
+        assert!(super::from_the_agent(&deck_core::What::Reacted));
+        assert!(super::from_the_agent(&deck_core::What::Shown));
+    }
+
+    #[test]
+    fn the_rail_indexes_its_turns_past_the_spacer() {
+        assert_eq!(super::rail_child(0), 1);
+        assert_eq!(super::rail_child(4), 5);
+    }
+
+    #[test]
+    fn a_step_in_mid_rise_starts_from_what_is_shown() {
+        let shown = |floor: f32, level: f32| floor + (1. - floor) * level;
+        // Whole: the usual floor.
+        assert!((super::carried_floor(0.35, 1.) - super::DIP_FLOOR).abs() < 1e-6);
+        // Half way up from nothing: the dip starts from where it stands.
+        let floor = super::carried_floor(0., 0.5);
+        assert!((shown(floor, 0.5) - 0.5).abs() < 1e-6);
+        // Never above the floor.
+        assert!(super::carried_floor(0., 0.9) <= super::DIP_FLOOR);
+    }
+
+    #[test]
     fn three_quick_presses_are_three_steps() {
         // Each press starts from where the last was heading, not from the
         // group still fading out.
@@ -10245,7 +10337,7 @@ mod tests {
 
     #[test]
     fn a_second_press_mid_fade_keeps_one_arrival() {
-        let fall = std::time::Duration::from_millis(100);
+        let fall = std::time::Duration::from_millis(super::GROUP_FALL_MS);
         let mut fade = super::DeckView::group_fade().whole();
         fade.set(false);
         let mut arriving = Some(1);
@@ -10266,7 +10358,7 @@ mod tests {
         // The deepest the dip goes is the floor, not nought.
         let mut fade = super::DeckView::group_fade().whole();
         fade.set(false);
-        let fade = fade.aged(std::time::Duration::from_millis(100));
+        let fade = fade.aged(std::time::Duration::from_millis(super::GROUP_FALL_MS));
         let shown = super::DIP_FLOOR + (1. - super::DIP_FLOOR) * fade.level();
         assert!((shown - super::DIP_FLOOR).abs() < 1e-6);
         assert!(shown > 0.);
