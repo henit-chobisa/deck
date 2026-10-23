@@ -782,6 +782,22 @@ pub struct DeckView {
     /// scroll to it has been painted and the rows past each edge can be
     /// counted.
     review_settle: bool,
+    /// The words of the picked sentence, and the pick and narration they
+    /// were cut from.
+    ///
+    /// Every frame asks for them, to open the values the sentence names, and
+    /// cutting them meant parsing the whole narration again sixty times a
+    /// second for as long as anything moved. Cut again only when the pick or
+    /// the narration changes.
+    said_memo: Option<((usize, usize), String, Option<String>)>,
+    /// Each group's line in the review column, and the title and narration
+    /// it was made from.
+    ///
+    /// A line with no title is cut from the narration — points, beats and
+    /// names taken out, then the first sentence — and the column is drawn on
+    /// every frame anything in the window moves. Made again only for a group
+    /// whose words changed.
+    review_titles: std::cell::RefCell<Vec<(Option<String>, String, SharedString)>>,
     /// The loop watching the deck directory fill, while there is more coming.
     ///
     /// Dropping it stops it, which is what should happen when the window
@@ -802,6 +818,15 @@ pub struct DeckView {
     /// The animation carrying a pane back to its range, while one is running.
     /// Dropping it stops it, which is what should happen if another starts.
     gliding: Task<()>,
+    /// A pane whose values wait for the glide carrying it to finish.
+    ///
+    /// The narration pointed at lines off screen that hold a value, so the
+    /// pane travels to them — and a value opening while the pane travels is
+    /// two motions at once: the code below the value sliding down while the
+    /// whole pane slides up, at different speeds, with the lines the sentence
+    /// is about moving through both. One thing at a time. The pane arrives,
+    /// then the value opens where the reader is already looking.
+    values_after_glide: Option<usize>,
     /// How each row's width is shared between the panes standing in it.
     ///
     /// One entry per pane rather than one per column: a seam moves width
@@ -1224,6 +1249,7 @@ impl DeckView {
             folded,
             drifting: None,
             gliding: Task::ready(()),
+            values_after_glide: None,
             tailing: Task::ready(()),
             controlling: Task::ready(()),
             spread: false,
@@ -1243,6 +1269,8 @@ impl DeckView {
             tipping: Task::ready(()),
             review_scroll: ScrollHandle::new(),
             review_settle: false,
+            said_memo: None,
+            review_titles: std::cell::RefCell::default(),
             saved,
         };
         if let Some((about, state, when)) = draft {
@@ -2518,9 +2546,6 @@ impl DeckView {
                     code.point_at(want);
                     moved = true;
                 }
-                // The first time the narration reaches a pane's values, they
-                // come out, and stay.
-                code.follow_values();
                 continue;
             }
             if let Some(chart) = pane.chart_mut() {
@@ -2549,12 +2574,27 @@ impl DeckView {
         // sight — below a tall range, or somewhere the reader wandered from —
         // lit nothing anybody could see. Not while the reader is holding the
         // pane still: their scroll is theirs until it lapses.
-        if moved
+        let gliding = if moved
             && !self.live.reader_holds()
             && let Some(owner) = owner
             && let Some(target) = self.panes[owner].code().and_then(Pane::point_offset)
         {
             self.glide(owner, target, cx);
+            Some(owner)
+        } else {
+            None
+        };
+        // The first time the narration reaches a pane's values, they come out,
+        // and stay: at the same moment as the light on the lines, when those
+        // lines are already in view, and once the pane has got there when it
+        // had to travel. Measured before they open, so the glide is aimed at
+        // where the lines are now and not where the value will push them.
+        for (ix, pane) in self.panes.iter_mut().enumerate() {
+            if Some(ix) == gliding {
+                self.values_after_glide = Some(ix);
+            } else if let Some(code) = pane.code_mut() {
+                code.follow_values();
+            }
         }
         moved
     }
@@ -6278,75 +6318,83 @@ impl DeckView {
             }
         }
 
-        let rows = groups.iter().enumerate().map(|(ix, group)| {
-            let here = ix == self.group_ix;
-            let been = self.seen.contains(&ix) && !here;
-            let said = self
-                .remarks
-                .iter()
-                .filter(|remark| remark.group == group.id)
-                .count();
-            div()
-                .id(("review-row", ix))
-                .h_flex()
-                .items_start()
-                .gap(px(8.))
-                .px(px(4.))
-                .mx(px(-4.))
-                .py(px(2.))
-                .rounded(px(6.))
-                .cursor_pointer()
-                // The group on screen has a quiet ground of its own, which
-                // reads as chosen where the hover on the others reads as
-                // passing; the pointer over it changes nothing.
-                .when(here, |this| {
-                    this.bg(paint(palette.band.mix(palette.accent, 0.06)))
-                })
-                .when(!here, |this| {
-                    this.hover(|style| style.bg(paint(palette.wash)))
-                })
-                .on_click(cx.listener(move |deck, _, _, cx| deck.go_to(ix, cx)))
-                .text_size(px(12.))
-                .line_height(px(17.))
-                .text_color(paint(if here {
-                    palette.fg
-                } else if been {
-                    palette.muted.mix(palette.band, 0.1)
-                } else {
-                    palette.muted
-                }))
-                // The tick: the group has been read. Bold and warm enough to
-                // see at a glance, since it is the column's whole progress.
-                .child(
-                    div()
-                        .flex_none()
-                        .w(px(10.))
-                        .text_size(px(10.))
-                        .font_weight(FontWeight::SEMIBOLD)
-                        .text_color(paint(palette.accent.mix(palette.band, 0.25)))
-                        .when(been, |this| this.child("✓")),
-                )
-                .child(
-                    div()
-                        .flex_none()
-                        .w(px(14.))
-                        .font_family(mono.clone())
-                        .text_size(px(11.))
-                        .text_color(paint(if here { palette.accent } else { palette.muted }))
-                        .child(format!("{}", ix + 1)),
-                )
-                .child(div().flex_1().min_w_0().child(row_title(group)))
-                .when(said > 0, |this| {
-                    this.child(
+        // How many remarks each group has, counted in one pass rather than
+        // once per group.
+        let mut said_of: std::collections::HashMap<&str, usize> = std::collections::HashMap::new();
+        for remark in &self.remarks {
+            *said_of.entry(remark.group.as_ref()).or_default() += 1;
+        }
+        let titles = self.review_titles();
+
+        let rows = groups
+            .iter()
+            .zip(titles)
+            .enumerate()
+            .map(|(ix, (group, title))| {
+                let here = ix == self.group_ix;
+                let been = self.seen.contains(&ix) && !here;
+                let said = said_of.get(group.id.as_str()).copied().unwrap_or(0);
+                div()
+                    .id(("review-row", ix))
+                    .h_flex()
+                    .items_start()
+                    .gap(px(8.))
+                    .px(px(4.))
+                    .mx(px(-4.))
+                    .py(px(2.))
+                    .rounded(px(6.))
+                    .cursor_pointer()
+                    // The group on screen has a quiet ground of its own, which
+                    // reads as chosen where the hover on the others reads as
+                    // passing; the pointer over it changes nothing.
+                    .when(here, |this| {
+                        this.bg(paint(palette.band.mix(palette.accent, 0.06)))
+                    })
+                    .when(!here, |this| {
+                        this.hover(|style| style.bg(paint(palette.wash)))
+                    })
+                    .on_click(cx.listener(move |deck, _, _, cx| deck.go_to(ix, cx)))
+                    .text_size(px(12.))
+                    .line_height(px(17.))
+                    .text_color(paint(if here {
+                        palette.fg
+                    } else if been {
+                        palette.muted.mix(palette.band, 0.1)
+                    } else {
+                        palette.muted
+                    }))
+                    // The tick: the group has been read. Bold and warm enough to
+                    // see at a glance, since it is the column's whole progress.
+                    .child(
                         div()
                             .flex_none()
-                            .font_family(mono.clone())
-                            .text_size(px(10.5))
-                            .text_color(paint(palette.muted))
-                            .child(format!("✎ {said}")),
+                            .w(px(10.))
+                            .text_size(px(10.))
+                            .font_weight(FontWeight::SEMIBOLD)
+                            .text_color(paint(palette.accent.mix(palette.band, 0.25)))
+                            .when(been, |this| this.child("✓")),
                     )
-                })
-        });
+                    .child(
+                        div()
+                            .flex_none()
+                            .w(px(14.))
+                            .font_family(mono.clone())
+                            .text_size(px(11.))
+                            .text_color(paint(if here { palette.accent } else { palette.muted }))
+                            .child(format!("{}", ix + 1)),
+                    )
+                    .child(div().flex_1().min_w_0().child(title))
+                    .when(said > 0, |this| {
+                        this.child(
+                            div()
+                                .flex_none()
+                                .font_family(mono.clone())
+                                .text_size(px(10.5))
+                                .text_color(paint(palette.muted))
+                                .child(format!("✎ {said}")),
+                        )
+                    })
+            });
 
         let more = |id: &'static str, label: String, down: bool| {
             let scroll = self.review_scroll.clone();
@@ -6478,6 +6526,32 @@ impl DeckView {
                     )
                     .children(self.render_destination(cx)),
             )
+    }
+
+    /// Every group's line in the review column, made again only for a group
+    /// whose title or narration is not what it was made from.
+    fn review_titles(&self) -> Vec<SharedString> {
+        let groups = self.deck.groups();
+        let mut memo = self.review_titles.borrow_mut();
+        memo.truncate(groups.len());
+        for (ix, group) in groups.iter().enumerate() {
+            let fresh = memo
+                .get(ix)
+                .is_some_and(|(title, say, _)| *title == group.title && *say == group.say);
+            if fresh {
+                continue;
+            }
+            let made = (
+                group.title.clone(),
+                group.say.clone(),
+                SharedString::from(row_title(group)),
+            );
+            match memo.get_mut(ix) {
+                Some(slot) => *slot = made,
+                None => memo.push(made),
+            }
+        }
+        memo.iter().map(|(_, _, line)| line.clone()).collect()
     }
 
     /// Where the review of a deck from a `.deck` file goes, in one muted line
@@ -6967,6 +7041,10 @@ impl DeckView {
     /// a mouse notch is a glide rather than a jump.
     pub fn wheel(&mut self, pane_ix: usize, by: Point<Pixels>, cx: &mut Context<Self>) {
         self.live.pause(PauseReason::Navigation);
+        // The wheel stops a glide where it is, so a value waiting for it to
+        // land would wait for good. The reader has taken the pane; what the
+        // sentence reached comes out now.
+        self.open_held_values();
         let Some(pane) = self.panes.get(pane_ix).and_then(Sheet::code) else {
             return;
         };
@@ -7059,6 +7137,15 @@ impl DeckView {
         self.glide(pane_ix, target, cx);
     }
 
+    /// Open the values of the pane a glide was carrying, now it has stopped.
+    fn open_held_values(&mut self) {
+        if let Some(ix) = self.values_after_glide.take()
+            && let Some(code) = self.panes.get_mut(ix).and_then(Sheet::code_mut)
+        {
+            code.follow_values();
+        }
+    }
+
     /// Carry a pane's list to `target` over a few frames.
     #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
     fn glide(&mut self, pane_ix: usize, target: Pixels, cx: &mut Context<Self>) {
@@ -7077,6 +7164,7 @@ impl DeckView {
         self.drifting = None;
 
         let Some(pane) = self.panes.get(pane_ix).and_then(Sheet::code) else {
+            self.open_held_values();
             return;
         };
         let scroll = pane.scroll();
@@ -7104,8 +7192,11 @@ impl DeckView {
                 };
                 let y = from.y + (target - from.y) * eased;
 
-                let moved = view.update(cx, |_, cx| {
+                let moved = view.update(cx, |deck, cx| {
                     scroll.0.borrow().base_handle.set_offset(point(from.x, y));
+                    if along >= 1. {
+                        deck.open_held_values();
+                    }
                     cx.notify();
                 });
                 if moved.is_err() || along >= 1. {
@@ -8869,14 +8960,23 @@ impl Render for DeckView {
             cx.on_next_frame(window, |_, _, cx| cx.notify());
         }
         // The picked sentence opens the values whose keys it names.
-        let said = self.picked_said.and_then(|(from, to)| {
-            let group = self.group()?;
-            let words = crate::prose::words(&group.say);
-            let (a, b) = (
-                from.min(to),
-                from.max(to).min(words.len().saturating_sub(1)),
-            );
-            Some(words.get(a..=b)?.concat())
+        let said = self.picked_said.and_then(|picked| {
+            let say = &self.group()?.say;
+            let fresh = self
+                .said_memo
+                .as_ref()
+                .is_some_and(|(at, was, _)| *at == picked && was == say);
+            if !fresh {
+                let (from, to) = picked;
+                let words = crate::prose::words(say);
+                let (a, b) = (
+                    from.min(to),
+                    from.max(to).min(words.len().saturating_sub(1)),
+                );
+                let cut = words.get(a..=b).map(<[String]>::concat);
+                self.said_memo = Some((picked, say.clone(), cut));
+            }
+            self.said_memo.as_ref().and_then(|(_, _, cut)| cut.clone())
         });
         // Values that have finished closing are taken out of their panes.
         for pane in &mut self.panes {
