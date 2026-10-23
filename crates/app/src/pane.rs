@@ -3445,8 +3445,9 @@ fn steps_back(cited: LineRange, file_lines: u32, row: LineRange) -> bool {
 
 /// A colour of drawn code, stepped back toward the pane's ground.
 ///
-/// Plain ink keeps 80% of itself and a syntax colour keeps 70%: the hues have
-/// more to lose, being the loud part of the wall. A colour already drawn
+/// Plain ink keeps 92% of itself and a syntax colour keeps 85%: the hues have
+/// more to lose, being the loud part of the wall, but the step is a gentle
+/// one, enough to tell what is cited without making the rest hard to read. A colour already drawn
 /// quiet, a comment or punctuation, is left alone, because mixing it further
 /// would make it vanish and it is already doing the job of sitting back.
 fn stepped_back(colour: Rgb, palette: &Palette) -> Rgb {
@@ -3455,9 +3456,9 @@ fn stepped_back(colour: Rgb, palette: &Palette) -> Rgb {
     if near(colour, palette.muted) || near(colour, palette.punctuation) {
         colour
     } else if near(colour, palette.fg) {
-        colour.mix(palette.wash, 0.2)
+        colour.mix(palette.wash, 0.08)
     } else {
-        colour.mix(palette.wash, 0.3)
+        colour.mix(palette.wash, 0.15)
     }
 }
 
@@ -3830,13 +3831,13 @@ mod tests {
     }
 
     #[test]
-    fn stepping_back_keeps_eighty_of_ink_and_seventy_of_a_hue() {
+    fn stepping_back_keeps_ninety_two_of_ink_and_eighty_five_of_a_hue() {
         let palette = quiet_palette();
         let hue = Rgb::new(200, 40, 40);
-        assert_eq!(stepped_back(hue, &palette), hue.mix(palette.wash, 0.3));
+        assert_eq!(stepped_back(hue, &palette), hue.mix(palette.wash, 0.15));
         assert_eq!(
             stepped_back(palette.fg, &palette),
-            palette.fg.mix(palette.wash, 0.2)
+            palette.fg.mix(palette.wash, 0.08)
         );
     }
 
