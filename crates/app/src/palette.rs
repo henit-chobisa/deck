@@ -104,8 +104,8 @@ pub fn current_on(dark: bool, paper: Paper) -> Palette {
         (true, Paper::Grey) => Palette {
             bg: hex("#282828"),
             fg: hex("#ebdbb2"),
-            band: hex("#191b1b"),
-            wash: hex("#1f1f1f"),
+            band: hex("#1f1f1f"),
+            wash: hex("#191b1b"),
             focus: hex("#332b21"),
             accent: hex("#fe8019"),
             on_accent: hex("#282828"),
@@ -122,16 +122,16 @@ pub fn current_on(dark: bool, paper: Paper) -> Palette {
             fresh_deep: Rgb::new(0, 0, 0),
         },
         (true, Paper::Warm) => Palette {
-            band: hex("#1c1a19"),
-            wash: hex("#232120"),
+            band: hex("#232120"),
+            wash: hex("#1c1a19"),
             ground: hex("#121110"),
             ..current_on(true, Paper::Grey)
         },
         (false, Paper::Grey) => Palette {
             bg: hex("#dfdfdf"),
             fg: hex("#3c3836"),
-            band: hex("#c6c6c6"),
-            wash: hex("#d4d4d4"),
+            band: hex("#d4d4d4"),
+            wash: hex("#c6c6c6"),
             focus: hex("#d7cbbb"),
             accent: hex("#af3a03"),
             on_accent: hex("#f2e5d5"),
@@ -149,8 +149,8 @@ pub fn current_on(dark: bool, paper: Paper) -> Palette {
         },
         (false, Paper::Warm) => Palette {
             bg: hex("#e2ded7"),
-            band: hex("#cbc5bb"),
-            wash: hex("#d8d3cb"),
+            band: hex("#d8d3cb"),
+            wash: hex("#cbc5bb"),
             edge: hex("#aaa49a"),
             ground: hex("#b6afa5"),
             ..current_on(false, Paper::Grey)

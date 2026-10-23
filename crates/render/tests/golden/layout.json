@@ -437,7 +437,7 @@
           "w": 500.0,
           "h": 148.0
         },
-        "colour": "#242424"
+        "colour": "#262626"
       },
       {
         "item": "text",
@@ -455,7 +455,7 @@
         "text": "1",
         "face": "semibold",
         "size": 18.0,
-        "colour": "#864d1f"
+        "colour": "#874f20"
       },
       {
         "item": "text",
@@ -482,7 +482,7 @@
         "text": "A write that fails lands in the catch in",
         "face": "regular",
         "size": 10.0,
-        "colour": "#bfb393"
+        "colour": "#c0b393"
       },
       {
         "item": "chip",
@@ -492,7 +492,7 @@
           "w": 33.32,
           "h": 15.0
         },
-        "colour": "#3e2f23"
+        "colour": "#403124"
       },
       {
         "item": "text",
@@ -510,7 +510,7 @@
         "text": " and takes the counter down.",
         "face": "regular",
         "size": 10.0,
-        "colour": "#bfb393"
+        "colour": "#c0b393"
       },
       {
         "item": "badge",
@@ -519,7 +519,7 @@
         "r": 6.0,
         "numeral": 1,
         "fill": "#fe8019",
-        "ink": "#242424"
+        "ink": "#262626"
       },
       {
         "item": "text",
@@ -528,7 +528,7 @@
         "text": " It goes on to the tail",
         "face": "regular",
         "size": 10.0,
-        "colour": "#bfb393"
+        "colour": "#c0b393"
       },
       {
         "item": "text",
@@ -537,7 +537,7 @@
         "text": "and takes it down again.",
         "face": "regular",
         "size": 10.0,
-        "colour": "#bfb393"
+        "colour": "#c0b393"
       },
       {
         "item": "badge",
@@ -546,7 +546,7 @@
         "r": 6.0,
         "numeral": 2,
         "fill": "#fe8019",
-        "ink": "#242424"
+        "ink": "#262626"
       },
       {
         "item": "text",
@@ -555,7 +555,7 @@
         "text": "So every failed write costs",
         "face": "regular",
         "size": 10.0,
-        "colour": "#bfb393"
+        "colour": "#c0b393"
       },
       {
         "item": "text",
@@ -573,7 +573,7 @@
         "text": ".",
         "face": "regular",
         "size": 10.0,
-        "colour": "#bfb393"
+        "colour": "#c0b393"
       },
       {
         "item": "chip",
@@ -583,7 +583,7 @@
           "w": 28.330002,
           "h": 15.0
         },
-        "colour": "#3e2f23"
+        "colour": "#403124"
       },
       {
         "item": "text",
@@ -601,7 +601,7 @@
         "text": " follows one row, and",
         "face": "regular",
         "size": 10.0,
-        "colour": "#bfb393"
+        "colour": "#c0b393"
       },
       {
         "item": "chip",
@@ -611,7 +611,7 @@
           "w": 46.64,
           "h": 15.0
         },
-        "colour": "#262626"
+        "colour": "#242424"
       },
       {
         "item": "text",
@@ -629,7 +629,7 @@
         "text": " is the count. The",
         "face": "regular",
         "size": 10.0,
-        "colour": "#bfb393"
+        "colour": "#c0b393"
       },
       {
         "item": "chip",
@@ -639,7 +639,7 @@
           "w": 37.460003,
           "h": 15.0
         },
-        "colour": "#3e2f23"
+        "colour": "#403124"
       },
       {
         "item": "text",
@@ -657,7 +657,7 @@
         "text": "page is the picture.",
         "face": "regular",
         "size": 10.0,
-        "colour": "#bfb393"
+        "colour": "#c0b393"
       },
       {
         "item": "fill",
@@ -667,7 +667,7 @@
           "w": 500.0,
           "h": 228.0
         },
-        "colour": "#262626"
+        "colour": "#242424"
       },
       {
         "item": "text",
@@ -722,7 +722,7 @@
         "text": "export",
         "face": "mono",
         "size": 8.0,
-        "colour": "#ab818c"
+        "colour": "#a97f8a"
       },
       {
         "item": "text",
@@ -731,7 +731,7 @@
         "text": "async",
         "face": "mono",
         "size": 8.0,
-        "colour": "#ab818c"
+        "colour": "#a97f8a"
       },
       {
         "item": "text",
@@ -740,7 +740,7 @@
         "text": "function",
         "face": "mono",
         "size": 8.0,
-        "colour": "#ab818c"
+        "colour": "#a97f8a"
       },
       {
         "item": "text",
@@ -749,7 +749,7 @@
         "text": "flush",
         "face": "mono",
         "size": 8.0,
-        "colour": "#b0882c"
+        "colour": "#af872b"
       },
       {
         "item": "text",
@@ -758,7 +758,7 @@
         "text": "(",
         "face": "mono",
         "size": 8.0,
-        "colour": "#938c78"
+        "colour": "#918a77"
       },
       {
         "item": "text",
@@ -767,7 +767,7 @@
         "text": "rows:",
         "face": "mono",
         "size": 8.0,
-        "colour": "#a69c81"
+        "colour": "#a59b80"
       },
       {
         "item": "text",
@@ -776,7 +776,7 @@
         "text": "Row",
         "face": "mono",
         "size": 8.0,
-        "colour": "#739666"
+        "colour": "#719464"
       },
       {
         "item": "text",
@@ -785,7 +785,7 @@
         "text": "[])",
         "face": "mono",
         "size": 8.0,
-        "colour": "#938c78"
+        "colour": "#918a77"
       },
       {
         "item": "text",
@@ -794,7 +794,7 @@
         "text": "{",
         "face": "mono",
         "size": 8.0,
-        "colour": "#938c78"
+        "colour": "#918a77"
       },
       {
         "item": "text",
@@ -812,7 +812,7 @@
         "text": "let",
         "face": "mono",
         "size": 8.0,
-        "colour": "#ab818c"
+        "colour": "#a97f8a"
       },
       {
         "item": "text",
@@ -821,7 +821,7 @@
         "text": "pending",
         "face": "mono",
         "size": 8.0,
-        "colour": "#a69c81"
+        "colour": "#a59b80"
       },
       {
         "item": "text",
@@ -830,7 +830,7 @@
         "text": "=",
         "face": "mono",
         "size": 8.0,
-        "colour": "#938c78"
+        "colour": "#918a77"
       },
       {
         "item": "text",
@@ -839,7 +839,7 @@
         "text": "rows",
         "face": "mono",
         "size": 8.0,
-        "colour": "#a69c81"
+        "colour": "#a59b80"
       },
       {
         "item": "text",
@@ -848,7 +848,7 @@
         "text": ".",
         "face": "mono",
         "size": 8.0,
-        "colour": "#938c78"
+        "colour": "#918a77"
       },
       {
         "item": "text",
@@ -857,7 +857,7 @@
         "text": "length",
         "face": "mono",
         "size": 8.0,
-        "colour": "#a69c81"
+        "colour": "#a59b80"
       },
       {
         "item": "text",
@@ -875,7 +875,7 @@
         "text": "for",
         "face": "mono",
         "size": 8.0,
-        "colour": "#ab818c"
+        "colour": "#a97f8a"
       },
       {
         "item": "text",
@@ -884,7 +884,7 @@
         "text": "(",
         "face": "mono",
         "size": 8.0,
-        "colour": "#938c78"
+        "colour": "#918a77"
       },
       {
         "item": "text",
@@ -893,7 +893,7 @@
         "text": "const",
         "face": "mono",
         "size": 8.0,
-        "colour": "#ab818c"
+        "colour": "#a97f8a"
       },
       {
         "item": "text",
@@ -902,7 +902,7 @@
         "text": "row",
         "face": "mono",
         "size": 8.0,
-        "colour": "#a69c81"
+        "colour": "#a59b80"
       },
       {
         "item": "text",
@@ -911,7 +911,7 @@
         "text": "of",
         "face": "mono",
         "size": 8.0,
-        "colour": "#ab818c"
+        "colour": "#a97f8a"
       },
       {
         "item": "text",
@@ -920,7 +920,7 @@
         "text": "rows",
         "face": "mono",
         "size": 8.0,
-        "colour": "#a69c81"
+        "colour": "#a59b80"
       },
       {
         "item": "text",
@@ -929,7 +929,7 @@
         "text": ")",
         "face": "mono",
         "size": 8.0,
-        "colour": "#938c78"
+        "colour": "#918a77"
       },
       {
         "item": "text",
@@ -938,7 +938,7 @@
         "text": "{",
         "face": "mono",
         "size": 8.0,
-        "colour": "#938c78"
+        "colour": "#918a77"
       },
       {
         "item": "fill",
@@ -1426,7 +1426,7 @@
         "text": "}",
         "face": "mono",
         "size": 8.0,
-        "colour": "#938c78"
+        "colour": "#918a77"
       },
       {
         "item": "text",
@@ -1444,7 +1444,7 @@
         "text": "if",
         "face": "mono",
         "size": 8.0,
-        "colour": "#ab818c"
+        "colour": "#a97f8a"
       },
       {
         "item": "text",
@@ -1453,7 +1453,7 @@
         "text": "(",
         "face": "mono",
         "size": 8.0,
-        "colour": "#938c78"
+        "colour": "#918a77"
       },
       {
         "item": "text",
@@ -1462,7 +1462,7 @@
         "text": "pending",
         "face": "mono",
         "size": 8.0,
-        "colour": "#a69c81"
+        "colour": "#a59b80"
       },
       {
         "item": "text",
@@ -1471,7 +1471,7 @@
         "text": "===",
         "face": "mono",
         "size": 8.0,
-        "colour": "#938c78"
+        "colour": "#918a77"
       },
       {
         "item": "text",
@@ -1480,7 +1480,7 @@
         "text": "0",
         "face": "mono",
         "size": 8.0,
-        "colour": "#ab818c"
+        "colour": "#a97f8a"
       },
       {
         "item": "text",
@@ -1489,7 +1489,7 @@
         "text": ")",
         "face": "mono",
         "size": 8.0,
-        "colour": "#938c78"
+        "colour": "#918a77"
       },
       {
         "item": "text",
@@ -1498,7 +1498,7 @@
         "text": "{",
         "face": "mono",
         "size": 8.0,
-        "colour": "#938c78"
+        "colour": "#918a77"
       },
       {
         "item": "text",
@@ -1516,7 +1516,7 @@
         "text": "settle",
         "face": "mono",
         "size": 8.0,
-        "colour": "#b0882c"
+        "colour": "#af872b"
       },
       {
         "item": "text",
@@ -1525,7 +1525,7 @@
         "text": "(",
         "face": "mono",
         "size": 8.0,
-        "colour": "#938c78"
+        "colour": "#918a77"
       },
       {
         "item": "text",
@@ -1534,7 +1534,7 @@
         "text": "rows",
         "face": "mono",
         "size": 8.0,
-        "colour": "#a69c81"
+        "colour": "#a59b80"
       },
       {
         "item": "text",
@@ -1543,7 +1543,7 @@
         "text": ")",
         "face": "mono",
         "size": 8.0,
-        "colour": "#938c78"
+        "colour": "#918a77"
       },
       {
         "item": "fill",
@@ -1553,7 +1553,7 @@
           "w": 500.0,
           "h": 196.0
         },
-        "colour": "#262626"
+        "colour": "#242424"
       },
       {
         "item": "text",
@@ -1592,7 +1592,7 @@
           "w": 500.0,
           "h": 76.0
         },
-        "colour": "#262626"
+        "colour": "#242424"
       },
       {
         "item": "text",
@@ -2160,7 +2160,7 @@
           "w": 500.0,
           "h": 80.0
         },
-        "colour": "#242424"
+        "colour": "#262626"
       },
       {
         "item": "text",
@@ -2178,7 +2178,7 @@
         "text": "2",
         "face": "semibold",
         "size": 18.0,
-        "colour": "#864d1f"
+        "colour": "#874f20"
       },
       {
         "item": "text",
@@ -2187,7 +2187,7 @@
         "text": "Count once, where the write settles.",
         "face": "regular",
         "size": 10.0,
-        "colour": "#bfb393"
+        "colour": "#c0b393"
       },
       {
         "item": "badge",
@@ -2196,7 +2196,7 @@
         "r": 6.0,
         "numeral": 1,
         "fill": "#fe8019",
-        "ink": "#242424"
+        "ink": "#262626"
       },
       {
         "item": "fill",
@@ -2206,7 +2206,7 @@
           "w": 500.0,
           "h": 132.0
         },
-        "colour": "#262626"
+        "colour": "#242424"
       },
       {
         "item": "text",
@@ -2252,7 +2252,7 @@
         "text": "await",
         "face": "mono",
         "size": 8.0,
-        "colour": "#ab818c"
+        "colour": "#a97f8a"
       },
       {
         "item": "text",
@@ -2261,7 +2261,7 @@
         "text": "write",
         "face": "mono",
         "size": 8.0,
-        "colour": "#b0882c"
+        "colour": "#af872b"
       },
       {
         "item": "text",
@@ -2270,7 +2270,7 @@
         "text": "(",
         "face": "mono",
         "size": 8.0,
-        "colour": "#938c78"
+        "colour": "#918a77"
       },
       {
         "item": "text",
@@ -2279,7 +2279,7 @@
         "text": "row",
         "face": "mono",
         "size": 8.0,
-        "colour": "#a69c81"
+        "colour": "#a59b80"
       },
       {
         "item": "text",
@@ -2288,7 +2288,7 @@
         "text": ")",
         "face": "mono",
         "size": 8.0,
-        "colour": "#938c78"
+        "colour": "#918a77"
       },
       {
         "item": "text",
@@ -2306,7 +2306,7 @@
         "text": "}",
         "face": "mono",
         "size": 8.0,
-        "colour": "#938c78"
+        "colour": "#918a77"
       },
       {
         "item": "text",
@@ -2315,7 +2315,7 @@
         "text": "catch",
         "face": "mono",
         "size": 8.0,
-        "colour": "#ab818c"
+        "colour": "#a97f8a"
       },
       {
         "item": "text",
@@ -2324,7 +2324,7 @@
         "text": "(",
         "face": "mono",
         "size": 8.0,
-        "colour": "#938c78"
+        "colour": "#918a77"
       },
       {
         "item": "text",
@@ -2333,7 +2333,7 @@
         "text": "err",
         "face": "mono",
         "size": 8.0,
-        "colour": "#a69c81"
+        "colour": "#a59b80"
       },
       {
         "item": "text",
@@ -2342,7 +2342,7 @@
         "text": ")",
         "face": "mono",
         "size": 8.0,
-        "colour": "#938c78"
+        "colour": "#918a77"
       },
       {
         "item": "text",
@@ -2351,7 +2351,7 @@
         "text": "{",
         "face": "mono",
         "size": 8.0,
-        "colour": "#938c78"
+        "colour": "#918a77"
       },
       {
         "item": "text",
@@ -2369,7 +2369,7 @@
         "text": "log",
         "face": "mono",
         "size": 8.0,
-        "colour": "#a69c81"
+        "colour": "#a59b80"
       },
       {
         "item": "text",
@@ -2378,7 +2378,7 @@
         "text": ".",
         "face": "mono",
         "size": 8.0,
-        "colour": "#938c78"
+        "colour": "#918a77"
       },
       {
         "item": "text",
@@ -2387,7 +2387,7 @@
         "text": "error",
         "face": "mono",
         "size": 8.0,
-        "colour": "#b0882c"
+        "colour": "#af872b"
       },
       {
         "item": "text",
@@ -2396,7 +2396,7 @@
         "text": "(",
         "face": "mono",
         "size": 8.0,
-        "colour": "#938c78"
+        "colour": "#918a77"
       },
       {
         "item": "text",
@@ -2405,7 +2405,7 @@
         "text": "err",
         "face": "mono",
         "size": 8.0,
-        "colour": "#a69c81"
+        "colour": "#a59b80"
       },
       {
         "item": "text",
@@ -2414,7 +2414,7 @@
         "text": ")",
         "face": "mono",
         "size": 8.0,
-        "colour": "#938c78"
+        "colour": "#918a77"
       },
       {
         "item": "fill",
@@ -2543,7 +2543,7 @@
         "text": "}",
         "face": "mono",
         "size": 8.0,
-        "colour": "#938c78"
+        "colour": "#918a77"
       },
       {
         "item": "text",
@@ -2561,7 +2561,7 @@
         "text": "// every row, failed or not, reaches this",
         "face": "monoitalic",
         "size": 8.0,
-        "colour": "#938c7a"
+        "colour": "#918a76"
       },
       {
         "item": "text",
@@ -2579,7 +2579,7 @@
         "text": "pending",
         "face": "mono",
         "size": 8.0,
-        "colour": "#a69c81"
+        "colour": "#a59b80"
       },
       {
         "item": "text",
@@ -2588,7 +2588,7 @@
         "text": "-=",
         "face": "mono",
         "size": 8.0,
-        "colour": "#938c78"
+        "colour": "#918a77"
       },
       {
         "item": "text",
@@ -2597,7 +2597,7 @@
         "text": "1",
         "face": "mono",
         "size": 8.0,
-        "colour": "#ab818c"
+        "colour": "#a97f8a"
       },
       {
         "item": "rule",
@@ -2805,7 +2805,7 @@
           "w": 500.0,
           "h": 80.0
         },
-        "colour": "#242424"
+        "colour": "#262626"
       },
       {
         "item": "text",
@@ -2823,7 +2823,7 @@
         "text": "3",
         "face": "semibold",
         "size": 18.0,
-        "colour": "#864d1f"
+        "colour": "#874f20"
       },
       {
         "item": "text",
@@ -2832,7 +2832,7 @@
         "text": "The close stays as it is.",
         "face": "regular",
         "size": 10.0,
-        "colour": "#bfb393"
+        "colour": "#c0b393"
       },
       {
         "item": "badge",
@@ -2841,7 +2841,7 @@
         "r": 6.0,
         "numeral": 1,
         "fill": "#fe8019",
-        "ink": "#242424"
+        "ink": "#262626"
       },
       {
         "item": "fill",
@@ -2851,7 +2851,7 @@
           "w": 500.0,
           "h": 108.0
         },
-        "colour": "#262626"
+        "colour": "#242424"
       },
       {
         "item": "text",
@@ -2888,7 +2888,7 @@
         "text": "// spacer 56",
         "face": "monoitalic",
         "size": 8.0,
-        "colour": "#938c7a"
+        "colour": "#918a76"
       },
       {
         "item": "text",
@@ -2906,7 +2906,7 @@
         "text": "// spacer 57",
         "face": "monoitalic",
         "size": 8.0,
-        "colour": "#938c7a"
+        "colour": "#918a76"
       },
       {
         "item": "text",
@@ -2924,7 +2924,7 @@
         "text": "// spacer 58",
         "face": "monoitalic",
         "size": 8.0,
-        "colour": "#938c7a"
+        "colour": "#918a76"
       },
       {
         "item": "fill",
@@ -3127,7 +3127,7 @@
           "w": 500.0,
           "h": 72.0
         },
-        "colour": "#262626"
+        "colour": "#242424"
       },
       {
         "item": "text",
@@ -3173,7 +3173,7 @@
         "text": "export",
         "face": "mono",
         "size": 8.0,
-        "colour": "#ab818c"
+        "colour": "#a97f8a"
       },
       {
         "item": "text",
@@ -3182,7 +3182,7 @@
         "text": "async",
         "face": "mono",
         "size": 8.0,
-        "colour": "#ab818c"
+        "colour": "#a97f8a"
       },
       {
         "item": "text",
@@ -3191,7 +3191,7 @@
         "text": "function",
         "face": "mono",
         "size": 8.0,
-        "colour": "#ab818c"
+        "colour": "#a97f8a"
       },
       {
         "item": "text",
@@ -3200,7 +3200,7 @@
         "text": "write",
         "face": "mono",
         "size": 8.0,
-        "colour": "#b0882c"
+        "colour": "#af872b"
       },
       {
         "item": "text",
@@ -3209,7 +3209,7 @@
         "text": "(",
         "face": "mono",
         "size": 8.0,
-        "colour": "#938c78"
+        "colour": "#918a77"
       },
       {
         "item": "text",
@@ -3218,7 +3218,7 @@
         "text": "row:",
         "face": "mono",
         "size": 8.0,
-        "colour": "#a69c81"
+        "colour": "#a59b80"
       },
       {
         "item": "text",
@@ -3227,7 +3227,7 @@
         "text": "Row",
         "face": "mono",
         "size": 8.0,
-        "colour": "#739666"
+        "colour": "#719464"
       },
       {
         "item": "text",
@@ -3236,7 +3236,7 @@
         "text": ")",
         "face": "mono",
         "size": 8.0,
-        "colour": "#938c78"
+        "colour": "#918a77"
       },
       {
         "item": "text",
@@ -3245,7 +3245,7 @@
         "text": "{",
         "face": "mono",
         "size": 8.0,
-        "colour": "#938c78"
+        "colour": "#918a77"
       },
       {
         "item": "fill",
@@ -3399,7 +3399,7 @@
         "text": "}",
         "face": "mono",
         "size": 8.0,
-        "colour": "#938c78"
+        "colour": "#918a77"
       },
       {
         "item": "text",
@@ -3791,7 +3791,7 @@
           "w": 819.0,
           "h": 231.0
         },
-        "colour": "#242424"
+        "colour": "#262626"
       },
       {
         "item": "fill",
@@ -3810,7 +3810,7 @@
         "text": "1",
         "face": "regular",
         "size": 36.0,
-        "colour": "#864d1f"
+        "colour": "#874f20"
       },
       {
         "item": "text",
@@ -3856,7 +3856,7 @@
         "text": "A write that fails lands in the catch in",
         "face": "regular",
         "size": 13.0,
-        "colour": "#bfb393"
+        "colour": "#c0b393"
       },
       {
         "item": "chip",
@@ -3866,7 +3866,7 @@
           "w": 43.316006,
           "h": 19.5
         },
-        "colour": "#3e2f23"
+        "colour": "#403124"
       },
       {
         "item": "text",
@@ -3884,7 +3884,7 @@
         "text": " and takes the counter down.",
         "face": "regular",
         "size": 13.0,
-        "colour": "#bfb393"
+        "colour": "#c0b393"
       },
       {
         "item": "badge",
@@ -3893,7 +3893,7 @@
         "r": 7.8,
         "numeral": 1,
         "fill": "#fe8019",
-        "ink": "#242424"
+        "ink": "#262626"
       },
       {
         "item": "text",
@@ -3902,7 +3902,7 @@
         "text": " It goes on to the tail and takes it down again.",
         "face": "regular",
         "size": 13.0,
-        "colour": "#bfb393"
+        "colour": "#c0b393"
       },
       {
         "item": "badge",
@@ -3911,7 +3911,7 @@
         "r": 7.8,
         "numeral": 2,
         "fill": "#fe8019",
-        "ink": "#242424"
+        "ink": "#262626"
       },
       {
         "item": "text",
@@ -3920,7 +3920,7 @@
         "text": "So every failed write costs",
         "face": "regular",
         "size": 13.0,
-        "colour": "#bfb393"
+        "colour": "#c0b393"
       },
       {
         "item": "text",
@@ -3938,7 +3938,7 @@
         "text": ".",
         "face": "regular",
         "size": 13.0,
-        "colour": "#bfb393"
+        "colour": "#c0b393"
       },
       {
         "item": "chip",
@@ -3948,7 +3948,7 @@
           "w": 36.829002,
           "h": 19.5
         },
-        "colour": "#3e2f23"
+        "colour": "#403124"
       },
       {
         "item": "text",
@@ -3966,7 +3966,7 @@
         "text": " follows one row, and",
         "face": "regular",
         "size": 13.0,
-        "colour": "#bfb393"
+        "colour": "#c0b393"
       },
       {
         "item": "chip",
@@ -3976,7 +3976,7 @@
           "w": 60.632004,
           "h": 19.5
         },
-        "colour": "#262626"
+        "colour": "#242424"
       },
       {
         "item": "text",
@@ -3994,7 +3994,7 @@
         "text": " is the count. The",
         "face": "regular",
         "size": 13.0,
-        "colour": "#bfb393"
+        "colour": "#c0b393"
       },
       {
         "item": "chip",
@@ -4004,7 +4004,7 @@
           "w": 48.698006,
           "h": 19.5
         },
-        "colour": "#3e2f23"
+        "colour": "#403124"
       },
       {
         "item": "text",
@@ -4022,7 +4022,7 @@
         "text": " page is the picture.",
         "face": "regular",
         "size": 13.0,
-        "colour": "#bfb393"
+        "colour": "#c0b393"
       },
       {
         "item": "fill",
@@ -4032,7 +4032,7 @@
           "w": 819.0,
           "h": 532.0
         },
-        "colour": "#262626"
+        "colour": "#242424"
       },
       {
         "item": "text",
@@ -4087,7 +4087,7 @@
         "text": "export",
         "face": "mono",
         "size": 12.0,
-        "colour": "#ab818c"
+        "colour": "#a97f8a"
       },
       {
         "item": "text",
@@ -4096,7 +4096,7 @@
         "text": "async",
         "face": "mono",
         "size": 12.0,
-        "colour": "#ab818c"
+        "colour": "#a97f8a"
       },
       {
         "item": "text",
@@ -4105,7 +4105,7 @@
         "text": "function",
         "face": "mono",
         "size": 12.0,
-        "colour": "#ab818c"
+        "colour": "#a97f8a"
       },
       {
         "item": "text",
@@ -4123,7 +4123,7 @@
         "text": "flush",
         "face": "mono",
         "size": 12.0,
-        "colour": "#b0882c"
+        "colour": "#af872b"
       },
       {
         "item": "text",
@@ -4132,7 +4132,7 @@
         "text": "(",
         "face": "mono",
         "size": 12.0,
-        "colour": "#938c78"
+        "colour": "#918a77"
       },
       {
         "item": "text",
@@ -4141,7 +4141,7 @@
         "text": "rows:",
         "face": "mono",
         "size": 12.0,
-        "colour": "#a69c81"
+        "colour": "#a59b80"
       },
       {
         "item": "text",
@@ -4150,7 +4150,7 @@
         "text": "Row",
         "face": "mono",
         "size": 12.0,
-        "colour": "#739666"
+        "colour": "#719464"
       },
       {
         "item": "text",
@@ -4159,7 +4159,7 @@
         "text": "[])",
         "face": "mono",
         "size": 12.0,
-        "colour": "#938c78"
+        "colour": "#918a77"
       },
       {
         "item": "text",
@@ -4168,7 +4168,7 @@
         "text": "{",
         "face": "mono",
         "size": 12.0,
-        "colour": "#938c78"
+        "colour": "#918a77"
       },
       {
         "item": "text",
@@ -4186,7 +4186,7 @@
         "text": "let",
         "face": "mono",
         "size": 12.0,
-        "colour": "#ab818c"
+        "colour": "#a97f8a"
       },
       {
         "item": "text",
@@ -4195,7 +4195,7 @@
         "text": "pending",
         "face": "mono",
         "size": 12.0,
-        "colour": "#a69c81"
+        "colour": "#a59b80"
       },
       {
         "item": "text",
@@ -4204,7 +4204,7 @@
         "text": "=",
         "face": "mono",
         "size": 12.0,
-        "colour": "#938c78"
+        "colour": "#918a77"
       },
       {
         "item": "text",
@@ -4213,7 +4213,7 @@
         "text": "rows",
         "face": "mono",
         "size": 12.0,
-        "colour": "#a69c81"
+        "colour": "#a59b80"
       },
       {
         "item": "text",
@@ -4222,7 +4222,7 @@
         "text": ".",
         "face": "mono",
         "size": 12.0,
-        "colour": "#938c78"
+        "colour": "#918a77"
       },
       {
         "item": "text",
@@ -4231,7 +4231,7 @@
         "text": "length",
         "face": "mono",
         "size": 12.0,
-        "colour": "#a69c81"
+        "colour": "#a59b80"
       },
       {
         "item": "text",
@@ -4249,7 +4249,7 @@
         "text": "for",
         "face": "mono",
         "size": 12.0,
-        "colour": "#ab818c"
+        "colour": "#a97f8a"
       },
       {
         "item": "text",
@@ -4258,7 +4258,7 @@
         "text": "(",
         "face": "mono",
         "size": 12.0,
-        "colour": "#938c78"
+        "colour": "#918a77"
       },
       {
         "item": "text",
@@ -4267,7 +4267,7 @@
         "text": "const",
         "face": "mono",
         "size": 12.0,
-        "colour": "#ab818c"
+        "colour": "#a97f8a"
       },
       {
         "item": "text",
@@ -4276,7 +4276,7 @@
         "text": "row",
         "face": "mono",
         "size": 12.0,
-        "colour": "#a69c81"
+        "colour": "#a59b80"
       },
       {
         "item": "text",
@@ -4285,7 +4285,7 @@
         "text": "of",
         "face": "mono",
         "size": 12.0,
-        "colour": "#ab818c"
+        "colour": "#a97f8a"
       },
       {
         "item": "text",
@@ -4294,7 +4294,7 @@
         "text": "rows",
         "face": "mono",
         "size": 12.0,
-        "colour": "#a69c81"
+        "colour": "#a59b80"
       },
       {
         "item": "text",
@@ -4303,7 +4303,7 @@
         "text": ")",
         "face": "mono",
         "size": 12.0,
-        "colour": "#938c78"
+        "colour": "#918a77"
       },
       {
         "item": "text",
@@ -4312,7 +4312,7 @@
         "text": "{",
         "face": "mono",
         "size": 12.0,
-        "colour": "#938c78"
+        "colour": "#918a77"
       },
       {
         "item": "fill",
@@ -4898,7 +4898,7 @@
         "text": "}",
         "face": "mono",
         "size": 12.0,
-        "colour": "#938c78"
+        "colour": "#918a77"
       },
       {
         "item": "text",
@@ -4916,7 +4916,7 @@
         "text": "if",
         "face": "mono",
         "size": 12.0,
-        "colour": "#ab818c"
+        "colour": "#a97f8a"
       },
       {
         "item": "text",
@@ -4925,7 +4925,7 @@
         "text": "(",
         "face": "mono",
         "size": 12.0,
-        "colour": "#938c78"
+        "colour": "#918a77"
       },
       {
         "item": "text",
@@ -4934,7 +4934,7 @@
         "text": "pending",
         "face": "mono",
         "size": 12.0,
-        "colour": "#a69c81"
+        "colour": "#a59b80"
       },
       {
         "item": "text",
@@ -4943,7 +4943,7 @@
         "text": "===",
         "face": "mono",
         "size": 12.0,
-        "colour": "#938c78"
+        "colour": "#918a77"
       },
       {
         "item": "text",
@@ -4952,7 +4952,7 @@
         "text": "0",
         "face": "mono",
         "size": 12.0,
-        "colour": "#ab818c"
+        "colour": "#a97f8a"
       },
       {
         "item": "text",
@@ -4961,7 +4961,7 @@
         "text": ")",
         "face": "mono",
         "size": 12.0,
-        "colour": "#938c78"
+        "colour": "#918a77"
       },
       {
         "item": "text",
@@ -4970,7 +4970,7 @@
         "text": "{",
         "face": "mono",
         "size": 12.0,
-        "colour": "#938c78"
+        "colour": "#918a77"
       },
       {
         "item": "text",
@@ -4988,7 +4988,7 @@
         "text": "settle",
         "face": "mono",
         "size": 12.0,
-        "colour": "#b0882c"
+        "colour": "#af872b"
       },
       {
         "item": "text",
@@ -4997,7 +4997,7 @@
         "text": "(",
         "face": "mono",
         "size": 12.0,
-        "colour": "#938c78"
+        "colour": "#918a77"
       },
       {
         "item": "text",
@@ -5006,7 +5006,7 @@
         "text": "rows",
         "face": "mono",
         "size": 12.0,
-        "colour": "#a69c81"
+        "colour": "#a59b80"
       },
       {
         "item": "text",
@@ -5015,7 +5015,7 @@
         "text": ")",
         "face": "mono",
         "size": 12.0,
-        "colour": "#938c78"
+        "colour": "#918a77"
       },
       {
         "item": "fill",
@@ -5129,7 +5129,7 @@
           "w": 304.0,
           "h": 764.0
         },
-        "colour": "#242424"
+        "colour": "#262626"
       },
       {
         "item": "fill",
@@ -5298,7 +5298,7 @@
           "w": 1123.0,
           "h": 30.0
         },
-        "colour": "#242424"
+        "colour": "#262626"
       },
       {
         "item": "fill",
@@ -5409,7 +5409,7 @@
           "w": 819.0,
           "h": 60.0
         },
-        "colour": "#242424"
+        "colour": "#262626"
       },
       {
         "item": "fill",
@@ -5437,7 +5437,7 @@
         "text": "1",
         "face": "regular",
         "size": 30.0,
-        "colour": "#864d1f"
+        "colour": "#874f20"
       },
       {
         "item": "text",
@@ -5610,7 +5610,7 @@
           "w": 304.0,
           "h": 764.0
         },
-        "colour": "#242424"
+        "colour": "#262626"
       },
       {
         "item": "fill",
@@ -5779,7 +5779,7 @@
           "w": 1123.0,
           "h": 30.0
         },
-        "colour": "#242424"
+        "colour": "#262626"
       },
       {
         "item": "fill",
@@ -5890,7 +5890,7 @@
           "w": 819.0,
           "h": 231.0
         },
-        "colour": "#242424"
+        "colour": "#262626"
       },
       {
         "item": "fill",
@@ -5909,7 +5909,7 @@
         "text": "2",
         "face": "regular",
         "size": 36.0,
-        "colour": "#864d1f"
+        "colour": "#874f20"
       },
       {
         "item": "text",
@@ -5946,7 +5946,7 @@
         "text": "Count once, where the write settles.",
         "face": "regular",
         "size": 13.0,
-        "colour": "#bfb393"
+        "colour": "#c0b393"
       },
       {
         "item": "badge",
@@ -5955,7 +5955,7 @@
         "r": 7.8,
         "numeral": 1,
         "fill": "#fe8019",
-        "ink": "#242424"
+        "ink": "#262626"
       },
       {
         "item": "fill",
@@ -5965,7 +5965,7 @@
           "w": 819.0,
           "h": 532.0
         },
-        "colour": "#262626"
+        "colour": "#242424"
       },
       {
         "item": "text",
@@ -6011,7 +6011,7 @@
         "text": "await",
         "face": "mono",
         "size": 12.0,
-        "colour": "#ab818c"
+        "colour": "#a97f8a"
       },
       {
         "item": "text",
@@ -6020,7 +6020,7 @@
         "text": "write",
         "face": "mono",
         "size": 12.0,
-        "colour": "#b0882c"
+        "colour": "#af872b"
       },
       {
         "item": "text",
@@ -6029,7 +6029,7 @@
         "text": "(",
         "face": "mono",
         "size": 12.0,
-        "colour": "#938c78"
+        "colour": "#918a77"
       },
       {
         "item": "text",
@@ -6038,7 +6038,7 @@
         "text": "row",
         "face": "mono",
         "size": 12.0,
-        "colour": "#a69c81"
+        "colour": "#a59b80"
       },
       {
         "item": "text",
@@ -6047,7 +6047,7 @@
         "text": ")",
         "face": "mono",
         "size": 12.0,
-        "colour": "#938c78"
+        "colour": "#918a77"
       },
       {
         "item": "text",
@@ -6065,7 +6065,7 @@
         "text": "}",
         "face": "mono",
         "size": 12.0,
-        "colour": "#938c78"
+        "colour": "#918a77"
       },
       {
         "item": "text",
@@ -6074,7 +6074,7 @@
         "text": "catch",
         "face": "mono",
         "size": 12.0,
-        "colour": "#ab818c"
+        "colour": "#a97f8a"
       },
       {
         "item": "text",
@@ -6083,7 +6083,7 @@
         "text": "(",
         "face": "mono",
         "size": 12.0,
-        "colour": "#938c78"
+        "colour": "#918a77"
       },
       {
         "item": "text",
@@ -6092,7 +6092,7 @@
         "text": "err",
         "face": "mono",
         "size": 12.0,
-        "colour": "#a69c81"
+        "colour": "#a59b80"
       },
       {
         "item": "text",
@@ -6101,7 +6101,7 @@
         "text": ")",
         "face": "mono",
         "size": 12.0,
-        "colour": "#938c78"
+        "colour": "#918a77"
       },
       {
         "item": "text",
@@ -6110,7 +6110,7 @@
         "text": "{",
         "face": "mono",
         "size": 12.0,
-        "colour": "#938c78"
+        "colour": "#918a77"
       },
       {
         "item": "text",
@@ -6128,7 +6128,7 @@
         "text": "log",
         "face": "mono",
         "size": 12.0,
-        "colour": "#a69c81"
+        "colour": "#a59b80"
       },
       {
         "item": "text",
@@ -6137,7 +6137,7 @@
         "text": ".",
         "face": "mono",
         "size": 12.0,
-        "colour": "#938c78"
+        "colour": "#918a77"
       },
       {
         "item": "text",
@@ -6146,7 +6146,7 @@
         "text": "error",
         "face": "mono",
         "size": 12.0,
-        "colour": "#b0882c"
+        "colour": "#af872b"
       },
       {
         "item": "text",
@@ -6155,7 +6155,7 @@
         "text": "(",
         "face": "mono",
         "size": 12.0,
-        "colour": "#938c78"
+        "colour": "#918a77"
       },
       {
         "item": "text",
@@ -6164,7 +6164,7 @@
         "text": "err",
         "face": "mono",
         "size": 12.0,
-        "colour": "#a69c81"
+        "colour": "#a59b80"
       },
       {
         "item": "text",
@@ -6173,7 +6173,7 @@
         "text": ")",
         "face": "mono",
         "size": 12.0,
-        "colour": "#938c78"
+        "colour": "#918a77"
       },
       {
         "item": "fill",
@@ -6292,7 +6292,7 @@
         "text": "}",
         "face": "mono",
         "size": 12.0,
-        "colour": "#938c78"
+        "colour": "#918a77"
       },
       {
         "item": "text",
@@ -6310,7 +6310,7 @@
         "text": "// every row, failed or not, reaches this",
         "face": "monoitalic",
         "size": 12.0,
-        "colour": "#938c7a"
+        "colour": "#918a76"
       },
       {
         "item": "text",
@@ -6328,7 +6328,7 @@
         "text": "pending",
         "face": "mono",
         "size": 12.0,
-        "colour": "#a69c81"
+        "colour": "#a59b80"
       },
       {
         "item": "text",
@@ -6337,7 +6337,7 @@
         "text": "-=",
         "face": "mono",
         "size": 12.0,
-        "colour": "#938c78"
+        "colour": "#918a77"
       },
       {
         "item": "text",
@@ -6346,7 +6346,7 @@
         "text": "1",
         "face": "mono",
         "size": 12.0,
-        "colour": "#ab818c"
+        "colour": "#a97f8a"
       },
       {
         "item": "fill",
@@ -6356,7 +6356,7 @@
           "w": 304.0,
           "h": 764.0
         },
-        "colour": "#242424"
+        "colour": "#262626"
       },
       {
         "item": "fill",
@@ -6525,7 +6525,7 @@
           "w": 1123.0,
           "h": 30.0
         },
-        "colour": "#242424"
+        "colour": "#262626"
       },
       {
         "item": "fill",
@@ -6636,7 +6636,7 @@
           "w": 819.0,
           "h": 231.0
         },
-        "colour": "#242424"
+        "colour": "#262626"
       },
       {
         "item": "fill",
@@ -6655,7 +6655,7 @@
         "text": "3",
         "face": "regular",
         "size": 36.0,
-        "colour": "#864d1f"
+        "colour": "#874f20"
       },
       {
         "item": "text",
@@ -6692,7 +6692,7 @@
         "text": "The close stays as it is.",
         "face": "regular",
         "size": 13.0,
-        "colour": "#bfb393"
+        "colour": "#c0b393"
       },
       {
         "item": "badge",
@@ -6701,7 +6701,7 @@
         "r": 7.8,
         "numeral": 1,
         "fill": "#fe8019",
-        "ink": "#242424"
+        "ink": "#262626"
       },
       {
         "item": "fill",
@@ -6711,7 +6711,7 @@
           "w": 819.0,
           "h": 532.0
         },
-        "colour": "#262626"
+        "colour": "#242424"
       },
       {
         "item": "text",
@@ -6748,7 +6748,7 @@
         "text": "// spacer 56",
         "face": "monoitalic",
         "size": 12.0,
-        "colour": "#938c7a"
+        "colour": "#918a76"
       },
       {
         "item": "text",
@@ -6766,7 +6766,7 @@
         "text": "// spacer 57",
         "face": "monoitalic",
         "size": 12.0,
-        "colour": "#938c7a"
+        "colour": "#918a76"
       },
       {
         "item": "text",
@@ -6784,7 +6784,7 @@
         "text": "// spacer 58",
         "face": "monoitalic",
         "size": 12.0,
-        "colour": "#938c7a"
+        "colour": "#918a76"
       },
       {
         "item": "fill",
@@ -7053,7 +7053,7 @@
         "text": "export",
         "face": "mono",
         "size": 12.0,
-        "colour": "#ab818c"
+        "colour": "#a97f8a"
       },
       {
         "item": "text",
@@ -7062,7 +7062,7 @@
         "text": "async",
         "face": "mono",
         "size": 12.0,
-        "colour": "#ab818c"
+        "colour": "#a97f8a"
       },
       {
         "item": "text",
@@ -7071,7 +7071,7 @@
         "text": "function",
         "face": "mono",
         "size": 12.0,
-        "colour": "#ab818c"
+        "colour": "#a97f8a"
       },
       {
         "item": "text",
@@ -7080,7 +7080,7 @@
         "text": "write",
         "face": "mono",
         "size": 12.0,
-        "colour": "#b0882c"
+        "colour": "#af872b"
       },
       {
         "item": "text",
@@ -7089,7 +7089,7 @@
         "text": "(",
         "face": "mono",
         "size": 12.0,
-        "colour": "#938c78"
+        "colour": "#918a77"
       },
       {
         "item": "text",
@@ -7098,7 +7098,7 @@
         "text": "row:",
         "face": "mono",
         "size": 12.0,
-        "colour": "#a69c81"
+        "colour": "#a59b80"
       },
       {
         "item": "text",
@@ -7107,7 +7107,7 @@
         "text": "Row",
         "face": "mono",
         "size": 12.0,
-        "colour": "#739666"
+        "colour": "#719464"
       },
       {
         "item": "text",
@@ -7116,7 +7116,7 @@
         "text": ")",
         "face": "mono",
         "size": 12.0,
-        "colour": "#938c78"
+        "colour": "#918a77"
       },
       {
         "item": "text",
@@ -7125,7 +7125,7 @@
         "text": "{",
         "face": "mono",
         "size": 12.0,
-        "colour": "#938c78"
+        "colour": "#918a77"
       },
       {
         "item": "fill",
@@ -7289,7 +7289,7 @@
         "text": "}",
         "face": "mono",
         "size": 12.0,
-        "colour": "#938c78"
+        "colour": "#918a77"
       },
       {
         "item": "fill",
@@ -7299,7 +7299,7 @@
           "w": 304.0,
           "h": 764.0
         },
-        "colour": "#242424"
+        "colour": "#262626"
       },
       {
         "item": "fill",
@@ -7468,7 +7468,7 @@
           "w": 1123.0,
           "h": 30.0
         },
-        "colour": "#242424"
+        "colour": "#262626"
       },
       {
         "item": "fill",
@@ -7579,7 +7579,7 @@
           "w": 819.0,
           "h": 60.0
         },
-        "colour": "#242424"
+        "colour": "#262626"
       },
       {
         "item": "fill",
@@ -7607,7 +7607,7 @@
         "text": "3",
         "face": "regular",
         "size": 30.0,
-        "colour": "#864d1f"
+        "colour": "#874f20"
       },
       {
         "item": "text",
@@ -7745,7 +7745,7 @@
           "w": 304.0,
           "h": 764.0
         },
-        "colour": "#242424"
+        "colour": "#262626"
       },
       {
         "item": "fill",
@@ -7914,7 +7914,7 @@
           "w": 1123.0,
           "h": 30.0
         },
-        "colour": "#242424"
+        "colour": "#262626"
       },
       {
         "item": "fill",
@@ -8022,7 +8022,7 @@
           "w": 819.0,
           "h": 60.0
         },
-        "colour": "#242424"
+        "colour": "#262626"
       },
       {
         "item": "fill",
@@ -8114,7 +8114,7 @@
           "w": 304.0,
           "h": 764.0
         },
-        "colour": "#242424"
+        "colour": "#262626"
       },
       {
         "item": "fill",
@@ -8274,7 +8274,7 @@
           "w": 1123.0,
           "h": 30.0
         },
-        "colour": "#242424"
+        "colour": "#262626"
       },
       {
         "item": "fill",

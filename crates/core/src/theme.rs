@@ -243,9 +243,12 @@ pub struct Palette {
     pub bg: Rgb,
     /// Text.
     pub fg: Rgb,
-    /// The narration band and the legend — a distinct panel.
+    /// The narration band and the legend — a distinct panel. The nearer of the
+    /// two surfaces: the words you read come forward, so the band recedes
+    /// from the page less than the code panes do.
     pub band: Rgb,
-    /// A code pane at rest, scrimmed back.
+    /// A code pane at rest, scrimmed back. The further surface: the code sits
+    /// back so it never pushes at the reader.
     pub wash: Rgb,
     /// The lit range: the page again, tinted toward the accent.
     pub focus: Rgb,
@@ -482,8 +485,14 @@ pub fn pick_accent(bg: Rgb, fg: Rgb, candidates: &[Rgb]) -> Rgb {
 /// How far each surface recedes from the page, and how far the lit range is
 /// tinted. Small numbers on purpose: the page is meant to be quiet, not
 /// striped.
-const WASH: f32 = 0.05;
-const BAND: f32 = 0.11;
+///
+/// The band recedes least and the code panes most, so the band is the nearer
+/// surface. The reading band comes forward and the code sits back: the words
+/// you read are the nearest thing in the window, and code does not push at the
+/// reader. They were the other way round once, and on a dark page the code read
+/// as nearer while the prose receded.
+const BAND: f32 = 0.05;
+const WASH: f32 = 0.11;
 const EDGE: f32 = 0.24;
 const GROUND: f32 = 0.19;
 const TINT: f32 = 0.16;
@@ -503,7 +512,7 @@ const DIFF: f32 = 0.055;
 const NO_ROOM_BELOW: f32 = 0.12;
 /// How far a hairline lifts off a dark page.
 ///
-/// Further than [`BAND`], because on a page with no room below it the band
+/// Further than [`WASH`], because on a page with no room below it the panes
 /// lifts too, and a hairline that only cleared the *page* would sit inside the
 /// panel it is supposed to be the edge of.
 const EDGE_UP: f32 = 0.18;
@@ -1341,7 +1350,9 @@ mod tests {
     fn receding_is_darker_on_a_light_theme() {
         let p = derive(light());
         assert!(p.wash.lightness() < p.bg.lightness());
-        assert!(p.band.lightness() < p.wash.lightness());
+        // The code panes recede furthest and the band, the surface you read
+        // from, least, so the band is the nearer of the two.
+        assert!(p.wash.lightness() < p.band.lightness());
     }
 
     #[test]
@@ -1350,7 +1361,9 @@ mod tests {
         // near-black one has to lift instead.
         let p = derive(dark());
         assert!(p.wash.lightness() < p.bg.lightness());
-        assert!(p.band.lightness() < p.wash.lightness());
+        // The code panes recede furthest and the band, the surface you read
+        // from, least, so the band is the nearer of the two.
+        assert!(p.wash.lightness() < p.band.lightness());
     }
 
     #[test]
@@ -1360,7 +1373,12 @@ mod tests {
             ..dark()
         });
         assert!(p.wash.lightness() > 0.0, "black cannot darken any further");
-        assert!(p.band.lightness() > p.wash.lightness());
+        // Both come up, and the panes, which move furthest, come up furthest.
+        // Brighter reads as nearer, so on a black ground the panes, not the
+        // band, would be the nearer surface; the band is lifted less so it
+        // still sits closer to the page it is read against.
+        assert!(p.band.lightness() > 0.0, "the band lifts too");
+        assert!(p.wash.lightness() > p.band.lightness());
     }
 
     #[test]
