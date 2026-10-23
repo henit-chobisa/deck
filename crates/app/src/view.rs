@@ -723,10 +723,15 @@ pub struct DeckView {
     /// *doing* line or the comment box shortened the rail, the bottom moved
     /// away from a reader who had not, and the rail stopped following (#19).
     rail_pinned: std::cell::Cell<bool>,
-    /// How far up the "↓ Latest" chip is: on while the rail is away from its
-    /// newest turn. A cell because the rail is drawn from `&self`, where the
-    /// scroll position that decides it is also read.
-    latest_fade: std::cell::Cell<crate::pane::Fade>,
+    /// How far up deck's line beside the pulse is: on while an answer is owed.
+    /// A cell because the rail is drawn from `&self`.
+    phrase_fade: std::cell::Cell<crate::pane::Fade>,
+    /// The line chosen for the last wait (an index into [`PHRASES`]), kept so
+    /// the next wait never picks the same one.
+    phrase: std::cell::Cell<Option<usize>>,
+    /// The sign of life the line was chosen for. A new one means a new
+    /// comment was sent, so a new wait began.
+    phrase_for: std::cell::Cell<Option<std::time::Instant>>,
     /// Where each turn's age was heading, and the fade getting it there, by
     /// place in the transcript. See [`DeckView::aged`].
     ages: std::cell::RefCell<std::collections::HashMap<usize, (f32, f32, crate::pane::Fade)>>,
@@ -1220,7 +1225,9 @@ impl DeckView {
             conversation,
             rail_scroll,
             rail_pinned: std::cell::Cell::new(true),
-            latest_fade: std::cell::Cell::new(Self::card_fade()),
+            phrase_fade: std::cell::Cell::new(Self::card_fade()),
+            phrase: std::cell::Cell::new(None),
+            phrase_for: std::cell::Cell::new(None),
             ages: std::cell::RefCell::new(std::collections::HashMap::new()),
             rail_wheeled: std::cell::Cell::new(false),
             picked_said,
@@ -8576,12 +8583,6 @@ impl DeckView {
                                     deck.rail_wheeled.set(true);
                                     cx.notify();
                                 }))
-                                // With no turns yet, the answer on its way sits
-                                // where the first turn will land: at the top of
-                                // the thread, on its line, with its word. See
-                                // `render_pulse_at_start` for why it is not down
-                                // beside *Latest* then.
-                                .children(nothing.then(|| self.render_pulse_at_start()).flatten())
                                 .children(nothing.then(|| {
                                     div()
                                         .flex_1()
@@ -8613,54 +8614,17 @@ impl DeckView {
                                 .children(lines),
                         )
                         .child(
-                            // The way to the newest turn, and beside it the
-                            // pulse that says one is on its way — the two are
-                            // about the same thing, so they share a line and
-                            // nothing below them moves when the pulse comes
-                            // or goes.
+                            // deck's own line while an answer is on its way, and beside
+                            // it the pulse. The two are about the same thing, so they
+                            // share a line, and the line keeps its height when both
+                            // are gone so nothing below it moves when they come.
                             div()
                                 .flex_none()
                                 .h_flex()
                                 .items_center()
                                 .gap(px(8.))
-                                .child({
-                                    // Only while the rail is away from the
-                                    // newest turn; at the bottom the control
-                                    // has nothing to say. It keeps its room
-                                    // and fades, so nothing below it moves
-                                    // when it comes or goes, and it takes no
-                                    // clicks while it is not there.
-                                    let mut fade = self.latest_fade.get();
-                                    fade.set(!self.rail_pinned.get());
-                                    self.latest_fade.set(fade);
-                                    div()
-                                        .id("latest-reply")
-                                        .flex_none()
-                                        .my(px(5.))
-                                        .px(px(8.))
-                                        .py(px(3.))
-                                        .rounded(px(6.))
-                                        .border_1()
-                                        .border_color(paint(palette.edge))
-                                        .text_size(px(10.))
-                                        .text_color(paint(palette.muted))
-                                        .opacity(fade.level())
-                                        .when(fade.on(), |this| {
-                                            this.cursor_pointer()
-                                                .hover(|style| {
-                                                    style
-                                                        .bg(paint(hover_on_band(palette)))
-                                                        .text_color(paint(palette.fg))
-                                                })
-                                                .on_click(cx.listener(|deck, _, _window, cx| {
-                                                    deck.rail_pinned.set(true);
-                                                    deck.rail_scroll.scroll_to_bottom();
-                                                    cx.notify();
-                                                }))
-                                        })
-                                        .child("↓ Latest")
-                                })
-                                .children((!nothing).then(|| self.render_pulse()).flatten()),
+                                .child(self.render_phrase())
+                                .children(self.render_pulse()),
                         )
                         .children(self.render_invite(cx))
                         .children(self.render_making())
@@ -8944,7 +8908,8 @@ impl DeckView {
     /// away from. Whether anybody is there at all is the strip's to say, not
     /// this panel's.
     ///
-    /// It sits beside *Latest*, while an answer is owed.
+    /// It sits beside deck's line (see [`Self::render_phrase`]), while an
+    /// answer is owed.
     fn render_pulse(&self) -> Option<AnyElement> {
         /// One breath, in and out. Slow on purpose: a pulse at a heartbeat's
         /// pace reads as urgency, and this is the opposite of that.
@@ -8959,65 +8924,70 @@ impl DeckView {
         if self.conversation.queued() || since >= PATIENCE || self.unheard >= UNHEARD_FOR {
             return None;
         }
-        let dot = div()
-            .flex_none()
-            .size(px(6.))
-            .rounded_full()
-            .bg(paint(self.palette.accent))
-            .with_animation(
-                "answering",
-                // A dozen frames a second is plenty for a breath this
-                // slow, and each one redraws the whole window: at the
-                // screen's own rate that was tens of thousands of
-                // redraws for one dot over a long answer.
-                Animation::new(BREATH)
-                    .repeat()
-                    .with_max_fps(12.)
-                    .with_easing(pulsating_between(0.15, 0.7)),
-                |this, breath| this.opacity(breath),
-            );
         Some(
             div()
-                .h_flex()
                 .flex_none()
-                .items_center()
-                .gap(px(6.))
-                .child(dot)
-                // The word that sat beside the dot when the wait was a bar
-                // and a label (removed in dc3e282 with the bar and the
-                // agent's notes, which cost the agent a tool call a step).
-                // Only the plain word comes back: the notes and the deadline
-                // stay gone, but a dot alone reads as a stray mark.
-                .child(
-                    div()
-                        .text_size(px(10.5))
-                        .text_color(paint(self.palette.accent))
-                        .child("sent"),
+                .size(px(6.))
+                .rounded_full()
+                .bg(paint(self.palette.accent))
+                .with_animation(
+                    "answering",
+                    // A dozen frames a second is plenty for a breath this
+                    // slow, and each one redraws the whole window: at the
+                    // screen's own rate that was tens of thousands of
+                    // redraws for one dot over a long answer.
+                    Animation::new(BREATH)
+                        .repeat()
+                        .with_max_fps(12.)
+                        .with_easing(pulsating_between(0.15, 0.7)),
+                    |this, breath| this.opacity(breath),
                 )
                 .into_any_element(),
         )
     }
 
-    /// The pulse for a rail with no turns in it, where the first turn goes.
+    /// Whether an answer is owed: the condition the pulse draws under, and so
+    /// the one the line beside it follows.
+    fn answer_owed(&self) -> bool {
+        self.conversation.latest_sign().is_some_and(|at| {
+            !self.conversation.queued() && at.elapsed() < PATIENCE && self.unheard < UNHEARD_FOR
+        })
+    }
+
+    /// One of deck's own lines, beside the pulse, while an answer is owed;
+    /// nothing at all otherwise.
     ///
-    /// Beside *Latest* it floated alone above the composer in an empty rail:
-    /// *Latest* has nothing to say yet, so the dot and its word were the only
-    /// thing on the line and read as a stray mark. Here it takes the thread's
-    /// own gutter, so the empty case looks like the first turn arriving.
-    fn render_pulse_at_start(&self) -> Option<AnyElement> {
-        let pulse = self.render_pulse()?;
-        Some(
-            div()
-                .h_flex()
-                .flex_none()
-                .items_center()
-                .pt(px(3.))
-                .pb(px(6.))
-                // The thread's knots start 6px in; the dot starts on that line.
-                .pl(px(7.))
-                .child(pulse)
-                .into_any_element(),
-        )
+    /// It sat as "Latest ↓" before, a control that said nothing while the
+    /// reader waited. Now the same place, size and ink say something small
+    /// while they do. It is plain text: no motion of its own beyond fading in
+    /// and out with the wait, so the pulse stays the only thing that moves.
+    ///
+    /// The line is chosen when the reader sends a comment (the wait begins,
+    /// which is when the time of the last sign changes) and is never changed
+    /// during that wait. It is kept after the wait ends so that it can fade
+    /// out saying what it said, and the line keeps its height so that nothing
+    /// below moves when it comes or goes.
+    fn render_phrase(&self) -> AnyElement {
+        let sign = self.conversation.latest_sign();
+        let owed = self.answer_owed();
+        if owed && self.phrase_for.get() != sign {
+            self.phrase_for.set(sign);
+            let ix = pick_phrase(self.phrase.get(), roll());
+            self.phrase.set(Some(ix));
+        }
+        let mut fade = self.phrase_fade.get();
+        fade.set(owed);
+        self.phrase_fade.set(fade);
+        div()
+            .flex_none()
+            .py(px(5.))
+            .text_size(px(10.))
+            .text_color(paint(self.palette.muted))
+            .opacity(fade.level())
+            // A no-break space when there is nothing to say: an empty element
+            // has no line, and the row would shrink.
+            .child(self.phrase.get().map_or("\u{a0}", |ix| PHRASES[ix]))
+            .into_any_element()
     }
 }
 
@@ -9040,6 +9010,100 @@ const NOTHING_YET: &[&str] = &[
     "Go on, then",
     "The agent is listening",
 ];
+
+/// deck's own lines, shown beside the pulse while the agent prepares a reply
+/// in a discussion. They are fixed and not written by the agent; the founder
+/// chose them. One is picked per wait.
+const PHRASES: &[&str] = &[
+    "hold my coffee",
+    "sudo think harder",
+    "grepping my brain",
+    "retrying with --prayer",
+    "git blame-ing myself",
+    "ctrl+f my memory",
+    "brain.exe loading",
+    "recompiling my thoughts",
+    "rebasing my thoughts",
+    "stashing my ego",
+    "linting my answer",
+    "compiling a comeback",
+    "cherry-picking facts",
+    "force-pushing neurons",
+    "touché, one sec",
+    "squinting at it",
+    "hmm, plot twist",
+    "napkin math time",
+    "one sec, genius",
+    "hold that thought",
+    "ooh, spicy question",
+    "okay, game on",
+    "challenge accepted",
+    "fair, fair, fair",
+    "brb, thinking",
+    "pinging my neurons",
+    "mounting my brain",
+    "sharpening my pointers",
+    "dereferencing your question",
+    "unit-testing my logic",
+    "spinning up workers",
+    "garbage-collecting doubts",
+    "hot-reloading",
+    "npm install thoughts",
+    "rubber-banding ideas",
+    "profiling my argument",
+    "type-checking my take",
+    "compiling with care",
+    "grep -r answers",
+    "debugging my take",
+    "forking my thoughts",
+    "pull-requesting wisdom",
+    "deploying a rebuttal",
+    "untangling the spaghetti",
+    "ooh, good one",
+    "let me cook",
+    "give me a sec",
+    "hmm, hmm, hmm",
+    "okay, you win",
+    "you got me",
+    "thinking cap on",
+    "wait for it",
+    "on the case",
+    "ahh, I see",
+    "one moment, please",
+    "this is good",
+    "brain go brrr",
+    "deep breath first",
+    "say less",
+];
+
+/// Which phrase to show: any but `previous`, so two waits in a row never say
+/// the same thing. `roll` is any number; it is the only randomness, passed in
+/// so the choice can be tested.
+#[allow(clippy::cast_possible_truncation)] // bounded by the list's length
+fn pick_phrase(previous: Option<usize>, roll: u64) -> usize {
+    let count = PHRASES.len() as u64;
+    match previous {
+        // One fewer to choose from, then step over the one to avoid.
+        Some(avoid) if avoid < PHRASES.len() => {
+            let ix = (roll % (count - 1)) as usize;
+            if ix >= avoid { ix + 1 } else { ix }
+        }
+        _ => (roll % count) as usize,
+    }
+}
+
+/// A number that differs from wait to wait. Hashing the clock is enough for
+/// choosing a line; nothing here needs real randomness, or a crate for it.
+fn roll() -> u64 {
+    use std::hash::{BuildHasher, Hasher};
+    let mut hasher = std::collections::hash_map::RandomState::new().build_hasher();
+    hasher.write_u128(
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |since| since.as_nanos()),
+    );
+    hasher.finish()
+}
 
 /// How long the pulse goes on breathing for an answer that has not come.
 ///
@@ -9184,7 +9248,7 @@ impl Render for DeckView {
                 .flatten()
                 .any(|(_, light)| light.moving())
             || self.rail_open.moving()
-            || self.latest_fade.get().moving()
+            || self.phrase_fade.get().moving()
             || self
                 .ages
                 .borrow()
@@ -9788,6 +9852,20 @@ fn review_of(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn the_next_phrase_is_never_the_one_before() {
+        // Every roll against every previous phrase, including the edges: a
+        // repeat reads as the line being stuck rather than chosen.
+        for previous in 0..super::PHRASES.len() {
+            for roll in 0..(super::PHRASES.len() as u64 * 3) {
+                let next = super::pick_phrase(Some(previous), roll);
+                assert_ne!(next, previous);
+                assert!(next < super::PHRASES.len());
+            }
+        }
+        assert!(super::pick_phrase(None, 12345) < super::PHRASES.len());
+    }
+
     #[test]
     fn moving_to_another_sentence_starts_the_light_again() {
         // Reported from inside a deck: the first press eased in, and every
