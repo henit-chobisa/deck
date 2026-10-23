@@ -91,7 +91,14 @@ pub fn current_on(dark: bool, paper: Paper) -> Palette {
     let hex = |s: &str| Rgb::from_hex(s).unwrap_or(Rgb::new(0, 0, 0));
 
     /// How far a diff ground is tinted from the page it sits on.
-    const DIFF: f32 = 0.17;
+    ///
+    /// A quiet tint, not a block of colour. At 0.17 a change of a dozen
+    /// lines was the largest area of saturated colour in the window, sat
+    /// under the narration the whole time the reader read it, and syntax
+    /// colours on top of it buzzed at every letter's edge. The signs in the
+    /// gutter and the gutter's bar say which lines changed; the ground only
+    /// has to agree with them.
+    const DIFF: f32 = 0.08;
 
     let mut palette = match (dark, paper) {
         (true, Paper::Grey) => Palette {
