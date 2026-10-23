@@ -4750,6 +4750,9 @@ impl DeckView {
 
     fn open_composer(&mut self, about: About, window: &mut Window, cx: &mut Context<Self>) {
         self.live.pause(PauseReason::Composer);
+        // A new box is a first appearance for the caret: it starts at the
+        // start of the text, not sliding in from where the last box left it.
+        self.caret.reset();
         // The composer lives in the rail. Writing into a folded one would be
         // typing into a box nobody can see.
         self.rail_open.set(true);
@@ -5237,6 +5240,7 @@ impl DeckView {
             return;
         }
         self.composing = None;
+        self.caret.reset();
         // Thrown away, so not kept for next time either.
         self.keep_draft(cx);
         // Thrown away rather than saved, but the anchor still goes back: the
@@ -5446,6 +5450,10 @@ impl DeckView {
     /// remembered choice was a mode: tick *hold* once, forget, and the next
     /// question waited unanswered until the review went back.
     fn save_remark(&mut self, when: deck_core::When, window: &mut Window, cx: &mut Context<Self>) {
+        // Whatever happens next, the box is empty or gone: the caret's next
+        // frame is a first appearance, so it is never seen sliding up from
+        // the last line of what was written.
+        self.caret.reset();
         let Some((about, state, _listen)) = self.composing.take() else {
             return;
         };

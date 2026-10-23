@@ -111,6 +111,9 @@ pub struct Reading {
     /// stays the same means the letters moved under the caret, as when a Korean
     /// jamo becomes a wider syllable, which leaves the stamp unchanged.
     pub cursor: usize,
+    /// How long the text is, in bytes. A drop of more than a character in one
+    /// frame is the text being cleared or cut, not typed away.
+    pub len: usize,
     /// Changes whenever the text length or the caret position changes.
     pub stamp: u64,
     /// Whether the window is the active one. In the background the caret is
@@ -151,6 +154,7 @@ macro_rules! caret_field {
                 line_height: f32::from(line_height),
                 scroll: (f32::from(scroll.x), f32::from(scroll.y)),
                 cursor: state.cursor(),
+                len: state.text().len(),
                 active: $window.is_window_active(),
                 stamp: (state.cursor() as u64) << 32 ^ state.text().len() as u64,
                 clip: {
@@ -195,6 +199,7 @@ pub struct State {
     /// When the caret last moved or the text last changed: what holds it solid.
     changed: Option<Instant>,
     cursor: usize,
+    len: usize,
     stamp: u64,
     scroll: (f32, f32),
 }
@@ -244,9 +249,17 @@ impl State {
             self.changed = Some(now);
         }
 
+        // The text was cleared or cut: submit, select-all delete, a long cut.
+        // The caret did not travel anywhere, the words it was in went away,
+        // so it appears at its new place; sliding up from the last line of
+        // what was written reads as a bug. One character (a backspace, even
+        // of a multi-byte one) still follows. A text that is empty snaps too:
+        // there is only one place the caret can be.
+        let cleared = !first
+            && (self.len.saturating_sub(reading.len) > 4 || (reading.len == 0 && self.len > 0));
         let far = (target.1 - here.1).abs() > reading.line_height * SNAP_LINES;
         let at_rest = here == self.to;
-        let drawn = if first || scrolled || far || !reading.active {
+        let drawn = if first || scrolled || cleared || far || !reading.active {
             // Following would be wrong, or nobody is watching.
             target
         } else {
@@ -272,6 +285,7 @@ impl State {
         self.last = Some(now);
         self.stamp = reading.stamp;
         self.cursor = reading.cursor;
+        self.len = reading.len;
         self.scroll = reading.scroll;
 
         if !reading.active {
@@ -311,6 +325,15 @@ impl std::fmt::Debug for Caret {
         f.debug_struct("Caret")
             .field("state", &self.state)
             .finish_non_exhaustive()
+    }
+}
+
+impl Caret {
+    /// Forget where the caret was drawn, so the next frame counts as its first
+    /// appearance and it lands on the target without following. For a field
+    /// that has just been opened, refocused or emptied.
+    pub fn reset(&self) {
+        *self.state.borrow_mut() = State::default();
     }
 }
 
@@ -392,6 +415,7 @@ mod tests {
             line_height: 20.,
             scroll: (0., 0.),
             cursor: usize::try_from(stamp).unwrap(),
+            len: 0,
             stamp,
             active: true,
         })
@@ -493,6 +517,7 @@ mod tests {
             line_height: 20.,
             scroll: (0., 10.),
             cursor: 1,
+            len: 0,
             stamp: 1,
             active: true,
         });
@@ -546,5 +571,52 @@ mod tests {
         let mut caret = State::default();
         assert!(caret.frame(Instant::now(), Field::Idle).is_none());
         assert!(caret.frame(Instant::now(), Field::Selecting).is_none());
+    }
+
+    /// Three lines of text, the caret at the end of the third.
+    fn written(len: usize, x: f32, y: f32, stamp: u64) -> Field {
+        let Field::Caret(mut r) = reading(x, y, stamp) else {
+            unreachable!()
+        };
+        r.len = len;
+        Field::Caret(r)
+    }
+
+    #[test]
+    fn clearing_multi_line_text_snaps_to_the_start() {
+        let start = Instant::now();
+        let mut caret = State::default();
+        caret.frame(start, written(30, 60., 40., 30));
+        // Submitted: empty, the caret at the start of the first line.
+        let frame = caret.frame(at(start, 16), written(0, 0., 0., 0)).unwrap();
+        assert_eq!((frame.x, frame.y), (0., 0.));
+    }
+
+    #[test]
+    fn a_single_backspace_still_follows() {
+        let start = Instant::now();
+        let mut caret = State::default();
+        caret.frame(start, written(30, 60., 0., 30));
+        let frame = caret
+            .frame(at(start, 16), written(29, 52., 0., 29))
+            .unwrap();
+        assert!(frame.x > 52. && frame.x < 60., "{}", frame.x);
+    }
+
+    #[test]
+    fn a_reset_makes_the_next_frame_a_first_appearance() {
+        let start = Instant::now();
+        let shared = Caret::default();
+        shared
+            .state
+            .borrow_mut()
+            .frame(start, written(5, 40., 0., 5));
+        shared.reset();
+        let frame = shared
+            .state
+            .borrow_mut()
+            .frame(at(start, 16), written(5, 0., 0., 5))
+            .unwrap();
+        assert_eq!(frame.x, 0.);
     }
 }
