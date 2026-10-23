@@ -736,12 +736,14 @@ pub struct DeckView {
     /// empty, going out when the first turn arrives. Starts at rest, so a
     /// window that opens empty does not fade its line in.
     quip_fade: std::cell::Cell<crate::pane::Fade>,
-    /// The first turn's entrance: it rises and fades in when it arrives into
-    /// an empty thread. Starts at rest, so turns restored with the window
-    /// simply start where they belong.
-    first_fade: std::cell::Cell<crate::pane::Fade>,
-    /// Whether the two fades above have been set to match the thread the
-    /// window opened with.
+    /// Each turn's entrance, by place in the transcript: a turn that arrives
+    /// while the window is open fades in and rises a few pixels into its
+    /// place. Only turns still coming in are kept.
+    entering: std::cell::RefCell<std::collections::HashMap<usize, crate::pane::Fade>>,
+    /// The turns the rail has already seen, so that only a new one enters.
+    known: std::cell::RefCell<std::collections::HashSet<usize>>,
+    /// Whether the thread the window opened with has been recorded: those
+    /// turns were there already and never animate.
     entry_primed: std::cell::Cell<bool>,
     /// How many turns the rail held the last time it was at the bottom; a turn
     /// beyond that arrived while the reader was elsewhere.
@@ -1253,10 +1255,8 @@ impl DeckView {
                 std::time::Duration::from_millis(160),
             )),
             entry_primed: std::cell::Cell::new(false),
-            first_fade: std::cell::Cell::new(crate::pane::Fade::room_folded().paced(
-                std::time::Duration::from_millis(200),
-                std::time::Duration::from_millis(160),
-            )),
+            entering: std::cell::RefCell::new(std::collections::HashMap::new()),
+            known: std::cell::RefCell::new(std::collections::HashSet::new()),
             rail_seen: std::cell::Cell::new(0),
             phrase: std::cell::Cell::new(None),
             phrase_for: std::cell::Cell::new(None),
@@ -8202,37 +8202,52 @@ impl DeckView {
             })
             .collect();
         let last = shown.len().saturating_sub(1);
-        // The thread's two ends meet here. The empty line goes out as the
-        // first turn comes in, on the same pace as every other card, and the
-        // first turn rises into its place on the same eased level.
         let empty = shown.is_empty();
-        // Opened with turns already there (restored): the empty line is not
-        // there to go out, so it starts gone. Opened empty: the first turn is
-        // not there to come in yet, so it starts gone. Either way, nothing
-        // moves on open.
+        // Opened with turns already there (restored): they are recorded as
+        // seen so none of them enters, and the empty line is not there to go
+        // out, so it starts gone. Nothing moves on open.
         if !self.entry_primed.replace(true) {
-            if empty {
-                self.first_fade.set(Self::card_fade());
-            } else {
+            self.known
+                .borrow_mut()
+                .extend(shown.iter().map(|(ix, _)| *ix));
+            if !empty {
                 self.quip_fade.set(Self::card_fade());
             }
         }
+        // The empty line goes out as the first turn comes in, on the same
+        // pace as every other card.
         let mut quip_fade = self.quip_fade.get();
         quip_fade.set(empty);
         self.quip_fade.set(quip_fade);
-        let mut first_fade = self.first_fade.get();
-        first_fade.set(!empty);
-        self.first_fade.set(first_fade);
-        let entrance = first_fade.level();
+        // Any turn not seen before enters: from nothing to full on the same
+        // eased level as every card, as the reader's own comment does and the
+        // agent's reply does. A finished entrance is forgotten.
+        {
+            let mut known = self.known.borrow_mut();
+            let mut entering = self.entering.borrow_mut();
+            for (ix, _) in &shown {
+                if known.insert(*ix) {
+                    let mut fade = Self::card_fade();
+                    fade.set(true);
+                    entering.insert(*ix, fade);
+                }
+            }
+            entering.retain(|_, fade| fade.moving());
+        }
         let turns = shown.len();
         // The reply on its way is part of the thread, so the last real turn's
         // line has to run on down to it instead of stopping at its own knot.
-        let arriving = self.arrival_shown();
+        let arriving = self.arrival_shown() && self.answer_owed();
         let lines: Vec<AnyElement> = shown
             .into_iter()
             .enumerate()
             .map(|(place, (ix, moment))| {
                 let mine = moment.what == deck_core::What::Said;
+                let entrance = self
+                    .entering
+                    .borrow()
+                    .get(&ix)
+                    .map_or(1., |fade| fade.level());
                 let again = self.conversation.spoken.contains_key(&ix);
                 // Older turns sink into the page. What was just said is what
                 // the reader is in the middle of; six turns back is context,
@@ -8420,10 +8435,10 @@ impl DeckView {
                     .h_flex()
                     .items_stretch()
                     .rounded(px(3.))
-                    // The first turn of a thread rises a few pixels into its
-                    // place as it fades in. Relative, so it moves without the
-                    // layout around it moving.
-                    .when(place == 0 && entrance < 1., |this| {
+                    // A new turn rises a few pixels into its place as it fades
+                    // in. Relative, so it moves without the layout around it
+                    // moving.
+                    .when(entrance < 1., |this| {
                         this.relative()
                             .top(px(7. * (1. - entrance)))
                             .opacity(entrance)
@@ -8676,6 +8691,7 @@ impl DeckView {
                                         .child(
                                             div()
                                                 .v_flex()
+                                                .relative()
                                                 .flex_grow_1()
                                                 .flex_shrink_0()
                                                 .justify_end()
@@ -8720,7 +8736,6 @@ impl DeckView {
                                 })),
                         )
                         .children(self.render_invite(cx))
-                        .children(self.render_making())
                         .children(self.render_pending())
                         // The composer belongs here while live, not floating over
                         // the code. A reader writing a reply is talking to the
@@ -8943,26 +8958,6 @@ impl DeckView {
         )
     }
 
-    /// Say that a voice is being made, while it is being made.
-    ///
-    /// A cloud voice takes a second or two, and the reader who hears nothing in
-    /// that gap concludes the answer never arrived — one of them pressed replay
-    /// on a turn that was already on its way.
-    fn render_making(&self) -> Option<AnyElement> {
-        if !self.voice.making() {
-            return None;
-        }
-        Some(
-            div()
-                .flex_none()
-                .pt(px(8.))
-                .text_size(px(10.5))
-                .text_color(paint(self.palette.accent))
-                .child("making the voice…")
-                .into_any_element(),
-        )
-    }
-
     /// A question still held for a gap in the agent's turn: say so.
     ///
     /// The reply on its way for one that has gone is [`Self::render_arrival`].
@@ -9056,6 +9051,10 @@ impl DeckView {
         }
         let palette = self.palette;
         let phrase = PHRASES[self.phrase.get()?];
+        // Once the answer is here the row is only fading out. It stops taking
+        // room, and fades where it stood, so the one change in height is the
+        // real turn coming in, not that and the pulse leaving as well.
+        let owed = self.answer_owed();
         // Centred on the thread line, which is the 1px at x = 10 to 11, the
         // same column the knots are centred on.
         let dot = div()
@@ -9084,7 +9083,7 @@ impl DeckView {
         };
         // Only with turns above it is there a line to continue; the first
         // turn of a thread starts at its dot.
-        let thread = has_turns.then(|| {
+        let thread = (has_turns && owed).then(|| {
             div()
                 .absolute()
                 .left(px(10.))
@@ -9093,7 +9092,7 @@ impl DeckView {
                 .h(px((LINE - DOT) / 2.))
                 .bg(paint(palette.edge))
         });
-        let tail = (0..2).map(|n| {
+        let tail = (0..2).filter(|_| owed).map(|n| {
             div()
                 .absolute()
                 .left(px(10.))
@@ -9106,7 +9105,8 @@ impl DeckView {
             div()
                 .h_flex()
                 .items_start()
-                .min_h(px(LINE + 10.))
+                .when(owed, |this| this.min_h(px(LINE + 10.)))
+                .when(!owed, |this| this.absolute().bottom_0().left_0().right_0())
                 .opacity(self.phrase_fade.get().level())
                 .child(
                     div()
@@ -9466,7 +9466,11 @@ impl Render for DeckView {
             || self.phrase_fade.get().moving()
             || self.chip_fade.get().moving()
             || self.quip_fade.get().moving()
-            || self.first_fade.get().moving()
+            || self
+                .entering
+                .borrow()
+                .values()
+                .any(crate::pane::Fade::moving)
             || self
                 .ages
                 .borrow()
