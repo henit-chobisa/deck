@@ -6823,7 +6823,10 @@ impl DeckView {
 
     /// Take hold of a diagram, so moving the pointer moves the drawing.
     pub fn start_pan(&mut self, pane_ix: usize, at: Point<Pixels>) {
-        if let Some(chart) = self.panes.get(pane_ix).and_then(Sheet::chart) {
+        if let Some(chart) = self.panes.get_mut(pane_ix).and_then(Sheet::chart_mut) {
+            // A button's zoom still easing stops where it is drawn: the hand
+            // takes the picture from what the reader sees.
+            chart.settle();
             self.panning = Some((pane_ix, at, chart.nudge));
         }
     }
@@ -6871,13 +6874,25 @@ impl DeckView {
         }
     }
 
-    /// Put a diagram back to the size it was drawn, and where.
+    /// Take a diagram in or out by a button's step, easing to the new size.
+    ///
+    /// The wheel and a pinch go through [`Self::zoom_chart`] and follow the
+    /// hand directly; a button press is one jump of a fifth, which on screen
+    /// would be a cut, so it glides over the room pace instead.
+    pub fn step_chart(&mut self, pane_ix: usize, by: f32, cx: &mut Context<Self>) {
+        /// How much of a turn one pixel of wheel is worth.
+        const PER_PIXEL: f32 = 0.004;
+
+        if let Some(chart) = self.panes.get_mut(pane_ix).and_then(Sheet::chart_mut) {
+            chart.glide_by(1. + by * PER_PIXEL);
+            cx.notify();
+        }
+    }
+
+    /// Put a diagram back to the size it was drawn, and where, easing there.
     pub fn reset_zoom(&mut self, pane_ix: usize, cx: &mut Context<Self>) {
         if let Some(chart) = self.panes.get_mut(pane_ix).and_then(Sheet::chart_mut) {
-            chart.zoom = 1.;
-            // The position goes back with it. A picture put back to its own
-            // size but left half off the pane has not been put back.
-            chart.nudge = point(px(0.), px(0.));
+            chart.glide_home();
             cx.notify();
         }
     }

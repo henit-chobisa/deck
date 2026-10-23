@@ -87,7 +87,7 @@ impl Chart {
     /// size and a new room for every label, so kept forever the cache grew
     /// by a diagram's worth of lines a frame.
     fn forget_unless(&self, scale: f32) {
-        let at = (self.zoom.to_bits(), scale.to_bits());
+        let at = (self.drawn_zoom().to_bits(), scale.to_bits());
         let mut lines = self.lines.borrow_mut();
         if lines.at != at {
             lines.by.clear();
@@ -260,6 +260,14 @@ pub struct Chart {
     /// was written into the handle. This is applied to the drawing itself, and
     /// nothing takes it back.
     pub nudge: Point<Pixels>,
+    /// A zoom a button asked for, still on its way.
+    ///
+    /// `zoom` and `nudge` above are where the picture is going; this holds
+    /// where it was drawn when it set off, and the drawn size and place at any
+    /// moment come from [`Self::drawn_zoom`] and [`Self::drawn_nudge`]. `None`
+    /// is every diagram's resting state, and the wheel and a pinch never set
+    /// it: they follow the hand directly.
+    glide: Option<Glide>,
     /// The flow being played, and how far along it is.
     ///
     /// `None` while nothing is playing, which is every diagram's resting
@@ -332,6 +340,7 @@ impl Chart {
             selected: None,
             zoom: 1.,
             nudge: point(px(0.), px(0.)),
+            glide: None,
             playing: None,
             lines: std::cell::RefCell::default(),
         }
@@ -382,6 +391,7 @@ impl Chart {
     #[must_use]
     pub fn fading(&self) -> bool {
         self.heeded.moving()
+            || self.gliding()
             || self.light.moving()
             || self.prior.iter().any(|(_, light)| light.moving())
     }
@@ -636,8 +646,8 @@ impl Chart {
                 // drawing hard against the left of its pane.
                 div()
                     .relative()
-                    .left(self.nudge.x)
-                    .top(self.nudge.y)
+                    .left(self.drawn_nudge().x)
+                    .top(self.drawn_nudge().y)
                     .flex()
                     .flex_none()
                     .min_w(relative(1.))
@@ -1255,7 +1265,7 @@ impl Chart {
                 .hover(|this| this.text_color(paint(palette.fg)).bg(paint(palette.wash)))
                 .child(label)
                 .on_click(move |_, _window, cx| {
-                    let _ = view.update(cx, |deck, cx| deck.zoom_chart(pane_ix, by, cx));
+                    let _ = view.update(cx, |deck, cx| deck.step_chart(pane_ix, by, cx));
                 })
         };
         let reset = {
@@ -1274,7 +1284,7 @@ impl Chart {
                             let _ = view.update(cx, |deck, cx| deck.reset_zoom(pane_ix, cx));
                         })
                 })
-                .child(format!("{:.0}%", self.zoom * 100.))
+                .child(format!("{:.0}%", self.drawn_zoom() * 100.))
         };
         div()
             .id(("zoom-control", pane_ix))
@@ -1293,7 +1303,7 @@ impl Chart {
 
     /// A measurement, at the size the picture is being drawn.
     fn z(&self, value: Pixels) -> Pixels {
-        value * self.zoom
+        value * self.drawn_zoom()
     }
 
     /// A point, at the size the picture is being drawn.
@@ -1317,17 +1327,75 @@ impl Chart {
     /// starts centred and can be dragged anywhere loses little by growing from
     /// where it is.
     pub fn zoom_by(&mut self, factor: f32) {
-        /// Small enough to see a whole picture, large enough to read a note on
-        /// a machine that is not the one it was drawn on.
-        const RANGE: (f32, f32) = (0.4, 3.0);
-        self.zoom = (self.zoom * factor).clamp(RANGE.0, RANGE.1);
-        // Back at its drawn size, exactly, after a button's step: steps that
-        // began at a limit land a hair off 100%, which reads as 100% and would
-        // not reset. Only a step: a pinch or the wheel arrives as many small
-        // factors, and snapping those held the picture at 100% for good.
-        if (factor - 1.).abs() >= 0.1 && (self.zoom - 1.).abs() < 0.02 {
-            self.zoom = 1.;
+        // The hand is in charge: whatever a button had under way stops where
+        // it was drawn, and the wheel carries on from there with no lag.
+        self.settle();
+        self.zoom = stepped(self.zoom, factor);
+    }
+
+    /// Take the picture in or out by a button's step, easing there.
+    ///
+    /// The end state is the one [`Self::zoom_by`] gives, worked from where the
+    /// picture is *going* so two quick presses add up. What is drawn eases
+    /// from where it is now, so a press mid-way carries on without a jump.
+    pub fn glide_by(&mut self, factor: f32) {
+        let was = self.glide_from();
+        self.zoom = stepped(self.zoom, factor);
+        self.glide = Some(was);
+    }
+
+    /// Put the picture back at its drawn size and place, easing there.
+    pub fn glide_home(&mut self) {
+        let was = self.glide_from();
+        self.zoom = 1.;
+        // The position goes back with the size. A picture put back to its own
+        // size but left half off the pane has not been put back.
+        self.nudge = point(px(0.), px(0.));
+        self.glide = Some(was);
+    }
+
+    /// Where the drawing is right now, to set a glide off from.
+    fn glide_from(&self) -> Glide {
+        Glide {
+            zoom: self.drawn_zoom(),
+            nudge: self.drawn_nudge(),
+            since: std::time::Instant::now(),
         }
+    }
+
+    /// Stop any glide where the picture is drawn, and make that the truth.
+    ///
+    /// For a hand taking hold: a pan or the wheel has to start from what the
+    /// reader sees, not from where a button was sending it.
+    pub fn settle(&mut self) {
+        if self.glide.is_some() {
+            self.zoom = self.drawn_zoom();
+            self.nudge = self.drawn_nudge();
+            self.glide = None;
+        }
+    }
+
+    /// Whether a button's zoom is still easing, so the window keeps drawing.
+    #[must_use]
+    pub fn gliding(&self) -> bool {
+        self.glide
+            .is_some_and(|glide| glide.since.elapsed() < GLIDE)
+    }
+
+    /// The size the picture is drawn at this frame.
+    #[must_use]
+    pub fn drawn_zoom(&self) -> f32 {
+        self.glide.map_or(self.zoom, |glide| {
+            glide.at(glide.since.elapsed(), self.zoom, self.nudge).0
+        })
+    }
+
+    /// How far the picture is carried this frame.
+    #[must_use]
+    pub fn drawn_nudge(&self) -> Point<Pixels> {
+        self.glide.map_or(self.nudge, |glide| {
+            glide.at(glide.since.elapsed(), self.zoom, self.nudge).1
+        })
     }
 
     /// The colour the flow at `ix` is lit in, if it asked for one.
@@ -1431,6 +1499,61 @@ fn paint_prim(window: &mut Window, prim: &drawing::Prim) {
             }
             window.paint_path(path, paint(*colour));
         }
+    }
+}
+
+/// How long a button's zoom takes: the pace of a point arriving on a block.
+const GLIDE: std::time::Duration = std::time::Duration::from_millis(520);
+
+/// The size after a step, kept inside reach.
+fn stepped(zoom: f32, factor: f32) -> f32 {
+    /// Small enough to see a whole picture, large enough to read a note on
+    /// a machine that is not the one it was drawn on.
+    const RANGE: (f32, f32) = (0.4, 3.0);
+    let zoom = (zoom * factor).clamp(RANGE.0, RANGE.1);
+    // Back at its drawn size, exactly, after a button's step: steps that
+    // began at a limit land a hair off 100%, which reads as 100% and would
+    // not reset. Only a step: a pinch or the wheel arrives as many small
+    // factors, and snapping those held the picture at 100% for good.
+    if (factor - 1.).abs() >= 0.1 && (zoom - 1.).abs() < 0.02 {
+        1.
+    } else {
+        zoom
+    }
+}
+
+/// Where a zoom set off from, and when. The end is the chart's own `zoom` and
+/// `nudge`, so a press mid-way only has to start a new one from what is drawn.
+#[derive(Debug, Clone, Copy)]
+struct Glide {
+    zoom: f32,
+    nudge: Point<Pixels>,
+    since: std::time::Instant,
+}
+
+impl Glide {
+    /// The size and place `elapsed` after setting off, on the way to the end.
+    /// Smoothstep, like every other motion in the window, and exactly the end
+    /// once the time is up.
+    fn at(
+        &self,
+        elapsed: std::time::Duration,
+        zoom: f32,
+        nudge: Point<Pixels>,
+    ) -> (f32, Point<Pixels>) {
+        let along = (elapsed.as_secs_f32() / GLIDE.as_secs_f32()).clamp(0., 1.);
+        if along >= 1. {
+            return (zoom, nudge);
+        }
+        let eased = along * along * (3. - 2. * along);
+        let between = |from: f32, to: f32| from + (to - from) * eased;
+        (
+            between(self.zoom, zoom),
+            point(
+                px(between(f32::from(self.nudge.x), f32::from(nudge.x))),
+                px(between(f32::from(self.nudge.y), f32::from(nudge.y))),
+            ),
+        )
     }
 }
 
@@ -1656,5 +1779,59 @@ mod tests {
                 (theirs.cluster_ix, theirs.at)
             );
         }
+    }
+
+    #[test]
+    fn a_button_zoom_lands_exactly_on_its_target() {
+        let mut chart = charted(&["a"], &[]);
+        chart.glide_by(1.2);
+        let glide = chart.glide.expect("a press sets off a glide");
+        let (zoom, nudge) = glide.at(GLIDE, chart.zoom, chart.nudge);
+        assert_eq!(zoom, 1.2);
+        assert_eq!(nudge, point(px(0.), px(0.)));
+        let (start, _) = glide.at(std::time::Duration::ZERO, chart.zoom, chart.nudge);
+        assert_eq!(start, 1.);
+        let (half, _) = glide.at(GLIDE / 2, chart.zoom, chart.nudge);
+        assert!(
+            (half - 1.1).abs() < 1e-5,
+            "smoothstep is even about the middle"
+        );
+    }
+
+    #[test]
+    fn a_press_mid_way_carries_on_from_what_is_drawn() {
+        let mut chart = charted(&["a"], &[]);
+        chart.glide_by(1.2);
+        // Pretend the first press is half done, then press again.
+        chart.glide = Some(Glide {
+            since: std::time::Instant::now() - GLIDE / 2,
+            ..chart.glide.expect("glide")
+        });
+        let drawn = chart.drawn_zoom();
+        chart.glide_by(1.2);
+        assert!(
+            (chart.drawn_zoom() - drawn).abs() < 0.01,
+            "no jump on the second press"
+        );
+        assert!(
+            (chart.zoom - 1.44).abs() < 1e-5,
+            "the end state adds up as before"
+        );
+        chart.glide_home();
+        assert_eq!(chart.zoom, 1.);
+        let (zoom, _) = chart
+            .glide
+            .expect("glide")
+            .at(GLIDE, chart.zoom, chart.nudge);
+        assert_eq!(zoom, 1.);
+    }
+
+    #[test]
+    fn the_wheel_follows_the_hand_at_once() {
+        let mut chart = charted(&["a"], &[]);
+        chart.glide_by(1.2);
+        chart.zoom_by(1.004);
+        assert!(chart.glide.is_none());
+        assert!(!chart.gliding());
     }
 }
