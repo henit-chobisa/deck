@@ -74,16 +74,18 @@ const HAND_OVER: std::time::Duration = std::time::Duration::from_millis(200);
 /// How long a value takes to open: the code below glides down to make room,
 /// and the value's words come up into it.
 ///
-/// Rows appearing at once pushed the rest of the file down in a jump, and a
-/// jump is the reader losing their place — so it moves. But not slowly. A
-/// value opens because a sentence reached it, at the same moment the pointed
-/// lines light, and those take 520ms. A whole second here left the reader
-/// looking at lit lines and an empty gap, waiting for the thing the sentence
-/// was about. Under the point light, so the value is there when the light is.
-pub(crate) const UNFOLD: std::time::Duration = std::time::Duration::from_millis(450);
-/// How long it takes to close, a little quicker than it opened, so a value
-/// put away is out of the way before the next sentence needs the room.
-pub(crate) const REFOLD: std::time::Duration = std::time::Duration::from_millis(320);
+/// A value is a room like any other, so it opens at [`ROOM`], the pace of the
+/// chat panel and of a pane folding. Rows appearing at once pushed the rest of
+/// the file down in a jump, and a jump is the reader losing their place, so it
+/// moves; and it moves at the same pace as everything else that makes space, so
+/// a value opening while a pane folds is one motion and not two that end at
+/// different times. Inside that time it still has two parts, the room opening
+/// first and the words coming up into it (see the `steps` curve where values
+/// are laid out); only the total is the room pace.
+pub(crate) const UNFOLD: std::time::Duration = ROOM;
+/// How long it takes to close: [`ROOM`] again, the same both ways, like every
+/// other room.
+pub(crate) const REFOLD: std::time::Duration = ROOM;
 
 /// The one pace for anything that opens or closes space: the chat panel, a
 /// pane folding to its spine or coming back, a pane brought in or taken away.
@@ -3474,9 +3476,10 @@ fn steps_back(cited: LineRange, file_lines: u32, row: LineRange) -> bool {
 ///
 /// Plain ink keeps 92% of itself and a syntax colour keeps 85%: the hues have
 /// more to lose, being the loud part of the wall, but the step is a gentle
-/// one, enough to tell what is cited without making the rest hard to read. A colour already drawn
-/// quiet, a comment or punctuation, is left alone, because mixing it further
-/// would make it vanish and it is already doing the job of sitting back.
+/// one, enough to tell what is cited without making the rest hard to read. A
+/// colour already drawn quiet, a comment or punctuation, is left alone, because
+/// mixing it further would make it vanish and it is already doing the job of
+/// sitting back.
 fn stepped_back(colour: Rgb, palette: &Palette) -> Rgb {
     let near =
         |a: Rgb, b: Rgb| a.r.abs_diff(b.r) <= 1 && a.g.abs_diff(b.g) <= 1 && a.b.abs_diff(b.b) <= 1;
@@ -3936,12 +3939,11 @@ mod tests {
     }
 
     #[test]
-    fn a_value_is_open_by_the_time_its_line_is_lit() {
-        // A value opens at the same moment the sentence lights its line. Any
-        // longer than the light and the reader is left looking at lit code
-        // and an empty gap, waiting for the thing the sentence is about.
-        assert!(UNFOLD <= RISE, "{UNFOLD:?} against {RISE:?}");
-        assert!(REFOLD < UNFOLD);
+    fn a_value_opens_and_closes_at_the_room_pace() {
+        // A value is a room like any other: it opens and closes at the one
+        // room pace, the same both ways.
+        assert_eq!(UNFOLD, ROOM);
+        assert_eq!(REFOLD, ROOM);
     }
 
     #[test]

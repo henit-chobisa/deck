@@ -1507,7 +1507,10 @@ mod tests {
         let after = chart.pointed_much("a");
         assert!(before > 0.9, "{before}");
         assert!(after > 0.9, "A jumped to {after} when C arrived");
-        assert!(chart.pointed_much("b") > 0. || chart.pointed_much("c") >= 0.);
+        // C has only just been pointed at, so it is arriving, not yet lit, and
+        // A did not hand its brightness to it.
+        assert!(chart.pointed_much("c") < 0.1, "{}", chart.pointed_much("c"));
+        assert!(after <= before, "A got brighter: {before} to {after}");
         assert!(chart.fading());
         // Once the falls have run out, the list empties on the next point.
         for (_, light) in &mut chart.prior {
