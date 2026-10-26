@@ -457,6 +457,28 @@ impl Carousel {
             && self.light(open.ix).is_none()
     }
 
+    /// The row's length with every pill shut, from where the pills were last
+    /// laid out.
+    ///
+    /// Not the scroll handle's window plus its overhang: that is the row's
+    /// length only when the row overflows. A row that fits reads as exactly
+    /// as long as its window, and the window is what the arrows' fade
+    /// narrows, so the fit was judged from its own answer and flipped with
+    /// it. A pill's hint is taken off as well, so opening one under the
+    /// pointer cannot tip the row into overflowing either.
+    fn shut_length(&self, hint_w: f32) -> f32 {
+        let places = self.places.borrow();
+        let widths: Vec<(f32, f32)> = places
+            .iter()
+            .enumerate()
+            .map_while(|(ix, drawn)| {
+                let item = self.handle.bounds_for_item(*drawn)?;
+                Some((f32::from(item.size.width), self.openness(ix)))
+            })
+            .collect();
+        shut_length(&widths, hint_w)
+    }
+
     /// How open pill `ix` is, from shut at 0 to showing its hint at 1.
     fn openness(&self, ix: usize) -> f32 {
         if let Some(open) = self.open.get().filter(|open| open.ix == ix) {
@@ -777,6 +799,16 @@ impl Reach {
     }
 }
 
+/// The length of a row of pills set `GAP` apart, given each one's laid-out
+/// width and how open it is, with the hint of every open pill taken off.
+fn shut_length(pills: &[(f32, f32)], hint_w: f32) -> f32 {
+    let widths: f32 = pills
+        .iter()
+        .map(|(wide, open)| (wide - hint_w * open).max(0.))
+        .sum();
+    widths + GAP * pills.len().saturating_sub(1) as f32
+}
+
 /// The row, as an element, `wide` across. `corner` is the window's own
 /// radius, which every pill and both arrows share, so they read as made of
 /// the same thing.
@@ -851,7 +883,7 @@ pub fn render(
     // Where the row is along its length, to tell which arrows have anywhere
     // to go. Read from where it was last laid out, one frame behind at most.
     let reach = Reach::of(
-        f32::from(carousel.handle.bounds().size.width + carousel.handle.max_offset().x),
+        carousel.shut_length(hint_w),
         wide,
         -f32::from(carousel.handle.offset().x),
     );
@@ -1337,6 +1369,45 @@ mod tests {
     use core::prelude::v1::test;
 
     use super::*;
+
+    #[test]
+    fn opening_a_pill_never_tips_a_row_that_fits_into_overflowing() {
+        let wide = 1000.;
+        let hint = 120.;
+        // Three pills with slack: 3 x 200 and two gaps, against a window of
+        // wide - 2 * (ARROW + GAP) = 912.
+        let shut = [(200., 0.), (200., 0.), (200., 0.)];
+        let base = shut_length(&shut, hint);
+        assert_eq!(base, 600. + 2. * GAP);
+        assert!(!Reach::of(base, wide, 0.).overflows);
+        // Any pill, at any point of opening, laid out wider by its hint's
+        // share: the shut length, and so the verdict, does not move.
+        for ix in 0..3 {
+            for open in [0.1, 0.5, 1.] {
+                let mut live = shut;
+                live[ix] = (200. + hint * open, open);
+                assert_eq!(shut_length(&live, hint), base);
+                assert_eq!(
+                    Reach::of(shut_length(&live, hint), wide, 0.),
+                    Reach::of(base, wide, 0.)
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn a_row_that_fits_is_judged_the_same_with_or_without_the_arrows() {
+        // The window narrows as the arrows fade in; the length judged does
+        // not, because it is the pills' own, not the window's.
+        let pills = [(150., 0.), (260., 0.)];
+        let length = shut_length(&pills, 100.);
+        for wide in [1000., 1000. - 88., 1000. - 44.] {
+            assert!(!Reach::of(length, wide, 0.).overflows);
+        }
+        // And a row that does not fit stays so while a pill opens.
+        let long = [(500., 0.), (500., 0.)];
+        assert!(Reach::of(shut_length(&long, 100.), 1000., 0.).overflows);
+    }
 
     #[test]
     fn the_light_crosses_once_and_leaves_nothing_lit() {
