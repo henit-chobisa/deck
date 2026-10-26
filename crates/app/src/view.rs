@@ -995,6 +995,9 @@ pub struct DeckView {
     /// The questions on screen, and whose: held while an answer is still
     /// being said, so a renewed row never changes under it.
     asks_shown: Option<(String, Vec<String>)>,
+    /// The order each group's questions were last shown in, so coming back to
+    /// a group shows the same front-first row rather than the agent's own.
+    asks_memory: std::collections::HashMap<String, Vec<String>>,
     /// The renewal playing on the row, if one is.
     asks_renewed: Option<crate::asks::Renewal>,
     /// A wake-up for when the renewal playing ends, so one queued behind it
@@ -1315,6 +1318,7 @@ impl DeckView {
             explaining: false,
             asks_carousel: crate::asks::Carousel::default(),
             asks_shown: None,
+            asks_memory: std::collections::HashMap::new(),
             asks_renewed: None,
             asks_wake: None,
             #[cfg(target_os = "macos")]
@@ -3204,7 +3208,7 @@ impl DeckView {
                         .w(px(460.))
                         .max_w(relative(0.9))
                         .v_flex()
-                        .rounded(px(12.))
+                        .rounded(px(crate::radius::CARD))
                         .border_1()
                         .border_color(paint(palette.edge))
                         .bg(paint(palette.band))
@@ -3282,13 +3286,13 @@ impl DeckView {
                                         .gap(px(6.))
                                         .px(px(10.))
                                         .py(px(5.))
-                                        .rounded(px(5.))
+                                        .rounded(px(crate::radius::CONTROL))
                                         .cursor_pointer()
                                         .text_size(px(11.5))
                                         .border_1()
                                         .border_color(paint(palette.edge))
                                         .text_color(paint(palette.fg))
-                                        .hover(|style| style.bg(paint(hover_on_band(palette))))
+                                        .hover(|style| style.bg(paint(palette.wash)))
                                         .child("Keep writing")
                                         .child(
                                             div()
@@ -3306,7 +3310,7 @@ impl DeckView {
                                         .id("unheard-add")
                                         .px(px(10.))
                                         .py(px(5.))
-                                        .rounded(px(5.))
+                                        .rounded(px(crate::radius::CONTROL))
                                         .cursor_pointer()
                                         .text_size(px(11.5))
                                         .bg(paint(palette.accent))
@@ -3332,13 +3336,12 @@ impl DeckView {
                                 .flex()
                                 .items_center()
                                 .justify_center()
-                                .rounded(px(6.))
+                                .rounded(px(crate::radius::CONTROL))
                                 .cursor_pointer()
                                 .text_size(px(13.))
                                 .text_color(paint(palette.muted))
                                 .hover(|this| {
-                                    this.bg(paint(hover_on_band(palette)))
-                                        .text_color(paint(palette.fg))
+                                    this.bg(paint(palette.wash)).text_color(paint(palette.fg))
                                 })
                                 .on_click(
                                     cx.listener(|deck, _, window, cx| deck.understood(window, cx)),
@@ -3373,7 +3376,7 @@ impl DeckView {
                 .gap(px(6.))
                 .px(px(10.))
                 .py(px(5.))
-                .rounded(px(5.))
+                .rounded(px(crate::radius::CONTROL))
                 .cursor_pointer()
                 .text_size(px(11.5))
                 .when(primary, |this| {
@@ -3385,7 +3388,7 @@ impl DeckView {
                     this.border_1()
                         .border_color(paint(palette.edge))
                         .text_color(paint(palette.fg))
-                        .hover(|style| style.bg(paint(hover_on_band(palette))))
+                        .hover(|style| style.bg(paint(palette.wash)))
                 })
                 .child(label)
                 .child(
@@ -3427,7 +3430,7 @@ impl DeckView {
                         .w(px(440.))
                         .max_w(relative(0.9))
                         .v_flex()
-                        .rounded(px(12.))
+                        .rounded(px(crate::radius::CARD))
                         .border_1()
                         .border_color(paint(palette.edge))
                         .bg(paint(palette.band))
@@ -3497,13 +3500,12 @@ impl DeckView {
                                 .flex()
                                 .items_center()
                                 .justify_center()
-                                .rounded(px(6.))
+                                .rounded(px(crate::radius::CONTROL))
                                 .cursor_pointer()
                                 .text_size(px(13.))
                                 .text_color(paint(palette.muted))
                                 .hover(|this| {
-                                    this.bg(paint(hover_on_band(palette)))
-                                        .text_color(paint(palette.fg))
+                                    this.bg(paint(palette.wash)).text_color(paint(palette.fg))
                                 })
                                 .on_click(cx.listener(|deck, _, window, cx| deck.stay(window, cx)))
                                 .child("×"),
@@ -3559,7 +3561,7 @@ impl DeckView {
                         .max_w(relative(0.9))
                         .max_h(relative(0.8))
                         .v_flex()
-                        .rounded(px(12.))
+                        .rounded(px(crate::radius::CARD))
                         .border_1()
                         .border_color(paint(palette.edge))
                         .bg(paint(palette.band))
@@ -3664,13 +3666,12 @@ impl DeckView {
                                 .flex()
                                 .items_center()
                                 .justify_center()
-                                .rounded(px(6.))
+                                .rounded(px(crate::radius::CONTROL))
                                 .cursor_pointer()
                                 .text_size(px(13.))
                                 .text_color(paint(palette.muted))
                                 .hover(|this| {
-                                    this.bg(paint(hover_on_band(palette)))
-                                        .text_color(paint(palette.fg))
+                                    this.bg(paint(palette.wash)).text_color(paint(palette.fg))
                                 })
                                 .on_click(cx.listener(|deck, _, window, cx| {
                                     deck.hide_notes(window, cx);
@@ -3865,18 +3866,7 @@ impl DeckView {
                 self.tipping = Task::ready(());
                 return;
             }
-            self.tipping = cx.spawn(async move |view, cx| {
-                cx.background_executor().timer(crate::keys::REST).await;
-                let _ = view.update(cx, |deck, cx| {
-                    // The dock went while the pointer rested on one of its keys.
-                    if key.1 == "dock" && !deck.help.on() {
-                        return;
-                    }
-                    deck.tip = Some(key);
-                    deck.tip_fade.set(true);
-                    cx.notify();
-                });
-            });
+            self.rest_on_key(key, cx);
         } else if self.tip == Some(key) || !self.tip_fade.on() {
             self.tipping = cx.spawn(async move |view, cx| {
                 cx.background_executor().timer(crate::keys::LEAVE).await;
@@ -3886,6 +3876,27 @@ impl DeckView {
                 });
             });
         }
+    }
+
+    /// Starts (or restarts) the rest timer for a key. Replacing the task drops
+    /// the one before it, so each pointer move over the key begins the rest
+    /// again and only a pointer that has stopped lets the card open.
+    fn rest_on_key(&mut self, key: (&'static str, &'static str), cx: &mut Context<Self>) {
+        self.tipping = cx.spawn(async move |view, cx| {
+            cx.background_executor().timer(crate::keys::REST).await;
+            let _ = view.update(cx, |deck, cx| {
+                // The dock went while the pointer rested on one of its keys.
+                if key.1 == "dock" && !deck.help.on() {
+                    return;
+                }
+                if !crate::keys::should_open(crate::keys::REST, deck.tip_fade.on()) {
+                    return;
+                }
+                deck.tip = Some(key);
+                deck.tip_fade.set(true);
+                cx.notify();
+            });
+        });
     }
 
     /// A key the reader can point at: its card comes up over it on a rest.
@@ -3906,6 +3917,13 @@ impl DeckView {
         let sans = cx.theme().font_family.clone();
         body.relative()
             .on_hover(cx.listener(move |deck, over: &bool, _, cx| deck.hover_key(at, *over, cx)))
+            // A pointer still travelling is not resting: every move over the
+            // key starts the rest again, while no card is up.
+            .on_mouse_move(cx.listener(move |deck, _: &MouseMoveEvent, _, cx| {
+                if !deck.tip_fade.on() && !(at.1 == "dock" && !deck.help.on()) {
+                    deck.rest_on_key(at, cx);
+                }
+            }))
             .when(level > 0., |this| {
                 let card = if key == crate::keys::CONFIDENCE {
                     self.group()
@@ -3980,7 +3998,7 @@ impl DeckView {
                         .gap(px(7.))
                         .px(px(9.))
                         .py(px(5.))
-                        .rounded(px(8.))
+                        .rounded(px(crate::radius::CONTROL))
                         .when(glow > 0., |this| {
                             this.bg(paint(ground.mix(palette.accent, 0.28 * glow)))
                         })
@@ -3990,7 +4008,9 @@ impl DeckView {
                         // knowing a key, so hide is pressed here as well.
                         .when(*key == "h", |this| {
                             this.cursor_pointer()
-                                .hover(|this| this.bg(paint(hover_on_band(palette))))
+                                .hover(|this| {
+                                    this.bg(paint(palette.wash)).text_color(paint(palette.fg))
+                                })
                                 .on_click(cx.listener(|deck, _, window, cx| {
                                     deck.on_hide(&Hide, window, cx);
                                 }))
@@ -4010,7 +4030,7 @@ impl DeckView {
                 .h_flex()
                 .items_center()
                 .justify_center()
-                .rounded(px(6.))
+                .rounded(px(crate::radius::CONTROL))
                 .cursor_pointer()
                 .text_size(px(13.))
                 .text_color(paint(palette.muted))
@@ -4053,7 +4073,7 @@ impl DeckView {
                         .pl(px(10.))
                         .pr(px(8.))
                         .py(px(7.))
-                        .rounded(px(12.))
+                        .rounded(px(crate::radius::CARD))
                         .bg(paint(ground))
                         .border_1()
                         .border_color(paint(palette.edge.mix(palette.fg, 0.06)))
@@ -5046,7 +5066,7 @@ impl DeckView {
                     if self
                         .asks_shown
                         .as_ref()
-                        .is_some_and(|(_, shown)| *shown != asks)
+                        .is_some_and(|(_, shown)| crate::asks::front_first(shown, &asks) != *shown)
                         && self.asks_wake.is_none()
                     {
                         let left = renewal
@@ -5068,6 +5088,9 @@ impl DeckView {
         }
         match self.asks_shown.as_ref() {
             Some((shown_id, shown)) if *shown_id == id => {
+                // What arrived goes to the front, where it is seen; what was
+                // already shown keeps its order behind it.
+                let asks = crate::asks::front_first(shown, &asks);
                 if *shown == asks || self.voice.talking() {
                     return;
                 }
@@ -5082,13 +5105,24 @@ impl DeckView {
                     // The shelf drives its own window; this one only when the
                     // row is drawn here.
                     if !self.asks_outside {
-                        self.asks_carousel.renew(renewal.length(&to), window, cx);
+                        self.asks_carousel.renew(
+                            renewal.length(&to),
+                            &renewal.from,
+                            &to,
+                            window,
+                            cx,
+                        );
                     }
                     self.asks_renewed = Some(renewal);
                 }
+                self.asks_memory.insert(id.clone(), asks.clone());
                 self.asks_shown = Some((id, asks));
             }
             _ => {
+                // Back to a group seen before: its row as it was left, with
+                // anything new in front, and no renewal to play.
+                let asks = crate::asks::remembered(&self.asks_memory, &id, &asks);
+                self.asks_memory.insert(id.clone(), asks.clone());
                 self.asks_shown = Some((id, asks));
                 self.asks_renewed = None;
             }
@@ -5151,13 +5185,14 @@ impl DeckView {
                         shown.iter().cloned().map(SharedString::from).collect();
                     let left = renewal.length(&to).saturating_sub(renewal.since.elapsed());
                     if !left.is_zero() {
-                        self.asks_carousel.renew(left, window, cx);
+                        self.asks_carousel
+                            .renew(left, &renewal.from, &to, window, cx);
                     }
                 }
             }
             self.asks_outside = outside;
             let shown = if outside { row } else { None };
-            let corner = window_corner(window).max(8.);
+            let corner = crate::radius::CARD;
             let wide = f32::from(window.viewport_size().width);
             let palette = self.palette;
             let shelf = *shelf;
@@ -5177,9 +5212,11 @@ impl DeckView {
                         match shown.as_ref().and_then(|row| {
                             row.renewed
                                 .as_ref()
-                                .map(|renewal| renewal.length(&row.asks))
+                                .map(|renewal| (renewal.length(&row.asks), renewal, &row.asks))
                         }) {
-                            Some(length) => shelf.carousel.renew(length, window, cx),
+                            Some((length, renewal, to)) => {
+                                shelf.carousel.renew(length, &renewal.from, to, window, cx);
+                            }
                             None => shelf.carousel.reset(),
                         }
                     }
@@ -5220,12 +5257,12 @@ impl DeckView {
                 .id(id)
                 .px(px(9.))
                 .py(px(3.))
-                .rounded(px(5.))
+                .rounded(px(crate::radius::CONTROL))
                 .border_1()
                 .border_color(paint(if lit { palette.accent } else { palette.edge }))
                 .text_color(paint(if lit { palette.accent } else { palette.fg }))
                 .cursor_pointer()
-                .hover(|style| style.bg(paint(hover_on_band(&palette))))
+                .hover(|style| style.bg(paint(palette.wash)))
                 .child(label)
         };
         let answer = |share: bool| {
@@ -5302,7 +5339,7 @@ impl DeckView {
                 .child(crate::asks::render(
                     &row,
                     &self.palette,
-                    window_corner(window).max(8.),
+                    crate::radius::CARD,
                     f32::from(window.viewport_size().width) - 24.,
                     &self.asks_carousel,
                     &pick,
@@ -6548,7 +6585,7 @@ impl DeckView {
                     .px(px(4.))
                     .mx(px(-4.))
                     .py(px(2.))
-                    .rounded(px(6.))
+                    .rounded(px(crate::radius::CONTROL))
                     .cursor_pointer()
                     // The group on screen has a quiet ground of its own, which
                     // reads as chosen where the hover on the others reads as
@@ -6612,7 +6649,7 @@ impl DeckView {
                 .when(!down, |this| this.top_0())
                 .px(px(7.))
                 .py(px(1.))
-                .rounded(px(9.))
+                .rounded(px(crate::radius::CAP))
                 .bg(paint(palette.wash))
                 .border_1()
                 .border_color(paint(palette.edge))
@@ -7239,7 +7276,7 @@ impl DeckView {
                 .flex_none()
                 .px(px(6.))
                 .py(px(3.))
-                .rounded(px(4.))
+                .rounded(px(crate::radius::CONTROL))
                 .border_1()
                 .border_color(paint(self.palette.accent))
                 .text_size(px(10.))
@@ -7574,7 +7611,7 @@ impl DeckView {
                 .gap(px(6.))
                 .px(px(9.))
                 .py(px(4.))
-                .rounded(px(5.))
+                .rounded(px(crate::radius::CONTROL))
                 .cursor_pointer()
                 .text_size(px(10.5))
                 .when(primary, |this| {
@@ -7585,7 +7622,7 @@ impl DeckView {
                     this.border_1()
                         .border_color(paint(palette.edge))
                         .text_color(paint(palette.fg))
-                        .hover(|style| style.bg(paint(hover_on_band(palette))))
+                        .hover(|style| style.bg(paint(palette.wash)))
                 })
                 .child(label)
                 .when(roomy, |this| {
@@ -7632,13 +7669,13 @@ impl DeckView {
                     .gap(px(6.))
                     .px(px(9.))
                     .py(px(4.))
-                    .rounded(px(5.))
+                    .rounded(px(crate::radius::CONTROL))
                     .border_1()
                     .border_color(paint(palette.edge))
                     .text_size(px(10.5))
                     .text_color(paint(palette.muted))
                     .cursor_pointer()
-                    .hover(|style| style.bg(paint(hover_on_band(palette))))
+                    .hover(|style| style.bg(paint(palette.wash)))
                     .tooltip(|_window, cx| {
                         cx.new(|_| {
                             gpui_kit::component::tooltip::Tooltip::new("Your agent isn't listening")
@@ -7875,33 +7912,95 @@ impl DeckView {
                     .gap(px(STRIP_GAP))
                     .flex_none()
                     .whitespace_nowrap()
-                    // Export, once there is a whole deck to export. It takes
-                    // the place the deck id had, and is drawn as the version
-                    // beside it is: a word that brightens under the pointer.
+                    // Export, drawn as an outline button: an arrow and the word,
+                    // a 1px edge and the strip's own ground. Always there, sealed
+                    // or not, so its width is held and the words beside it do not
+                    // shift when it becomes available. While the agent is still
+                    // writing it is dimmed, with the default cursor, no hover and
+                    // no handler, and a tip saying why. Once there is a deck to
+                    // export it is at full strength with a pointer, and under the
+                    // pointer its ground lifts to the wash, as the other buttons
+                    // on the strip do, and its words go to the ink. The change
+                    // is the surface fade, 200 in and 160 out, on how dim it is,
+                    // not a pop.
+                    //
                     // Not a key cap, because no key opens it, and a cap that
                     // nothing answers to is a promise the strip cannot keep.
                     // The id is in the card the version opens.
-                    //
-                    // Always drawn, sealed or not, so that its width is held
-                    // and the words beside it do not shift when it becomes
-                    // available. Until then it is invisible and inert: its
-                    // opacity follows the fade (nought), and it has no
-                    // handler, hover or pointer cursor, so it takes no
-                    // clicks. Once there is a deck to export it comes in on
-                    // the surface fade rather than in one frame.
                     .child({
                         let live = self.exportable();
+                        let palette = self.palette;
+                        // One ink for the arrow and the tray, and one for
+                        // under the pointer, so they can never disagree.
+                        let ink = palette.fg.mix(palette.muted, 0.25);
+                        let ink_held = palette.fg;
                         div()
                             .id("strip-export")
+                            .group("strip-export")
                             .flex_none()
-                            .opacity(self.export_fade.level())
+                            .h_flex()
+                            .items_center()
+                            .gap(px(6.))
+                            // Exactly a key cap's height, the tallest thing on
+                            // the strip, so the strip is no taller for it. The
+                            // line is the room inside the 1px edges, so the
+                            // word sits centred rather than overflowing.
+                            .h(px(crate::keys::CAP_H))
+                            .line_height(px(crate::keys::CAP_H - 2.))
+                            .px(px(10.))
+                            .rounded(px(crate::radius::CONTROL))
+                            .border_1()
+                            .border_color(paint(palette.edge))
+                            .text_color(paint(ink))
+                            .opacity(0.4 + 0.6 * self.export_fade.level())
                             .when(live, |this| {
                                 this.cursor_pointer()
-                                    .hover(|this| this.text_color(paint(self.palette.fg)))
+                                    .hover(|this| {
+                                        this.bg(paint(palette.wash)).text_color(paint(palette.fg))
+                                    })
                                     .on_click(cx.listener(|deck, _, window, cx| {
                                         deck.open_export(window, cx);
                                     }))
                             })
+                            .when(!live, |this| {
+                                this.tooltip(|_window, cx| {
+                                    cx.new(|_| {
+                                        gpui_kit::component::tooltip::Tooltip::new(
+                                            "Export opens when the agent finishes this deck",
+                                        )
+                                    })
+                                    .into()
+                                })
+                            })
+                            // An arrow rising out of a tray. The icon set has the
+                            // arrow and no tray, so the tray is drawn: an open box
+                            // in the same 1px stroke, the arrow standing in it.
+                            .child(
+                                div()
+                                    .relative()
+                                    .flex_none()
+                                    .size(px(12.))
+                                    .child(div().absolute().top(px(-1.)).left(px(1.)).child(
+                                        Icon::default().path("icons/arrow-up.svg").size(px(10.)),
+                                    ))
+                                    .child(
+                                        div()
+                                            .absolute()
+                                            .bottom(px(1.))
+                                            .left(px(0.5))
+                                            .right(px(0.5))
+                                            .h(px(4.))
+                                            .border_l_1()
+                                            .border_r_1()
+                                            .border_b_1()
+                                            .border_color(paint(ink))
+                                            .when(live, |this| {
+                                                this.group_hover("strip-export", |style| {
+                                                    style.border_color(paint(ink_held))
+                                                })
+                                            }),
+                                    ),
+                            )
                             .child("export")
                     })
                     // Which deck is running. Asked for because there was no way
@@ -8046,10 +8145,10 @@ impl DeckView {
                 .flex()
                 .items_center()
                 .justify_center()
-                .rounded(px(5.))
+                .rounded(px(crate::radius::CONTROL))
                 .cursor_pointer()
                 .text_color(paint(palette.fg))
-                .hover(|style| style.bg(paint(hover_on_band(palette))))
+                .hover(|style| style.bg(paint(palette.wash)))
                 .tooltip(move |_window, cx| {
                     cx.new(|_| gpui_kit::component::tooltip::Tooltip::new(tip))
                         .into()
@@ -8537,7 +8636,7 @@ impl DeckView {
                 div()
                     .h_flex()
                     .items_stretch()
-                    .rounded(px(3.))
+                    .rounded(px(crate::radius::CAP))
                     // A new turn rises a few pixels into its place as it fades
                     // in. Relative, so it moves without the layout around it
                     // moving.
@@ -8595,7 +8694,7 @@ impl DeckView {
                                                     div()
                                                         .id(("again", ix))
                                                         .size(px(18.))
-                                                        .rounded(px(4.))
+                                                        .rounded(px(crate::radius::CONTROL))
                                                         .flex()
                                                         .items_center()
                                                         .justify_center()
@@ -8693,7 +8792,7 @@ impl DeckView {
                                             div()
                                                 .id("fold-rail")
                                                 .size(px(20.))
-                                                .rounded(px(5.))
+                                                .rounded(px(crate::radius::CONTROL))
                                                 .flex()
                                                 .items_center()
                                                 .justify_center()
@@ -8702,9 +8801,7 @@ impl DeckView {
                                                 .border_color(paint(palette.edge))
                                                 .text_size(px(12.))
                                                 .text_color(paint(palette.muted))
-                                                .hover(|style| {
-                                                    style.bg(paint(hover_on_band(palette)))
-                                                })
+                                                .hover(|style| style.bg(paint(palette.wash)))
                                                 .on_click(cx.listener(|deck, _, window, cx| {
                                                     // Even with a comment
                                                     // being written: the
@@ -8939,6 +9036,7 @@ impl DeckView {
             .pt(px(12.))
             .pb(px(14.))
             .cursor_pointer()
+            .hover(|style| style.bg(paint(palette.band.mix(palette.wash, 0.5))))
             .on_click(cx.listener(|deck, _, window, cx| {
                 // Opening it onto a draft is going back to the draft.
                 if !deck.back_to_the_box(window, cx) {
@@ -8949,7 +9047,7 @@ impl DeckView {
             .child(
                 div()
                     .size(px(20.))
-                    .rounded(px(5.))
+                    .rounded(px(crate::radius::CONTROL))
                     .flex()
                     .items_center()
                     .justify_center()
@@ -8957,7 +9055,6 @@ impl DeckView {
                     .border_color(paint(palette.edge))
                     .text_size(px(12.))
                     .text_color(paint(palette.muted))
-                    .hover(|style| style.bg(paint(hover_on_band(&palette))))
                     .child("‹"),
             )
             .child(
@@ -9009,7 +9106,7 @@ impl DeckView {
             .child(
                 div()
                     .size(px(22.))
-                    .rounded(px(6.))
+                    .rounded(px(crate::radius::CONTROL))
                     .border_1()
                     .border_color(paint(palette.edge))
                     .bg(paint(palette.wash))
@@ -9052,13 +9149,13 @@ impl DeckView {
                 .mt(px(8.))
                 .px(px(10.))
                 .py(px(7.))
-                .rounded(px(6.))
+                .rounded(px(crate::radius::CONTROL))
                 .border_1()
                 .border_color(paint(palette.edge))
                 .cursor_pointer()
                 .text_size(px(11.))
                 .text_color(paint(palette.muted))
-                .hover(|style| style.bg(paint(hover_on_band(palette))))
+                .hover(|style| style.bg(paint(palette.wash)))
                 .on_click(cx.listener(|deck, _, window, cx| {
                     deck.on_comment(&Comment, window, cx);
                 }))
@@ -9280,7 +9377,7 @@ impl DeckView {
                 .right(px(8.))
                 .px(px(8.))
                 .py(px(3.))
-                .rounded(px(6.))
+                .rounded(px(crate::radius::CONTROL))
                 .border_1()
                 .border_color(paint(palette.edge))
                 .bg(paint(palette.band))
@@ -9457,17 +9554,6 @@ const PATIENCE: std::time::Duration = std::time::Duration::from_secs(600);
 /// Wider than the rule it draws, because a one-pixel target is not a target.
 const SEAM: f32 = 7.;
 
-/// The radius of the deck's own corner.
-///
-/// Near enough to what macOS gives a window of this kind that the two agree,
-/// and the window is transparent behind it so a disagreement shows as a
-/// slightly rounder corner rather than as a square one.
-///
-/// On Windows it is Windows 11's own 8, because there the platform draws a
-/// rounded shadow around the window too, and a deck rounder than its shadow
-/// showed a sliver of it at every corner (see `win::fit_frame`).
-const WINDOW_CORNER: f32 = if cfg!(target_os = "windows") { 8. } else { 14. };
-
 /// The corner to paint right now.
 ///
 /// Square when the platform's own frame is: a maximised window on Windows
@@ -9480,7 +9566,7 @@ fn window_corner(window: &Window) -> f32 {
         return 0.;
     }
     let _ = window;
-    WINDOW_CORNER
+    crate::radius::WINDOW
 }
 
 /// How wide the rail is folded down to its spine.

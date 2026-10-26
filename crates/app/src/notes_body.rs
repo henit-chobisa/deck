@@ -126,7 +126,7 @@ impl Render for NotesBody {
                     Block::Code(text) => div()
                         .px(px(12.))
                         .py(px(9.))
-                        .rounded(px(6.))
+                        .rounded(px(crate::radius::CARD))
                         .bg(paint(palette.wash))
                         .font_family(mono.clone())
                         .text_size(px(12.))
@@ -150,7 +150,7 @@ impl Render for NotesBody {
                                     .child(
                                         img(path)
                                             .w(px(wide))
-                                            .rounded(px(6.))
+                                            .rounded(px(crate::radius::CARD))
                                             .border_1()
                                             .border_color(paint(palette.edge)),
                                     )

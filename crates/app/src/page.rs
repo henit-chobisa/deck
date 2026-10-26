@@ -568,7 +568,7 @@ impl Paper {
                 .pl(px(9.))
                 .pr(px(7.))
                 .py(px(3.))
-                .rounded(px(11.))
+                .rounded(px(crate::radius::CONTROL))
                 .border_1()
                 .border_color(paint(palette.edge))
                 .bg(paint(palette.bg))

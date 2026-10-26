@@ -16,10 +16,14 @@ use gpui_kit::*;
 
 use crate::palette::paint;
 
-/// How long the pointer rests on a key before its card comes up, and how long
-/// the card stays once the pointer has left. The question pills' pace, so the
-/// two kinds of hover in the window behave as one.
-pub(crate) const REST: Duration = Duration::from_millis(150);
+/// How long the pointer must be still on a key, from cold, before its card
+/// comes up. The founder's choice: long enough that a pointer crossing the
+/// strip on its way to the question pills never opens a card, short enough to
+/// feel immediate when you stop. Every move over a key restarts it.
+pub(crate) const REST: Duration = Duration::from_millis(300);
+
+/// How long the card stays once the pointer has left, so moving to the next
+/// key hands the card over instead of closing it.
 pub(crate) const LEAVE: Duration = Duration::from_millis(150);
 
 /// How long a key's card takes to come in, and to go. A card is a surface, and
@@ -145,6 +149,17 @@ pub(crate) fn pressed(stroke: &Keystroke) -> Option<&'static str> {
         .find(|key| *key == typed && *key != CLOSE)
 }
 
+/// The cap's measures, kept as numbers so whatever sits beside it on the strip
+/// can be held to the same height.
+const CAP_LINE: f32 = 10.;
+const CAP_PAD_Y: f32 = 3.;
+const CAP_EDGE_TOP: f32 = 1.;
+const CAP_EDGE_BOTTOM: f32 = 2.;
+
+/// How tall a cap is, edge to edge: its line, its padding and both borders.
+/// The tallest thing on the strip, so the strip is exactly this tall.
+pub(crate) const CAP_H: f32 = CAP_LINE + 2. * CAP_PAD_Y + CAP_EDGE_TOP + CAP_EDGE_BOTTOM;
+
 /// A key drawn as one: a cap with a thicker bottom edge, the way a key catches
 /// light.
 pub(crate) fn cap(key: &str, palette: &Palette, mono: SharedString) -> Div {
@@ -152,16 +167,18 @@ pub(crate) fn cap(key: &str, palette: &Palette, mono: SharedString) -> Div {
         .min_w(px(18.))
         .flex_none()
         .px(px(4.))
-        .py(px(3.))
+        .py(px(CAP_PAD_Y))
         .text_center()
-        .rounded(px(4.))
-        .border_1()
-        .border_b_2()
+        .rounded(px(crate::radius::CAP))
+        .border_t(px(CAP_EDGE_TOP))
+        .border_l(px(CAP_EDGE_TOP))
+        .border_r(px(CAP_EDGE_TOP))
+        .border_b(px(CAP_EDGE_BOTTOM))
         .border_color(paint(palette.edge))
         .bg(paint(palette.wash))
         .font_family(mono)
         .text_size(px(10.))
-        .line_height(px(10.))
+        .line_height(px(CAP_LINE))
         .text_color(paint(palette.fg))
         .child(key.to_string())
 }
@@ -190,7 +207,7 @@ pub(crate) fn card(
             .px(px(13.))
             .pt(px(11.))
             .pb(px(12.))
-            .rounded(px(12.))
+            .rounded(px(crate::radius::CARD))
             .bg(paint(palette.band.mix(palette.fg, 0.05)))
             .border_1()
             .border_color(paint(palette.edge.mix(palette.fg, 0.06)))
@@ -312,7 +329,7 @@ pub(crate) fn confidence_card(
         .px(px(13.))
         .pt(px(11.))
         .pb(px(12.))
-        .rounded(px(12.))
+        .rounded(px(crate::radius::CARD))
         .bg(paint(palette.band.mix(palette.fg, 0.05)))
         .border_1()
         .border_color(paint(palette.edge.mix(palette.fg, 0.06)))
@@ -357,4 +374,38 @@ pub(crate) fn confidence_card(
                     }),
             )
         })
+}
+
+// 10 line + 3 + 3 padding + 1 top edge + 2 bottom edge. The strip is as tall as
+// this, and the export button beside it is held to it: a change to the cap
+// that moves this must be answered on purpose.
+const _: () = assert!(CAP_H == 19.);
+
+/// Whether a key's card opens now: the pointer has been still for the full
+/// rest and no card is up. With a card up, the next key's card comes straight
+/// away by the handover instead.
+pub(crate) fn should_open(resting_for: Duration, card_up: bool) -> bool {
+    !card_up && resting_for >= REST
+}
+
+#[cfg(test)]
+mod rest_tests {
+    use super::{REST, should_open};
+    use std::time::Duration;
+
+    #[test]
+    fn a_moving_pointer_does_not_open_a_card() {
+        assert!(!should_open(Duration::from_millis(100), false));
+        assert!(!should_open(REST - Duration::from_millis(1), false));
+    }
+
+    #[test]
+    fn a_resting_pointer_opens_one() {
+        assert!(should_open(REST, false));
+    }
+
+    #[test]
+    fn a_card_already_up_is_not_opened_again() {
+        assert!(!should_open(REST, true));
+    }
 }
