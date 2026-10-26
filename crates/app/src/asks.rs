@@ -193,14 +193,14 @@ pub fn how() -> &'static str {
 /// The room between a question and its hint, in an open pill.
 const HINT_GAP: f32 = 12.;
 
-/// How long a pill takes to open, and to close again: on the bar's own
-/// curve, a little slower than the bar opens, so it reads as settling.
-const OPEN: Duration = Duration::from_millis(700);
-const CLOSE: Duration = OPEN;
+/// How long a pill takes to open, and to close again: the room's own timing,
+/// on the room's own curve (`calm`, in and out), so a pill widening and a
+/// pill narrowing read as one thing settling. Every change of a pill's hint
+/// runs this long: the first open, the close, and both halves of a hop.
+const SPAN: Duration = ROOM;
 
-/// How quickly a pill closes when the pointer has moved on to another, which
-/// waits for it.
-const HAND: Duration = Duration::from_millis(320);
+/// How long the spotlight takes to come on.
+const DIM: Duration = Duration::from_millis(700);
 
 /// How long the pointer rests on a pill before it opens. Passed over on the
 /// way somewhere else, a pill stays shut, and the row does not ripple.
@@ -267,10 +267,9 @@ pub struct Carousel {
     drawn: Rc<Cell<Option<Instant>>>,
     /// Until when the window is kept drawing, and whether something is.
     drawing: Rc<Cell<Option<Instant>>>,
-    /// The pill opening, or open, under the pointer; and the one closing
-    /// behind it, so moving across the row hands one to the next smoothly.
-    open: Rc<Cell<Option<Opening>>>,
-    closing: Rc<Cell<Option<Opening>>>,
+    /// The pill opening, or open, under the pointer, and every pill closing
+    /// behind it. Moving across the row hands one to the next at once.
+    pills: Rc<std::cell::RefCell<Pills>>,
     spot: Rc<Cell<Option<Spot>>>,
     /// How much wider a pill is, open: its hint, as last measured.
     hint: Rc<Cell<f32>>,
@@ -287,6 +286,9 @@ pub struct Carousel {
 }
 
 /// One pill opening or closing: which, since when, and how open it was then.
+/// Its openness is a pure function of these and the time: it runs from `from`
+/// to 1 (opening) or to 0 (closing) over `span` on `calm`, and holds `from`
+/// until `since`.
 #[derive(Clone, Copy)]
 struct Opening {
     ix: usize,
@@ -298,6 +300,148 @@ struct Opening {
     follow: bool,
     /// How long its opening or closing takes.
     span: Duration,
+}
+
+/// Which pill is open or opening, and every pill closing behind it.
+///
+/// A pill's openness is a pure function of its own `Opening` and the time, so
+/// any number of them can be closing at once after rapid hops, and every
+/// animation starts from where the pill is, never from shut or open.
+#[derive(Clone, Default)]
+struct Pills {
+    open: Option<Opening>,
+    closing: Vec<Opening>,
+}
+
+/// How far along `since` and `span` is at `now`, from 0 to 1.
+fn progress(since: Instant, span: Duration, now: Instant) -> f32 {
+    (now.saturating_duration_since(since).as_secs_f32() / span.as_secs_f32()).clamp(0., 1.)
+}
+
+impl Pills {
+    /// How open pill `ix` is at `now`, from shut at 0 to showing its hint at 1.
+    /// Exactly 0 or 1 once settled.
+    fn openness(&self, ix: usize, now: Instant) -> f32 {
+        if let Some(open) = self.open.filter(|open| open.ix == ix) {
+            let t = progress(open.since, open.span, now);
+            return if t >= 1. {
+                1.
+            } else {
+                open.from + (1. - open.from) * calm(t)
+            };
+        }
+        if let Some(closing) = self.closing.iter().find(|closing| closing.ix == ix) {
+            let t = progress(closing.since, closing.span, now);
+            return if t >= 1. {
+                0.
+            } else {
+                closing.from * (1. - calm(t))
+            };
+        }
+        0.
+    }
+
+    /// Let go of the pills that have finished closing.
+    fn prune(&mut self, now: Instant) {
+        self.closing
+            .retain(|closing| progress(closing.since, closing.span, now) < 1.);
+    }
+
+    /// Whether any pill is still opening or closing at `now`: whether it
+    /// needs frames for its width.
+    fn moving(&self, now: Instant) -> bool {
+        self.open
+            .is_some_and(|open| progress(open.since, open.span, now) < 1.)
+            || self
+                .closing
+                .iter()
+                .any(|closing| progress(closing.since, closing.span, now) < 1.)
+    }
+
+    /// Pill `ix`, if it is the one open, starts to close after `LEAVE`, from
+    /// how open it is. Whether it was.
+    fn leave(&mut self, ix: usize, now: Instant) -> bool {
+        let Some(open) = self.open.filter(|open| open.ix == ix) else {
+            return false;
+        };
+        self.closing.push(Opening {
+            from: self.openness(ix, now),
+            since: now + LEAVE,
+            follow: false,
+            span: SPAN,
+            ..open
+        });
+        self.open = None;
+        true
+    }
+
+    /// The pointer came onto pill `ix` at `now`. `at` is how far along the
+    /// row is; `lit` whether the spotlight is already on the row.
+    ///
+    /// Hopping from another pill is a hand-over: the old one starts closing
+    /// and this one starts opening at the same moment, both from where they
+    /// are, both over `SPAN` on `calm`, so one's width goes as the other's
+    /// comes and the row's length hardly changes. Nothing waits and nothing
+    /// jumps. Whatever else is still closing carries on by itself.
+    fn hover(&mut self, ix: usize, now: Instant, at: f32, lit: bool) {
+        if self.open.is_some_and(|open| open.ix == ix) {
+            return;
+        }
+        self.prune(now);
+        let from = self.openness(ix, now);
+        // Back before it began to close: it never did. Open as it was, its
+        // light already crossed.
+        let kept = self
+            .closing
+            .iter()
+            .copied()
+            .find(|closing| closing.ix == ix && now < closing.since && closing.from >= 1.);
+        self.closing.retain(|closing| closing.ix != ix);
+        let mut leaving = false;
+        if let Some(prev) = self.open {
+            let from = self.openness(prev.ix, now);
+            self.open = None;
+            if from > 0. {
+                leaving = true;
+                self.closing.push(Opening {
+                    from,
+                    since: now,
+                    follow: false,
+                    span: SPAN,
+                    ..prev
+                });
+            }
+        }
+        // A pill still waiting out its `LEAVE` is left behind for good: its
+        // close starts now, from where it stands.
+        for closing in &mut self.closing {
+            if closing.since > now {
+                closing.since = now;
+                closing.span = SPAN;
+            }
+        }
+        leaving |= !self.closing.is_empty();
+        self.open = Some(if let Some(kept) = kept {
+            Opening {
+                since: now.checked_sub(SHIMMER.max(SPAN)).unwrap_or(now),
+                from: 1.,
+                follow: false,
+                span: SPAN,
+                ..kept
+            }
+        } else {
+            // From cold, it waits for the pointer to rest.
+            let cold = from == 0. && !lit && !leaving;
+            Opening {
+                ix,
+                since: if cold { now + REST } else { now },
+                from,
+                at,
+                follow: true,
+                span: SPAN,
+            }
+        });
+    }
 }
 
 /// The spotlight on the row: on while a pill is open, and since when, from
@@ -325,8 +469,7 @@ impl Carousel {
     /// Back to the first question, at once: a new group's row starts there.
     pub fn reset(&self) {
         self.glide.set(None);
-        self.open.set(None);
-        self.closing.set(None);
+        *self.pills.borrow_mut() = Pills::default();
         self.spot.set(None);
         self.drawn.set(None);
         self.handle.set_offset(point(px(0.), px(0.)));
@@ -379,7 +522,7 @@ impl Carousel {
         cx.spawn(async move |cx| {
             let mut asked: Option<Instant> = None;
             loop {
-                let busy = carousel.glide.get().is_some() || carousel.open.get().is_some();
+                let busy = carousel.glide.get().is_some() || carousel.open().is_some();
                 let ending = carousel
                     .drawing
                     .get()
@@ -434,8 +577,7 @@ impl Carousel {
     /// Let go of any pill, open or closing, and the spotlight; the row
     /// stays where it is.
     fn release(&self) {
-        self.open.set(None);
-        self.closing.set(None);
+        *self.pills.borrow_mut() = Pills::default();
         self.spot.set(None);
     }
 
@@ -450,40 +592,33 @@ impl Carousel {
         {
             return false;
         }
-        let Some(open) = self.open.get() else {
+        let Some(open) = self.open() else {
             return false;
         };
-        let settled = |since: Instant, span: Duration| age(since) > span.as_secs_f32();
+        let now = Instant::now();
         self.glide.get().is_none()
-            && self
-                .closing
-                .get()
-                .is_none_or(|closing| settled(closing.since, closing.span))
-            && settled(open.since, open.span)
+            && !self.pills.borrow().moving(now)
             && !open.follow
             && self
                 .spot
                 .get()
-                .is_none_or(|spot| spot.on && settled(spot.since, OPEN))
+                .is_none_or(|spot| spot.on && age(spot.since) > DIM.as_secs_f32())
             && self.light(open.ix).is_none()
+    }
+
+    /// The pill open, or opening, under the pointer.
+    fn open(&self) -> Option<Opening> {
+        self.pills.borrow().open
     }
 
     /// How open pill `ix` is, from shut at 0 to showing its hint at 1.
     fn openness(&self, ix: usize) -> f32 {
-        if let Some(open) = self.open.get().filter(|open| open.ix == ix) {
-            let t = age(open.since) / open.span.as_secs_f32();
-            return open.from + (1. - open.from) * ease(t);
-        }
-        if let Some(closing) = self.closing.get().filter(|closing| closing.ix == ix) {
-            let t = age(closing.since) / closing.span.as_secs_f32();
-            return closing.from * (1. - ease(t));
-        }
-        0.
+        self.pills.borrow().openness(ix, Instant::now())
     }
 
     /// How far the light has crossed pill `ix`, while it is crossing.
     fn light(&self, ix: usize) -> Option<f32> {
-        let open = self.open.get().filter(|open| open.ix == ix)?;
+        let open = self.open().filter(|open| open.ix == ix)?;
         // Once, as the pill opens. Crossing again and again while the pointer
         // rested read as a pill asking to be pressed, not one being read.
         let t = age(open.since) / SHIMMER.as_secs_f32();
@@ -495,7 +630,7 @@ impl Carousel {
     /// goes ahead of the narrowing, so it is never squeezed.
     fn said(&self, ix: usize) -> f32 {
         let open = self.openness(ix);
-        if self.open.get().is_some_and(|open| open.ix == ix) {
+        if self.open().is_some_and(|open| open.ix == ix) {
             ((open - 0.3) / 0.7).clamp(0., 1.).powf(0.7)
         } else {
             ((open - 0.5) / 0.5).clamp(0., 1.)
@@ -508,7 +643,7 @@ impl Carousel {
         match self.spot.get() {
             None => 0.,
             Some(spot) if spot.on => {
-                spot.from + (1. - spot.from) * ease(age(spot.since) / OPEN.as_secs_f32())
+                spot.from + (1. - spot.from) * ease(age(spot.since) / DIM.as_secs_f32())
             }
             Some(spot) => {
                 let after = age(spot.since) - GRACE.as_secs_f32();
@@ -521,35 +656,13 @@ impl Carousel {
         }
     }
 
-    /// How far pill `ix` stands out of the spotlit row. Handing over to
-    /// another, as far as it is still open; with the pointer off the row
-    /// altogether, the last one keeps its place until the light lifts.
-    fn standing(&self, ix: usize) -> f32 {
-        if self.closing.get().is_some_and(|closing| closing.ix == ix) {
-            // The one handing over keeps the light until the next takes it.
-            return self
-                .open
-                .get()
-                .map_or(1., |open| 1. - self.openness(open.ix));
-        }
-        self.openness(ix)
-    }
-
     /// Pill `ix` closes, if it is the one open.
     fn shut(&self, ix: usize) {
-        if let Some(open) = self.open.get().filter(|open| open.ix == ix) {
-            let now = Instant::now() + LEAVE;
-            self.closing.set(Some(Opening {
-                from: self.openness(ix),
-                since: now,
-                follow: false,
-                span: CLOSE,
-                ..open
-            }));
-            self.open.set(None);
+        let now = Instant::now();
+        if self.pills.borrow_mut().leave(ix, now) {
             self.spot.set(Some(Spot {
                 on: false,
-                since: now,
+                since: now + LEAVE,
                 from: self.spotlight(),
             }));
         }
@@ -557,84 +670,28 @@ impl Carousel {
 
     /// The pointer came onto pill `ix`, or left it.
     fn peek(&self, ix: usize, on: bool, window: &Window, cx: &mut App) {
-        let now = Instant::now();
         if on {
-            if self.open.get().is_some_and(|open| open.ix == ix) {
+            let now = Instant::now();
+            if self.open().is_some_and(|open| open.ix == ix) {
                 return;
             }
-            // Back before it began to close: it never did. Open as it was,
-            // its light already crossed.
-            if let Some(closing) = self
-                .closing
-                .get()
-                .filter(|closing| closing.ix == ix && now < closing.since && closing.from >= 1.)
-            {
-                self.closing.set(None);
-                self.open.set(Some(Opening {
-                    since: now.checked_sub(SHIMMER.max(OPEN)).unwrap_or(now),
-                    from: 1.,
-                    follow: false,
-                    span: OPEN,
-                    ..closing
-                }));
-                self.spot.set(Some(Spot {
-                    on: true,
-                    since: now,
-                    from: self.spotlight(),
-                }));
-                self.drive(OPEN, window, cx);
-                return;
-            }
-            let from = self.openness(ix);
-            if self.closing.get().is_some_and(|closing| closing.ix == ix) {
-                self.closing.set(None);
-            }
-            // One at a time. The pill being left closes first, quickly, and
-            // this one opens once it has: two pills changing width at once
-            // pushed the row both ways and read as a wobble.
-            let leaving = self
-                .open
-                .get()
-                .or(self.closing.get())
-                .filter(|leaving| leaving.ix != ix && self.openness(leaving.ix) > 0.);
-            let since = if let Some(leaving) = leaving {
-                self.closing.set(Some(Opening {
-                    from: self.openness(leaving.ix),
-                    since: now,
-                    follow: false,
-                    span: HAND,
-                    ..leaving
-                }));
-                now + HAND
-            } else if from == 0. && self.spotlight() == 0. {
-                // From cold, it waits for the pointer to rest.
-                now + REST
-            } else {
-                now
-            };
+            let lit = self.spotlight() > 0.;
+            let was = self.spotlight();
+            self.pills
+                .borrow_mut()
+                .hover(ix, now, -f32::from(self.handle.offset().x), lit);
             if !self.spot.get().is_some_and(|spot| spot.on) {
+                let since = self.open().map_or(now, |open| open.since);
                 self.spot.set(Some(Spot {
                     on: true,
                     since,
-                    from: self.spotlight(),
+                    from: was,
                 }));
             }
-            self.open.set(Some(Opening {
-                ix,
-                since,
-                from,
-                at: -f32::from(self.handle.offset().x),
-                follow: true,
-                span: OPEN,
-            }));
         } else {
             self.shut(ix);
         }
-        self.drive(
-            REST + HAND + OPEN.max(LEAVE + CLOSE + GRACE + LIFT),
-            window,
-            cx,
-        );
+        self.drive(REST + SPAN.max(LEAVE + SPAN + GRACE + LIFT), window, cx);
     }
 
     /// Start sliding one question back, or one on.
@@ -665,6 +722,7 @@ impl Carousel {
     /// still on that pill at all.
     fn advance(&self, window: &Window) {
         self.drawn.set(Some(Instant::now()));
+        self.pills.borrow_mut().prune(Instant::now());
         if let Some(glide) = self.glide.get() {
             let done = glide.since.elapsed().as_secs_f32() / GLIDE.as_secs_f32();
             let t = done.min(1.);
@@ -684,7 +742,7 @@ impl Carousel {
     /// and hint — ends up in view, in step with its widening. A pill cut off
     /// at either edge is brought in; one already in view does not move.
     fn follow(&self) {
-        let Some(open) = self.open.get().filter(|open| open.follow) else {
+        let Some(open) = self.open().filter(|open| open.follow) else {
             return;
         };
         let drawn = self
@@ -715,10 +773,10 @@ impl Carousel {
         let at = open.at + (want - open.at) * gone;
         self.handle.set_offset(point(px(-at), px(0.)));
         if gone >= 1. {
-            self.open.set(Some(Opening {
+            self.pills.borrow_mut().open = Some(Opening {
                 follow: false,
                 ..open
-            }));
+            });
         }
     }
 
@@ -728,7 +786,7 @@ impl Carousel {
     #[cfg_attr(not(target_os = "macos"), allow(clippy::unused_self))]
     fn let_go(&self, window: &Window) {
         #[cfg(target_os = "macos")]
-        if let Some(open) = self.open.get()
+        if let Some(open) = self.open()
             && crate::mac::pointer_over(window) == Some(false)
         {
             self.shut(open.ix);
@@ -832,7 +890,7 @@ pub fn render(
             let open = carousel.openness(ix);
             // The others step back by their words alone: a pill whose border and
             // ground went see-through read as broken, not as quieter.
-            let dim = 0.6 * spotlight * (1. - carousel.standing(ix));
+            let dim = 0.6 * spotlight * (1. - open);
             let words_in = palette.fg.mix(palette.band, dim);
             // The light is drawn over the question, not into it. Coloured a
             // letter at a time, the question was shaped in pieces, cut wherever
@@ -1246,6 +1304,108 @@ mod tests {
 
     use super::*;
 
+    fn ms(base: Instant, n: u64) -> Instant {
+        base + Duration::from_millis(n)
+    }
+
+    fn all(pills: &Pills, now: Instant) -> [f32; 4] {
+        [0, 1, 2, 3].map(|ix| pills.openness(ix, now))
+    }
+
+    #[test]
+    fn a_pill_is_the_same_the_moment_after_it_is_interrupted() {
+        let base = Instant::now();
+        for cut in 0..1200 {
+            for how in 0..3 {
+                let mut pills = Pills::default();
+                pills.hover(0, base, 0., false);
+                pills.hover(1, ms(base, 400), 0., true);
+                let now = ms(base, 400 + cut);
+                let before = all(&pills, now);
+                match how {
+                    0 => pills.hover(2, now, 0., true),
+                    1 => pills.hover(0, now, 0., true),
+                    _ => {
+                        pills.leave(1, now);
+                    }
+                }
+                let after = all(&pills, now);
+                for ix in 0..4 {
+                    assert!(
+                        (before[ix] - after[ix]).abs() < 1e-4,
+                        "pill {ix} jumped {before:?} -> {after:?} ({how} at {cut})"
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn a_hop_trades_width_so_the_row_stays_as_long() {
+        let base = Instant::now();
+        let mut pills = Pills::default();
+        pills.hover(0, base, 0., false);
+        let hop = ms(base, 2000);
+        assert_eq!(pills.openness(0, hop), 1.);
+        pills.hover(1, hop, 0., true);
+        for n in 0..=1000 {
+            let now = ms(hop, n);
+            let sum = pills.openness(0, now) + pills.openness(1, now);
+            assert!((sum - 1.).abs() <= 0.02, "sum {sum} at {n}ms");
+        }
+    }
+
+    #[test]
+    fn a_fast_run_across_four_pills_never_jumps() {
+        let base = Instant::now();
+        for leaving in [false, true] {
+            let mut pills = Pills::default();
+            let mut last = [0.; 4];
+            let mut hop = 0;
+            for step in 0..400_u64 {
+                let at = step * 8;
+                let now = ms(base, at);
+                if at >= hop * 100 && hop < 4 {
+                    if leaving && hop > 0 {
+                        pills.leave(usize::try_from(hop).unwrap() - 1, now);
+                    }
+                    pills.hover(usize::try_from(hop).unwrap(), now, 0., hop > 0);
+                    hop += 1;
+                }
+                let here = all(&pills, now);
+                for ix in 0..4 {
+                    assert!(
+                        (here[ix] - last[ix]).abs() <= 0.02,
+                        "pill {ix} jumped {} -> {} at {at}ms",
+                        last[ix],
+                        here[ix]
+                    );
+                }
+                last = here;
+            }
+        }
+    }
+
+    #[test]
+    fn everything_settles_and_asks_for_nothing() {
+        let base = Instant::now();
+        let mut pills = Pills::default();
+        for (n, ix) in [0, 1, 2, 3].into_iter().enumerate() {
+            pills.hover(ix, ms(base, 100 * n as u64), 0., n > 0);
+        }
+        let last = ms(base, 300);
+        assert!(pills.moving(last));
+        let done = last + REST + SPAN + Duration::from_millis(1);
+        assert_eq!(all(&pills, done), [0., 0., 0., 1.]);
+        pills.prune(done);
+        assert!(pills.closing.is_empty() && !pills.moving(done));
+        pills.leave(3, done);
+        let gone = done + LEAVE + SPAN + Duration::from_millis(1);
+        assert_eq!(all(&pills, gone), [0.; 4]);
+        pills.prune(gone);
+        assert!(pills.closing.is_empty() && !pills.moving(gone));
+    }
+
     #[test]
     fn the_light_crosses_once_and_leaves_nothing_lit() {
         let places = [0., 0.25, 0.5, 0.75, 1.];
@@ -1260,14 +1420,14 @@ mod tests {
     fn a_pill_is_lit_once_while_it_opens_and_not_after() {
         let row = Carousel::default();
         let open = |since| {
-            row.open.set(Some(Opening {
+            row.pills.borrow_mut().open = Some(Opening {
                 ix: 2,
                 since,
                 from: 0.,
                 at: 0.,
                 follow: false,
-                span: OPEN,
-            }))
+                span: SPAN,
+            })
         };
         let now = Instant::now();
         open(now + Duration::from_millis(90));
