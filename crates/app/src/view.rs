@@ -7922,9 +7922,32 @@ impl DeckView {
                                     .into()
                                 })
                             })
-                            // A text arrow, in the strip's own font: there is no
-                            // icon pipeline to draw a tray from.
-                            .child("\u{2191}")
+                            // An arrow rising out of a tray. The icon set has the
+                            // arrow and no tray, so the tray is drawn: an open box
+                            // in the same 1px stroke, the arrow standing in it.
+                            .child(
+                                div()
+                                    .relative()
+                                    .flex_none()
+                                    .size(px(12.))
+                                    .child(div().absolute().top(px(-1.)).left(px(1.)).child(
+                                        Icon::default().path("icons/arrow-up.svg").size(px(10.)),
+                                    ))
+                                    .child(
+                                        div()
+                                            .absolute()
+                                            .bottom(px(1.))
+                                            .left(px(0.5))
+                                            .right(px(0.5))
+                                            .h(px(4.))
+                                            .border_l_1()
+                                            .border_r_1()
+                                            .border_b_1()
+                                            .border_color(paint(
+                                                palette.fg.mix(palette.muted, 0.25),
+                                            )),
+                                    ),
+                            )
                             .child("export")
                     })
                     // Which deck is running. Asked for because there was no way
