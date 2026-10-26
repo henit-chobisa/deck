@@ -37,6 +37,7 @@ mod pane;
 mod pill;
 mod prose;
 mod queue;
+mod radius;
 mod setup;
 mod shade;
 mod sheet;

@@ -659,7 +659,7 @@ fn render_token(
             .child(
                 div()
                     .px(px(5.))
-                    .rounded(px(3.))
+                    .rounded(px(crate::radius::CAP))
                     .text_color(paint(palette.accent))
                     .bg(paint(
                         palette
@@ -718,9 +718,11 @@ fn render_token(
                     // to the page's ink, rather than switching halfway.
                     .text_color(paint(look.tone.mix(ink, lit)))
                     .when(first, |this| {
-                        this.ml(px(-LIT_LEAD)).pl(px(LIT_LEAD)).rounded_l(px(3.))
+                        this.ml(px(-LIT_LEAD))
+                            .pl(px(LIT_LEAD))
+                            .rounded_l(px(crate::radius::CAP))
                     })
-                    .when(last, |this| this.rounded_r(px(3.)))
+                    .when(last, |this| this.rounded_r(px(crate::radius::CAP)))
             })
             .when(lit <= 0. && heard > 0., |this| this.bg(paint(heard_ground)))
             // Something was said about these words. Underlined rather than
@@ -791,7 +793,7 @@ fn render_token(
                         .line_height(px(word(look.leading) - 2.))
                         .px(px(deck_render::reading::CHIP_PADDING))
                         .py(px(1.))
-                        .rounded(px(3.))
+                        .rounded(px(crate::radius::CAP))
                         .bg(paint(deck_render::reading::chip(palette.band)))
                         .child(text),
                 )

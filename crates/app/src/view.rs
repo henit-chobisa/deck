@@ -3208,7 +3208,7 @@ impl DeckView {
                         .w(px(460.))
                         .max_w(relative(0.9))
                         .v_flex()
-                        .rounded(px(12.))
+                        .rounded(px(crate::radius::CARD))
                         .border_1()
                         .border_color(paint(palette.edge))
                         .bg(paint(palette.band))
@@ -3286,7 +3286,7 @@ impl DeckView {
                                         .gap(px(6.))
                                         .px(px(10.))
                                         .py(px(5.))
-                                        .rounded(px(5.))
+                                        .rounded(px(crate::radius::CONTROL))
                                         .cursor_pointer()
                                         .text_size(px(11.5))
                                         .border_1()
@@ -3310,7 +3310,7 @@ impl DeckView {
                                         .id("unheard-add")
                                         .px(px(10.))
                                         .py(px(5.))
-                                        .rounded(px(5.))
+                                        .rounded(px(crate::radius::CONTROL))
                                         .cursor_pointer()
                                         .text_size(px(11.5))
                                         .bg(paint(palette.accent))
@@ -3336,7 +3336,7 @@ impl DeckView {
                                 .flex()
                                 .items_center()
                                 .justify_center()
-                                .rounded(px(6.))
+                                .rounded(px(crate::radius::CONTROL))
                                 .cursor_pointer()
                                 .text_size(px(13.))
                                 .text_color(paint(palette.muted))
@@ -3376,7 +3376,7 @@ impl DeckView {
                 .gap(px(6.))
                 .px(px(10.))
                 .py(px(5.))
-                .rounded(px(5.))
+                .rounded(px(crate::radius::CONTROL))
                 .cursor_pointer()
                 .text_size(px(11.5))
                 .when(primary, |this| {
@@ -3430,7 +3430,7 @@ impl DeckView {
                         .w(px(440.))
                         .max_w(relative(0.9))
                         .v_flex()
-                        .rounded(px(12.))
+                        .rounded(px(crate::radius::CARD))
                         .border_1()
                         .border_color(paint(palette.edge))
                         .bg(paint(palette.band))
@@ -3500,7 +3500,7 @@ impl DeckView {
                                 .flex()
                                 .items_center()
                                 .justify_center()
-                                .rounded(px(6.))
+                                .rounded(px(crate::radius::CONTROL))
                                 .cursor_pointer()
                                 .text_size(px(13.))
                                 .text_color(paint(palette.muted))
@@ -3561,7 +3561,7 @@ impl DeckView {
                         .max_w(relative(0.9))
                         .max_h(relative(0.8))
                         .v_flex()
-                        .rounded(px(12.))
+                        .rounded(px(crate::radius::CARD))
                         .border_1()
                         .border_color(paint(palette.edge))
                         .bg(paint(palette.band))
@@ -3666,7 +3666,7 @@ impl DeckView {
                                 .flex()
                                 .items_center()
                                 .justify_center()
-                                .rounded(px(6.))
+                                .rounded(px(crate::radius::CONTROL))
                                 .cursor_pointer()
                                 .text_size(px(13.))
                                 .text_color(paint(palette.muted))
@@ -3998,7 +3998,7 @@ impl DeckView {
                         .gap(px(7.))
                         .px(px(9.))
                         .py(px(5.))
-                        .rounded(px(8.))
+                        .rounded(px(crate::radius::CONTROL))
                         .when(glow > 0., |this| {
                             this.bg(paint(ground.mix(palette.accent, 0.28 * glow)))
                         })
@@ -4030,7 +4030,7 @@ impl DeckView {
                 .h_flex()
                 .items_center()
                 .justify_center()
-                .rounded(px(6.))
+                .rounded(px(crate::radius::CONTROL))
                 .cursor_pointer()
                 .text_size(px(13.))
                 .text_color(paint(palette.muted))
@@ -4073,7 +4073,7 @@ impl DeckView {
                         .pl(px(10.))
                         .pr(px(8.))
                         .py(px(7.))
-                        .rounded(px(12.))
+                        .rounded(px(crate::radius::CARD))
                         .bg(paint(ground))
                         .border_1()
                         .border_color(paint(palette.edge.mix(palette.fg, 0.06)))
@@ -5188,7 +5188,7 @@ impl DeckView {
             }
             self.asks_outside = outside;
             let shown = if outside { row } else { None };
-            let corner = window_corner(window).max(8.);
+            let corner = crate::radius::CARD;
             let wide = f32::from(window.viewport_size().width);
             let palette = self.palette;
             let shelf = *shelf;
@@ -5255,7 +5255,7 @@ impl DeckView {
                 .id(id)
                 .px(px(9.))
                 .py(px(3.))
-                .rounded(px(5.))
+                .rounded(px(crate::radius::CONTROL))
                 .border_1()
                 .border_color(paint(if lit { palette.accent } else { palette.edge }))
                 .text_color(paint(if lit { palette.accent } else { palette.fg }))
@@ -5337,7 +5337,7 @@ impl DeckView {
                 .child(crate::asks::render(
                     &row,
                     &self.palette,
-                    window_corner(window).max(8.),
+                    crate::radius::CARD,
                     f32::from(window.viewport_size().width) - 24.,
                     &self.asks_carousel,
                     &pick,
@@ -6583,7 +6583,7 @@ impl DeckView {
                     .px(px(4.))
                     .mx(px(-4.))
                     .py(px(2.))
-                    .rounded(px(6.))
+                    .rounded(px(crate::radius::CONTROL))
                     .cursor_pointer()
                     // The group on screen has a quiet ground of its own, which
                     // reads as chosen where the hover on the others reads as
@@ -6647,7 +6647,7 @@ impl DeckView {
                 .when(!down, |this| this.top_0())
                 .px(px(7.))
                 .py(px(1.))
-                .rounded(px(9.))
+                .rounded(px(crate::radius::CAP))
                 .bg(paint(palette.wash))
                 .border_1()
                 .border_color(paint(palette.edge))
@@ -7274,7 +7274,7 @@ impl DeckView {
                 .flex_none()
                 .px(px(6.))
                 .py(px(3.))
-                .rounded(px(4.))
+                .rounded(px(crate::radius::CONTROL))
                 .border_1()
                 .border_color(paint(self.palette.accent))
                 .text_size(px(10.))
@@ -7609,7 +7609,7 @@ impl DeckView {
                 .gap(px(6.))
                 .px(px(9.))
                 .py(px(4.))
-                .rounded(px(5.))
+                .rounded(px(crate::radius::CONTROL))
                 .cursor_pointer()
                 .text_size(px(10.5))
                 .when(primary, |this| {
@@ -7667,7 +7667,7 @@ impl DeckView {
                     .gap(px(6.))
                     .px(px(9.))
                     .py(px(4.))
-                    .rounded(px(5.))
+                    .rounded(px(crate::radius::CONTROL))
                     .border_1()
                     .border_color(paint(palette.edge))
                     .text_size(px(10.5))
@@ -7946,7 +7946,7 @@ impl DeckView {
                             .h(px(crate::keys::CAP_H))
                             .line_height(px(crate::keys::CAP_H - 2.))
                             .px(px(10.))
-                            .rounded(px(6.))
+                            .rounded(px(crate::radius::CONTROL))
                             .border_1()
                             .border_color(paint(palette.edge))
                             .text_color(paint(ink))
@@ -8143,7 +8143,7 @@ impl DeckView {
                 .flex()
                 .items_center()
                 .justify_center()
-                .rounded(px(5.))
+                .rounded(px(crate::radius::CONTROL))
                 .cursor_pointer()
                 .text_color(paint(palette.fg))
                 .hover(|style| style.bg(paint(palette.wash)))
@@ -8634,7 +8634,7 @@ impl DeckView {
                 div()
                     .h_flex()
                     .items_stretch()
-                    .rounded(px(3.))
+                    .rounded(px(crate::radius::CAP))
                     // A new turn rises a few pixels into its place as it fades
                     // in. Relative, so it moves without the layout around it
                     // moving.
@@ -8692,7 +8692,7 @@ impl DeckView {
                                                     div()
                                                         .id(("again", ix))
                                                         .size(px(18.))
-                                                        .rounded(px(4.))
+                                                        .rounded(px(crate::radius::CONTROL))
                                                         .flex()
                                                         .items_center()
                                                         .justify_center()
@@ -8790,7 +8790,7 @@ impl DeckView {
                                             div()
                                                 .id("fold-rail")
                                                 .size(px(20.))
-                                                .rounded(px(5.))
+                                                .rounded(px(crate::radius::CONTROL))
                                                 .flex()
                                                 .items_center()
                                                 .justify_center()
@@ -9045,7 +9045,7 @@ impl DeckView {
             .child(
                 div()
                     .size(px(20.))
-                    .rounded(px(5.))
+                    .rounded(px(crate::radius::CONTROL))
                     .flex()
                     .items_center()
                     .justify_center()
@@ -9104,7 +9104,7 @@ impl DeckView {
             .child(
                 div()
                     .size(px(22.))
-                    .rounded(px(6.))
+                    .rounded(px(crate::radius::CONTROL))
                     .border_1()
                     .border_color(paint(palette.edge))
                     .bg(paint(palette.wash))
@@ -9147,7 +9147,7 @@ impl DeckView {
                 .mt(px(8.))
                 .px(px(10.))
                 .py(px(7.))
-                .rounded(px(6.))
+                .rounded(px(crate::radius::CONTROL))
                 .border_1()
                 .border_color(paint(palette.edge))
                 .cursor_pointer()
@@ -9375,7 +9375,7 @@ impl DeckView {
                 .right(px(8.))
                 .px(px(8.))
                 .py(px(3.))
-                .rounded(px(6.))
+                .rounded(px(crate::radius::CONTROL))
                 .border_1()
                 .border_color(paint(palette.edge))
                 .bg(paint(palette.band))
@@ -9552,17 +9552,6 @@ const PATIENCE: std::time::Duration = std::time::Duration::from_secs(600);
 /// Wider than the rule it draws, because a one-pixel target is not a target.
 const SEAM: f32 = 7.;
 
-/// The radius of the deck's own corner.
-///
-/// Near enough to what macOS gives a window of this kind that the two agree,
-/// and the window is transparent behind it so a disagreement shows as a
-/// slightly rounder corner rather than as a square one.
-///
-/// On Windows it is Windows 11's own 8, because there the platform draws a
-/// rounded shadow around the window too, and a deck rounder than its shadow
-/// showed a sliver of it at every corner (see `win::fit_frame`).
-const WINDOW_CORNER: f32 = if cfg!(target_os = "windows") { 8. } else { 14. };
-
 /// The corner to paint right now.
 ///
 /// Square when the platform's own frame is: a maximised window on Windows
@@ -9575,7 +9564,7 @@ fn window_corner(window: &Window) -> f32 {
         return 0.;
     }
     let _ = window;
-    WINDOW_CORNER
+    crate::radius::WINDOW
 }
 
 /// How wide the rail is folded down to its spine.

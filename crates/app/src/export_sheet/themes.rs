@@ -453,7 +453,7 @@ impl ExportSheet {
                 .children((0..3).map(move |ix| {
                     let tile = div()
                         .size(px(12.))
-                        .rounded(px(3.))
+                        .rounded(px(crate::radius::CAP))
                         .border_1()
                         .border_color(paint(palette.edge));
                     match colours {
@@ -476,7 +476,7 @@ impl ExportSheet {
                 .gap(px(10.))
                 .px(px(12.))
                 .py(px(6.))
-                .rounded(px(5.))
+                .rounded(px(crate::radius::CONTROL))
                 .text_size(px(12.5))
                 .when(ready, |this| {
                     this.cursor_pointer()
@@ -616,7 +616,7 @@ impl ExportSheet {
             // As wide as the field it drops from, so it stays in the options column.
             .w(field.size.width)
             .v_flex()
-            .rounded(px(10.))
+            .rounded(px(crate::radius::CARD))
             .border_1()
             .border_color(paint(palette.edge))
             .bg(paint(palette.band))
