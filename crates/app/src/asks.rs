@@ -12,6 +12,7 @@
 //! show and what to do when pressed, and knows nothing about where it is.
 
 use std::cell::Cell;
+use std::collections::HashMap;
 use std::rc::Rc;
 use std::time::{Duration, Instant};
 
@@ -19,7 +20,6 @@ use deck_core::theme::Palette;
 #[cfg(target_os = "macos")]
 use gpui_kit::component::Root;
 use gpui_kit::component::*;
-use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::*;
 
 use crate::palette::paint;
@@ -37,7 +37,8 @@ const WIDEST: f32 = 680.;
 /// What the row shows.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Row {
-    /// The group's questions, in the order the agent wrote them.
+    /// The group's questions, in the order they are shown: what arrived in
+    /// front, then what was already shown (see [`front_first`]).
     pub asks: Vec<SharedString>,
     /// The row these questions are renewing, while it renews.
     pub renewed: Option<Renewal>,
@@ -45,9 +46,10 @@ pub struct Row {
 
 /// A row being renewed after an answer: what it was, and since when.
 ///
-/// The questions that stay keep their places, the ones that go sink where
-/// they stand, and the new ones come in at the front. So
-/// everything on the row only ever moves one way, and nothing jumps.
+/// The questions that stay keep their order and move right to make room, the
+/// ones that go sink where they stand, and the new ones come in at the
+/// front, gliding in from the left, the side they land on. So nothing slides
+/// under a pill that stays, and nothing jumps.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Renewal {
     pub from: Vec<SharedString>,
@@ -66,7 +68,7 @@ const CLOSE_FROM: f32 = 0.35;
 /// When the first new question arrives, and the ones after it.
 const ARRIVE_AFTER: Duration = Duration::from_millis(520);
 const ARRIVE_STAGGER: Duration = Duration::from_millis(160);
-/// The row makes room for it, then it glides in from the right: both on
+/// The row makes room for it, then it glides in from the left: both on
 /// deck's *Light in*, the pace a thing arrives at everywhere else.
 const ROOM: Duration = Duration::from_millis(520);
 const SLIDE: Duration = Duration::from_millis(520);
@@ -138,6 +140,14 @@ pub fn front_first<T: PartialEq + Clone>(prev: &[T], new: &[T]) -> Vec<T> {
     let arrived = new.iter().filter(|ask| !prev.contains(ask));
     let kept = prev.iter().filter(|ask| new.contains(ask));
     arrived.chain(kept).cloned().collect()
+}
+
+/// The order a group's row opens in when the reader comes back to it: the
+/// order it was last shown in, from `memory`, with anything that arrived
+/// since in front. A group not seen before is as the agent wrote it.
+#[must_use]
+pub fn remembered(memory: &HashMap<String, Vec<String>>, id: &str, asks: &[String]) -> Vec<String> {
+    front_first(memory.get(id).map_or(&[][..], Vec::as_slice), asks)
 }
 
 /// The order a renewing row is drawn in: what is new in front, then the old
@@ -326,17 +336,22 @@ impl Carousel {
 
     /// Renew the row: let go of any pill, and keep the window drawing for as
     /// long as the renewal takes.
-    pub fn renew(&self, length: Duration, window: &Window, cx: &mut App) {
+    ///
+    /// `arrived` is whether any question is new. Then the row glides back to
+    /// the front, where they land; a renewal that only took questions away
+    /// leaves the reader where they were.
+    pub fn renew(&self, length: Duration, arrived: bool, window: &Window, cx: &mut App) {
         self.release();
         self.renewing.set(Some(Instant::now() + length));
         self.widths.borrow_mut().clear();
-        // The new questions are at the front: slide back to them.
-        let now = f32::from(self.handle.offset().x);
-        self.glide.set((now != 0.).then(|| Glide {
-            from: now,
-            to: 0.,
-            since: Instant::now(),
-        }));
+        if arrived {
+            let now = f32::from(self.handle.offset().x);
+            self.glide.set((now != 0.).then(|| Glide {
+                from: now,
+                to: 0.,
+                since: Instant::now(),
+            }));
+        }
         self.drive(length, window, cx);
     }
 
@@ -781,7 +796,7 @@ pub fn render(
     let spotlight = carousel.spotlight();
     // The hint is quieter than the question it sits beside.
     let tertiary = palette.muted.mix(palette.band, 0.15);
-    let surface = |id: ElementId, live: bool| {
+    let surface = |id: ElementId| {
         div()
             .id(id)
             .flex_none()
@@ -792,18 +807,16 @@ pub fn render(
             .border_1()
             .border_color(paint(palette.edge))
             .bg(paint(palette.band))
-            .text_color(paint(if live { palette.fg } else { palette.muted }))
-            .when(live, |this| {
-                this.cursor_pointer()
-                    .hover(|style| style.bg(paint(palette.wash)))
-            })
+            .text_color(paint(palette.fg))
+            .cursor_pointer()
+            .hover(|style| style.bg(paint(palette.wash)))
     };
     // Both arrows, always there and always live, as in v0.1.6: the row keeps
     // one shape whether its questions fill it or not, and an arrow at the end
     // of the row simply has nowhere further to slide.
     let arrow = |id: &'static str, glyph: &'static str, by: isize| {
         let carousel = carousel.clone();
-        surface(ElementId::from(id), true)
+        surface(ElementId::from(id))
             .w(px(ARROW))
             .justify_center()
             .text_size(px(15.))
@@ -881,7 +894,7 @@ pub fn render(
             });
             let shown = carousel.said(ix);
             let carousel = carousel.clone();
-            surface(ElementId::from(("ask", ix)), true)
+            surface(ElementId::from(("ask", ix)))
                 .max_w(px(WIDEST + hint_w))
                 .px(px(13.))
                 .text_size(px(13.))
@@ -1008,7 +1021,7 @@ pub fn render(
                                 .ml(px(-GAP * (1. - room)))
                                 .h(px(PILL))
                                 .relative()
-                                .left(px(SLIDE_BY * (1. - slid)))
+                                .left(px(-SLIDE_BY * (1. - slid)))
                                 .opacity(slid)
                                 .rounded(px(corner))
                                 .border_1()
@@ -1330,6 +1343,38 @@ mod tests {
         assert_eq!(front_first(&["a", "b"], &["a", "b"]), ["a", "b"]);
         assert_eq!(front_first(&["a", "b"], &["x", "y"]), ["x", "y"]);
         assert_eq!(front_first(&[], &["x", "y"]), ["x", "y"]);
+        // A fixed point: showing what is already in front-first order again,
+        // against the same questions, changes nothing.
+        let cases: [(&[&str], &[&str]); 6] = [
+            (&["a", "b", "c"], &["a", "b", "c", "x"]),
+            (&["a", "b", "c"], &["x", "c", "y", "a"]),
+            (&["a", "b"], &["b", "a"]),
+            (&["a", "b"], &["x", "y"]),
+            (&[], &["x", "y"]),
+            (&["a", "b"], &[]),
+        ];
+        for (prev, new) in cases {
+            let once = front_first(prev, new);
+            assert_eq!(front_first(&once, new), once, "{prev:?} -> {new:?}");
+        }
+    }
+
+    #[test]
+    fn a_group_comes_back_in_the_order_it_was_left() {
+        let mut memory = HashMap::new();
+        let first = remembered(&memory, "g", &["a".to_string(), "b".to_string()]);
+        assert_eq!(first, ["a", "b"], "nothing remembered: as written");
+        memory.insert("g".to_string(), vec!["x".to_string(), "a".to_string()]);
+        // Gone and back, with one more arrived meanwhile: it is in front, and
+        // what was shown keeps its order.
+        let back = remembered(
+            &memory,
+            "g",
+            &["a".to_string(), "x".to_string(), "n".to_string()],
+        );
+        assert_eq!(back, ["n", "x", "a"]);
+        // Another group is not touched by it.
+        assert_eq!(remembered(&memory, "h", &["a".to_string()]), ["a"]);
     }
 
     #[test]

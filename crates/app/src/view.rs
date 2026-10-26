@@ -995,6 +995,9 @@ pub struct DeckView {
     /// The questions on screen, and whose: held while an answer is still
     /// being said, so a renewed row never changes under it.
     asks_shown: Option<(String, Vec<String>)>,
+    /// The order each group's questions were last shown in, so coming back to
+    /// a group shows the same front-first row rather than the agent's own.
+    asks_memory: std::collections::HashMap<String, Vec<String>>,
     /// The renewal playing on the row, if one is.
     asks_renewed: Option<crate::asks::Renewal>,
     /// A wake-up for when the renewal playing ends, so one queued behind it
@@ -1315,6 +1318,7 @@ impl DeckView {
             explaining: false,
             asks_carousel: crate::asks::Carousel::default(),
             asks_shown: None,
+            asks_memory: std::collections::HashMap::new(),
             asks_renewed: None,
             asks_wake: None,
             #[cfg(target_os = "macos")]
@@ -3987,7 +3991,7 @@ impl DeckView {
                         // knowing a key, so hide is pressed here as well.
                         .when(*key == "h", |this| {
                             this.cursor_pointer()
-                                .hover(|this| this.bg(paint(hover_on_band(palette))))
+                                .hover(|this| this.bg(paint(palette.wash)))
                                 .on_click(cx.listener(|deck, _, window, cx| {
                                     deck.on_hide(&Hide, window, cx);
                                 }))
@@ -5082,13 +5086,20 @@ impl DeckView {
                     // The shelf drives its own window; this one only when the
                     // row is drawn here.
                     if !self.asks_outside {
-                        self.asks_carousel.renew(renewal.length(&to), window, cx);
+                        let arrived = to.iter().any(|ask| !renewal.from.contains(ask));
+                        self.asks_carousel
+                            .renew(renewal.length(&to), arrived, window, cx);
                     }
                     self.asks_renewed = Some(renewal);
                 }
+                self.asks_memory.insert(id.clone(), asks.clone());
                 self.asks_shown = Some((id, asks));
             }
             _ => {
+                // Back to a group seen before: its row as it was left, with
+                // anything new in front, and no renewal to play.
+                let asks = crate::asks::remembered(&self.asks_memory, &id, &asks);
+                self.asks_memory.insert(id.clone(), asks.clone());
                 self.asks_shown = Some((id, asks));
                 self.asks_renewed = None;
             }
@@ -5151,7 +5162,7 @@ impl DeckView {
                         shown.iter().cloned().map(SharedString::from).collect();
                     let left = renewal.length(&to).saturating_sub(renewal.since.elapsed());
                     if !left.is_zero() {
-                        self.asks_carousel.renew(left, window, cx);
+                        self.asks_carousel.renew(left, true, window, cx);
                     }
                 }
             }
@@ -5175,11 +5186,15 @@ impl DeckView {
                         // A row renewing after an answer plays out here too;
                         // any other new row starts from its first question.
                         match shown.as_ref().and_then(|row| {
-                            row.renewed
-                                .as_ref()
-                                .map(|renewal| renewal.length(&row.asks))
+                            row.renewed.as_ref().map(|renewal| {
+                                let arrived =
+                                    row.asks.iter().any(|ask| !renewal.from.contains(ask));
+                                (renewal.length(&row.asks), arrived)
+                            })
                         }) {
-                            Some(length) => shelf.carousel.renew(length, window, cx),
+                            Some((length, arrived)) => {
+                                shelf.carousel.renew(length, arrived, window, cx);
+                            }
                             None => shelf.carousel.reset(),
                         }
                     }
@@ -7893,18 +7908,28 @@ impl DeckView {
                     .child({
                         let live = self.exportable();
                         let palette = self.palette;
+                        // One ink for the arrow and the tray, and one for
+                        // under the pointer, so they can never disagree.
+                        let ink = palette.fg.mix(palette.muted, 0.25);
+                        let ink_held = palette.fg;
                         div()
                             .id("strip-export")
+                            .group("strip-export")
                             .flex_none()
                             .h_flex()
                             .items_center()
                             .gap(px(6.))
-                            .h(px(24.))
+                            // Exactly a key cap's height, the tallest thing on
+                            // the strip, so the strip is no taller for it. The
+                            // line is the room inside the 1px edges, so the
+                            // word sits centred rather than overflowing.
+                            .h(px(crate::keys::CAP_H))
+                            .line_height(px(crate::keys::CAP_H - 2.))
                             .px(px(10.))
                             .rounded(px(6.))
                             .border_1()
                             .border_color(paint(palette.edge))
-                            .text_color(paint(palette.fg.mix(palette.muted, 0.25)))
+                            .text_color(paint(ink))
                             .opacity(0.4 + 0.6 * self.export_fade.level())
                             .when(live, |this| {
                                 this.cursor_pointer()
@@ -7946,9 +7971,12 @@ impl DeckView {
                                             .border_l_1()
                                             .border_r_1()
                                             .border_b_1()
-                                            .border_color(paint(
-                                                palette.fg.mix(palette.muted, 0.25),
-                                            )),
+                                            .border_color(paint(ink))
+                                            .when(live, |this| {
+                                                this.group_hover("strip-export", |style| {
+                                                    style.border_color(paint(ink_held))
+                                                })
+                                            }),
                                     ),
                             )
                             .child("export")
@@ -8986,6 +9014,7 @@ impl DeckView {
             .pt(px(12.))
             .pb(px(14.))
             .cursor_pointer()
+            .hover(|style| style.bg(paint(palette.band.mix(palette.wash, 0.5))))
             .on_click(cx.listener(|deck, _, window, cx| {
                 // Opening it onto a draft is going back to the draft.
                 if !deck.back_to_the_box(window, cx) {

@@ -145,6 +145,17 @@ pub(crate) fn pressed(stroke: &Keystroke) -> Option<&'static str> {
         .find(|key| *key == typed && *key != CLOSE)
 }
 
+/// The cap's measures, kept as numbers so whatever sits beside it on the strip
+/// can be held to the same height.
+const CAP_LINE: f32 = 10.;
+const CAP_PAD_Y: f32 = 3.;
+const CAP_EDGE_TOP: f32 = 1.;
+const CAP_EDGE_BOTTOM: f32 = 2.;
+
+/// How tall a cap is, edge to edge: its line, its padding and both borders.
+/// The tallest thing on the strip, so the strip is exactly this tall.
+pub(crate) const CAP_H: f32 = CAP_LINE + 2. * CAP_PAD_Y + CAP_EDGE_TOP + CAP_EDGE_BOTTOM;
+
 /// A key drawn as one: a cap with a thicker bottom edge, the way a key catches
 /// light.
 pub(crate) fn cap(key: &str, palette: &Palette, mono: SharedString) -> Div {
@@ -152,7 +163,7 @@ pub(crate) fn cap(key: &str, palette: &Palette, mono: SharedString) -> Div {
         .min_w(px(18.))
         .flex_none()
         .px(px(4.))
-        .py(px(3.))
+        .py(px(CAP_PAD_Y))
         .text_center()
         .rounded(px(4.))
         .border_1()
@@ -161,7 +172,7 @@ pub(crate) fn cap(key: &str, palette: &Palette, mono: SharedString) -> Div {
         .bg(paint(palette.wash))
         .font_family(mono)
         .text_size(px(10.))
-        .line_height(px(10.))
+        .line_height(px(CAP_LINE))
         .text_color(paint(palette.fg))
         .child(key.to_string())
 }
@@ -358,3 +369,8 @@ pub(crate) fn confidence_card(
             )
         })
 }
+
+// 10 line + 3 + 3 padding + 1 top edge + 2 bottom edge. The strip is as tall as
+// this, and the export button beside it is held to it: a change to the cap
+// that moves this must be answered on purpose.
+const _: () = assert!(CAP_H == 19.);
