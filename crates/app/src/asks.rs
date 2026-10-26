@@ -56,9 +56,8 @@ pub struct Renewal {
     pub since: Instant,
 }
 
-/// How long a question takes to sink away, one after another: deck's *Light
-/// out*, the pace a thing leaves at everywhere else in the window.
-const SINK: Duration = Duration::from_millis(760);
+/// How long a question takes to sink away, one after another.
+const SINK: Duration = Duration::from_millis(1000);
 const SINK_STAGGER: Duration = Duration::from_millis(120);
 /// How small it gets as it goes under.
 const SHRINK: f32 = 0.86;
@@ -68,10 +67,10 @@ const CLOSE_FROM: f32 = 0.35;
 /// When the first new question arrives, and the ones after it.
 const ARRIVE_AFTER: Duration = Duration::from_millis(520);
 const ARRIVE_STAGGER: Duration = Duration::from_millis(160);
-/// The row makes room for it, then it glides in from the left: both on
-/// deck's *Light in*, the pace a thing arrives at everywhere else.
-const ROOM: Duration = Duration::from_millis(520);
-const SLIDE: Duration = Duration::from_millis(520);
+/// The row makes room for it, then it glides in from the left, the side it
+/// lands on.
+const ROOM: Duration = Duration::from_millis(840);
+const SLIDE: Duration = Duration::from_millis(1080);
 const SLIDE_AFTER: Duration = Duration::from_millis(160);
 const SLIDE_BY: f32 = 38.;
 
@@ -80,11 +79,10 @@ fn nth(step: Duration, n: usize) -> Duration {
     step.saturating_mul(u32::try_from(n).unwrap_or(u32::MAX))
 }
 
-/// The curve deck moves everything on, the renewal and the arrows' slide
-/// included: it eases in and out, gentle at both ends.
-fn smooth(t: f32) -> f32 {
+/// The renewal's curve: it eases in and out, calm at both ends.
+fn calm(t: f32) -> f32 {
     let t = t.clamp(0., 1.);
-    t * t * (3. - 2. * t)
+    (1. - (std::f32::consts::PI * t).cos()) / 2.
 }
 
 impl Renewal {
@@ -670,7 +668,7 @@ impl Carousel {
         if let Some(glide) = self.glide.get() {
             let done = glide.since.elapsed().as_secs_f32() / GLIDE.as_secs_f32();
             let t = done.min(1.);
-            let eased = smooth(t);
+            let eased = 1. - (1. - t).powi(3);
             let x = glide.from + (glide.to - glide.from) * eased;
             self.handle.set_offset(point(px(x), px(0.)));
             if t >= 1. {
@@ -1007,8 +1005,8 @@ pub fn render(
                         let age = since
                             .saturating_sub(ARRIVE_AFTER + nth(ARRIVE_STAGGER, k))
                             .as_secs_f32();
-                        let room = smooth(age / ROOM.as_secs_f32());
-                        let slid = smooth((age - SLIDE_AFTER.as_secs_f32()) / SLIDE.as_secs_f32());
+                        let room = calm(age / ROOM.as_secs_f32());
+                        let slid = calm((age - SLIDE_AFTER.as_secs_f32()) / SLIDE.as_secs_f32());
                         // Pressable only once it has arrived; until then it is
                         // drawn as the pill it is becoming, rounded at both
                         // ends, its words uncovered as the row opens round it.
@@ -1044,8 +1042,8 @@ pub fn render(
                     }
                     Part::Sinks(k) => {
                         let under = under(since, k);
-                        let gone = smooth(under);
-                        let closed = smooth((under - CLOSE_FROM) / (1. - CLOSE_FROM));
+                        let gone = calm(under);
+                        let closed = calm((under - CLOSE_FROM) / (1. - CLOSE_FROM));
                         let size = 1. - (1. - SHRINK) * gone;
                         let wide = natural(&ask) * size * (1. - closed);
                         // Gone under: nothing is left on the row, not even a
@@ -1379,11 +1377,11 @@ mod tests {
 
     #[test]
     fn the_renewal_is_calm_at_both_ends() {
-        assert_eq!(smooth(0.), 0.);
-        assert!((smooth(1.) - 1.).abs() < 1e-6);
-        assert!((smooth(0.5) - 0.5).abs() < 1e-6);
-        assert!(smooth(0.05) < 0.01, "it starts gently");
-        assert!(smooth(0.95) > 0.99, "and settles gently");
+        assert_eq!(calm(0.), 0.);
+        assert!((calm(1.) - 1.).abs() < 1e-6);
+        assert!((calm(0.5) - 0.5).abs() < 1e-6);
+        assert!(calm(0.05) < 0.01, "it starts gently");
+        assert!(calm(0.95) > 0.99, "and settles gently");
     }
 
     #[test]
