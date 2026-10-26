@@ -193,11 +193,22 @@ pub fn how() -> &'static str {
 /// The room between a question and its hint, in an open pill.
 const HINT_GAP: f32 = 12.;
 
-/// How long a pill takes to open, and to close again: the room's own timing,
-/// on the room's own curve (`calm`, in and out), so a pill widening and a
-/// pill narrowing read as one thing settling. Every change of a pill's hint
-/// runs this long: the first open, the close, and both halves of a hop.
-const SPAN: Duration = ROOM;
+/// How long a pill takes to open, and to close again, on the room's curve
+/// (`calm`, in and out), so a pill widening and a pill narrowing read as one
+/// thing settling. A little quicker than the room itself: at 840 the hint
+/// felt like it was waiting to be asked. Every change of a pill's hint runs
+/// this long: the first open, the close, and both halves of a hop.
+const SPAN: Duration = Duration::from_millis(640);
+
+/// The most anything on a pill may move in one 8ms sample: the steepest
+/// point of `calm` over `SPAN`, through the hint's reveal (which runs over
+/// the last 0.8 of the opening), with a hair of slack. Anything larger is a
+/// jump, not motion. Derived from `SPAN` so the tests follow the timing.
+#[cfg(test)]
+fn step_bound() -> f32 {
+    let steepest = std::f32::consts::FRAC_PI_2 * 8. / SPAN.as_millis() as f32;
+    steepest / 0.8 * 1.05
+}
 
 /// How long the spotlight takes to come on.
 const DIM: Duration = Duration::from_millis(700);
@@ -1392,7 +1403,7 @@ mod tests {
                 let here = all(&pills, now);
                 for ix in 0..4 {
                     assert!(
-                        (here[ix] - last[ix]).abs() <= 0.02,
+                        (here[ix] - last[ix]).abs() <= step_bound(),
                         "pill {ix} jumped {} -> {} at {at}ms",
                         last[ix],
                         here[ix]
@@ -1401,7 +1412,7 @@ mod tests {
                 let spoken = said(&pills, now);
                 for ix in 0..4 {
                     assert!(
-                        (spoken[ix] - last_said[ix]).abs() <= 0.02,
+                        (spoken[ix] - last_said[ix]).abs() <= step_bound(),
                         "said {ix} jumped {} -> {} at {at}ms",
                         last_said[ix],
                         spoken[ix]
