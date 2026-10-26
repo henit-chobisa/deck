@@ -4008,7 +4008,9 @@ impl DeckView {
                         // knowing a key, so hide is pressed here as well.
                         .when(*key == "h", |this| {
                             this.cursor_pointer()
-                                .hover(|this| this.bg(paint(palette.wash)))
+                                .hover(|this| {
+                                    this.bg(paint(palette.wash)).text_color(paint(palette.fg))
+                                })
                                 .on_click(cx.listener(|deck, _, window, cx| {
                                     deck.on_hide(&Hide, window, cx);
                                 }))
@@ -5178,8 +5180,9 @@ impl DeckView {
                     let to: Vec<SharedString> =
                         shown.iter().cloned().map(SharedString::from).collect();
                     let left = renewal.length(&to).saturating_sub(renewal.since.elapsed());
+                    let arrived = shown.iter().any(|a| !renewal.from.contains(a));
                     if !left.is_zero() {
-                        self.asks_carousel.renew(left, true, window, cx);
+                        self.asks_carousel.renew(left, arrived, window, cx);
                     }
                 }
             }
@@ -9050,7 +9053,6 @@ impl DeckView {
                     .border_color(paint(palette.edge))
                     .text_size(px(12.))
                     .text_color(paint(palette.muted))
-                    .hover(|style| style.bg(paint(hover_on_band(&palette))))
                     .child("‹"),
             )
             .child(

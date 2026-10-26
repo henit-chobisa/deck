@@ -17,11 +17,10 @@ use gpui_kit::*;
 use crate::palette::paint;
 
 /// How long the pointer must be still on a key, from cold, before its card
-/// comes up: the Hand fall in deck's timing set. The question pills open after
-/// their rest plus a 700ms ease, so a pill is noticeably open about here; a
-/// shorter rest let cards pop up as the pointer crossed the strip on its way
-/// to the pills. Every move over a key restarts it.
-pub(crate) const REST: Duration = Duration::from_millis(420);
+/// comes up. The founder's choice: long enough that a pointer crossing the
+/// strip on its way to the question pills never opens a card, short enough to
+/// feel immediate when you stop. Every move over a key restarts it.
+pub(crate) const REST: Duration = Duration::from_millis(300);
 
 /// How long the card stays once the pointer has left, so moving to the next
 /// key hands the card over instead of closing it.
@@ -171,8 +170,10 @@ pub(crate) fn cap(key: &str, palette: &Palette, mono: SharedString) -> Div {
         .py(px(CAP_PAD_Y))
         .text_center()
         .rounded(px(4.))
-        .border_1()
-        .border_b_2()
+        .border_t(px(CAP_EDGE_TOP))
+        .border_l(px(CAP_EDGE_TOP))
+        .border_r(px(CAP_EDGE_TOP))
+        .border_b(px(CAP_EDGE_BOTTOM))
         .border_color(paint(palette.edge))
         .bg(paint(palette.wash))
         .font_family(mono)
