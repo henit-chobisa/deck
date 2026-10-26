@@ -7872,33 +7872,68 @@ impl DeckView {
                     .gap(px(STRIP_GAP))
                     .flex_none()
                     .whitespace_nowrap()
-                    // Export, once there is a whole deck to export. It takes
-                    // the place the deck id had, and is drawn as the version
-                    // beside it is: a word that brightens under the pointer.
+                    // Export, drawn as a button. Always there, sealed or not, so
+                    // its width is held and the words beside it do not shift when
+                    // it becomes available. While the agent is still writing it
+                    // is quiet and inert: a grey ground a touch above the strip,
+                    // muted words dimmed toward it, no pointer cursor, no hover
+                    // and no handler, and a tip saying why. Once there is a deck
+                    // to export it takes the accent, a tint on the ground and
+                    // the border and the accent itself on the words, brightening
+                    // under the pointer. The change is the surface fade, 200 in
+                    // and 160 out, mixing the two sets of colours by its level
+                    // rather than popping one over the other.
+                    //
                     // Not a key cap, because no key opens it, and a cap that
                     // nothing answers to is a promise the strip cannot keep.
                     // The id is in the card the version opens.
-                    //
-                    // Always drawn, sealed or not, so that its width is held
-                    // and the words beside it do not shift when it becomes
-                    // available. Until then it is invisible and inert: its
-                    // opacity follows the fade (nought), and it has no
-                    // handler, hover or pointer cursor, so it takes no
-                    // clicks. Once there is a deck to export it comes in on
-                    // the surface fade rather than in one frame.
                     .child({
                         let live = self.exportable();
+                        let level = self.export_fade.level();
+                        let palette = self.palette;
+                        let quiet_ground = palette.band.mix(palette.fg, 0.06);
+                        let quiet_words = palette.muted.mix(palette.band, 0.4);
+                        let ground =
+                            quiet_ground.mix(palette.band.mix(palette.accent, 0.13), level);
+                        let edge = palette
+                            .edge
+                            .mix(palette.band.mix(palette.accent, 0.45), level);
+                        let words = quiet_words.mix(palette.accent, level);
                         div()
                             .id("strip-export")
                             .flex_none()
-                            .opacity(self.export_fade.level())
+                            .h_flex()
+                            .items_center()
+                            .gap(px(6.))
+                            .h(px(24.))
+                            .px(px(10.))
+                            .rounded(px(6.))
+                            .border_1()
+                            .border_color(paint(edge))
+                            .bg(paint(ground))
+                            .text_color(paint(words))
                             .when(live, |this| {
                                 this.cursor_pointer()
-                                    .hover(|this| this.text_color(paint(self.palette.fg)))
+                                    .hover(|this| {
+                                        this.bg(paint(palette.band.mix(palette.accent, 0.22)))
+                                    })
                                     .on_click(cx.listener(|deck, _, window, cx| {
                                         deck.open_export(window, cx);
                                     }))
                             })
+                            .when(!live, |this| {
+                                this.tooltip(|_window, cx| {
+                                    cx.new(|_| {
+                                        gpui_kit::component::tooltip::Tooltip::new(
+                                            "Export opens when the agent finishes this deck",
+                                        )
+                                    })
+                                    .into()
+                                })
+                            })
+                            // A text arrow, in the strip's own font: there is no
+                            // icon pipeline to draw a tray from.
+                            .child("\u{2191}")
                             .child("export")
                     })
                     // Which deck is running. Asked for because there was no way
