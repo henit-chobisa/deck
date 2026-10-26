@@ -5105,9 +5105,13 @@ impl DeckView {
                     // The shelf drives its own window; this one only when the
                     // row is drawn here.
                     if !self.asks_outside {
-                        let arrived = to.iter().any(|ask| !renewal.from.contains(ask));
-                        self.asks_carousel
-                            .renew(renewal.length(&to), arrived, window, cx);
+                        self.asks_carousel.renew(
+                            renewal.length(&to),
+                            &renewal.from,
+                            &to,
+                            window,
+                            cx,
+                        );
                     }
                     self.asks_renewed = Some(renewal);
                 }
@@ -5180,9 +5184,9 @@ impl DeckView {
                     let to: Vec<SharedString> =
                         shown.iter().cloned().map(SharedString::from).collect();
                     let left = renewal.length(&to).saturating_sub(renewal.since.elapsed());
-                    let arrived = to.iter().any(|a| !renewal.from.contains(a));
                     if !left.is_zero() {
-                        self.asks_carousel.renew(left, arrived, window, cx);
+                        self.asks_carousel
+                            .renew(left, &renewal.from, &to, window, cx);
                     }
                 }
             }
@@ -5206,14 +5210,12 @@ impl DeckView {
                         // A row renewing after an answer plays out here too;
                         // any other new row starts from its first question.
                         match shown.as_ref().and_then(|row| {
-                            row.renewed.as_ref().map(|renewal| {
-                                let arrived =
-                                    row.asks.iter().any(|ask| !renewal.from.contains(ask));
-                                (renewal.length(&row.asks), arrived)
-                            })
+                            row.renewed
+                                .as_ref()
+                                .map(|renewal| (renewal.length(&row.asks), renewal, &row.asks))
                         }) {
-                            Some((length, arrived)) => {
-                                shelf.carousel.renew(length, arrived, window, cx);
+                            Some((length, renewal, to)) => {
+                                shelf.carousel.renew(length, &renewal.from, to, window, cx);
                             }
                             None => shelf.carousel.reset(),
                         }
