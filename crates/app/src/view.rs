@@ -7872,33 +7872,24 @@ impl DeckView {
                     .gap(px(STRIP_GAP))
                     .flex_none()
                     .whitespace_nowrap()
-                    // Export, drawn as a button. Always there, sealed or not, so
-                    // its width is held and the words beside it do not shift when
-                    // it becomes available. While the agent is still writing it
-                    // is quiet and inert: a grey ground a touch above the strip,
-                    // muted words dimmed toward it, no pointer cursor, no hover
-                    // and no handler, and a tip saying why. Once there is a deck
-                    // to export it takes the accent, a tint on the ground and
-                    // the border and the accent itself on the words, brightening
-                    // under the pointer. The change is the surface fade, 200 in
-                    // and 160 out, mixing the two sets of colours by its level
-                    // rather than popping one over the other.
+                    // Export, drawn as an outline button: an arrow and the word,
+                    // a 1px edge and the strip's own ground. Always there, sealed
+                    // or not, so its width is held and the words beside it do not
+                    // shift when it becomes available. While the agent is still
+                    // writing it is dimmed, with the default cursor, no hover and
+                    // no handler, and a tip saying why. Once there is a deck to
+                    // export it is at full strength with a pointer, and under the
+                    // pointer its ground lifts to the wash, as the other buttons
+                    // on the strip do, and its words go to the ink. The change
+                    // is the surface fade, 200 in and 160 out, on how dim it is,
+                    // not a pop.
                     //
                     // Not a key cap, because no key opens it, and a cap that
                     // nothing answers to is a promise the strip cannot keep.
                     // The id is in the card the version opens.
                     .child({
                         let live = self.exportable();
-                        let level = self.export_fade.level();
                         let palette = self.palette;
-                        let quiet_ground = palette.band.mix(palette.fg, 0.06);
-                        let quiet_words = palette.muted.mix(palette.band, 0.4);
-                        let ground =
-                            quiet_ground.mix(palette.band.mix(palette.accent, 0.13), level);
-                        let edge = palette
-                            .edge
-                            .mix(palette.band.mix(palette.accent, 0.45), level);
-                        let words = quiet_words.mix(palette.accent, level);
                         div()
                             .id("strip-export")
                             .flex_none()
@@ -7909,13 +7900,13 @@ impl DeckView {
                             .px(px(10.))
                             .rounded(px(6.))
                             .border_1()
-                            .border_color(paint(edge))
-                            .bg(paint(ground))
-                            .text_color(paint(words))
+                            .border_color(paint(palette.edge))
+                            .text_color(paint(palette.fg.mix(palette.muted, 0.25)))
+                            .opacity(0.4 + 0.6 * self.export_fade.level())
                             .when(live, |this| {
                                 this.cursor_pointer()
                                     .hover(|this| {
-                                        this.bg(paint(palette.band.mix(palette.accent, 0.22)))
+                                        this.bg(paint(palette.wash)).text_color(paint(palette.fg))
                                     })
                                     .on_click(cx.listener(|deck, _, window, cx| {
                                         deck.open_export(window, cx);
