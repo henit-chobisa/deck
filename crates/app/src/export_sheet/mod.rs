@@ -1174,7 +1174,7 @@ fn choice(
         .gap(px(1.))
         .px(px(10.))
         .py(px(8.))
-        .rounded(px(7.))
+        .rounded(px(crate::radius::CONTROL))
         .border_1()
         .border_color(paint(if on { palette.accent } else { palette.edge }))
         .bg(paint(if on {
@@ -1251,7 +1251,7 @@ fn ground(filled: bool, palette: &Palette) -> Div {
         .flex_none()
         .mt(px(1.))
         .size(px(15.))
-        .rounded(px(4.))
+        .rounded(px(crate::radius::CAP))
         .border_1()
         .border_color(paint(if filled {
             palette.accent
@@ -1298,7 +1298,7 @@ fn notice(tone: Rgb, palette: &Palette) -> Div {
     div()
         .v_flex()
         .gap(px(3.))
-        .rounded(px(8.))
+        .rounded(px(crate::radius::CARD))
         .px(px(11.))
         .py(px(9.))
         .border_1()
@@ -1500,7 +1500,7 @@ impl Render for ExportSheet {
                     .gap(px(8.))
                     .px(px(10.))
                     .py(px(8.))
-                    .rounded(px(7.))
+                    .rounded(px(crate::radius::CONTROL))
                     .border_1()
                     .border_color(paint(if self.picking.is_some() {
                         palette.accent
@@ -1528,7 +1528,7 @@ impl Render for ExportSheet {
                                 [shown.bg, shown.fg, shown.accent].map(|colour| {
                                     div()
                                         .size(px(12.))
-                                        .rounded(px(3.))
+                                        .rounded(px(crate::radius::CAP))
                                         .border_1()
                                         .border_color(paint(palette.edge))
                                         .bg(paint(colour))
@@ -1568,7 +1568,7 @@ impl Render for ExportSheet {
                     .h_flex()
                     .gap(px(9.))
                     .items_start()
-                    .rounded(px(4.))
+                    .rounded(px(crate::radius::CONTROL))
                     .cursor_pointer()
                     .text_size(px(12.5))
                     .line_height(px(17.5))
@@ -1594,7 +1594,7 @@ impl Render for ExportSheet {
                     .h_flex()
                     .gap(px(9.))
                     .items_start()
-                    .rounded(px(4.))
+                    .rounded(px(crate::radius::CONTROL))
                     .cursor_pointer()
                     .text_size(px(12.5))
                     .line_height(px(17.5))
@@ -1622,7 +1622,7 @@ impl Render for ExportSheet {
             .h_flex()
             .gap(px(9.))
             .items_start()
-            .rounded(px(4.))
+            .rounded(px(crate::radius::CONTROL))
             .cursor_pointer()
             .text_size(px(12.5))
             .line_height(px(17.5))
@@ -1685,7 +1685,7 @@ impl Render for ExportSheet {
                     .children(hits.iter().enumerate().map(|(ix, hit)| {
                         let link = |id: (&'static str, usize), control: Control| {
                             ring(div().id(id), control)
-                                .rounded(px(3.))
+                                .rounded(px(crate::radius::CAP))
                                 .cursor_pointer()
                                 .text_color(paint(palette.accent))
                                 .hover(|this| this.text_color(paint(palette.fg)))
@@ -1804,7 +1804,7 @@ impl Render for ExportSheet {
                                 secondary("x-reveal")
                                     .px(px(10.))
                                     .py(px(4.))
-                                    .rounded(px(6.))
+                                    .rounded(px(crate::radius::CONTROL))
                                     .text_size(px(12.))
                                     .on_click(move |_, _, cx| cx.reveal_path(&reveal))
                                     .child("Reveal"),
@@ -1813,7 +1813,7 @@ impl Render for ExportSheet {
                                 secondary("x-open")
                                     .px(px(10.))
                                     .py(px(4.))
-                                    .rounded(px(6.))
+                                    .rounded(px(crate::radius::CONTROL))
                                     .text_size(px(12.))
                                     .on_click(move |_, _, cx| cx.open_with_system(&open))
                                     .child("Open"),
@@ -1847,7 +1847,7 @@ impl Render for ExportSheet {
                                     .items_center()
                                     .px(px(12.))
                                     .py(px(10.))
-                                    .rounded(px(8.))
+                                    .rounded(px(crate::radius::CONTROL))
                                     .border_1()
                                     .border_color(paint(palette.accent))
                                     .text_size(px(13.5))
@@ -1871,7 +1871,7 @@ impl Render for ExportSheet {
                                     .items_center()
                                     .px(px(14.))
                                     .py(px(10.))
-                                    .rounded(px(8.))
+                                    .rounded(px(crate::radius::CONTROL))
                                     .text_size(px(13.5))
                                     .font_weight(FontWeight::SEMIBOLD)
                                     .on_click(cx.listener(|sheet, _, window, cx| {
@@ -1888,7 +1888,7 @@ impl Render for ExportSheet {
                     .items_center()
                     .px(px(12.))
                     .py(px(10.))
-                    .rounded(px(8.))
+                    .rounded(px(crate::radius::CONTROL))
                     .border_1()
                     .text_size(px(13.5))
                     .font_weight(FontWeight::SEMIBOLD)
@@ -2115,7 +2115,7 @@ impl Render for ExportSheet {
                                         .h(px(h))
                                         .max_w_full()
                                         .max_h_full()
-                                        .rounded(px(3.))
+                                        .rounded(px(crate::radius::CAP))
                                         .border_1()
                                         .border_color(paint(palette.edge))
                                         .bg(paint(palette.band))
@@ -2155,7 +2155,7 @@ impl Render for ExportSheet {
                                 .right(px(8.))
                                 .px(px(8.))
                                 .py(px(4.))
-                                .rounded(px(5.))
+                                .rounded(px(crate::radius::CAP))
                                 .bg(paint(palette.band))
                                 .border_1()
                                 .border_color(paint(palette.edge))
@@ -2181,7 +2181,7 @@ impl Render for ExportSheet {
                             .flex_none()
                             .w(px(width + 2.))
                             .h(px(height + 2.))
-                            .rounded(px(4.))
+                            .rounded(px(crate::radius::CAP))
                             .border_1()
                             .border_color(paint(palette.edge.mix(
                                 palette.accent,
@@ -2217,7 +2217,7 @@ impl Render for ExportSheet {
                     .gap(px(10.))
                     .px(px(10.))
                     .py(px(6.))
-                    .rounded(px(6.))
+                    .rounded(px(crate::radius::CONTROL))
                     .bg(paint(palette.wash))
                     .font_family(mono.clone())
                     .text_size(px(11.))
@@ -2336,7 +2336,7 @@ impl Render for ExportSheet {
                     // Both columns the sheet's height, so the options scroll
                     // inside it rather than being centred past its edges.
                     .items_stretch()
-                    .rounded(px(12.))
+                    .rounded(px(crate::radius::CARD))
                     .border_1()
                     .border_color(paint(palette.edge))
                     .bg(paint(palette.band))

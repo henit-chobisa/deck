@@ -140,7 +140,7 @@ impl ExportSheet {
                 .left(px(8.))
                 .px(px(8.))
                 .py(px(3.))
-                .rounded(px(5.))
+                .rounded(px(crate::radius::CAP))
                 .bg(paint(palette.band))
                 .border_1()
                 .border_color(paint(palette.edge))

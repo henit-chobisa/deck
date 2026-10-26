@@ -55,7 +55,7 @@ pub fn keep_on_top(window: &Window) {
 /// corner on a transparent window, so the two disagreed — a grey line traced
 /// a rectangle just outside the painted curve. The border goes, the corner is
 /// asked to stay rounded, and deck paints its corner at the same 8 points on
-/// Windows (see `view::WINDOW_CORNER`), so the shadow follows the deck.
+/// Windows (see `radius::WINDOW`), so the shadow follows the deck.
 ///
 /// Says whether Windows agreed to round the corner. Windows 10 has no such
 /// setting and keeps its square frame, so deck paints a square corner there

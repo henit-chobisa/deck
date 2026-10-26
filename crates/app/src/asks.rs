@@ -1389,7 +1389,7 @@ pub fn open_shelf(deck_window: WindowHandle<Root>, cx: &mut App) {
             row: None,
             carousel: Carousel::default(),
             palette,
-            corner: 10.,
+            corner: crate::radius::CARD,
             wide: 600.,
             deck: weak,
             deck_window: any,

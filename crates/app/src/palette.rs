@@ -274,7 +274,7 @@ pub fn install(palette: &Palette, dark: bool, cx: &mut App) {
     theme.font_family = SharedString::from("IBM Plex Sans");
     theme.font_size = px(deck_render::metrics::SANS_SIZE);
     theme.shadow = true;
-    theme.radius = px(5.);
+    theme.radius = px(crate::radius::CONTROL);
 
     // The same theme every export highlights with: see `deck_render`.
     theme.highlight_theme = deck_render::theme(palette, dark, syntax());
