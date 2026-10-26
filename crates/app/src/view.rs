@@ -5043,7 +5043,7 @@ impl DeckView {
                     if self
                         .asks_shown
                         .as_ref()
-                        .is_some_and(|(_, shown)| *shown != asks)
+                        .is_some_and(|(_, shown)| crate::asks::front_first(shown, &asks) != *shown)
                         && self.asks_wake.is_none()
                     {
                         let left = renewal
@@ -5065,6 +5065,9 @@ impl DeckView {
         }
         match self.asks_shown.as_ref() {
             Some((shown_id, shown)) if *shown_id == id => {
+                // What arrived goes to the front, where it is seen; what was
+                // already shown keeps its order behind it.
+                let asks = crate::asks::front_first(shown, &asks);
                 if *shown == asks || self.voice.talking() {
                     return;
                 }

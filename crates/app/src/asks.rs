@@ -46,7 +46,7 @@ pub struct Row {
 /// A row being renewed after an answer: what it was, and since when.
 ///
 /// The questions that stay keep their places, the ones that go sink where
-/// they stand, and the new ones come in after them from the right. So
+/// they stand, and the new ones come in at the front. So
 /// everything on the row only ever moves one way, and nothing jumps.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Renewal {
@@ -127,25 +127,38 @@ enum Part {
     Arrives(usize, usize),
 }
 
-/// The order a renewing row is drawn in: the old row as it stood, with what
-/// goes still in its place, then what is new after it.
+/// The order a row is shown in after its questions change: what arrived
+/// first, in the order it came, then what was already shown, in the order it
+/// was shown. A question that went is dropped. Newly arrived questions are
+/// the ones in `new` that were not in `prev`, so replacing the whole list
+/// puts all of the new questions first, and an unchanged one changes
+/// nothing.
+#[must_use]
+pub fn front_first<T: PartialEq + Clone>(prev: &[T], new: &[T]) -> Vec<T> {
+    let arrived = new.iter().filter(|ask| !prev.contains(ask));
+    let kept = prev.iter().filter(|ask| new.contains(ask));
+    arrived.chain(kept).cloned().collect()
+}
+
+/// The order a renewing row is drawn in: what is new in front, then the old
+/// row as it stood, with what goes still in its place.
 fn parts(from: &[SharedString], to: &[SharedString]) -> Vec<(SharedString, Part)> {
-    let mut sinking = 0;
-    let mut out: Vec<(SharedString, Part)> = from
-        .iter()
-        .map(|was| match to.iter().position(|now| now == was) {
-            Some(n) => (was.clone(), Part::Stays(n)),
-            None => {
-                sinking += 1;
-                (was.clone(), Part::Sinks(sinking - 1))
-            }
-        })
-        .collect();
+    let mut out: Vec<(SharedString, Part)> = Vec::new();
     let mut arriving = 0;
     for (n, now) in to.iter().enumerate() {
         if !from.contains(now) {
             out.push((now.clone(), Part::Arrives(n, arriving)));
             arriving += 1;
+        }
+    }
+    let mut sinking = 0;
+    for was in from {
+        match to.iter().position(|now| now == was) {
+            Some(n) => out.push((was.clone(), Part::Stays(n))),
+            None => {
+                out.push((was.clone(), Part::Sinks(sinking)));
+                sinking += 1;
+            }
         }
     }
     out
@@ -317,6 +330,13 @@ impl Carousel {
         self.release();
         self.renewing.set(Some(Instant::now() + length));
         self.widths.borrow_mut().clear();
+        // The new questions are at the front: slide back to them.
+        let now = f32::from(self.handle.offset().x);
+        self.glide.set((now != 0.).then(|| Glide {
+            from: now,
+            to: 0.,
+            since: Instant::now(),
+        }));
         self.drive(length, window, cx);
     }
 
@@ -1270,12 +1290,12 @@ mod tests {
         assert_eq!(
             drawn,
             [
+                Part::Arrives(1, 0),
+                Part::Arrives(2, 1),
                 Part::Sinks(0),
                 Part::Stays(0),
                 Part::Sinks(1),
                 Part::Sinks(2),
-                Part::Arrives(1, 0),
-                Part::Arrives(2, 1),
             ]
         );
         // Nothing new: only the sinking takes time.
@@ -1290,6 +1310,26 @@ mod tests {
             ARRIVE_AFTER + ARRIVE_STAGGER + SLIDE_AFTER + SLIDE
         );
         assert!(!renewal.over(&to), "it has only just begun");
+    }
+
+    #[test]
+    fn new_questions_go_first_and_the_shown_keep_their_order() {
+        // One new one: in front, the rest as they were shown.
+        assert_eq!(
+            front_first(&["a", "b", "c"], &["a", "b", "c", "x"]),
+            ["x", "a", "b", "c"]
+        );
+        // A shown question that is gone drops out; new ones keep their order.
+        assert_eq!(
+            front_first(&["a", "b", "c"], &["x", "c", "y", "a"]),
+            ["x", "y", "a", "c"]
+        );
+        // The shown order wins over the new list's order for what stays.
+        assert_eq!(front_first(&["a", "b"], &["b", "a"]), ["a", "b"]);
+        // Nothing new: unchanged. Everything replaced: all new, in order.
+        assert_eq!(front_first(&["a", "b"], &["a", "b"]), ["a", "b"]);
+        assert_eq!(front_first(&["a", "b"], &["x", "y"]), ["x", "y"]);
+        assert_eq!(front_first(&[], &["x", "y"]), ["x", "y"]);
     }
 
     #[test]
