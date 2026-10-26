@@ -3866,18 +3866,7 @@ impl DeckView {
                 self.tipping = Task::ready(());
                 return;
             }
-            self.tipping = cx.spawn(async move |view, cx| {
-                cx.background_executor().timer(crate::keys::REST).await;
-                let _ = view.update(cx, |deck, cx| {
-                    // The dock went while the pointer rested on one of its keys.
-                    if key.1 == "dock" && !deck.help.on() {
-                        return;
-                    }
-                    deck.tip = Some(key);
-                    deck.tip_fade.set(true);
-                    cx.notify();
-                });
-            });
+            self.rest_on_key(key, cx);
         } else if self.tip == Some(key) || !self.tip_fade.on() {
             self.tipping = cx.spawn(async move |view, cx| {
                 cx.background_executor().timer(crate::keys::LEAVE).await;
@@ -3887,6 +3876,27 @@ impl DeckView {
                 });
             });
         }
+    }
+
+    /// Starts (or restarts) the rest timer for a key. Replacing the task drops
+    /// the one before it, so each pointer move over the key begins the rest
+    /// again and only a pointer that has stopped lets the card open.
+    fn rest_on_key(&mut self, key: (&'static str, &'static str), cx: &mut Context<Self>) {
+        self.tipping = cx.spawn(async move |view, cx| {
+            cx.background_executor().timer(crate::keys::REST).await;
+            let _ = view.update(cx, |deck, cx| {
+                // The dock went while the pointer rested on one of its keys.
+                if key.1 == "dock" && !deck.help.on() {
+                    return;
+                }
+                if !crate::keys::should_open(crate::keys::REST, deck.tip_fade.on()) {
+                    return;
+                }
+                deck.tip = Some(key);
+                deck.tip_fade.set(true);
+                cx.notify();
+            });
+        });
     }
 
     /// A key the reader can point at: its card comes up over it on a rest.
@@ -3907,6 +3917,13 @@ impl DeckView {
         let sans = cx.theme().font_family.clone();
         body.relative()
             .on_hover(cx.listener(move |deck, over: &bool, _, cx| deck.hover_key(at, *over, cx)))
+            // A pointer still travelling is not resting: every move over the
+            // key starts the rest again, while no card is up.
+            .on_mouse_move(cx.listener(move |deck, _: &MouseMoveEvent, _, cx| {
+                if !deck.tip_fade.on() && !(at.1 == "dock" && !deck.help.on()) {
+                    deck.rest_on_key(at, cx);
+                }
+            }))
             .when(level > 0., |this| {
                 let card = if key == crate::keys::CONFIDENCE {
                     self.group()

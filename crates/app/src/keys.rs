@@ -16,10 +16,15 @@ use gpui_kit::*;
 
 use crate::palette::paint;
 
-/// How long the pointer rests on a key before its card comes up, and how long
-/// the card stays once the pointer has left. The question pills' pace, so the
-/// two kinds of hover in the window behave as one.
-pub(crate) const REST: Duration = Duration::from_millis(150);
+/// How long the pointer must be still on a key, from cold, before its card
+/// comes up: the Hand fall in deck's timing set. The question pills open after
+/// their rest plus a 700ms ease, so a pill is noticeably open about here; a
+/// shorter rest let cards pop up as the pointer crossed the strip on its way
+/// to the pills. Every move over a key restarts it.
+pub(crate) const REST: Duration = Duration::from_millis(420);
+
+/// How long the card stays once the pointer has left, so moving to the next
+/// key hands the card over instead of closing it.
 pub(crate) const LEAVE: Duration = Duration::from_millis(150);
 
 /// How long a key's card takes to come in, and to go. A card is a surface, and
@@ -374,3 +379,32 @@ pub(crate) fn confidence_card(
 // this, and the export button beside it is held to it: a change to the cap
 // that moves this must be answered on purpose.
 const _: () = assert!(CAP_H == 19.);
+
+/// Whether a key's card opens now: the pointer has been still for the full
+/// rest and no card is up. With a card up, the next key's card comes straight
+/// away by the handover instead.
+pub(crate) fn should_open(resting_for: Duration, card_up: bool) -> bool {
+    !card_up && resting_for >= REST
+}
+
+#[cfg(test)]
+mod rest_tests {
+    use super::{REST, should_open};
+    use std::time::Duration;
+
+    #[test]
+    fn a_moving_pointer_does_not_open_a_card() {
+        assert!(!should_open(Duration::from_millis(100), false));
+        assert!(!should_open(REST - Duration::from_millis(1), false));
+    }
+
+    #[test]
+    fn a_resting_pointer_opens_one() {
+        assert!(should_open(REST, false));
+    }
+
+    #[test]
+    fn a_card_already_up_is_not_opened_again() {
+        assert!(!should_open(REST, true));
+    }
+}
