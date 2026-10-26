@@ -257,10 +257,6 @@ pub struct Carousel {
     /// its place in the row, except while the row renews: then questions on
     /// their way out are still drawn among them.
     places: Rc<std::cell::RefCell<Vec<usize>>>,
-    /// How far the two arrows are in, from none at 0 to whole at 1. See
-    /// [`Self::arrows`]. Made on first use, because a [`crate::pane::Fade`]
-    /// has to be given its pace and `Default` cannot.
-    arrows: Rc<Cell<Option<crate::pane::Fade>>>,
     /// Until when a renewal is playing: the row is moving even when the pill
     /// under the pointer has settled.
     renewing: Rc<Cell<Option<Instant>>>,
@@ -305,24 +301,6 @@ fn age(since: Instant) -> f32 {
 }
 
 impl Carousel {
-    /// How far in the arrows are, this frame, given whether the row is wider
-    /// than its window. They fade in over 200ms and out over 160, like the
-    /// other lights on the shelf, and ask for frames while they do. Before,
-    /// they appeared in the frame the row was found to overflow, and the row's
-    /// visible width jumped by two arrows with them.
-    fn arrows(&self, wanted: bool, window: &Window) -> f32 {
-        let mut fade = self.arrows.get().unwrap_or_else(|| {
-            crate::pane::Fade::default()
-                .paced(Duration::from_millis(200), Duration::from_millis(160))
-        });
-        fade.set(wanted);
-        self.arrows.set(Some(fade));
-        if fade.moving() {
-            window.request_animation_frame();
-        }
-        fade.level()
-    }
-
     /// Back to the first question, at once: a new group's row starts there.
     pub fn reset(&self) {
         self.glide.set(None);
@@ -455,28 +433,6 @@ impl Carousel {
                 .get()
                 .is_none_or(|spot| spot.on && settled(spot.since, OPEN))
             && self.light(open.ix).is_none()
-    }
-
-    /// The row's length with every pill shut, from where the pills were last
-    /// laid out.
-    ///
-    /// Not the scroll handle's window plus its overhang: that is the row's
-    /// length only when the row overflows. A row that fits reads as exactly
-    /// as long as its window, and the window is what the arrows' fade
-    /// narrows, so the fit was judged from its own answer and flipped with
-    /// it. A pill's hint is taken off as well, so opening one under the
-    /// pointer cannot tip the row into overflowing either.
-    fn shut_length(&self, hint_w: f32) -> f32 {
-        let places = self.places.borrow();
-        let widths: Vec<(f32, f32)> = places
-            .iter()
-            .enumerate()
-            .map_while(|(ix, drawn)| {
-                let item = self.handle.bounds_for_item(*drawn)?;
-                Some((f32::from(item.size.width), self.openness(ix)))
-            })
-            .collect();
-        shut_length(&widths, hint_w)
     }
 
     /// How open pill `ix` is, from shut at 0 to showing its hint at 1.
@@ -765,49 +721,8 @@ pub fn next_left(lefts: &[f32], at: f32, max: f32, by: isize) -> f32 {
         .clamp(0., max.max(0.))
 }
 
-/// The size a question is set in, in a pill.
-const PILL_TEXT: f32 = 13.;
-
 /// How wide an arrow is.
 const ARROW: f32 = 36.;
-
-/// Where the row is along its length: whether it goes beyond its window at
-/// all, and if so whether it is at either end.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-struct Reach {
-    overflows: bool,
-    at_start: bool,
-    at_end: bool,
-}
-
-impl Reach {
-    /// `content` is the row's whole length, `wide` the width the row is drawn
-    /// across and `at` how far along it is, from 0.
-    ///
-    /// Whether it overflows is judged against the window it would have *with*
-    /// the arrows. Judged against the one it has now, taking the arrows away
-    /// would widen the window until the row fitted, bring them back, and the
-    /// row would flicker between the two.
-    fn of(content: f32, wide: f32, at: f32) -> Self {
-        let window = wide - 2. * (ARROW + GAP);
-        let overflows = content > window + 1.;
-        Self {
-            overflows,
-            at_start: at <= 1.,
-            at_end: content - window - at <= 1.,
-        }
-    }
-}
-
-/// The length of a row of pills set `GAP` apart, given each one's laid-out
-/// width and how open it is, with the hint of every open pill taken off.
-fn shut_length(pills: &[(f32, f32)], hint_w: f32) -> f32 {
-    let widths: f32 = pills
-        .iter()
-        .map(|(wide, open)| (wide - hint_w * open).max(0.))
-        .sum();
-    widths + GAP * pills.len().saturating_sub(1) as f32
-}
 
 /// The row, as an element, `wide` across. `corner` is the window's own
 /// radius, which every pill and both arrows share, so they read as made of
@@ -846,9 +761,6 @@ pub fn render(
     let spotlight = carousel.spotlight();
     // The hint is quieter than the question it sits beside.
     let tertiary = palette.muted.mix(palette.band, 0.15);
-    // The size the questions are set in: the arrows' glyphs match it, so
-    // they read as the same hand as the pills beside them.
-    let text = px(PILL_TEXT);
     let surface = |id: ElementId, live: bool| {
         div()
             .id(id)
@@ -866,27 +778,19 @@ pub fn render(
                     .hover(|style| style.bg(paint(palette.wash)))
             })
     };
-    // An arrow with nowhere to go is drawn quiet, takes no pointer and does
-    // nothing, rather than answering a press with no movement.
-    let arrow = |id: &'static str, glyph: &'static str, by: isize, live: bool| {
+    // Both arrows, always there and always live, as in v0.1.6: the row keeps
+    // one shape whether its questions fill it or not, and an arrow at the end
+    // of the row simply has nowhere further to slide.
+    let arrow = |id: &'static str, glyph: &'static str, by: isize| {
         let carousel = carousel.clone();
-        surface(ElementId::from(id), live)
+        surface(ElementId::from(id), true)
             .w(px(ARROW))
             .justify_center()
-            .text_size(text)
-            .when(live, |this| {
-                this.on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-                    .on_click(move |_, window, cx| carousel.slide(by, window, cx))
-            })
+            .text_size(px(15.))
+            .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+            .on_click(move |_, window, cx| carousel.slide(by, window, cx))
             .child(glyph)
     };
-    // Where the row is along its length, to tell which arrows have anywhere
-    // to go. Read from where it was last laid out, one frame behind at most.
-    let reach = Reach::of(
-        carousel.shut_length(hint_w),
-        wide,
-        -f32::from(carousel.handle.offset().x),
-    );
     let mut made: Vec<Option<Stateful<Div>>> = row
         .asks
         .iter()
@@ -1154,42 +1058,11 @@ pub fn render(
                 .collect()
         }
     };
-    // Each arrow gets a slot that grows and fades with the light, holding the
-    // arrow and the gap beside it, so the row's window narrows smoothly as the
-    // arrows come in rather than by two arrows at once. Whether the row
-    // overflows is judged from the row's length and the width it is drawn
-    // across, never from this window, so animating it cannot feed back into
-    // the judgement and flicker.
-    let shown = carousel.arrows(reach.overflows, window);
-    let slot = move |arrow: Stateful<Div>, first: bool| {
-        let gap = div().flex_none().w(px(GAP));
-        let held = div()
-            .flex_none()
-            .h_flex()
-            .overflow_hidden()
-            .w(px((ARROW + GAP) * shown))
-            .opacity(shown);
-        if first {
-            held.child(arrow.flex_none()).child(gap)
-        } else {
-            held.child(gap).child(arrow.flex_none())
-        }
-    };
-    let slotted = reach.overflows || shown > 0.;
     div()
         .w(px(wide))
         .h_flex()
-        .when(slotted, |this| {
-            this.child(slot(
-                arrow(
-                    "ask-back",
-                    "\u{2039}",
-                    -1,
-                    reach.overflows && !reach.at_start,
-                ),
-                true,
-            ))
-        })
+        .gap(px(GAP))
+        .child(arrow("ask-back", "\u{2039}", -1))
         .child(
             div()
                 .id("asks")
@@ -1202,12 +1075,7 @@ pub fn render(
                 .gap(px(GAP))
                 .children(pills),
         )
-        .when(slotted, |this| {
-            this.child(slot(
-                arrow("ask-on", "\u{203a}", 1, reach.overflows && !reach.at_end),
-                false,
-            ))
-        })
+        .child(arrow("ask-on", "\u{203a}", 1))
 }
 
 /// How far the questions hang below the deck.
@@ -1342,72 +1210,10 @@ pub fn open_shelf(deck_window: WindowHandle<Root>, cx: &mut App) {
 
 #[cfg(test)]
 mod tests {
-    #[test]
-    fn reach_tells_fits_ends_and_the_middle() {
-        let wide = 500.;
-        let window = wide - 2. * (ARROW + GAP);
-        // Fits: exactly the window, and a pixel over, which is tolerated.
-        assert!(!Reach::of(window, wide, 0.).overflows);
-        assert!(!Reach::of(window + 1., wide, 0.).overflows);
-        // A hair past the tolerance overflows.
-        assert!(Reach::of(window + 1.5, wide, 0.).overflows);
-        let content = window + 100.;
-        // At the start, with one pixel of slack either way.
-        assert!(Reach::of(content, wide, 0.).at_start);
-        assert!(Reach::of(content, wide, 1.).at_start);
-        assert!(!Reach::of(content, wide, 1.5).at_start);
-        // In the middle: neither end.
-        let middle = Reach::of(content, wide, 50.);
-        assert!(middle.overflows && !middle.at_start && !middle.at_end);
-        // At the end, likewise.
-        assert!(Reach::of(content, wide, 100.).at_end);
-        assert!(Reach::of(content, wide, 99.).at_end);
-        assert!(!Reach::of(content, wide, 98.5).at_end);
-    }
-
     // Spelled out: the gpui glob above exports a `test` attribute of its own.
     use core::prelude::v1::test;
 
     use super::*;
-
-    #[test]
-    fn opening_a_pill_never_tips_a_row_that_fits_into_overflowing() {
-        let wide = 1000.;
-        let hint = 120.;
-        // Three pills with slack: 3 x 200 and two gaps, against a window of
-        // wide - 2 * (ARROW + GAP) = 912.
-        let shut = [(200., 0.), (200., 0.), (200., 0.)];
-        let base = shut_length(&shut, hint);
-        assert_eq!(base, 600. + 2. * GAP);
-        assert!(!Reach::of(base, wide, 0.).overflows);
-        // Any pill, at any point of opening, laid out wider by its hint's
-        // share: the shut length, and so the verdict, does not move.
-        for ix in 0..3 {
-            for open in [0.1, 0.5, 1.] {
-                let mut live = shut;
-                live[ix] = (200. + hint * open, open);
-                assert_eq!(shut_length(&live, hint), base);
-                assert_eq!(
-                    Reach::of(shut_length(&live, hint), wide, 0.),
-                    Reach::of(base, wide, 0.)
-                );
-            }
-        }
-    }
-
-    #[test]
-    fn a_row_that_fits_is_judged_the_same_with_or_without_the_arrows() {
-        // The window narrows as the arrows fade in; the length judged does
-        // not, because it is the pills' own, not the window's.
-        let pills = [(150., 0.), (260., 0.)];
-        let length = shut_length(&pills, 100.);
-        for wide in [1000., 1000. - 88., 1000. - 44.] {
-            assert!(!Reach::of(length, wide, 0.).overflows);
-        }
-        // And a row that does not fit stays so while a pill opens.
-        let long = [(500., 0.), (500., 0.)];
-        assert!(Reach::of(shut_length(&long, 100.), 1000., 0.).overflows);
-    }
 
     #[test]
     fn the_light_crosses_once_and_leaves_nothing_lit() {
