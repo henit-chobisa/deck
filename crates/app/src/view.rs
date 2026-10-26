@@ -3288,7 +3288,7 @@ impl DeckView {
                                         .border_1()
                                         .border_color(paint(palette.edge))
                                         .text_color(paint(palette.fg))
-                                        .hover(|style| style.bg(paint(hover_on_band(palette))))
+                                        .hover(|style| style.bg(paint(palette.wash)))
                                         .child("Keep writing")
                                         .child(
                                             div()
@@ -3337,8 +3337,7 @@ impl DeckView {
                                 .text_size(px(13.))
                                 .text_color(paint(palette.muted))
                                 .hover(|this| {
-                                    this.bg(paint(hover_on_band(palette)))
-                                        .text_color(paint(palette.fg))
+                                    this.bg(paint(palette.wash)).text_color(paint(palette.fg))
                                 })
                                 .on_click(
                                     cx.listener(|deck, _, window, cx| deck.understood(window, cx)),
@@ -3385,7 +3384,7 @@ impl DeckView {
                     this.border_1()
                         .border_color(paint(palette.edge))
                         .text_color(paint(palette.fg))
-                        .hover(|style| style.bg(paint(hover_on_band(palette))))
+                        .hover(|style| style.bg(paint(palette.wash)))
                 })
                 .child(label)
                 .child(
@@ -3502,8 +3501,7 @@ impl DeckView {
                                 .text_size(px(13.))
                                 .text_color(paint(palette.muted))
                                 .hover(|this| {
-                                    this.bg(paint(hover_on_band(palette)))
-                                        .text_color(paint(palette.fg))
+                                    this.bg(paint(palette.wash)).text_color(paint(palette.fg))
                                 })
                                 .on_click(cx.listener(|deck, _, window, cx| deck.stay(window, cx)))
                                 .child("×"),
@@ -3669,8 +3667,7 @@ impl DeckView {
                                 .text_size(px(13.))
                                 .text_color(paint(palette.muted))
                                 .hover(|this| {
-                                    this.bg(paint(hover_on_band(palette)))
-                                        .text_color(paint(palette.fg))
+                                    this.bg(paint(palette.wash)).text_color(paint(palette.fg))
                                 })
                                 .on_click(cx.listener(|deck, _, window, cx| {
                                     deck.hide_notes(window, cx);
@@ -5225,7 +5222,7 @@ impl DeckView {
                 .border_color(paint(if lit { palette.accent } else { palette.edge }))
                 .text_color(paint(if lit { palette.accent } else { palette.fg }))
                 .cursor_pointer()
-                .hover(|style| style.bg(paint(hover_on_band(&palette))))
+                .hover(|style| style.bg(paint(palette.wash)))
                 .child(label)
         };
         let answer = |share: bool| {
@@ -7585,7 +7582,7 @@ impl DeckView {
                     this.border_1()
                         .border_color(paint(palette.edge))
                         .text_color(paint(palette.fg))
-                        .hover(|style| style.bg(paint(hover_on_band(palette))))
+                        .hover(|style| style.bg(paint(palette.wash)))
                 })
                 .child(label)
                 .when(roomy, |this| {
@@ -7638,7 +7635,7 @@ impl DeckView {
                     .text_size(px(10.5))
                     .text_color(paint(palette.muted))
                     .cursor_pointer()
-                    .hover(|style| style.bg(paint(hover_on_band(palette))))
+                    .hover(|style| style.bg(paint(palette.wash)))
                     .tooltip(|_window, cx| {
                         cx.new(|_| {
                             gpui_kit::component::tooltip::Tooltip::new("Your agent isn't listening")
@@ -8049,7 +8046,7 @@ impl DeckView {
                 .rounded(px(5.))
                 .cursor_pointer()
                 .text_color(paint(palette.fg))
-                .hover(|style| style.bg(paint(hover_on_band(palette))))
+                .hover(|style| style.bg(paint(palette.wash)))
                 .tooltip(move |_window, cx| {
                     cx.new(|_| gpui_kit::component::tooltip::Tooltip::new(tip))
                         .into()
@@ -8702,9 +8699,7 @@ impl DeckView {
                                                 .border_color(paint(palette.edge))
                                                 .text_size(px(12.))
                                                 .text_color(paint(palette.muted))
-                                                .hover(|style| {
-                                                    style.bg(paint(hover_on_band(palette)))
-                                                })
+                                                .hover(|style| style.bg(paint(palette.wash)))
                                                 .on_click(cx.listener(|deck, _, window, cx| {
                                                     // Even with a comment
                                                     // being written: the
@@ -9058,7 +9053,7 @@ impl DeckView {
                 .cursor_pointer()
                 .text_size(px(11.))
                 .text_color(paint(palette.muted))
-                .hover(|style| style.bg(paint(hover_on_band(palette))))
+                .hover(|style| style.bg(paint(palette.wash)))
                 .on_click(cx.listener(|deck, _, window, cx| {
                     deck.on_comment(&Comment, window, cx);
                 }))
