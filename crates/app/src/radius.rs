@@ -16,14 +16,15 @@
 pub const WINDOW: f32 = if cfg!(target_os = "windows") { 8. } else { 14. };
 
 /// Cards: sheets, popovers, dock cards, key cards, the export sheet, the help
-/// dock, and the question pills with their arrows. On Windows this is the
-/// same 8 as the window, which is fine.
-pub const CARD: f32 = 8.;
+/// dock, and the question pills with their arrows. On Windows, where the
+/// window itself is 8, the whole scale steps down one so nothing inside the
+/// window is rounder than the window.
+pub const CARD: f32 = if cfg!(target_os = "windows") { 8. } else { 10. };
 
 /// Controls: buttons, review rows, chips and other small interactive
 /// surfaces.
-pub const CONTROL: f32 = 6.;
+pub const CONTROL: f32 = if cfg!(target_os = "windows") { 6. } else { 7. };
 
 /// Caps: key caps and other tiny inline marks, such as inline code chips and
 /// keycap-like tags.
-pub const CAP: f32 = 4.;
+pub const CAP: f32 = if cfg!(target_os = "windows") { 4. } else { 5. };
