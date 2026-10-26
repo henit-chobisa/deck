@@ -5180,7 +5180,7 @@ impl DeckView {
                     let to: Vec<SharedString> =
                         shown.iter().cloned().map(SharedString::from).collect();
                     let left = renewal.length(&to).saturating_sub(renewal.since.elapsed());
-                    let arrived = shown.iter().any(|a| !renewal.from.contains(a));
+                    let arrived = to.iter().any(|a| !renewal.from.contains(a));
                     if !left.is_zero() {
                         self.asks_carousel.renew(left, arrived, window, cx);
                     }
