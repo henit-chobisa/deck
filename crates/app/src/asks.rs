@@ -302,6 +302,14 @@ struct Opening {
     span: Duration,
 }
 
+/// How much of a pill's hint shows when it is `open` open. It fades in behind
+/// the widening, so it arrives in room already made for it, and goes ahead of
+/// the narrowing, so it is never squeezed. One mapping for both directions,
+/// and no steeper than the widening needs, so it never steps.
+fn said_at(open: f32) -> f32 {
+    ((open - 0.2) / 0.8).clamp(0., 1.)
+}
+
 /// Which pill is open or opening, and every pill closing behind it.
 ///
 /// A pill's openness is a pure function of its own `Opening` and the time, so
@@ -625,16 +633,9 @@ impl Carousel {
         (t < 1.).then_some(t)
     }
 
-    /// How much of pill `ix`'s hint shows. It fades in behind the widening,
-    /// as the bar's words do, so it arrives in room already made for it; and
-    /// goes ahead of the narrowing, so it is never squeezed.
+    /// How much of pill `ix`'s hint shows: `said_at` of how open it is.
     fn said(&self, ix: usize) -> f32 {
-        let open = self.openness(ix);
-        if self.open().is_some_and(|open| open.ix == ix) {
-            ((open - 0.3) / 0.7).clamp(0., 1.).powf(0.7)
-        } else {
-            ((open - 0.5) / 0.5).clamp(0., 1.)
-        }
+        said_at(self.openness(ix))
     }
 
     /// How strongly the row is given over to one pill, from none at 0 to
@@ -1304,12 +1305,24 @@ mod tests {
 
     use super::*;
 
+    fn said_pairs(before: &[f32; 4], after: &[f32; 4]) -> Vec<(f32, f32)> {
+        before
+            .iter()
+            .zip(after)
+            .map(|(b, a)| (said_at(*b), said_at(*a)))
+            .collect()
+    }
+
     fn ms(base: Instant, n: u64) -> Instant {
         base + Duration::from_millis(n)
     }
 
     fn all(pills: &Pills, now: Instant) -> [f32; 4] {
         [0, 1, 2, 3].map(|ix| pills.openness(ix, now))
+    }
+
+    fn said(pills: &Pills, now: Instant) -> [f32; 4] {
+        all(pills, now).map(said_at)
     }
 
     #[test]
@@ -1330,6 +1343,9 @@ mod tests {
                     }
                 }
                 let after = all(&pills, now);
+                for (b, a) in said_pairs(&before, &after) {
+                    assert!((b - a).abs() < 1e-4, "said jumped {b} -> {a}");
+                }
                 for ix in 0..4 {
                     assert!(
                         (before[ix] - after[ix]).abs() < 1e-4,
@@ -1361,6 +1377,7 @@ mod tests {
         for leaving in [false, true] {
             let mut pills = Pills::default();
             let mut last = [0.; 4];
+            let mut last_said = [0.; 4];
             let mut hop = 0;
             for step in 0..400_u64 {
                 let at = step * 8;
@@ -1381,7 +1398,17 @@ mod tests {
                         here[ix]
                     );
                 }
+                let spoken = said(&pills, now);
+                for ix in 0..4 {
+                    assert!(
+                        (spoken[ix] - last_said[ix]).abs() <= 0.02,
+                        "said {ix} jumped {} -> {} at {at}ms",
+                        last_said[ix],
+                        spoken[ix]
+                    );
+                }
                 last = here;
+                last_said = spoken;
             }
         }
     }
