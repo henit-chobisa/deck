@@ -43,7 +43,7 @@ body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset
 .ctas{display:flex;gap:10px;flex-wrap:wrap;justify-content:center;margin-top:30px}
 .fine{margin-top:14px;font-size:13px;color:var(--dim);transition:color var(--turn) var(--ease)}
 .hand{font:600 clamp(18px,1.8vw,25px)/1.05 var(--hand);color:var(--accent-ink);letter-spacing:.01em;transition:color var(--turn) var(--ease)}
-.ink{fill:none;stroke:var(--accent);stroke-width:2.6;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:1;stroke-dashoffset:1;vector-effect:non-scaling-stroke}
+.ink{fill:none;stroke:var(--accent);stroke-width:2.6;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:1 1.01;stroke-dashoffset:1.005;vector-effect:non-scaling-stroke}
 @keyframes draw{to{stroke-dashoffset:0}}
 @keyframes land{from{opacity:0;transform:translateY(6px) rotate(var(--r,0deg))}to{opacity:1;transform:rotate(var(--r,0deg))}}
 
@@ -234,7 +234,7 @@ body{overflow-x:clip}
 .coda i{font-style:normal;color:var(--text)}
 .coda::before{content:"";position:absolute;left:50%;top:50%;width:min(760px,90%);height:220%;transform:translate(-50%,-50%);background:radial-gradient(closest-side,#070707 60%,#070707cc 78%,transparent);z-index:-1}
 .strike{position:absolute;left:-4%;top:46%;width:108%;height:.34em;overflow:visible;pointer-events:none}
-.strike path{fill:none;stroke:var(--accent);stroke-width:1.6;stroke-linecap:round;stroke-dasharray:1 1;stroke-dashoffset:1;opacity:0;transition:stroke-dashoffset 760ms var(--ease),opacity 150ms var(--ease)}
+.strike path{fill:none;stroke:var(--accent);stroke-width:1.6;stroke-linecap:round;stroke-dasharray:1 1.01;stroke-dashoffset:1.005;opacity:0;transition:stroke-dashoffset 760ms var(--ease),opacity 150ms var(--ease)}
 .struck .strike path{stroke-dashoffset:0;opacity:1}
 .vsay .w.hi{position:relative}
 .vsay .w.hi.on.struck{color:#6b4a33}
@@ -265,7 +265,7 @@ body{overflow-x:clip}
 #x3 .x3lede{margin:14px 0 0;font-size:18px;line-height:1.5;color:var(--soft)}
 
 /* pen: the same hand as the rest of the page */
-#x3 .pn3{fill:none;stroke:var(--accent);stroke-width:2;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:1 1;stroke-dashoffset:1}
+#x3 .pn3{fill:none;stroke:var(--accent);stroke-width:2;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:1 1.01;stroke-dashoffset:1.005}
 #x3 .pn3.go{transition:stroke-dashoffset 420ms var(--ease);stroke-dashoffset:0}
 #x3 .pn3:not(.go){opacity:0}
 #x3 .qv .pn3{stroke-width:1.9}
@@ -515,7 +515,7 @@ body{overflow-x:clip}
 #x3 .st>.x3inkl{grid-column:auto!important;grid-row:auto!important}
 #x3 .x3inkl{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;overflow:visible;z-index:6}
 @media (max-width:980px){#x3 .x3inkl{display:none}}
-#x3 .x3inkl path{fill:none;stroke:#fe8019;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:1 1;stroke-dashoffset:1;filter:drop-shadow(0 0 6px #fe801955)}
+#x3 .x3inkl path{fill:none;stroke:#fe8019;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:1 1.01;stroke-dashoffset:1.005;filter:drop-shadow(0 0 6px #fe801955)}
 #x3 .x3inkl path.halo{stroke:#070707;stroke-width:7;opacity:.75;filter:none}
 #x3 .x3inkl path.go{transition:stroke-dashoffset 420ms cubic-bezier(.45,0,.55,1);stroke-dashoffset:0}
 
@@ -528,7 +528,7 @@ body{overflow-x:clip}
 }
 #x3 h2 .x3u{position:relative;white-space:nowrap}
 #x3 h2 .x3u svg{position:absolute;left:-2%;bottom:-.16em;width:104%;height:.3em;overflow:visible}
-#x3 h2 .x3u path{fill:none;stroke:var(--accent);stroke-width:3.2;stroke-linecap:round;stroke-dasharray:1 1;stroke-dashoffset:1;transition:stroke-dashoffset 760ms var(--ease) 300ms}
+#x3 h2 .x3u path{fill:none;stroke:var(--accent);stroke-width:3.2;stroke-linecap:round;stroke-dasharray:1 1.01;stroke-dashoffset:1.005;transition:stroke-dashoffset 760ms var(--ease) 300ms}
 #x3.up h2 .x3u path{stroke-dashoffset:0}
 
 /* option B: pinned sections step on a fixed px budget (not vh), one stop per step, keys land on every step.
@@ -558,7 +558,7 @@ body{overflow-x:clip}
 #x4 .x4lede kbd{font:12.5px var(--mono);border:1px solid #3a3a37;border-radius:5px;padding:0 5px;color:var(--text)}
 
 /* pen */
-#x4 .x4pn{fill:none;stroke:var(--accent);stroke-width:2;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:1 1;stroke-dashoffset:1}
+#x4 .x4pn{fill:none;stroke:var(--accent);stroke-width:2;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:1 1.01;stroke-dashoffset:1.005}
 #x4 .x4pn:not(.go){opacity:0}
 #x4 .x4pn.go{transition:stroke-dashoffset 420ms var(--ease);stroke-dashoffset:0}
 #x4 h2 .x4pn{stroke-width:3.2}
@@ -706,7 +706,7 @@ body{overflow-x:clip}
 
 /* the narration names something: the pen loops it in the window, with an arrow from the word (as section 3) */
 #x4 .x4inkl{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;overflow:visible;z-index:6}
-#x4 .x4inkl path{fill:none;stroke:#fe8019;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:1 1;stroke-dashoffset:1;filter:drop-shadow(0 0 6px #fe801955)}
+#x4 .x4inkl path{fill:none;stroke:#fe8019;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:1 1.01;stroke-dashoffset:1.005;filter:drop-shadow(0 0 6px #fe801955)}
 #x4 .x4inkl path.halo{stroke:#070707;stroke-width:7;opacity:.75;filter:none}
 #x4 .x4inkl path.go{transition:stroke-dashoffset 420ms var(--ease);stroke-dashoffset:0}
 
@@ -778,7 +778,7 @@ body{overflow-x:clip}
 #x5 h2 .x5u{position:relative;white-space:nowrap}
 #x5 h2 .x5u svg{position:absolute;left:-2%;bottom:-.16em;width:104%;height:.3em;overflow:visible}
 #x5 .x5lede{margin:0;justify-self:end;max-width:52ch;font-size:15px;line-height:1.5;color:var(--soft);padding-left:14px;border-left:2px solid var(--accent);text-wrap:pretty}
-#x5 .x5pn{fill:none;stroke:var(--accent);stroke-width:3.2;stroke-linecap:round;stroke-dasharray:1 1;stroke-dashoffset:1;opacity:0}
+#x5 .x5pn{fill:none;stroke:var(--accent);stroke-width:3.2;stroke-linecap:round;stroke-dasharray:1 1.01;stroke-dashoffset:1.005;opacity:0}
 #x5 .x5pn.go{opacity:1;stroke-dashoffset:0;transition:stroke-dashoffset 760ms var(--ease)}
 
 /* the window */
@@ -919,7 +919,7 @@ body{overflow-x:clip}
 
 /* the pen: one loop, one arc arrow from the orange phrase, on a dark halo */
 #x5 .x5ink{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;overflow:visible;z-index:6}
-#x5 .x5ink path{fill:none;stroke:#fe8019;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:1 1;stroke-dashoffset:1;filter:drop-shadow(0 0 6px #fe801955)}
+#x5 .x5ink path{fill:none;stroke:#fe8019;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:1 1.01;stroke-dashoffset:1.005;filter:drop-shadow(0 0 6px #fe801955)}
 #x5 .x5ink path.halo{stroke:#070707;stroke-width:7;opacity:.75;filter:none}
 #x5 .x5ink path.go{transition:stroke-dashoffset 420ms var(--ease);stroke-dashoffset:0}
 
@@ -992,7 +992,7 @@ body{overflow-x:clip}
 #x6 h2 .x6u{position:relative;white-space:nowrap}
 #x6 h2 .x6u svg{position:absolute;left:-2%;bottom:-.16em;width:104%;height:.3em;overflow:visible}
 #x6 .x6lede{margin:0;justify-self:end;max-width:52ch;font-size:15px;line-height:1.5;color:var(--soft);padding-left:14px;border-left:2px solid var(--accent);text-wrap:pretty}
-#x6 .x6pn{fill:none;stroke:var(--accent);stroke-width:3.2;stroke-linecap:round;stroke-dasharray:1 1;stroke-dashoffset:1;opacity:0}
+#x6 .x6pn{fill:none;stroke:var(--accent);stroke-width:3.2;stroke-linecap:round;stroke-dasharray:1 1.01;stroke-dashoffset:1.005;opacity:0}
 #x6 .x6pn.go{opacity:1;stroke-dashoffset:0;transition:stroke-dashoffset 760ms var(--ease)}
 
 /* the tour: tabs on the left, the deck on the right */
@@ -1052,7 +1052,7 @@ body{overflow-x:clip}
 #x6 .x6tg{position:relative}
 #x6 .x6tg.inl{display:inline-block}
 #x6 .x6lp{position:absolute;inset:-8px -11px;width:calc(100% + 22px);height:calc(100% + 16px);pointer-events:none;overflow:visible}
-#x6 .x6lp path{fill:none;stroke:var(--accent);stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:1 1;stroke-dashoffset:1;filter:drop-shadow(0 0 6px #fe801955)}
+#x6 .x6lp path{fill:none;stroke:var(--accent);stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:1 1.01;stroke-dashoffset:1.005;filter:drop-shadow(0 0 6px #fe801955)}
 #x6 .x6pan.on .x6lp path{stroke-dashoffset:0;transition:stroke-dashoffset 760ms var(--ease) 1180ms}
 /* 1 · proof: the code, a flow the agent drew, a page that plays it */
 #x6 .x6b3{grid-template-columns:minmax(0,1.15fr) minmax(0,1fr)}
@@ -1122,7 +1122,7 @@ body{overflow-x:clip}
 #x6 .x6trail{padding:8px 16px 12px;border-top:1px solid #eee8d5;font:12.5px/1.45 var(--sans);color:#586e75}
 #x6 .x6trail small{display:block;font:10.5px var(--mono);letter-spacing:.06em;text-transform:uppercase;color:#93a1a1;margin-bottom:6px}
 #x6 .x6trail div{margin-bottom:6px}#x6 .x6trail span{display:block;font:11px var(--mono);color:#93a1a1}
-#x6 .x6fig .x6pen{fill:none;stroke:var(--accent);stroke-width:2.2;stroke-linecap:round;stroke-dasharray:1 1;stroke-dashoffset:1;filter:drop-shadow(0 0 6px #fe801955)}
+#x6 .x6fig .x6pen{fill:none;stroke:var(--accent);stroke-width:2.2;stroke-linecap:round;stroke-dasharray:1 1.01;stroke-dashoffset:1.005;filter:drop-shadow(0 0 6px #fe801955)}
 #x6 .x6pan.on .x6fig .x6pen{stroke-dashoffset:0;transition:stroke-dashoffset 760ms var(--ease) 1180ms}
 #x6 .x6b1{grid-template-columns:minmax(0,1fr)}
 #x6 .x6kv{margin-left:4ch;width:max-content;max-width:calc(100% - 4ch)}
@@ -1193,7 +1193,7 @@ body{overflow-x:clip}
 #x7 h2{margin:0;font:500 clamp(28px,2.8vw,40px)/1.04 var(--display);letter-spacing:-.04em;color:var(--text);white-space:nowrap}
 #x7 h2 .x7u{position:relative;white-space:nowrap}
 #x7 h2 .x7u svg{position:absolute;left:-2%;bottom:-.16em;width:104%;height:.3em;overflow:visible}
-#x7 .x7pn{fill:none;stroke:var(--accent);stroke-width:3.2;stroke-linecap:round;stroke-dasharray:1 1;stroke-dashoffset:1;opacity:0}
+#x7 .x7pn{fill:none;stroke:var(--accent);stroke-width:3.2;stroke-linecap:round;stroke-dasharray:1 1.01;stroke-dashoffset:1.005;opacity:0}
 #x7 .x7pn.go{opacity:1;stroke-dashoffset:0;transition:stroke-dashoffset 760ms var(--ease)}
 #x7 .x7lede{margin:0;justify-self:end;max-width:52ch;font-size:15px;line-height:1.5;color:var(--soft);padding-left:14px;border-left:2px solid var(--accent);text-wrap:pretty}
 #x7 code{font:500 .92em var(--mono);color:var(--text)}
@@ -1341,7 +1341,7 @@ body{overflow-x:clip}
 #x7 .x7paper a{color:#1d1b18;border:0;text-decoration:none;background:url("data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 100 6%27 preserveAspectRatio=%27none%27%3E%3Cpath d=%27M1 4C25 2 55 5 99 2%27 fill=%27none%27 stroke=%27%23e8700c%27 stroke-width=%271.6%27 stroke-linecap=%27round%27 vector-effect=%27non-scaling-stroke%27/%3E%3C/svg%3E") 0 100%/100% 6px no-repeat;padding-bottom:3px}
 #x7 .x7paper .x7ft{margin-top:10px}
 #x7 .x7paper .sig{display:block;width:118px;height:46px;overflow:visible}
-#x7 .x7paper .sig path{fill:none;stroke:#e8700c;stroke-width:2.6;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:1 1;stroke-dashoffset:1}
+#x7 .x7paper .sig path{fill:none;stroke:#e8700c;stroke-width:2.6;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:1 1.01;stroke-dashoffset:1.005}
 #x7 .x7paper .sig.go path{stroke-dashoffset:0;transition:stroke-dashoffset 900ms var(--ease)}
 #x7 .x7paper .sig.go path:nth-child(1){transition-duration:260ms}
 #x7 .x7paper .sig.go path:nth-child(2){transition-delay:240ms;transition-duration:220ms}
