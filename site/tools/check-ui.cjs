@@ -1,26 +1,17 @@
 const assert = require('node:assert/strict')
 const { spawn } = require('node:child_process')
 const { resolve } = require('node:path')
-const { readFileSync } = require('node:fs')
 const { chromium, webkit } = require('playwright')
 
 const base = 'http://127.0.0.1:8765'
 const server = spawn('python3', ['-m', 'http.server', '8765', '--bind', '127.0.0.1', '--directory', resolve(__dirname, '..')], { stdio: 'ignore' })
 const pause = (ms) => new Promise((r) => setTimeout(r, ms))
+const GH = 'https://github.com/henit-chobisa/deck'
 
-function checkFrames() {
-  for (const tier of ['l', 'h']) for (let i = 0; i < 360; i++) {
-    const path = resolve(__dirname, '../frames/retina', tier, String(i).padStart(3, '0') + '.webp')
-    const data = readFileSync(path)
-    assert.equal(data.toString('ascii', 12, 16), 'VP8L', `${path}: export must be lossless WebP`)
-    const bits = data.readUInt32LE(21)
-    const width = (bits & 0x3fff) + 1, height = ((bits >>> 14) & 0x3fff) + 1
-    const nativeWidth = i < 138 ? 2374 : 2326, nativeHeight = i < 138 ? 1896 : 1906
-    assert.equal(width, tier === 'h' ? nativeWidth : 1200, `${path}: source pixels must not be downscaled`)
-    assert.equal(height, tier === 'h' ? nativeHeight : Math.round(nativeHeight * 1200 / nativeWidth))
-  }
-  console.log('PASS 720 lossless frames at their expected resolutions')
-}
+// The page sets scroll-behavior: smooth; a test jump must not animate.
+const jump = (page, y) => page.evaluate((y) => window.scrollTo({ top: y, behavior: 'instant' }), y)
+const topOf = (page, sel) => page.locator(sel).evaluate((el) => Math.round(el.getBoundingClientRect().top + scrollY))
+const now = (page, dots) => page.evaluate((dots) => [...document.querySelectorAll(dots + ' i')].findIndex((d) => d.classList.contains('now')), dots)
 
 async function fits(page, label) {
   const size = await page.evaluate(() => ({ width: innerWidth, content: document.documentElement.scrollWidth }))
@@ -29,107 +20,163 @@ async function fits(page, label) {
   assert(nav.height <= 70 && nav.width <= size.width, `${label}: navigation wraps or overflows`)
 }
 
-async function readingFlow(page) {
-  for (const [id, n] of [['without', 4], ['agent', 6], ['window', 6]]) {
-    const scene = page.locator('#' + id)
-    assert(await scene.evaluate((el) => el.offsetHeight < 1000), `${id}: excessive scroll runway`)
-    for (let i = 0; i < n; i++) {
-      assert.equal(await scene.locator('output').textContent(), `${i + 1} of ${n}`, `${id}: selected step`)
-      if (id !== 'agent') assert.equal(await scene.locator('h2 .on').getAttribute('data-at'), String(i))
-      if (id === 'window') {
-        const image = await scene.locator('.scene-position a').getAttribute('href')
-        assert((await page.request.get(base + '/' + image)).ok(), 'Full-size recording frame must exist')
-      } else {
-        assert.equal(await scene.locator('.term-body').evaluate((el) => getComputedStyle(el).overflowY), 'auto', 'Long terminal answers must remain touch-scrollable')
-      }
-      if (i < n - 1) await scene.getByRole('button', { name: 'Next', exact: true }).click()
+// Every section, at rest, fits the width: scroll the whole page and look.
+async function fitsAll(page, label) {
+  const height = await page.evaluate(() => document.documentElement.scrollHeight)
+  const step = await page.evaluate(() => Math.round(innerHeight * 0.7))
+  for (let y = 0; y < height; y += step) {
+    await jump(page, y)
+    await page.waitForTimeout(60)
+  }
+  await page.waitForTimeout(900)
+  await fits(page, label + ' after scrolling')
+}
+
+async function links(page) {
+  const nav = await page.locator('.nav a').evaluateAll((as) => as.map((a) => [a.textContent.trim() || a.getAttribute('aria-label'), a.getAttribute('href')]))
+  assert.deepEqual(nav, [['deck', '#top'], ['Docs', '/docs/'], ['Changelog', '/changelog/'], ['deck on GitHub', GH], ['Install', '#install']])
+  assert.deepEqual(await page.locator('.hero .ctas a').evaluateAll((as) => as.map((a) => a.getAttribute('href'))), ['#install', GH])
+  assert.deepEqual(await page.locator('.x7btns a').evaluateAll((as) => as.map((a) => a.getAttribute('href'))), ['#install', GH])
+  const foot = await page.locator('.x7cols a').evaluateAll((as) => as.map((a) => a.getAttribute('href')))
+  assert.deepEqual(foot, ['#install', '/docs/', '/changelog/', GH + '/releases', '/telemetry/', GH, GH + '/blob/main/LICENSE', GH + '/blob/main/README.md', 'https://henit.blog', '#note'])
+  // every in-page link has its target, and every local page answers
+  for (const href of await page.locator('a[href]').evaluateAll((as) => as.map((a) => a.getAttribute('href')))) {
+    if (href.startsWith('#')) assert.equal(await page.locator(href).count(), 1, `${href} must name exactly one element`)
+    else if (href.startsWith('/')) assert((await page.request.get(base + href)).ok(), `${href} must exist`)
+  }
+  assert.equal(await page.locator('#note').evaluate((el) => el.tagName), 'FIGURE', '#note is Henit\'s note')
+}
+
+async function install(page, engine) {
+  const tab0 = page.locator('#x7t0'), tab1 = page.locator('#x7t1')
+  assert.equal(await tab0.getAttribute('aria-selected'), 'true', 'macOS and Linux are picked off Windows')
+  await tab1.click()
+  assert.equal(await tab1.getAttribute('aria-selected'), 'true')
+  assert.match(await page.locator('#x7cmdtxt').textContent(), /^irm https:\/\/raw\.githubusercontent\.com\/henit-chobisa\/deck\/main\/install \| iex$/)
+  await tab1.press('ArrowLeft')
+  assert.equal(await tab0.getAttribute('aria-selected'), 'true', 'arrow keys move between the tabs')
+  assert(await tab0.evaluate((el) => el === document.activeElement), 'the picked tab takes focus')
+  const cmd = await page.locator('#x7cmdtxt').textContent()
+  assert.equal(cmd, 'curl -fsSL https://raw.githubusercontent.com/henit-chobisa/deck/main/install | sh')
+  await page.locator('#x7copy').click()
+  await page.waitForFunction(() => document.getElementById('x7copyl').textContent !== 'Copy')
+  const label = await page.locator('#x7copyl').textContent()
+  if (engine === 'chromium') {
+    assert.equal(label, 'Copied')
+    assert.equal(await page.evaluate(() => navigator.clipboard.readText()), cmd)
+  } else assert.match(label, /^(Copied|Press (⌘C|Ctrl\+C))$/)
+  for (const [button, status] of [['#x7mailcopy', '#x7mailst'], ['#x7mail2', '#x7mail2s']]) {
+    await page.locator(button).scrollIntoViewIfNeeded()
+    await page.locator(button).click()
+    await page.waitForFunction((s) => document.querySelector(s).textContent.trim() !== '', status)
+  }
+}
+
+async function windowsPick(browser) {
+  const page = await browser.newPage({ userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36' })
+  await page.route(/^https:\/\//, (route) => route.abort())
+  await page.goto(base)
+  assert.equal(await page.locator('#x7t1').getAttribute('aria-selected'), 'true', 'Windows picks the Windows tab')
+  assert.match(await page.locator('#x7cmdtxt').textContent(), /^irm /)
+  await page.close()
+}
+
+// Desktop: x3 and x4 are pinned, one stop per step. Space and Page Down must
+// reach every step from the top of the page, in order, without a mouse.
+async function pinnedByKeyboard(page) {
+  await jump(page, 0)
+  await page.locator('body').click({ position: { x: 5, y: 300 } })
+  await page.waitForTimeout(300)
+  const seen = { x3: [], x4: [] }
+  const end = await topOf(page, '#x5')
+  for (let i = 0; i < 60; i++) {
+    await page.keyboard.press(i % 3 === 0 ? 'Space' : 'PageDown')
+    await page.waitForTimeout(950)
+    for (const [id, dots] of [['x3', '#dots'], ['x4', '#x4dots']]) {
+      const k = await now(page, dots)
+      if (k >= 0 && seen[id].at(-1) !== k) seen[id].push(k)
     }
-    assert(await scene.getByRole('button', { name: 'Next', exact: true }).isDisabled())
-    for (let i = n - 1; i > 0; i--) await scene.getByRole('button', { name: 'Previous' }).click()
-    assert(await scene.getByRole('button', { name: 'Previous' }).isDisabled())
+    if (await page.evaluate(() => scrollY) > end) break
+  }
+  assert.deepEqual(seen.x3, [0, 1, 2, 3], 'x3: every sentence by keyboard ' + JSON.stringify(seen.x3))
+  assert.deepEqual(seen.x4.filter((k) => k > 0), [1, 2, 3, 4], 'x4: every step by keyboard ' + JSON.stringify(seen.x4))
+  // and back up with Shift+Space
+  const x4 = await topOf(page, '#x4')
+  await jump(page, x4 + 3 * 460)
+  await page.waitForTimeout(600)
+  assert.equal(await now(page, '#x4dots'), 4)
+  await page.keyboard.press('Shift+Space')
+  await page.waitForTimeout(950)
+  assert.equal(await now(page, '#x4dots'), 3, 'Shift+Space goes back one step')
+}
+
+// Phones and reduced motion: nothing is pinned; the buttons step instead.
+async function steppedByButtons(page) {
+  for (const [sec, button, dots] of [['#x3', '#next', '#dots'], ['#x4', '#x4next', '#x4dots']]) {
+    await page.locator(button).scrollIntoViewIfNeeded()
+    await page.waitForTimeout(300)
+    const before = await now(page, dots)
+    await page.locator(button).click()
+    await page.waitForTimeout(400)
+    assert.notEqual(await now(page, dots), before, `${sec}: ${button} moves a step`)
+    assert.equal(await page.locator(sec + ' .snapk').first().evaluate((el) => getComputedStyle(el).display), 'none', `${sec}: no scroll stops`)
+  }
+}
+
+async function features(page) {
+  const summary = page.locator('#x5 summary').first(), details = page.locator('#x5 details').first()
+  await summary.focus()
+  await page.waitForTimeout(900)
+  await page.keyboard.press('Enter')
+  assert(await details.evaluate((d) => d.open), 'x5: Enter opens a feature')
+  await page.keyboard.press('Space')
+  assert(!(await details.evaluate((d) => d.open)), 'x5: Space closes it')
+  for (const id of ['x3', 'x4', 'x5']) {
+    await page.locator(`#x6 .o2also a[href="#${id}"]`).click()
+    await page.waitForFunction((id) => Math.abs(document.getElementById(id).getBoundingClientRect().top) < 80, id, { timeout: 4000 })
   }
 }
 
 async function check(engine, name, width, height, reducedMotion = 'no-preference') {
   const browser = await engine.launch()
   try {
-    const page = await browser.newPage({ viewport: { width, height }, deviceScaleFactor: width <= 430 ? 3 : 2, hasTouch: width <= 900, reducedMotion })
-    const errors = [], frames = []
-    page.on('request', (request) => { if (request.url().includes('/frames/')) frames.push(request.url()) })
+    const desk = width > 980 && reducedMotion !== 'reduce'
+    const options = { viewport: { width, height }, deviceScaleFactor: width <= 430 ? 3 : 2, hasTouch: width <= 900, reducedMotion }
+    const context = await browser.newContext(options)
+    if (engine === chromium) await context.grantPermissions(['clipboard-read', 'clipboard-write'], { origin: base })
+    const page = await context.newPage()
+    const errors = []
     page.on('pageerror', (error) => errors.push(error.message))
-    // External fonts and star counts must not determine a layout test's result.
+    page.on('console', (m) => { if (m.type() === 'error' && !/Failed to load resource/.test(m.text())) errors.push(m.text()) })
+    page.on('response', (r) => { if (r.url().startsWith(base) && r.status() >= 400) errors.push(r.status() + ' ' + r.url()) })
+    // External fonts must not determine a layout test's result.
     await page.route(/^https:\/\//, (route) => route.abort())
     await page.goto(base)
-    await page.waitForSelector('.scene-controls', { state: 'attached' })
+    await page.waitForSelector('#reveal .w', { state: 'attached' })
     await fits(page, name)
+    await links(page)
+    if (desk) await pinnedByKeyboard(page)
+    else await steppedByButtons(page)
     if (reducedMotion === 'reduce') {
-      await readingFlow(page)
-      assert(await page.locator('.hero').evaluate((el) => el.offsetHeight < 1400), 'Hero must remain a reading section')
-    } else {
-      assert(await page.locator('.sky').isVisible(), 'Stars and background text must remain on phones too')
-      const before = await page.locator('.sky').evaluate((c) => c.toDataURL())
-      await page.waitForTimeout(100)
-      assert.notEqual(await page.locator('.sky').evaluate((c) => c.toDataURL()), before, 'The star field must animate')
-      for (const id of ['without', 'agent', 'window']) {
-        await page.locator('#' + id).evaluate((el) => {
-          const stage = el.querySelector('.stage')
-          window.scrollTo(0, el.offsetTop + (el.offsetHeight - stage.offsetHeight) * .9)
-        })
-        await page.waitForTimeout(150)
-        assert(await page.locator('#' + id + ' .scene-controls').isHidden())
-        assert.equal(await page.locator('#' + id + ' [data-at].on').first().getAttribute('data-at'), id === 'without' ? '3' : id === 'window' ? '5' : '0')
-        assert.equal(await page.locator('#' + id + ' .stage').evaluate((el) => getComputedStyle(el).position), 'sticky')
-        if (width <= 900) {
-          assert.equal(await page.locator('#' + id + ' .side').evaluate((el) => getComputedStyle(el).textAlign), 'left')
-          if (height > 500) {
-            const layout = await page.locator('#' + id + ' .stage').evaluate((el) => {
-              const style = getComputedStyle(el), stage = el.getBoundingClientRect()
-              const caption = el.querySelector('.side').getBoundingClientRect()
-              const picture = el.querySelector('.term, .reel-frame').getBoundingClientRect()
-              return {
-                expected: stage.top + (stage.height + parseFloat(style.paddingTop) - parseFloat(style.paddingBottom)) / 2,
-                actual: (caption.top + picture.bottom) / 2,
-                gap: picture.top - caption.bottom,
-              }
-            })
-            assert(Math.abs(layout.expected - layout.actual) < 2, `${id}: group must be vertically centered`)
-            assert(Math.abs(layout.gap - 24) < 2, `${id}: caption-to-picture gap must stay compact`)
-          }
-        }
-      }
+      assert.equal(await now(page, '#x4dots') >= 0, true)
+      for (const pen of ['#x7h .x7pn', '#x7bh .x7bpn', '#x4h .x4pn']) assert(await page.locator(pen).evaluate((el) => el.classList.contains('go')), `${pen}: drawn at once`)
     }
-    if (width <= 900 || reducedMotion === 'reduce') {
-      const initial = await page.locator('.dk-foot .grp').textContent()
-      await page.locator('.dk-keys [data-key="n"]').click()
-      assert.notEqual(await page.locator('.dk-foot .grp').textContent(), initial)
-      await page.locator('.dk-keys [data-key="p"]').click()
-      assert.equal(await page.locator('.dk-foot .grp').textContent(), initial)
-      await page.locator('.dk-keys [data-key="c"]').click()
-      assert(await page.locator('.dk-compose textarea').isVisible())
-      if (width <= 860) assert.equal(await page.locator('.dk-compose textarea').evaluate((el) => getComputedStyle(el).fontSize), '16px', 'iOS must not zoom the composer')
-      await page.locator('.dk-compose textarea').fill('Keep the queue bounded.')
-      await page.locator('.dk-compose .later').click()
-      assert.equal(await page.locator('.dk-foot .cnt').textContent(), '1 comment')
-      await page.locator('.dk-keys [data-key="s"]').click()
-      assert.equal(await page.locator('#loop-count').textContent(), '1 comment')
-      await page.getByRole('tab', { name: 'Windows' }).click()
-      assert(await page.locator('#pane-win').isVisible())
-      assert(await page.locator('#pane-unix').isHidden())
-    }
-    assert(frames.length < 80, `${name}: must not preload all 360 Retina frames`)
-    assert(frames.every((url) => url.includes('/frames/retina/')), `${name}: legacy low-resolution fallback unexpectedly used`)
+    await features(page)
+    await install(page, engine === chromium ? 'chromium' : 'webkit')
+    await fitsAll(page, name)
     if (width === 390) {
       await page.setViewportSize({ width: 1200, height: 800 })
-      await page.waitForTimeout(250)
+      await page.waitForTimeout(400)
       await page.setViewportSize({ width, height })
-      await page.waitForTimeout(250)
+      await page.waitForLoadState('load')
+      await page.waitForTimeout(400)
       await fits(page, name + ' after resize')
-      assert(await page.locator('#window .scene-controls').isHidden())
-      assert.equal(await page.locator('#window .stage').evaluate((el) => getComputedStyle(el).position), 'sticky')
     }
     if (process.env.SCREENSHOTS) {
-      await page.screenshot({ path: resolve(process.env.SCREENSHOTS, `${name}-page.png`), fullPage: true })
+      await jump(page, 0)
+      await page.screenshot({ path: resolve(process.env.SCREENSHOTS, `${name}-top.png`) })
     }
+    if (name === 'webkit-desktop' || name === 'chromium-desktop') await windowsPick(browser)
     for (const path of ['/docs/', '/guides/', '/changelog/', '/ai-code-review/']) {
       await page.goto(base + path)
       await fits(page, name + path)
@@ -147,12 +194,13 @@ async function check(engine, name, width, height, reducedMotion = 'no-preference
       if (i === 30) throw new Error('Preview server did not start')
       await pause(100)
     }
-    checkFrames()
     for (const [width, height] of [[320, 568], [390, 664], [430, 780], [844, 390], [844, 1500]]) {
       await check(webkit, `webkit-${width}x${height}`, width, height)
     }
     await check(webkit, 'webkit-desktop', 1440, 900)
     await check(chromium, 'chromium-desktop', 1440, 900)
+    await check(webkit, 'webkit-1100x1700', 1100, 1700)
+    await check(chromium, 'chromium-1100x1700', 1100, 1700)
     await check(webkit, 'webkit-reduced-motion', 1440, 900, 'reduce')
   } finally { server.kill() }
 })().catch((error) => { console.error(error); process.exitCode = 1 })
