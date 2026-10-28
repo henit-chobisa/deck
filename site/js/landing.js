@@ -5,7 +5,7 @@ window.deckPin=(()=>{const reduce=matchMedia('(prefers-reduced-motion: reduce)')
  const go=(sec,k)=>{const S=+sec.dataset.step;scrollTo({top:Math.round(scrollY+sec.getBoundingClientRect().top+k*S),behavior:reduce?'auto':'smooth'})};
  addEventListener('keydown',e=>{if(e.altKey||e.ctrlKey||e.metaKey||e.defaultPrevented)return;const sp=e.key===' ';
   const dn=e.key==='PageDown'||(sp&&!e.shiftKey),up=e.key==='PageUp'||(sp&&e.shiftKey);if(!dn&&!up)return;
-  const a=document.activeElement;if(sp&&a&&a.matches('input,textarea,select,button,a[href],[role=tab],[contenteditable]'))return;
+  const a=document.activeElement;if(sp&&a&&a.matches('input,textarea,select,button,summary,a[href],[role=tab],[contenteditable]'))return;
   const y=scrollY,page=innerHeight*.875+4,ts=[...document.querySelectorAll('.snapk')].filter(s=>s.offsetParent).map(s=>Math.round(s.getBoundingClientRect().top+y));
   const c=dn?ts.filter(t=>t>y+4&&t<=y+page):ts.filter(t=>t<y-4&&t>=y-page);if(!c.length)return;
   e.preventDefault();scrollTo({top:dn?Math.min(...c):Math.max(...c),behavior:reduce?'auto':'smooth'})});
