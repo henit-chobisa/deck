@@ -172,6 +172,7 @@ const io=new IntersectionObserver(es=>es.forEach(e=>{if(e.isIntersecting){sec.cl
  if(!phone())return;if(e.isIntersecting){if(!auto&&!tapped&&!reduce)auto=setInterval(()=>{kk=(kk+1)%5;stage(kk)},3600)}else{clearInterval(auto);auto=null}}),{threshold:.25});
 io.observe($('x4win'));
 addEventListener('resize',()=>{const c=cur;cur=null;if(!phone())onScroll();else stage(c===null?0:Math.min(c,4))});
+{const pin=()=>{th.scrollTop=th.scrollHeight},ro=new ResizeObserver(pin);ro.observe(th);[...th.children].forEach(c=>ro.observe(c));new MutationObserver(ms=>{ms.forEach(m=>m.addedNodes.forEach(n=>{if(n.nodeType===1)ro.observe(n)}));pin()}).observe(th,{childList:true,subtree:true,attributes:true,attributeFilter:['class']})}
 setRow(0,false);
 if(reduce){sec.classList.add('x4in');sec.querySelector('h2 .x4pn').classList.add('go');stage(4)}else if(phone())stage(0);else onScroll();
 })();
