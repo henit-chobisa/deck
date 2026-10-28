@@ -1,8 +1,10 @@
 // shared by the pinned sections (x3, x4): stops at k*step px after the pin starts; dots and keys go to a stop
 window.deckPin=(()=>{const reduce=matchMedia('(prefers-reduced-motion: reduce)').matches;
- const add=sec=>{const S=+sec.dataset.step,n=+sec.dataset.stops;for(let k=0;k<n;k++){const a=document.createElement('i');a.className='snapk';a.setAttribute('aria-hidden','true');a.style.top=k*S+'px';sec.append(a)}};
- const at=sec=>{const r=sec.getBoundingClientRect(),S=+sec.dataset.step,n=+sec.dataset.stops;return r.top>2?-1:Math.max(0,Math.min(n-1,Math.round(-r.top/S)))};
- const go=(sec,k)=>{const S=+sec.dataset.step;scrollTo({top:Math.round(scrollY+sec.getBoundingClientRect().top+k*S),behavior:reduce?'auto':'smooth'})};
+ const add=sec=>{const S=+sec.dataset.step,n=+sec.dataset.stops;for(let k=0;k<n;k++){const a=document.createElement('i');a.className='snapk';a.setAttribute('aria-hidden','true');a.style.top=`calc(${k*S}px - var(--pinoff,0px))`;sec.append(a)}};
+ // on a tall screen the stage is centred, so the pin starts that far below the top: stop 0 is there
+ const off=sec=>parseFloat(getComputedStyle(sec).scrollMarginTop)||0;
+ const at=sec=>{const t=sec.getBoundingClientRect().top-off(sec),S=+sec.dataset.step,n=+sec.dataset.stops;return t>2?-1:Math.max(0,Math.min(n-1,Math.round(-t/S)))};
+ const go=(sec,k)=>{const S=+sec.dataset.step;scrollTo({top:Math.round(scrollY+sec.getBoundingClientRect().top-off(sec)+k*S),behavior:reduce?'auto':'smooth'})};
  addEventListener('keydown',e=>{if(e.altKey||e.ctrlKey||e.metaKey||e.defaultPrevented)return;const sp=e.key===' ';
   const dn=e.key==='PageDown'||(sp&&!e.shiftKey),up=e.key==='PageUp'||(sp&&e.shiftKey);if(!dn&&!up)return;
   const a=document.activeElement;if(sp&&a&&a.matches('input,textarea,select,button,summary,a[href],[role=tab],[contenteditable]'))return;
@@ -321,7 +323,8 @@ function thread(){const F=field.getBoundingClientRect(),T=hi.getBoundingClientRe
   paths[i].classList.toggle('on',n.classList.contains('on'));paths[i].classList.toggle('hot',n.classList.contains('hot'))})}
 const arrive=[...Q.keys()].sort(()=>rnd()-.5),turn=[...arrive].sort(()=>rnd()-.5);const note=document.getElementById('disclaim');
 const reduce=matchMedia('(prefers-reduced-motion: reduce)').matches,clamp=v=>Math.max(0,Math.min(1,v));
-function frame(){const r=sec.getBoundingClientRect(),p=reduce?1:clamp(-r.top/(r.height-innerHeight));
+// the reveal starts as the pin rises into view (lead), not once it is pinned: no screen of ghost words alone
+function frame(){const r=sec.getBoundingClientRect(),L=innerHeight*.45,p=reduce?1:clamp((L-r.top)/(r.height-innerHeight+L));
  // first sentence with the three it did mention; the second as the rest turn orange
  const A=words.filter(w=>w.dataset.s==='0'),B=words.filter(w=>w.dataset.s==='1');
  A.forEach((w,i)=>w.classList.toggle('on',clamp((p-.04)/.3)*A.length>i+.2));B.forEach((w,i)=>w.classList.toggle('on',clamp((p-.66)/.12)*B.length>i+.2));

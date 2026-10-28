@@ -1363,3 +1363,34 @@ body{overflow-x:clip}
 @media (max-width:980px){#x7 .x7then ol{grid-template-columns:1fr;gap:18px}}@media (max-width:640px){#x7 .x7paper .x7reach{flex-wrap:wrap}}
 #x7 .ln{max-width:600px;margin:clamp(72px,11vh,120px) auto 0}#x7 .ln .x7note{padding:30px 36px 26px}
 @media (max-width:640px){#x7 .ln{margin-top:56px}#x7 .ln .x7note{padding:20px 18px}}
+
+/* ---- seams: one rhythm between sections ----
+   --seam is the empty space between the end of one section and the next headline.
+   Pinned stages are capped at --stagecap tall and centred, so a tall screen does not
+   leave half a screen of nothing on each side of a pinned section. */
+:root{--seam:clamp(96px,9vw,128px);--stagecap:1000px}
+
+/* hero -> #reveal: the paper eases into ink instead of stopping at a 34px edge */
+.photo{background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='240'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .35 0 0 0 0 .3 0 0 0 0 .22 0 0 0 .08 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E"),linear-gradient(#070707 0,#070707 calc(var(--cut) - 22px),#8f8a82 var(--cut),#efebe4 calc(var(--cut) + 26px),#efebe4 calc(100% - var(--seam) - 34px),#cfcac1 calc(100% - var(--seam) + 6px),#5d5a55 calc(100% - var(--seam)*.45),#070707 100%)!important;padding-bottom:calc(clamp(70px,9vh,96px) + var(--seam))!important}
+
+/* #reveal: its grain and glow fade out at the pin's edges, so it never ends in a lighter band */
+.pin::after{-webkit-mask-image:linear-gradient(transparent,#000 14%,#000 80%,transparent);mask-image:linear-gradient(transparent,#000 14%,#000 80%,transparent)}
+.reveal{height:min(320vh,calc(100vh + 1980px))}
+
+/* (every pen starts at dashoffset 1.005 with a 1.01 gap, above: Chromium drew a round-cap dot at the start of a pen not yet drawn) */
+
+/* #x3 and #x4, pinned: the stage is at most --stagecap tall and sits in the middle of a taller screen.
+   --pinoff is how far below the top the pin starts; the stops (landing.js, deckPin) count from there,
+   and scroll-margin-top makes #x3 and #x4 links land on stop 0. */
+@media (min-width:981px) and (prefers-reduced-motion:no-preference){
+ #x3,#x4{--stage:min(100vh,var(--stagecap));--pinoff:calc((100vh - var(--stage))/2);scroll-margin-top:var(--pinoff)}
+ #x3{height:calc(var(--stage) + 2080px);margin-top:var(--seam)}
+ #x4{height:calc(var(--stage) + 1620px);margin-top:calc(var(--seam)*.3)}
+ #x3 .st{top:calc(var(--pinoff) + var(--x3top));height:calc(var(--stage) - var(--x3top))}
+ #x4 .x4st{top:calc(var(--pinoff) + var(--x4top));height:calc(var(--stage) - var(--x4top))}
+}
+
+/* #x5 opens one seam below what came before, on every screen (was 14vh: 238px on a 1700px screen) */
+#x5.lp{padding-top:var(--seam)}
+#x5.lp{padding-bottom:calc(var(--seam)*.75)}
+@media (min-width:981px){#x7 #install{padding-top:calc(var(--seam) - 72px)}}
