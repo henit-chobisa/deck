@@ -1422,3 +1422,10 @@ body{overflow-x:clip}
  #x3 .st{align-content:center;align-content:safe center}
  #x4 .x4st{justify-content:center;justify-content:safe center}
 }
+
+/* ---- hero band: one gradient, no box ----
+   The page's black runs into the paper behind the screenshot in one eased ramp, from the photo's top
+   to where the paper used to start, and out again at the bottom. The grain moves to a layer of its own
+   that fades in and out with the paper, so no flat grey band sits on the black. */
+.photo{background:linear-gradient(#070707 calc((var(--cut) + calc(26*var(--u)))*0),#151514 calc((var(--cut) + calc(26*var(--u)))*0.15),#393837 calc((var(--cut) + calc(26*var(--u)))*0.3),#6a6865 calc((var(--cut) + calc(26*var(--u)))*0.45),#9d9b96 calc((var(--cut) + calc(26*var(--u)))*0.6),#cbc7c1 calc((var(--cut) + calc(26*var(--u)))*0.75),#e9e5de calc((var(--cut) + calc(26*var(--u)))*0.9),#efebe4 calc((var(--cut) + calc(26*var(--u)))*1),#efebe4 calc(100% - var(--seam) - calc(34*var(--u))),#cfcac1 calc(100% - var(--seam) + calc(6*var(--u))),#5d5a55 calc(100% - var(--seam)*.45),#070707 100%)!important}
+.photo::after{content:"";position:absolute;inset:0;z-index:-1;pointer-events:none;background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='240'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .35 0 0 0 0 .3 0 0 0 0 .22 0 0 0 .08 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");-webkit-mask-image:linear-gradient(transparent,transparent calc((var(--cut) + calc(26*var(--u)))*.3),#000 (var(--cut) + calc(26*var(--u))),#000 calc(100% - var(--seam) - calc(34*var(--u))),transparent calc(100% - var(--seam)*.45));mask-image:linear-gradient(transparent,transparent calc((var(--cut) + calc(26*var(--u)))*.3),#000 (var(--cut) + calc(26*var(--u))),#000 calc(100% - var(--seam) - calc(34*var(--u))),transparent calc(100% - var(--seam)*.45))}
