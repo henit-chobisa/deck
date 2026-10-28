@@ -101,7 +101,8 @@ async function pinnedByKeyboard(page) {
   assert.deepEqual(seen.x3, [0, 1, 2, 3], 'x3: every sentence by keyboard ' + JSON.stringify(seen.x3))
   assert.deepEqual(seen.x4.filter((k) => k > 0), [1, 2, 3, 4], 'x4: every step by keyboard ' + JSON.stringify(seen.x4))
   // and back up with Shift+Space
-  const x4 = await topOf(page, '#x4')
+  // on a tall screen the pinned stage is centred; its stops start --pinoff below the section top
+  const x4 = await topOf(page, '#x4') - await page.locator('#x4').evaluate((el) => parseFloat(getComputedStyle(el).scrollMarginTop) || 0)
   await jump(page, x4 + 3 * 460)
   await page.waitForTimeout(600)
   assert.equal(await now(page, '#x4dots'), 4)
