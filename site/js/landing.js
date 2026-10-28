@@ -1,10 +1,12 @@
 // shared by the pinned sections (x3, x4): stops at k*step px after the pin starts; dots and keys go to a stop
+// the page's px at an element (--u in landing.css): it differs by section on the desktop layout
+window.deckU=el=>parseFloat(getComputedStyle(el||document.documentElement).getPropertyValue('--u'))||1;
 window.deckPin=(()=>{const reduce=matchMedia('(prefers-reduced-motion: reduce)').matches;
- const add=sec=>{const S=+sec.dataset.step,n=+sec.dataset.stops;for(let k=0;k<n;k++){const a=document.createElement('i');a.className='snapk';a.setAttribute('aria-hidden','true');a.style.top=`calc(${k*S}px - var(--pinoff,0px))`;sec.append(a)}};
+ const add=sec=>{const S=+sec.dataset.step,n=+sec.dataset.stops;for(let k=0;k<n;k++){const a=document.createElement('i');a.className='snapk';a.setAttribute('aria-hidden','true');a.style.top=`calc(${k*S}*var(--u) - var(--pinoff,0px))`;sec.append(a)}};
  // on a tall screen the stage is centred, so the pin starts that far below the top: stop 0 is there
  const off=sec=>parseFloat(getComputedStyle(sec).scrollMarginTop)||0;
- const at=sec=>{const t=sec.getBoundingClientRect().top-off(sec),S=+sec.dataset.step,n=+sec.dataset.stops;return t>2?-1:Math.max(0,Math.min(n-1,Math.round(-t/S)))};
- const go=(sec,k)=>{const S=+sec.dataset.step;scrollTo({top:Math.round(scrollY+sec.getBoundingClientRect().top-off(sec)+k*S),behavior:reduce?'auto':'smooth'})};
+ const at=sec=>{const t=sec.getBoundingClientRect().top-off(sec),S=+sec.dataset.step*deckU(sec),n=+sec.dataset.stops;return t>2?-1:Math.max(0,Math.min(n-1,Math.round(-t/S)))};
+ const go=(sec,k)=>{const S=+sec.dataset.step*deckU(sec);scrollTo({top:Math.round(scrollY+sec.getBoundingClientRect().top-off(sec)+k*S),behavior:reduce?'auto':'smooth'})};
  addEventListener('keydown',e=>{if(e.altKey||e.ctrlKey||e.metaKey||e.defaultPrevented)return;const sp=e.key===' ';
   const dn=e.key==='PageDown'||(sp&&!e.shiftKey),up=e.key==='PageUp'||(sp&&e.shiftKey);if(!dn&&!up)return;
   const a=document.activeElement;if(sp&&a&&a.matches('input,textarea,select,button,summary,a[href],[role=tab],[contenteditable]'))return;
@@ -14,7 +16,7 @@ window.deckPin=(()=>{const reduce=matchMedia('(prefers-reduced-motion: reduce)')
  // proximity, forwards only: when scrolling rests just short of the next stop (within a third of a step), finish the move to it
  let ly=scrollY,dir=0,rt=0,busy=0;
  const settle=()=>{if(busy||reduce)return;const y=scrollY;for(const sec of document.querySelectorAll('[data-stops]')){const as=[...sec.querySelectorAll('.snapk')].filter(s=>s.offsetParent);if(!as.length)continue;
-   const S=+sec.dataset.step,ts=as.map(s=>Math.round(s.getBoundingClientRect().top+y)),t=dir>0?ts.find(v=>v>y+3):[...ts].reverse().find(v=>v<y-3);
+   const S=+sec.dataset.step*deckU(sec),ts=as.map(s=>Math.round(s.getBoundingClientRect().top+y)),t=dir>0?ts.find(v=>v>y+3):[...ts].reverse().find(v=>v<y-3);
    if(t===undefined||y<ts[0]-S/3||y>ts[ts.length-1]+S/3)continue;if(Math.abs(t-y)<=S/3){busy=1;scrollTo({top:t,behavior:'smooth'});setTimeout(()=>{busy=0},700)}return}};
  addEventListener('scroll',()=>{const y=scrollY;if(y!==ly)dir=y>ly?1:-1;ly=y;clearTimeout(rt);rt=setTimeout(settle,160)},{passive:true});
  return {add,at,go,reduce}})();
@@ -98,8 +100,8 @@ function refocus(fo){const t=fo&&fo.isConnected&&!fo.classList.contains('sink')?
 
 // ---- the hand
 const hand=$('x4hand');
-function handTo(el){const S=st.getBoundingClientRect(),R=el.getBoundingClientRect();hand.style.transform=`translate(${(R.left-S.left+Math.min(R.width*.55,120)).toFixed(0)}px,${(R.top-S.top+R.height*.55).toFixed(0)}px)`}
-function handHome(){const S=st.getBoundingClientRect(),W=$('x4win').getBoundingClientRect();hand.style.transition='none';hand.style.transform=`translate(${(W.left-S.left+W.width*.32).toFixed(0)}px,${(W.bottom-S.top-60).toFixed(0)}px)`;void hand.offsetWidth;hand.style.transition=''}
+function handTo(el){const S=st.getBoundingClientRect(),R=el.getBoundingClientRect();hand.style.transform=`translate(${(R.left-S.left+Math.min(R.width*.55,120*deckU(sec))).toFixed(0)}px,${(R.top-S.top+R.height*.55).toFixed(0)}px)`}
+function handHome(){const S=st.getBoundingClientRect(),W=$('x4win').getBoundingClientRect();hand.style.transition='none';hand.style.transform=`translate(${(W.left-S.left+W.width*.32).toFixed(0)}px,${(W.bottom-S.top-60*deckU(sec)).toFixed(0)}px)`;void hand.offsetWidth;hand.style.transition=''}
 
 // ---- narration, and what each line names, ringed at once
 const T=['Every group ends with <em>the questions</em> you were about to ask.','Tap one and <em>it’s asked</em>. Nothing to type.','Your agent answers by bringing in <em>a pane</em>.','Not convinced? Press c and <em>push back</em> on the line.','It answers in the thread. <em>You decide</em> when it’s clear.'];
@@ -300,7 +302,7 @@ coda.style.visibility='hidden';coda.classList.add('on');const keep=[box(line),bo
 const esc=t=>t.replace(/&/g,'&amp;').replace(/</g,'&lt;');
 // build first, measure, then place
 const nodes=Q.map(([t,src,url])=>{const el=document.createElement('a');el.className='v';el.href=url;el.target='_blank';el.rel='noopener';el.tabIndex=-1;
- el.style.setProperty('--w',CW+'px');el.innerHTML=`<div class="c"><q>${esc(t).replace(/\[\[(.+?)\]\]/,'<k>$1</k>')}</q><cite>${esc(src)}</cite></div>`;field.append(el);return el});
+ el.style.setProperty('--w',`calc(${CW}*var(--u))`);el.innerHTML=`<div class="c"><q>${esc(t).replace(/\[\[(.+?)\]\]/,'<k>$1</k>')}</q><cite>${esc(src)}</cite></div>`;field.append(el);return el});
 const pts=nodes.map((el,i)=>{const z=.6+rnd()*.42,w=el.offsetWidth*z,h=el.offsetHeight*z,ww=w/F.width,hh=h/F.height;return{z,ww,hh}});
 const placed=[];
 pts.forEach((p,i)=>{let x,y,t=0,ok;

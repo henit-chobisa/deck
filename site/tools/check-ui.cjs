@@ -95,6 +95,11 @@ async function pinnedByKeyboard(page) {
     for (const [id, dots] of [['x3', '#dots'], ['x4', '#x4dots']]) {
       const k = await now(page, dots)
       if (k >= 0 && seen[id].at(-1) !== k) seen[id].push(k)
+      // a pinned stage never sits under the sticky nav
+      if (k >= 0 && await page.evaluate((id) => { const r = document.getElementById(id).getBoundingClientRect(); return r.top < 0 && r.bottom > innerHeight }, id)) {
+        const gap = await page.evaluate((id) => Math.min(...[...document.querySelectorAll(`#${id} h2, #${id} .x3lede, #${id} .x4lede, #${id} .x3win, #${id} .x4win`)].map((e) => e.getBoundingClientRect().top)) - document.querySelector('.nav').getBoundingClientRect().bottom, id)
+        assert(gap >= 0, `${id}: pinned content is ${-gap}px under the nav`)
+      }
     }
     if (await page.evaluate(() => scrollY) > end) break
   }
@@ -103,7 +108,8 @@ async function pinnedByKeyboard(page) {
   // and back up with Shift+Space
   // on a tall screen the pinned stage is centred; its stops start --pinoff below the section top
   const x4 = await topOf(page, '#x4') - await page.locator('#x4').evaluate((el) => parseFloat(getComputedStyle(el).scrollMarginTop) || 0)
-  await jump(page, x4 + 3 * 460)
+  // the step is 460 in the section's px (--u)
+  await jump(page, x4 + 3 * 460 * await page.evaluate(() => deckU(document.getElementById('x4'))))
   await page.waitForTimeout(600)
   assert.equal(await now(page, '#x4dots'), 4)
   await page.keyboard.press('Shift+Space')
