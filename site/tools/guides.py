@@ -456,7 +456,7 @@ That is the decision, and it is only visible with both numbers in front of you.
 
 ## Plan in a deck
 
-[deck](/) lets your agent present a plan exactly like that: today's checkout code, the proposed change shown as old lines going and new lines arriving, and a chart of what the change does to latency and to the busiest day of the year. You can [try that exact deck here](/#play).
+[deck](/) lets your agent present a plan exactly like that: today's checkout code, the proposed change shown as old lines going and new lines arriving, and a chart of what the change does to latency and to the busiest day of the year. You can [try that exact deck here](/#x4).
 
 You decide, comment on the lines you want different, and the agent writes the code with your decision in hand.
 """,
@@ -535,7 +535,7 @@ A review bot answers "is anything wrong with this diff?". The question that is u
 
 Nothing stops you running a review bot on the PR and using deck before it. Many teams will want both: a bot to catch slips, and a way for the person approving to actually understand the change.
 
-[Try a real deck in your browser](/#play), or [install it](/#install).
+[Try a real deck in your browser](/#x4), or [install it](/#install).
 """,
         "faq": [
             ("Is deck a CodeRabbit competitor?", "Not directly. CodeRabbit comments on pull requests. deck lets your own agent show you its changes before you approve. You can use both."),
