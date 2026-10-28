@@ -83,15 +83,16 @@ const resetCmp=()=>{typeJ++;cmp.classList.remove('typing');cmp.textContent='Writ
 // ---- the questions, renewing after each answer (asked one sinks; new ones glide in at the front)
 const Q={a:'What happens with eight servers?',b:'Why not a Redis lock?',c:'Draw it: miss → once → db',d:'Does a slow query hold all 1,000?',e:'What if the db call throws?',f:'Would a shared lock make it one?',g:'Show the eight queries on a page'};
 const ROWS=[['a','b','c','d','e'],['a','b','c','d','e'],['f','b','c','d','e'],['f','b','c','d','e'],['g','f','b','c','d']];
-const row=$('x4row'),pills={};
+const row=$('x4row'),pills={};row.addEventListener('focusin',e=>{const b=e.target.closest('.x4pill');if(b&&getComputedStyle(row).overflowX==='auto')b.scrollIntoView({block:'nearest',inline:'nearest'})});
 const pill=k=>{if(pills[k])return pills[k];const b=document.createElement('button');b.type='button';b.className='x4pill';b.dataset.k=k;b.innerHTML=`<span>${Q[k]}</span><span class="h">click to ask · ⌘-click to edit</span>`;b.addEventListener('click',()=>ask(k));pills[k]=b;return b};
-function setRow(s,anim){const want=ROWS[Math.min(s,4)];
- Object.entries(pills).forEach(([k,b])=>{if(!want.includes(k)){if(anim&&b.isConnected&&!b.classList.contains('sink')){b.classList.add('sink');later(()=>{if(b.classList.contains('sink'))b.remove()},460)}else if(!anim)b.remove()}});
+function setRow(s,anim){const want=ROWS[Math.min(s,4)],fo=row.contains(document.activeElement)?document.activeElement:null;
+ Object.entries(pills).forEach(([k,b])=>{if(!want.includes(k)){if(anim&&b.isConnected&&!b.classList.contains('sink')){b.classList.add('sink');later(()=>{if(b.classList.contains('sink')){const had=b===document.activeElement;b.remove();if(had)refocus(null)}},460)}else if(!anim)b.remove()}});
  want.forEach((k,i)=>{const b=pill(k);b.classList.remove('sink','open','down');b.classList.toggle('asked',k==='a'&&s===1);b.classList.toggle('fresh',(k==='f'&&s>=2&&s<4)||(k==='g'&&s>=4));
   const ref=row.children[i];if(b.parentNode!==row){if(anim){b.classList.add('new');row.insertBefore(b,ref||null);void b.offsetWidth;later(()=>b.classList.remove('new'),i===0?150:0)}else row.insertBefore(b,ref||null)}});
  [...row.children].forEach(b=>{if(!want.includes(b.dataset.k)&&!b.classList.contains('sink'))b.remove()});
  // keep the wanted order
- want.forEach(k=>{const b=pills[k];if(b.isConnected&&!b.classList.contains('new'))row.append(b)});row.querySelectorAll('.sink').forEach(b=>row.prepend(b))}
+ want.forEach(k=>{const b=pills[k];if(b.isConnected&&!b.classList.contains('new'))row.append(b)});row.querySelectorAll('.sink').forEach(b=>row.prepend(b));if(fo&&document.activeElement!==fo)refocus(fo)}
+function refocus(fo){const t=fo&&fo.isConnected&&!fo.classList.contains('sink')?fo:row.querySelector('.x4pill:not(.sink)');if(t)t.focus({preventScroll:true})}
 
 // ---- the hand
 const hand=$('x4hand');
