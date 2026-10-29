@@ -28,13 +28,20 @@ GITHUB = (
 )
 REPO = "https://github.com/henit-chobisa/deck"
 
-FONTS = (
-    '<link rel="preconnect" href="https://fonts.googleapis.com">\n'
-    '<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>\n'
-    '<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600'
-    '&amp;family=IBM+Plex+Sans:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap">\n'
-    '<link rel="stylesheet" href="/css/site.css">'
-)
+def fonts(extra: str = "") -> str:
+    """The head's font and site stylesheets. `extra` adds Google Fonts families (as in the css2 URL,
+    `Caveat:wght@600`) to the same request, so a page that needs one more face still loads one sheet."""
+    more = "".join(f"&amp;family={family}" for family in extra.split()) if extra else ""
+    return (
+        '<link rel="preconnect" href="https://fonts.googleapis.com">\n'
+        '<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>\n'
+        '<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600'
+        f'&amp;family=IBM+Plex+Sans:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500{more}&amp;display=swap">\n'
+        '<link rel="stylesheet" href="/css/site.css">'
+    )
+
+
+FONTS = fonts()
 
 
 def nav(current: str = "") -> str:
@@ -77,14 +84,15 @@ FOOT = (
     '<script src="/js/site.js" defer></script>'
 )
 
-BLOCK = re.compile(r"<!-- shell:(head|nav|foot)( current=\"[^\"]*\")? -->.*?<!-- /shell:\1 -->", re.S)
+# <!-- shell:nav current="/docs/" --> marks the page you are on; <!-- shell:head fonts="Caveat:wght@600" --> adds a face
+BLOCK = re.compile(r"<!-- shell:(head|nav|foot)( (current|fonts)=\"([^\"]*)\")? -->.*?<!-- /shell:\1 -->", re.S)
 
 
 def stamp(html: str) -> str:
     def fill(m):
-        name, cur = m.group(1), (m.group(2) or "")
-        current = cur[len(' current="'):-1] if cur else ""
-        body = {"head": FONTS, "nav": nav(current), "foot": FOOT}[name]
+        name, cur, key, value = m.group(1), (m.group(2) or ""), m.group(3), (m.group(4) or "")
+        current = value if key == "current" else ""
+        body = {"head": fonts(value if key == "fonts" else ""), "nav": nav(current), "foot": FOOT}[name]
         return f"<!-- shell:{name}{cur} -->\n{body}\n<!-- /shell:{name} -->"
     return BLOCK.sub(fill, html)
 
