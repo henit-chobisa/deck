@@ -1,4 +1,4 @@
-// The shell's one behaviour: the footer's Email copies the address, or selects it to copy by hand.
+// The shell's one behaviour: the footer's Email copies the address, or shows it to copy by hand.
 (() => {
   const mac = /Mac|iPhone|iPad/i.test(navigator.platform || navigator.userAgent)
   document.querySelectorAll('[data-email]').forEach((b) => {

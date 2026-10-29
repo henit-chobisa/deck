@@ -171,7 +171,7 @@ def page() -> str:
 <meta name="twitter:description" content="{DESC}">
 <meta name="twitter:image" content="{ORIGIN}/assets/og.png">
 <meta name="theme-color" content="#070707">
-<script type="application/ld+json">{json.dumps(ld, ensure_ascii=False)}</script>
+<script type="application/ld+json">{json.dumps(ld, ensure_ascii=False).replace("</", "<\\/")}</script>
 <link rel="icon" href="/assets/mark.svg" type="image/svg+xml">
 <!-- shell:head -->
 {shell.FONTS}

@@ -239,7 +239,6 @@ if(reduce){sec.classList.add('x6seen');sec.querySelector('h2 .x6pn').classList.a
 })();
 
 (()=>{
-const LINKEDIN_URL='https://www.linkedin.com/in/henit-chobisa-260536202/'; // empty hides the link
 const sec=document.getElementById('x7');if(!sec)return;
 const $=id=>document.getElementById(id);
 const reduce=matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -269,7 +268,6 @@ mb.addEventListener('click',()=>copy(mail.textContent,mail,
 const bpen=document.querySelector('#x7tail .x7bpn');
 if(reduce||!('IntersectionObserver' in window))bpen.classList.add('go');
 else{const io2=new IntersectionObserver(es=>{if(es.some(e=>e.isIntersecting)){setTimeout(()=>bpen.classList.add('go'),420);io2.disconnect()}},{threshold:.6});io2.observe($('x7bh'))}
-const li=$('x7li');if(LINKEDIN_URL){li.href=LINKEDIN_URL;li.hidden=false}
 const pen=sec.querySelector('h2 .x7pn');
 if(reduce||!('IntersectionObserver' in window))pen.classList.add('go');
 else{const io=new IntersectionObserver(es=>{if(es.some(e=>e.isIntersecting)){setTimeout(()=>pen.classList.add('go'),420);io.disconnect()}},{threshold:.4});io.observe(sec.querySelector('h2'))}
