@@ -529,7 +529,7 @@ if(reduce&&phone())stage(2);else onScroll();
  // what each line names, highlighted in the window at the same moment
  const HL=[[],['#x3 .x3foot .x3keys:nth-of-type(3)'],['#x3 .ln.del'],['#x3 #rn'],['#x3 .x3pg .x3ph b'],['#x3 .x3ttl em']];
  // the pen: a quick hand-drawn loop around whatever the line names
- const win=document.querySelector('#x3 .st'),NS='http://www.w3.org/2000/svg';
+ const win=document.querySelector('#x3 .st');
  const I3=deckInk(win,'x3inkl',3,i=>drawInk(i)),ink=I3.svg,head=I3.head,loop=(x,y,w,h)=>I3.loop(x,y,w,h,false,7);
  // which narration word points at which target: [word index among em/kbd, target index]
  const LINK=[[],[[0,0]],[[0,0]],[[0,0]],[[0,0]],[[0,0]]];
