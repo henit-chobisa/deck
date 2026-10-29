@@ -1,6 +1,23 @@
 // shared by the pinned sections (x3, x4): stops at k*step px after the pin starts; dots and keys go to a stop
 // the page's px at an element (--u in landing.css): it differs by section on the desktop layout
 window.deckU=el=>parseFloat(getComputedStyle(el||document.documentElement).getPropertyValue('--u'))||1;
+// one rAF for every scroll handler on the page: each registers here rather than queueing its own
+window.deckScroll=(()=>{const fns=[];let ticking=false;addEventListener('scroll',()=>{if(ticking)return;ticking=true;requestAnimationFrame(()=>{ticking=false;fns.forEach(f=>f())})},{passive:true});return f=>{fns.push(f)}})();
+// the pen over #x3 and #x4: a loop round each thing a step names and an arrow to it from the narration's word.
+// draw(i) lays step i out with loop, head and add; the marks follow the page for 2.6 s while it settles.
+// base seeds the hand's wobble, so a step always draws the same; long is how wide a target is before it gets a box.
+window.deckInk=(host,cls,base,draw)=>{const NS='http://www.w3.org/2000/svg',svg=document.createElementNS(NS,'svg');svg.setAttribute('class',cls);svg.setAttribute('aria-hidden','true');host.append(svg);
+ let seed=base,keep=false,ki=0,at=-1,timer=0,live=0;const rnd=()=>{seed=(seed*9301+49297)%233280;return seed/233280-.5};
+const loop=(x,y,w,h,box,long)=>{const p=box?-9:6,X=x-p,Y=y-p,W=w+2*p,H=h+2*p;
+ if(box||W/H>long){return `M${X+W*.06} ${Y+rnd()*3} L${X+W+rnd()*4} ${Y+rnd()*3} Q${X+W+6} ${Y+H/2} ${X+W+rnd()*4} ${Y+H+rnd()*2} L${X+rnd()*4} ${Y+H+rnd()*3} Q${X-6} ${Y+H/2} ${X+rnd()*3} ${Y-2} L${X+W*.12} ${Y+3}`}
+ const cx=X+W/2,cy=Y+H/2,rx=W/2+4,ry=H/2+3;
+ return `M${cx+rx*.85} ${cy-ry*.75} C ${cx+rx*1.05} ${cy-ry*.1}, ${cx+rx*.7} ${cy+ry*1.05}, ${cx} ${cy+ry+rnd()*2} C ${cx-rx*.8} ${cy+ry*1.05}, ${cx-rx*1.08} ${cy+ry*.2}, ${cx-rx+rnd()*2} ${cy} C ${cx-rx*1.02} ${cy-ry*.8}, ${cx-rx*.3} ${cy-ry*1.12}, ${cx+rx*.25} ${cy-ry*1.02} C ${cx+rx*.6} ${cy-ry*.98}, ${cx+rx*.95} ${cy-ry*.7}, ${cx+rx*1.02} ${cy-ry*.25}`}
+const head=(x1,y1,px,py)=>{const tx=x1-px,ty=y1-py,l=Math.hypot(tx,ty)||1,ux=tx/l,uy=ty/l,hx=-uy,hy=ux,s=9;return `M${x1-ux*s+hx*s*.6} ${y1-uy*s+hy*s*.6} L${x1} ${y1} L${x1-ux*s-hx*s*.6} ${y1-uy*s-hy*s*.6}`}
+ const add=(d,c,delay)=>{if(keep){const e=svg.children[ki++];if(e)e.setAttribute('d',d);return}const pa=document.createElementNS(NS,'path');pa.setAttribute('d',d);if(c)pa.setAttribute('class',c);pa.setAttribute('pathLength','1');if(delay)pa.style.transitionDelay=delay+'ms';svg.append(pa);requestAnimationFrame(()=>requestAnimationFrame(()=>pa.classList.add('go')))};
+ const paint=(i,k)=>{keep=!!k;ki=0;seed=base+i;if(!k)svg.innerHTML='';draw(i)};
+ const follow=i=>{const t0=performance.now();cancelAnimationFrame(live);(function f(now){if(at!==i)return;paint(i,true);if(now-t0<2600)live=requestAnimationFrame(f)})(t0)};
+ deckScroll(()=>{if(at>=0&&svg.children.length)paint(at,true)});addEventListener('resize',()=>{if(at>=0)paint(at)});
+ return {svg,loop,head,add,show(i,ms){clearTimeout(timer);at=i;svg.innerHTML='';timer=setTimeout(()=>{paint(i);follow(i)},ms)}}};
 window.deckPin=(()=>{const reduce=matchMedia('(prefers-reduced-motion: reduce)').matches;
  const add=sec=>{const S=+sec.dataset.step,n=+sec.dataset.stops;for(let k=0;k<n;k++){const a=document.createElement('i');a.className='snapk';a.setAttribute('aria-hidden','true');a.style.top=`calc(${k*S}*var(--u) - var(--pinoff,0px))`;sec.append(a)}};
  // on a tall screen the stage is centred, so the pin starts that far below the top: stop 0 is there
@@ -108,14 +125,8 @@ function handHome(){const S=st.getBoundingClientRect(),W=$('x4win').getBoundingC
 const T=['Every group ends with <em>the questions</em> you were about to ask.','Tap one and <em>it’s asked</em>. Nothing to type.','Your agent answers by bringing in <em>a pane</em>.','Not convinced? Press c and <em>push back</em> on the line.','It answers in the thread. <em>You decide</em> when it’s clear.'];
 const HL=[['#x4row'],['#x4th .x4m:nth-child(5) .x4mi'],['#x4flow .x4ph b'],['#x4th .x4m:nth-child(7) .x4mi'],['#x4row .x4pill:first-child']];
 const LINK=[[[0,0]],[[0,0]],[[0,0]],[[0,0]],[[0,0]]];
-const narr=$('x4narr').querySelector('span');let nl=-1,inkT=0,inkI=-1;
-const ink=document.createElementNS(NS,'svg');ink.setAttribute('class','x4inkl');ink.setAttribute('aria-hidden','true');st.append(ink);
-let seed=5;const rr=()=>{seed=(seed*9301+49297)%233280;return seed/233280-.5};
-function loop(x,y,w,h,box){const p=box?-9:6,X=x-p,Y=y-p,W=w+2*p,H=h+2*p;
- if(box||W/H>3){return `M${X+W*.06} ${Y+rr()*3} L${X+W+rr()*4} ${Y+rr()*3} Q${X+W+6} ${Y+H/2} ${X+W+rr()*4} ${Y+H+rr()*2} L${X+rr()*4} ${Y+H+rr()*3} Q${X-6} ${Y+H/2} ${X+rr()*3} ${Y-2} L${X+W*.12} ${Y+3}`}
- const cx=X+W/2,cy=Y+H/2,rx=W/2+4,ry=H/2+3;
- return `M${cx+rx*.85} ${cy-ry*.75} C ${cx+rx*1.05} ${cy-ry*.1}, ${cx+rx*.7} ${cy+ry*1.05}, ${cx} ${cy+ry+rr()*2} C ${cx-rx*.8} ${cy+ry*1.05}, ${cx-rx*1.08} ${cy+ry*.2}, ${cx-rx+rr()*2} ${cy} C ${cx-rx*1.02} ${cy-ry*.8}, ${cx-rx*.3} ${cy-ry*1.12}, ${cx+rx*.25} ${cy-ry*1.02} C ${cx+rx*.6} ${cy-ry*.98}, ${cx+rx*.95} ${cy-ry*.7}, ${cx+rx*1.02} ${cy-ry*.25}`}
-function head(x1,y1,px,py){const tx=x1-px,ty=y1-py,l=Math.hypot(tx,ty)||1,ux=tx/l,uy=ty/l,hx=-uy,hy=ux,s=9;return `M${x1-ux*s+hx*s*.6} ${y1-uy*s+hy*s*.6} L${x1} ${y1} L${x1-ux*s-hx*s*.6} ${y1-uy*s-hy*s*.6}`}
+const narr=$('x4narr').querySelector('span');let nl=-1;
+const I4=deckInk(st,'x4inkl',5,i=>drawInk(i)),ink=I4.svg,head=I4.head,loop=(x,y,w,h,box)=>I4.loop(x,y,w,h,box,3);
 // one pen arrow per step, as section 3: a single smooth arc over the window, on a dark halo
 function arrow(x0,y0,t,wr){
  // a question under the window: a short hook up from the word, never through the line
@@ -132,15 +143,13 @@ function sweep(x0,y0,t,gy){const x1=t.left-12,y1=t.top+t.height/2;
  return [`M${x0} ${y0} C ${x0} ${gy}, ${x0+30} ${gy}, ${x0+60} ${gy} L ${x1-60} ${gy} C ${x1-18} ${gy}, ${x1-10} ${y1+40}, ${x1-8} ${y1+14} Q ${x1-6} ${y1}, ${x1} ${y1}`,head(x1,y1,x1-6,y1)]}
 function seam(x0,y0,t,gx){const ty=t.top+t.height/2,x1=t.left-12;
  const d=`M${x0} ${y0} C ${x0} ${y0-46}, ${gx} ${y0-30}, ${gx} ${y0-90} L ${gx} ${ty+34} C ${gx} ${ty+8}, ${gx+8} ${ty}, ${x1} ${ty}`;return [d,head(x1,ty,gx+8,ty)]}
-let KEEP4=false,KI4=0;const addP=(d,delay,cls)=>{if(KEEP4){const e=ink.children[KI4++];if(e)e.setAttribute('d',d);return}const pa=document.createElementNS(NS,'path');pa.setAttribute('d',d);if(cls)pa.setAttribute('class',cls);pa.setAttribute('pathLength','1');if(delay)pa.style.transitionDelay=delay+'ms';ink.append(pa);requestAnimationFrame(()=>requestAnimationFrame(()=>pa.classList.add('go')))};
-function drawInk(i,keep){KEEP4=!!keep;KI4=0;if(!keep)ink.innerHTML='';if(phone())return;seed=5+i;const W=st.getBoundingClientRect(),wb=$('x4win').getBoundingClientRect();ink.setAttribute('viewBox',`0 0 ${W.width} ${W.height}`);
+const addP=(d,delay,cls)=>I4.add(d,cls,delay);
+function drawInk(i){if(phone())return;const W=st.getBoundingClientRect(),wb=$('x4win').getBoundingClientRect();ink.setAttribute('viewBox',`0 0 ${W.width} ${W.height}`);
  const wr={left:wb.left-W.left,right:wb.right-W.left,top:wb.top-W.top,bottom:wb.bottom-W.top,width:wb.width},targets=[];
  HL[i].forEach(q=>{const box=q.startsWith('box:'),e=document.querySelector(q.replace(/^box:/,''));if(!e)return;const b=e.getBoundingClientRect();if(!b.width)return;const k=box?9:0,t={left:b.left-W.left+k,top:b.top-W.top+k,width:b.width-2*k,height:b.height-2*k,right:b.right-W.left-k,bottom:b.bottom-W.top-k};targets.push(t);addP(loop(t.left-k,t.top-k,t.width+2*k,t.height+2*k,box))});
  const words=[...sec.querySelectorAll('.x4narr span em')];
  LINK[i].forEach(([wi,ti])=>{const w=words[wi],t=targets[ti];if(!w||!t)return;const a=w.getBoundingClientRect();(i>=1&&i<=3?over(a.left+a.width/2-W.left,a.top-6-W.top,t):arrow(a.left+a.width/2-W.left,a.top-6-W.top,t,wr)).forEach((d,k)=>{if(!k)addP(d,0,'halo');addP(d,k?420:0)})})}
-let live4=0;const follow4=i=>{const t0=performance.now();cancelAnimationFrame(live4);(function f(now){if(inkI!==i)return;drawInk(i,true);if(now-t0<2600)live4=requestAnimationFrame(f)})(t0)};
-const inkAt=(i,ms)=>{clearTimeout(inkT);inkI=i;ink.innerHTML='';inkT=setTimeout(()=>{drawInk(i);follow4(i)},reduce?0:(i===2?Math.max(ms||0,1300):ms))};
-addEventListener('scroll',()=>{if(inkI>=0&&ink.children.length)drawInk(inkI,true)},{passive:true});addEventListener('resize',()=>{if(inkI>=0)drawInk(inkI)});
+const inkAt=(i,ms)=>I4.show(i,reduce?0:(i===2?Math.max(ms||0,1300):ms));
 function say(i,ms){i=Math.min(i,4);if(i!==nl){nl=i;narr.classList.add('out');setTimeout(()=>{narr.innerHTML=T[i];narr.classList.remove('out')},reduce?0:180)}inkAt(i,ms)}
 
 // ---- steps: 0 the questions · 1 tap · 2 the agent brings a pane · 3 push back · 4 the answer · 5 the caption
@@ -178,7 +187,7 @@ function ask(k,edit){
 deckPin.add(sec);const STOP=[1,2,3,5];
 function onScroll(){if(phone())return;const k=deckPin.at(sec);if(k<0){stage(0);return}if(STOP[k]===5&&cur===3)stage(4);stage(STOP[k])}
 dots.forEach((d,j)=>d.addEventListener('click',()=>{if(phone()){tapped=true;clearInterval(auto);auto=null;kk=j;stage(j)}else if(j>0)deckPin.go(sec,j-1)}));
-addEventListener('scroll',()=>requestAnimationFrame(onScroll),{passive:true});
+deckScroll(onScroll);
 let auto=null,kk=0,tapped=false;
 $('x4next').addEventListener('click',()=>{if(!phone()){const k=deckPin.at(sec);deckPin.go(sec,Math.min(3,k+1));return}tapped=true;clearInterval(auto);auto=null;kk=(kk+1)%5;stage(kk)});
 const io=new IntersectionObserver(es=>es.forEach(e=>{if(e.isIntersecting){sec.classList.add('x4in');const p=sec.querySelector('h2 .x4pn');if(!p.classList.contains('go'))later(()=>draw(p),420)}
@@ -342,13 +351,13 @@ function frame(){const r=sec.getBoundingClientRect(),L=innerHeight*.45,p=reduce?
  const np=clamp((p-.02)/.42);arrive.forEach((k,i)=>nodes[k].classList.toggle('on',np*arrive.length>i));
  const hp=clamp((p-.66)/.2);turn.forEach((k,i)=>nodes[k].classList.toggle('hot',hp*turn.length>i));
  place(p);thread();coda.classList.toggle('on',p>.88);hi.classList.toggle('struck',p>.9);note.classList.toggle('on',p>.3)}
-addEventListener('scroll',()=>requestAnimationFrame(frame),{passive:true});{let w0=innerWidth,h0=innerHeight,rt=0;addEventListener('resize',()=>{clearTimeout(rt);rt=setTimeout(()=>{if(innerWidth===w0&&Math.abs(innerHeight-h0)<=160)return;w0=innerWidth;h0=innerHeight;measure();frame()},150)})}frame();
+deckScroll(frame);{let w0=innerWidth,h0=innerHeight,rt=0;addEventListener('resize',()=>{clearTimeout(rt);rt=setTimeout(()=>{if(innerWidth===w0&&Math.abs(innerHeight-h0)<=160)return;w0=innerWidth;h0=innerHeight;measure();frame()},150)})}frame();
 });
 
 // glide the header line between its two places (FLIP), and let the headline ease its size
 (()=>{const sec=document.getElementById('x3'),led=sec&&sec.querySelector('.x3lede');if(!led)return;let was=sec.classList.contains('up');
  const last={r:led.getBoundingClientRect()};
- addEventListener('scroll',()=>{if(sec.classList.contains('up')===was)last.r=led.getBoundingClientRect()},{passive:true});
+ deckScroll(()=>{if(sec.classList.contains('up')===was)last.r=led.getBoundingClientRect()});
  new MutationObserver(()=>{const now=sec.classList.contains('up');if(now===was)return;was=now;if(innerWidth<=980||matchMedia('(prefers-reduced-motion: reduce)').matches)return;
   const a=last.r,b=led.getBoundingClientRect();led.style.transition='none';led.style.transform=`translate(${a.left-b.left}px,${a.top-b.top}px)`;led.style.opacity='.6';
   requestAnimationFrame(()=>requestAnimationFrame(()=>{led.style.transition='transform 760ms cubic-bezier(.45,0,.55,1),opacity 760ms cubic-bezier(.45,0,.55,1),font-size 760ms cubic-bezier(.45,0,.55,1)';led.style.transform='';led.style.opacity='';setTimeout(()=>{last.r=led.getBoundingClientRect()},800)}))}).observe(sec,{attributes:true,attributeFilter:['class']});
@@ -500,7 +509,7 @@ pageState(-1);ensureSen(0,false);
 deckPin.add(sec);
 function onScroll(){if(phone())return;const k=deckPin.at(sec);stage(k<0?-2:k)}
 dots.forEach((d,j)=>d.addEventListener('click',()=>{if(phone()){tapped=true;clearInterval(auto);k=j;stage(j)}else deckPin.go(sec,j)}));
-addEventListener('scroll',()=>requestAnimationFrame(onScroll),{passive:true});
+deckScroll(onScroll);
 addEventListener('resize',()=>{if(phone()){sec.classList.remove('pre');mj++;sc={x:0,y:0,k:1};setT()}else if(cur!==null&&cur<0)morph(()=>{},0);const c=cur;cur=null;if(!phone())onScroll();else if(c!==null)stage(Math.max(0,Math.min(c,3)))});
 if(document.fonts)document.fonts.ready.then(()=>{if(!phone()&&cur!==null&&cur<0)morph(()=>{},0)});
 // phone: unpinned; tap, and auto-advance until the first tap
@@ -523,17 +532,10 @@ if(reduce&&phone())stage(2);else onScroll();
  const HL=[[],['#x3 .x3foot .x3keys:nth-of-type(3)'],['#x3 .ln.del'],['#x3 #rn'],['#x3 .x3pg .x3ph b'],['#x3 .x3ttl em']];
  // the pen: a quick hand-drawn loop around whatever the line names
  const win=document.querySelector('#x3 .st'),NS='http://www.w3.org/2000/svg';
- const ink=document.createElementNS(NS,'svg');ink.setAttribute('class','x3inkl');ink.setAttribute('aria-hidden','true');win.append(ink);
+ const I3=deckInk(win,'x3inkl',3,i=>drawInk(i)),ink=I3.svg,head=I3.head,loop=(x,y,w,h)=>I3.loop(x,y,w,h,false,7);
  // which narration word points at which target: [word index among em/kbd, target index]
  const LINK=[[],[[0,0]],[[0,0]],[[0,0]],[[0,0]],[[0,0]]];
- let seed=3;const r=()=>{seed=(seed*9301+49297)%233280;return seed/233280-.5};
- function loop(x,y,w,h){const p=6,X=x-p,Y=y-p,W=w+2*p,H=h+2*p;
-  if(W/H>7){// long rows: a rough box with an overshooting start
-   return `M${X+W*.06} ${Y+r()*3} L${X+W+r()*4} ${Y+r()*3} Q${X+W+6} ${Y+H/2} ${X+W+r()*4} ${Y+H+r()*2} L${X+r()*4} ${Y+H+r()*3} Q${X-6} ${Y+H/2} ${X+r()*3} ${Y-2} L${X+W*.12} ${Y+3}`}
-  const cx=X+W/2,cy=Y+H/2,rx=W/2+4,ry=H/2+3;// an ellipse that doesn't quite close
-  return `M${cx+rx*.85} ${cy-ry*.75} C ${cx+rx*1.05} ${cy-ry*.1}, ${cx+rx*.7} ${cy+ry*1.05}, ${cx} ${cy+ry+r()*2} C ${cx-rx*.8} ${cy+ry*1.05}, ${cx-rx*1.08} ${cy+ry*.2}, ${cx-rx+r()*2} ${cy} C ${cx-rx*1.02} ${cy-ry*.8}, ${cx-rx*.3} ${cy-ry*1.12}, ${cx+rx*.25} ${cy-ry*1.02} C ${cx+rx*.6} ${cy-ry*.98}, ${cx+rx*.95} ${cy-ry*.7}, ${cx+rx*1.02} ${cy-ry*.25}`}
  // a pen arrow: short hops go direct; long ones travel the window's outer edge like a margin note
- function head(x1,y1,px,py){const tx=x1-px,ty=y1-py,l=Math.hypot(tx,ty)||1,ux=tx/l,uy=ty/l,hx=-uy,hy=ux,s=9;return `M${x1-ux*s+hx*s*.6} ${y1-uy*s+hy*s*.6} L${x1} ${y1} L${x1-ux*s-hx*s*.6} ${y1-uy*s-hy*s*.6}`}
  function arrow(x0,y0,t,wr){
   if(t.top>wr.bottom-70){const x1=t.left+t.width/2,y1=t.bottom+8,cx=x1-(x1-x0)*.15,cy=y0-2;return [`M${x0} ${y0} Q ${cx} ${cy}, ${x1} ${y1}`,head(x1,y1,cx,cy)]}
   if(x0>t.left-40&&x0<t.right+40){// target straight above: a gentle near-vertical stroke into its underside
@@ -548,8 +550,8 @@ if(reduce&&phone())stage(2);else onScroll();
   const mx=(x0+x1)/2,my=(y0+y1)/2,dx=x1-x0,dy=y1-y0,L=Math.hypot(dx,dy)||1,nx=-dy/L,ny=dx/L,side=x1>x0?-1:1,bow=Math.min(160,L*.28);
   const cx=mx+nx*bow*side,cy=my+ny*bow*side;
   return [`M${x0} ${y0} Q ${cx} ${cy}, ${x1} ${y1}`,head(x1,y1,cx,cy)]}
- let KEEP=false,KI=0;const mkP=(d,cls,delay)=>{if(KEEP){const e=ink.children[KI++];if(e)e.setAttribute('d',d);return null}const pa=document.createElementNS(NS,'path');pa.setAttribute('d',d);if(cls)pa.setAttribute('class',cls);pa.setAttribute('pathLength','1');if(delay)pa.style.transitionDelay=delay+'ms';ink.append(pa);requestAnimationFrame(()=>requestAnimationFrame(()=>pa.classList.add('go')));return pa};
- function drawInk(i,keep){KEEP=!!keep;KI=0;seed=3+i;if(!keep)ink.innerHTML='';const W=win.getBoundingClientRect();ink.setAttribute('viewBox',`0 0 ${W.width} ${W.height}`);const targets=[];
+ const mkP=(d,cls,delay)=>I3.add(d,cls,delay);
+ function drawInk(i){const W=win.getBoundingClientRect();ink.setAttribute('viewBox',`0 0 ${W.width} ${W.height}`);const targets=[];
   (HL[i+1]||[]).forEach(q=>{const els=[...document.querySelectorAll(q.replace(/^union:/,''))];const rects=q.startsWith('union:')?[els.map(e=>e.getBoundingClientRect()).reduce((u,b)=>({left:Math.min(u.left,b.left),top:Math.min(u.top,b.top),right:Math.max(u.right,b.right),bottom:Math.max(u.bottom,b.bottom)}),{left:1e9,top:1e9,right:-1e9,bottom:-1e9})].map(u=>({left:u.left,top:u.top,width:u.right-u.left,height:u.bottom-u.top})):els.map(e=>e.getBoundingClientRect());rects.forEach(b=>{if(!b.width)return;
    targets.push(b);mkP(loop(b.left-W.left,b.top-W.top,b.width,b.height))})});
   // arrows: from the word in the narration, up to the loop around what it names
@@ -558,10 +560,7 @@ if(reduce&&phone())stage(2);else onScroll();
    const wb=document.querySelector('#x3 .x3win').getBoundingClientRect(),wr={left:wb.left-W.left,right:wb.right-W.left,top:wb.top-W.top,bottom:wb.bottom-W.top,width:wb.width,height:wb.height};
    const tt={left:t.left-W.left,right:t.left-W.left+t.width,top:t.top-W.top,bottom:t.top-W.top+t.height,width:t.width,height:t.height};
    arrow(a.left+a.width/2-W.left,a.top-6-W.top,tt,wr).forEach((d,k)=>{if(!k)mkP(d,'halo');mkP(d,'',k?420:0)})})}
- let hlT=0,hlI=-1,live=0;const follow=i=>{const t0=performance.now();cancelAnimationFrame(live);(function f(now){if(hlI!==i)return;drawInk(i,true);if(now-t0<2600)live=requestAnimationFrame(f)})(t0)};
- const hl=i=>{clearTimeout(hlT);hlI=i;ink.innerHTML='';hlT=setTimeout(()=>{drawInk(i);follow(i)},620)};
- addEventListener('scroll',()=>{if(hlI>=0&&ink.children.length)drawInk(hlI,true)},{passive:true});
- addEventListener('resize',()=>{if(hlI>=0)drawInk(hlI)});
+ const hl=i=>I3.show(i,620);
  let last=-9;
  function put(i){if(i===last)return;last=i;hl(i);el.classList.add('out');setTimeout(()=>{el.innerHTML=T[i+1];el.classList.remove('out')},180)}
  const sec=document.getElementById('x3'),dots=[...document.querySelectorAll('#x3 #dots i')];
