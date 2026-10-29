@@ -75,8 +75,9 @@ const M=[
  {at:3,who:'you',dot:'no',where:'get-user.ts:19',t:'1:20',txt:'Then the title’s wrong. It’s eight, not one.',typed:'Then the title’s wrong. It’s eight, not one.'},
  {at:4,who:'agent',dot:'ag',where:'get-user.ts:19',t:'1:26',txt:'Fair. One per server, eight in all. I’ll retitle it, and keep it Medium until there’s a shared lock.'}];
 const th=$('x4th');
-M.forEach(m=>{const e=document.createElement('div');e.className='x4m'+(m.dot==='ag'?' ag':'');e.innerHTML=`<div><div class="x4mi"><i class="x4dot ${m.dot}"></i><div><div class="x4meta"><span>${m.who} · ${m.where}</span><span>${m.t}</span></div><div class="x4txt">${m.txt}</div></div></div></div>`;
- e.querySelectorAll('u').forEach(u=>u.insertAdjacentHTML('beforeend',pen('M2 6 C 30 3, 60 8, 98 4.5','0 0 100 10')));th.append(e);m.el=e});
+const msgEl=m=>{const e=document.createElement('div');e.className='x4m'+(m.dot==='ag'?' ag':'');e.innerHTML=`<div><div class="x4mi"><i class="x4dot ${m.dot}"></i><div><div class="x4meta"><span>${m.who} · ${m.where}</span><span>${m.t}</span></div><div class="x4txt">${m.txt}</div></div></div></div>`;
+ e.querySelectorAll('u').forEach(u=>u.insertAdjacentHTML('beforeend',pen('M2 6 C 30 3, 60 8, 98 4.5','0 0 100 10')));th.append(e);return e};
+M.forEach(m=>{m.el=msgEl(m)});
 const cmp=$('x4cmp'),ckey=$('x4c');let typeJ=0;
 function showMsg(i,on,anim){const m=M[i],e=m.el,p=e.querySelector('.x4pn');if(!on){e.classList.remove('show');undraw(p);return}
  if(!e.classList.contains('show')){e.classList.add('show');if(p)anim?later(()=>draw(p),420):p.classList.add('go')}}
@@ -88,7 +89,7 @@ const resetCmp=()=>{typeJ++;cmp.classList.remove('typing');cmp.textContent='Writ
 const Q={a:'What happens with eight servers?',b:'Why not a Redis lock?',c:'Draw it: miss → once → db',d:'Does a slow query hold all 1,000?',e:'What if the db call throws?',f:'Would a shared lock make it one?',g:'Show the eight queries on a page'};
 const ROWS=[['a','b','c','d','e'],['a','b','c','d','e'],['f','b','c','d','e'],['f','b','c','d','e'],['g','f','b','c','d']];
 const row=$('x4row'),pills={};row.addEventListener('focusin',e=>{const b=e.target.closest('.x4pill');if(b&&getComputedStyle(row).overflowX==='auto')b.scrollIntoView({block:'nearest',inline:'nearest'})});
-const pill=k=>{if(pills[k])return pills[k];const b=document.createElement('button');b.type='button';b.className='x4pill';b.dataset.k=k;b.innerHTML=`<span>${Q[k]}</span><span class="h">click to ask · ⌘-click to edit</span>`;b.addEventListener('click',()=>ask(k));pills[k]=b;return b};
+const pill=k=>{if(pills[k])return pills[k];const b=document.createElement('button');b.type='button';b.className='x4pill';b.dataset.k=k;b.innerHTML=`<span>${Q[k]}</span><span class="h">click to ask · ⌘-click to edit</span>`;b.addEventListener('click',e=>ask(k,e.metaKey||e.ctrlKey));pills[k]=b;return b};
 function setRow(s,anim){const want=ROWS[Math.min(s,4)],fo=row.contains(document.activeElement)?document.activeElement:null;
  Object.entries(pills).forEach(([k,b])=>{if(!want.includes(k)){if(anim&&b.isConnected&&!b.classList.contains('sink')){b.classList.add('sink');later(()=>{if(b.classList.contains('sink')){const had=b===document.activeElement;b.remove();if(had)refocus(null)}},460)}else if(!anim)b.remove()}});
  want.forEach((k,i)=>{const b=pill(k);b.classList.remove('sink','open','down');b.classList.toggle('asked',k==='a'&&s===1);b.classList.toggle('fresh',(k==='f'&&s>=2&&s<4)||(k==='g'&&s>=4));
@@ -145,7 +146,7 @@ function say(i,ms){i=Math.min(i,4);if(i!==nl){nl=i;narr.classList.add('out');set
 // ---- steps: 0 the questions · 1 tap · 2 the agent brings a pane · 3 push back · 4 the answer · 5 the caption
 let cur=null;const dots=[...document.querySelectorAll('#x4dots i')];
 function stage(i){if(i===cur)return;const prev=cur;cur=i;if(prev!==null&&Math.min(prev,4)===Math.min(i,4)){sec.classList.toggle('x4end',i>=5);return}const s=Math.min(i,4),fwd=prev!==null&&i===prev+1&&!reduce;
- clearT();resetCmp();hand.classList.remove('on','press');
+ clearT();clearExtra();resetCmp();hand.classList.remove('on','press');
  dots.forEach((d,k)=>{d.classList.toggle('on',k<=s);d.classList.toggle('now',k===s)});
  sec.classList.toggle('x4end',i>=5);if(!(prev!==null&&Math.min(prev,4)===s))say(s,fwd?[620,2100,1400,2600,2100][s]:620);
  // the thread, the pane, the pen on the title
@@ -160,8 +161,17 @@ function stage(i){if(i===cur)return;const prev=cur;cur=i;if(prev!==null&&Math.mi
  if(s===2){showMsg(5,true,true);flow(true,true);later(()=>setRow(2,true),1900)}
  if(s===3){setRow(3,false);typeIn(M[6].typed,()=>showMsg(6,true,true))}
  if(s===4){setRow(3,false);later(()=>showMsg(7,true,true),150);later(()=>setRow(4,true),1500)}}
-function ask(k){if(k!=='a'){sec.dispatchEvent(new CustomEvent('deck-ask',{detail:{k,q:Q[k]}}));return}if(phone()){tapped=true;clearInterval(auto);kk=1;stage(1);return}
- deckPin.go(sec,0)}
+// A pill, as in deck: a click asks it; ⌘ or Ctrl and a click puts it in the comment box to edit first.
+// The recording answers "eight servers" (the story's next step); any other question is asked in the
+// thread and answered honestly: this window is a recording.
+let extra=[];const clearExtra=()=>{extra.forEach(e=>e.remove());extra=[]};
+function ask(k,edit){
+ if(edit){resetCmp();cmp.textContent=Q[k];cmp.classList.add('typing');return}
+ if(k==='a'){if(phone()){tapped=true;clearInterval(auto);kk=1;stage(1);return}deckPin.go(sec,0);return}
+ if(phone()){tapped=true;clearInterval(auto);auto=null}
+ if(pills[k])pills[k].classList.add('asked');
+ const you=msgEl({who:'you',dot:'',where:'get-user.ts:19 · asked',t:'now',txt:Q[k]});you.classList.add('show');extra.push(you);
+ later(()=>{const ag=msgEl({who:'agent',dot:'ag',where:'get-user.ts:19',t:'now',txt:'This window is a recording, so only “What happens with eight servers?” has its answer here. In deck, your agent answers this one, in this thread.'});ag.classList.add('show');extra.push(ag)},700)}
 
 // ---- drive: desktop by scroll thresholds (pinned), phone by tap or autoplay
 // option B: four stops on a fixed px budget. The approach shows the questions; stop 0 is the tap, stop 3 the answer with its caption.
