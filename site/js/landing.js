@@ -22,8 +22,7 @@ window.deckPin=(()=>{const reduce=matchMedia('(prefers-reduced-motion: reduce)')
  return {add,at,go,reduce}})();
 
 (()=>{
-const PLAY=document.documentElement.classList.contains('play');
-const NS='http://www.w3.org/2000/svg',reduce=matchMedia('(prefers-reduced-motion: reduce)').matches,phone=()=>innerWidth<=980||reduce||PLAY;
+const NS='http://www.w3.org/2000/svg',reduce=matchMedia('(prefers-reduced-motion: reduce)').matches,phone=()=>innerWidth<=980||reduce;
 const ease=t=>t<.5?2*t*t:1-Math.pow(-2*t+2,2)/2;
 const $=id=>document.getElementById(id),sec=$('x4');if(!sec)return;const st=sec.querySelector('.x4st');
 const pen=(d,vb)=>`<svg viewBox="${vb}" preserveAspectRatio="none" aria-hidden="true"><path class="x4pn" pathLength="1" d="${d}"/></svg>`;
@@ -141,7 +140,6 @@ function drawInk(i,keep){KEEP4=!!keep;KI4=0;if(!keep)ink.innerHTML='';if(phone()
 let live4=0;const follow4=i=>{const t0=performance.now();cancelAnimationFrame(live4);(function f(now){if(inkI!==i)return;drawInk(i,true);if(now-t0<2600)live4=requestAnimationFrame(f)})(t0)};
 const inkAt=(i,ms)=>{clearTimeout(inkT);inkI=i;ink.innerHTML='';inkT=setTimeout(()=>{drawInk(i);follow4(i)},reduce?0:(i===2?Math.max(ms||0,1300):ms))};
 addEventListener('scroll',()=>{if(inkI>=0&&ink.children.length)drawInk(inkI,true)},{passive:true});addEventListener('resize',()=>{if(inkI>=0)drawInk(inkI)});
-addEventListener('resize',()=>{if(inkI>=0)drawInk(inkI)});
 function say(i,ms){i=Math.min(i,4);if(i!==nl){nl=i;narr.classList.add('out');setTimeout(()=>{narr.innerHTML=T[i];narr.classList.remove('out')},reduce?0:180)}inkAt(i,ms)}
 
 // ---- steps: 0 the questions · 1 tap · 2 the agent brings a pane · 3 push back · 4 the answer · 5 the caption
@@ -172,10 +170,9 @@ function onScroll(){if(phone())return;const k=deckPin.at(sec);if(k<0){stage(0);r
 dots.forEach((d,j)=>d.addEventListener('click',()=>{if(phone()){tapped=true;clearInterval(auto);auto=null;kk=j;stage(j)}else if(j>0)deckPin.go(sec,j-1)}));
 addEventListener('scroll',()=>requestAnimationFrame(onScroll),{passive:true});
 let auto=null,kk=0,tapped=false;
-sec.deckTo=j=>{if(j<0||j>4)return -1;tapped=true;clearInterval(auto);auto=null;kk=j;stage(kk);return kk};sec.deckGo=d=>sec.deckTo((cur===null?0:Math.min(cur,4))+d);
 $('x4next').addEventListener('click',()=>{if(!phone()){const k=deckPin.at(sec);deckPin.go(sec,Math.min(3,k+1));return}tapped=true;clearInterval(auto);auto=null;kk=(kk+1)%5;stage(kk)});
 const io=new IntersectionObserver(es=>es.forEach(e=>{if(e.isIntersecting){sec.classList.add('x4in');const p=sec.querySelector('h2 .x4pn');if(!p.classList.contains('go'))later(()=>draw(p),420)}
- if(!phone())return;if(e.isIntersecting){if(!auto&&!tapped&&!reduce&&!PLAY)auto=setInterval(()=>{kk=(kk+1)%5;stage(kk)},3600)}else{clearInterval(auto);auto=null}}),{threshold:.25});
+ if(!phone())return;if(e.isIntersecting){if(!auto&&!tapped&&!reduce)auto=setInterval(()=>{kk=(kk+1)%5;stage(kk)},3600)}else{clearInterval(auto);auto=null}}),{threshold:.25});
 io.observe($('x4win'));
 addEventListener('resize',()=>{const c=cur;cur=null;if(!phone())onScroll();else stage(c===null?0:Math.min(c,4))});
 {const pin=()=>{th.scrollTop=th.scrollHeight},ro=new ResizeObserver(pin);ro.observe(th);[...th.children].forEach(c=>ro.observe(c));new MutationObserver(ms=>{ms.forEach(m=>m.addedNodes.forEach(n=>{if(n.nodeType===1)ro.observe(n)}));pin()}).observe(th,{childList:true,subtree:true,attributes:true,attributeFilter:['class']})}
@@ -263,8 +260,7 @@ else{const io=new IntersectionObserver(es=>{if(es.some(e=>e.isIntersecting)){set
 (()=>{const SIG='<svg class="sig" viewBox="0 0 150 58" aria-label="Henit" role="img"><path pathLength="1" d="M22 8C20 22 17 37 14 52"/><path pathLength="1" d="M6 33C20 30 34 28 46 27"/><path pathLength="1" d="M44 7C42 21 40 37 38 52C42 50 50 46 55 41C58 38 56 35 52 36C47 38 46 47 50 50C54 53 62 50 68 42C68 46 67 50 66 52C70 44 76 40 80 42C84 44 81 52 86 52C90 52 94 46 96 40C96 46 94 50 96 52C100 52 104 46 108 36C110 28 112 20 114 11C112 26 110 42 114 50C118 54 126 48 134 41"/><path pathLength="1" d="M97 31l1.4 1"/><path pathLength="1" d="M102 26C112 25 122 24 134 21"/></svg>';
 document.querySelectorAll('#x7 [data-sig]').forEach(el=>{el.innerHTML=SIG;const s=el.firstChild;const io=new IntersectionObserver(es=>{if(es.some(e=>e.isIntersecting)){s.classList.add('go');io.disconnect()}},{threshold:.6});io.observe(s)})})();
 
-(()=>{const ua=navigator.userAgent,dl=document.getElementById('dl');
-const photo=document.getElementById('photo');if(!photo)return;
+(()=>{const photo=document.getElementById('photo');if(!photo)return;
 new IntersectionObserver((es,o)=>{if(es[0].isIntersecting){photo.classList.add('go');o.disconnect()}},{threshold:.3}).observe(photo);})();
 
 // The copy, in one place. Each sentence reveals in turn; words wrapped in *stars* turn orange when they land.
@@ -345,8 +341,7 @@ addEventListener('scroll',()=>requestAnimationFrame(frame),{passive:true});{cons
 })();
 
 (()=>{
-const PLAY=document.documentElement.classList.contains('play');
-const NS='http://www.w3.org/2000/svg',reduce=matchMedia('(prefers-reduced-motion: reduce)').matches,phone=()=>innerWidth<=980||reduce||PLAY;
+const NS='http://www.w3.org/2000/svg',reduce=matchMedia('(prefers-reduced-motion: reduce)').matches,phone=()=>innerWidth<=980||reduce;
 const ease=t=>t<.5?2*t*t:1-Math.pow(-2*t+2,2)/2; /* close to cubic-bezier(.45,0,.55,1) */
 const pen=(d,vb,cls='')=>`<svg viewBox="${vb}" preserveAspectRatio="none" aria-hidden="true"><path class="pn3 ${cls}" pathLength="1" d="${d}"/></svg>`;
 const draw=root=>root.querySelectorAll('.pn3').forEach(p=>{p.classList.remove('go');void p.getBoundingClientRect();requestAnimationFrame(()=>p.classList.add('go'))});
@@ -497,9 +492,7 @@ if(document.fonts)document.fonts.ready.then(()=>{if(!phone()&&cur!==null&&cur<0)
 // phone: unpinned; tap, and auto-advance until the first tap
 let auto=null,k=0,tapped=false;const nextBtn=$('next');
 nextBtn.addEventListener('click',()=>{tapped=true;clearInterval(auto);k=(k+1)%4;stage(k)});
-// /play/ steps the claims with n and p: deckGo(+1|-1) and deckTo(j) return the claim, or -1 past either end
-sec.deckTo=j=>{if(j<0||j>3)return -1;tapped=true;clearInterval(auto);k=j;stage(k);return k};sec.deckGo=d=>sec.deckTo((cur===null||cur<0?-1:k)+d);
-new IntersectionObserver(es=>es.forEach(e=>{if(!phone())return;if(e.isIntersecting){if(cur===null||cur<0){k=0;stage(0)}if(!auto&&!tapped&&!reduce&&!PLAY)auto=setInterval(()=>{k=(k+1)%4;stage(k)},3200)}else{clearInterval(auto);auto=null}}),{threshold:.3}).observe(row);
+new IntersectionObserver(es=>es.forEach(e=>{if(!phone())return;if(e.isIntersecting){if(cur===null||cur<0){k=0;stage(0)}if(!auto&&!tapped&&!reduce)auto=setInterval(()=>{k=(k+1)%4;stage(k)},3200)}else{clearInterval(auto);auto=null}}),{threshold:.3}).observe(row);
 if(reduce&&phone())stage(2);else onScroll();
 })();
 
