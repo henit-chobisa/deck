@@ -66,7 +66,7 @@ h1,h2,h3,.text{color:var(--text);transition:color var(--turn) var(--ease)}
 /* hero: paper */
 .hero{padding-block:clamp(calc(56*var(--u)),10vh,calc(108*var(--u))) calc(40*var(--u));text-align:center}
 h1{font:500 clamp(max(var(--fmin,0px),calc(42*var(--u))),6.2vw,calc(78*var(--u)))/1 var(--display);letter-spacing:-.04em;margin:0 auto;max-width:15ch;text-wrap:balance}
-.u{position:relative;white-space:nowrap}
+.u{position:relative;display:inline-block;white-space:nowrap}
 .u svg{position:absolute;left:-2%;bottom:-.14em;width:104%;height:.3em;overflow:visible}
 .u .ink{stroke-width:3.6;animation:draw 760ms var(--ease) 420ms forwards}
 .sub{font-size:max(var(--fmin,0px),calc(18*var(--u)));line-height:1.55;margin:calc(24*var(--u)) auto 0;max-width:46ch}
@@ -172,7 +172,9 @@ h2.big{font:500 clamp(max(var(--fmin,0px),calc(32*var(--u))),3.8vw,calc(46*var(-
 body{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='240'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .35 0 0 0 0 .3 0 0 0 0 .22 0 0 0 .07 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E")}
 
 .hero{padding-block:clamp(calc(48*var(--u)),7.5vh,calc(84*var(--u))) calc(96*var(--u))}
-.hero h1{max-width:16ch}
+.hero h1{max-width:22ch}
+/* the headline's second sentence is underlined whole, so on a phone the size keeps it on one line */
+@media (max-width:560px){.hero h1{font-size:clamp(28px,9.2vw,42px)}}
 .sub{max-width:52ch;margin-top:calc(20*var(--u))}
 .ctas{margin-top:calc(26*var(--u))}
 .photo{margin-top:clamp(calc(44*var(--u)),6vh,calc(64*var(--u)))}
