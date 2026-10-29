@@ -38,13 +38,14 @@ async function links(page) {
   assert.deepEqual(await page.locator('.hero .ctas a').evaluateAll((as) => as.map((a) => a.getAttribute('href'))), ['#install', GH])
   assert.deepEqual(await page.locator('.x7btns a').evaluateAll((as) => as.map((a) => a.getAttribute('href'))), ['#install', GH])
   const foot = await page.locator('.x7cols a').evaluateAll((as) => as.map((a) => a.getAttribute('href')))
-  assert.deepEqual(foot, ['#install', '/docs/', '/changelog/', GH + '/releases', '/telemetry/', GH, GH + '/blob/main/LICENSE', GH + '/blob/main/README.md', 'https://henit.blog', '#note'])
+  assert.deepEqual(foot, ['#install', '/play/', '/docs/', '/changelog/', GH + '/releases', '/telemetry/', GH, GH + '/blob/main/LICENSE', GH + '/blob/main/README.md', 'https://henit.blog', '#note'])
   // every in-page link has its target, and every local page answers
   for (const href of await page.locator('a[href]').evaluateAll((as) => as.map((a) => a.getAttribute('href')))) {
     if (href.startsWith('#')) assert.equal(await page.locator(href).count(), 1, `${href} must name exactly one element`)
     else if (href.startsWith('/')) assert((await page.request.get(base + href)).ok(), `${href} must exist`)
   }
   assert.equal(await page.locator('#note').evaluate((el) => el.tagName), 'FIGURE', '#note is Henit\'s note')
+  assert.equal(await page.locator('#x3 .x3try a').getAttribute('href'), '/play/', 'one way to the full deck, under #x3')
 }
 
 async function install(page, engine) {
@@ -140,8 +141,37 @@ async function features(page) {
   assert(!(await details.evaluate((d) => d.open)), 'x5: Space closes it')
   for (const id of ['x3', 'x4', 'x5']) {
     await page.locator(`#x6 .o2also a[href="#${id}"]`).click()
-    await page.waitForFunction((id) => Math.abs(document.getElementById(id).getBoundingClientRect().top) < 80, id, { timeout: 4000 })
+    // lands at the section's top, or where its pin starts on a tall screen (scroll-margin-top)
+    await page.waitForFunction((id) => { const e = document.getElementById(id); return Math.abs(e.getBoundingClientRect().top - (parseFloat(getComputedStyle(e).scrollMarginTop) || 0)) < 80 }, id, { timeout: 4000 })
   }
+}
+
+// /play/: the recorded deck, stepped with n / p, a suggested question answered from the recording,
+// a comment that says it stayed on the page, and the honest label
+async function play(page, label) {
+  await page.goto(base + '/play/')
+  assert.match(await page.locator('.play-note').textContent(), /recorded example/i, 'the demo says it is recorded')
+  await fits(page, label + ' /play/')
+  const at = () => page.locator('#play-at').textContent()
+  assert.match(await at(), /group 1 of 4/)
+  await page.locator('#deck').focus()
+  const seen = []
+  for (let i = 0; i < 10; i++) { await page.keyboard.press('n'); await page.waitForTimeout(450); seen.push(await at()) }
+  for (const want of ['claim 1 of 4', 'claim 4 of 4', 'conversation, 1 of 5', 'conversation, 5 of 5']) assert(seen.some((t) => t.includes(want)), `/play/: n reaches ${want}`)
+  await fits(page, label + ' /play/ stepped')
+  await page.locator('#x4row .x4pill[data-k="b"]').click()
+  await page.waitForFunction(() => document.querySelectorAll('#x4th .rec').length > 0)
+  await page.keyboard.press('c')
+  assert(await page.locator('#play-text').evaluate((el) => el === document.activeElement), 'c opens the comment box')
+  await page.locator('#play-text').fill('Keep the queue bounded.')
+  await page.locator('.play-cmp .btn').click()
+  assert.match(await page.locator('#play-cmp-note').textContent(), /Nothing was sent/)
+  await page.locator('#deck').focus()
+  for (let i = 0; i < 12; i++) { await page.keyboard.press('p'); await page.waitForTimeout(150) }
+  assert.match(await at(), /group 1 of 4/, '/play/: p goes back to the start')
+  await page.locator('.play-steps button').nth(2).click()
+  assert.match(await at(), /conversation/, 'the group buttons jump')
+  await fits(page, label + ' /play/ end')
 }
 
 async function check(engine, name, width, height, reducedMotion = 'no-preference') {
@@ -184,10 +214,16 @@ async function check(engine, name, width, height, reducedMotion = 'no-preference
       await page.screenshot({ path: resolve(process.env.SCREENSHOTS, `${name}-top.png`) })
     }
     if (name === 'webkit-desktop' || name === 'chromium-desktop') await windowsPick(browser)
+    await play(page, name)
     for (const path of ['/docs/', '/guides/', '/changelog/', '/ai-code-review/']) {
       await page.goto(base + path)
       await fits(page, name + path)
-      assert(await page.locator('.nav').getByRole('link', { name: 'Docs', exact: true }).isVisible())
+      // the nav names Docs (on phones, as on the home page, it folds to the GitHub icon and Install,
+      // and Docs is in the footer)
+      const docs = page.locator('.nav a', { hasText: /^Docs$/ })
+      assert.equal(await docs.count(), 1, `${path}: the nav has Docs`)
+      if (width > 900) assert(await docs.isVisible(), `${path}: Docs is visible in the nav`)
+      else assert(await docs.isVisible() || await page.locator('footer a', { hasText: /^Docs$/ }).count() >= 1, `${path}: Docs is in the nav or the footer`)
     }
     assert.deepEqual(errors, [], `${name}: browser errors`)
     console.log(`PASS ${name}`)

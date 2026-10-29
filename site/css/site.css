@@ -85,7 +85,7 @@ pre{position:relative;margin:calc(18*var(--u)) 0;padding:calc(16*var(--u)) calc(
 pre code{display:block;background:none;border:0;padding:0;font:400 var(--fs-code)/1.75 var(--mono);color:var(--d-code);white-space:pre}
 
 /* buttons, as on the home page */
-.btn{display:inline-flex;align-items:center;justify-content:center;gap:calc(8*var(--u));height:max(38px,calc(46*var(--u)));padding:0 calc(20*var(--u));border-radius:calc(8*var(--u));font:500 max(14px,calc(16*var(--u)))/1 var(--display);transition:transform 150ms var(--ease),background-color 150ms var(--ease),border-color 150ms var(--ease)}
+.btn{appearance:none;background:none;cursor:pointer;white-space:nowrap;display:inline-flex;align-items:center;justify-content:center;gap:calc(8*var(--u));height:max(38px,calc(46*var(--u)));padding:0 calc(20*var(--u));border-radius:calc(8*var(--u));font:500 max(14px,calc(16*var(--u)))/1 var(--display);transition:transform 150ms var(--ease),background-color 150ms var(--ease),border-color 150ms var(--ease)}
 .btn.solid{background:var(--accent);color:#120a04}
 .btn.solid:hover{background:#ff9238}
 .btn.ghost{border:1px solid var(--line2);color:var(--text)}

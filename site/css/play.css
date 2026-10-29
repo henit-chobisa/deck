@@ -1,0 +1,55 @@
+/* /play/: the home page's deck windows, one group at a time, stepped by hand.
+   landing.css draws the windows; this lays them out as a deck and adds the deck around them. */
+html.play,.play body{background:var(--ink)}
+.play-head{max-width:var(--wrap);margin:0 auto;padding:calc(56*var(--u)) max(calc(24*var(--u)),env(safe-area-inset-left,0px)) calc(8*var(--u))}
+@media (min-width:981px){.play-head,.play-deck{--wrap:1120px}}
+.play-head h1{font-size:clamp(calc(30*var(--u)),4.4vw,calc(48*var(--u)))}
+.play-note{margin-top:calc(16*var(--u));max-width:64ch;padding:calc(12*var(--u)) calc(16*var(--u));border-left:2px solid var(--accent);background:linear-gradient(90deg,#fe80190f,#fe801903 70%);border-radius:0 calc(10*var(--u)) calc(10*var(--u)) 0;color:var(--soft);font-size:var(--fs-small);line-height:1.6}
+.play-steps{display:flex;flex-wrap:wrap;gap:calc(8*var(--u));margin-top:calc(26*var(--u))}
+.play-steps button{appearance:none;display:inline-flex;align-items:center;gap:calc(10*var(--u));padding:calc(9*var(--u)) calc(14*var(--u));border:1px solid var(--line2);border-radius:calc(8*var(--u));background:var(--card);color:var(--soft);font:500 var(--fs-small)/1.2 var(--display);cursor:pointer;transition:border-color 150ms var(--ease),color 150ms var(--ease)}
+.play-steps button b{font:500 .9em var(--mono);color:var(--dim)}
+.play-steps button:hover{color:var(--text);border-color:#3a3a38}
+.play-steps button[aria-current]{color:var(--text);border-color:#5a361a;background:#120d09}
+.play-steps button[aria-current] b{color:var(--accent)}
+.play-keys{margin-top:calc(14*var(--u));color:var(--dim);font-size:var(--fs-label)}
+.play-keys kbd{margin-right:.3em}
+.play-keys kbd:not(:first-child){margin-left:.8em}
+
+.play-deck{max-width:var(--wrap);margin:0 auto;padding:0 0 calc(96*var(--u));outline:none}
+.play-view[hidden]{display:none}
+
+/* the windows, laid out by hand rather than pinned to the scroll (as landing.css does with reduced motion) */
+.play .snapk{display:none}
+.play #x3,.play #x4{height:auto;margin-top:0;padding-block:calc(28*var(--u)) calc(24*var(--u))}
+.play #x3 .st,.play #x4 .x4st{position:relative;top:auto;height:auto}
+.play #x3h,.play #x3 .x3lede,.play #x4 .x4head{display:none}
+.play #x4 .x4dots i:first-child{display:inline-block}
+.play #x4 .x4after,.play #x3 .next,.play #x4 .x4next{display:none}
+.play #x6{padding-block:calc(28*var(--u)) calc(24*var(--u))}
+.play #x6 .o2tiles{grid-template-columns:minmax(0,1fr)}
+.play #x6 .ow{max-width:var(--wrap)}
+
+/* the recorded answers, marked as recorded */
+.play .x4m .rec{margin-left:.6em;padding:0 .4em;border:1px solid #3a2412;border-radius:4px;color:#d98a4a;font:500 .85em var(--mono);letter-spacing:.02em}
+
+/* your own comment: kept on this page, and it says so */
+.play-cmp{margin:calc(4*var(--u)) 0 calc(8*var(--u));padding:calc(14*var(--u));border:1px solid var(--d-edge);border-radius:calc(12*var(--u));background:var(--d-bg)}
+.play-cmp[hidden]{display:none}
+.play-cmp label{display:block;margin-bottom:calc(8*var(--u));font:500 var(--fs-label)/1 var(--sans);letter-spacing:.06em;text-transform:uppercase;color:var(--dim)}
+.play-cmp textarea{width:100%;resize:vertical;min-height:calc(64*var(--u));padding:calc(10*var(--u)) calc(12*var(--u));border:1px solid #2e2e2c;border-radius:calc(8*var(--u));background:#111110;color:var(--text);font:max(16px,calc(15*var(--u)))/1.5 var(--display)}
+.play-cmp textarea:focus{outline:none;border-color:#5a361a}
+.play-cmp-row{display:flex;align-items:center;justify-content:space-between;gap:calc(12*var(--u));margin-top:calc(10*var(--u))}
+.play-cmp-note{color:var(--soft);font-size:var(--fs-small)}
+
+.play-nav{display:flex;align-items:center;justify-content:space-between;gap:calc(12*var(--u));padding:calc(8*var(--u)) max(calc(24*var(--u)),env(safe-area-inset-left,0px))}
+.play-nav .btn[disabled]{opacity:.4;cursor:default}
+.play-at{color:var(--dim);font:400 var(--fs-label)/1 var(--mono);text-align:center}
+.play-end{margin:calc(48*var(--u)) max(calc(24*var(--u)),env(safe-area-inset-left,0px)) 0;padding:calc(28*var(--u));border:1px solid var(--line2);border-radius:calc(14*var(--u));background:radial-gradient(90% 140% at 50% 120%,#fe801924,#fe801908 45%,transparent 70%),linear-gradient(180deg,#0b0b0b,#0d0a08);display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:calc(20*var(--u))}
+.play-end p{max-width:56ch;color:var(--soft);font-size:var(--fs-small);line-height:1.6}
+.play-end-btns{display:flex;flex-wrap:wrap;gap:calc(12*var(--u))}
+.play #x6 .x6head{display:none}
+.play-head,.play-head h1{text-align:left}
+.play-deck{scroll-margin-top:var(--navh)}
+.play-head h1{margin:0;max-width:none;font:500 clamp(calc(30*var(--u)),4.4vw,calc(48*var(--u)))/1.04 var(--display);letter-spacing:-.04em}
+.play-nav .btn{background:none;white-space:nowrap}
+@media (max-width:520px){.play-nav .btn{padding:0 calc(12*var(--u))}.play-at{font-size:11px}}

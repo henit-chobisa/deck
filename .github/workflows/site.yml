@@ -36,10 +36,10 @@ jobs:
           [ "$(jq length site/changelog/releases.json)" -gt 0 ] || { echo "no releases came back"; exit 1; }
       - name: Check that every local link is there
         run: |
-          for page in site/index.html site/docs/index.html site/changelog/index.html; do
+          for page in site/index.html site/play/index.html site/docs/index.html site/changelog/index.html; do
             dir=$(dirname "$page")
             grep -oE '(src|href)="[^"#:]+"' "$page" | sed -E 's/^(src|href)="//; s/"$//' | while read -r ref; do
-              target="$dir/$ref"
+              case "$ref" in /*) target="site$ref" ;; *) target="$dir/$ref" ;; esac
               case "$ref" in */) target="$target/index.html" ;; esac
               [ -e "$target" ] || { echo "$page links to $ref, which is not there"; exit 1; }
             done
@@ -48,6 +48,12 @@ jobs:
           grep -oE 'href="#[^"]+"' site/index.html | sed -E 's/^href="#//; s/"$//' | sort -u | while read -r id; do
             grep -q "id=\"$id\"" site/index.html || { echo "site/index.html links to #$id, which is not there"; exit 1; }
           done
+      - name: Check the shared shell and the demo deck are fresh
+        # tools/shell.py writes the nav and footer into every page, tools/play.py builds /play/ from
+        # the home page's windows; a page edited by hand instead would drift.
+        run: |
+          python3 site/tools/shell.py --check
+          python3 site/tools/play.py --check
       - name: Count visits
         # Every page gets the website's visit counter. What it counts is on
         # /telemetry/; the app's own usage counts stay opt-in and separate.

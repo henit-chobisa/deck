@@ -58,7 +58,7 @@ FOOT = (
     f'   <a class="foot-brand" href="/" aria-label="deck, home">{MARK}deck<small>Make your agent answer for your understanding.</small></a>\n'
     '  </div>\n'
     '  <nav class="foot-cols" aria-label="Footer">\n'
-    '   <div><p class="foot-ch">Product</p><a href="/#install">Install</a><a href="/docs/">Docs</a><a href="/guides/">Guides</a>'
+    '   <div><p class="foot-ch">Product</p><a href="/#install">Install</a><a href="/play/">Try a full deck</a><a href="/docs/">Docs</a><a href="/guides/">Guides</a>'
     f'<a href="/changelog/">Changelog</a><a href="{REPO}/releases">Releases</a><a href="/telemetry/">Telemetry</a></div>\n'
     f'   <div><p class="foot-ch">Open source</p><a href="{REPO}">GitHub</a><a href="{REPO}/blob/main/LICENSE">License · Apache-2.0</a>'
     f'<a href="{REPO}/blob/main/README.md">README</a></div>\n'

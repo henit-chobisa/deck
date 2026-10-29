@@ -22,9 +22,10 @@ window.deckPin=(()=>{const reduce=matchMedia('(prefers-reduced-motion: reduce)')
  return {add,at,go,reduce}})();
 
 (()=>{
-const NS='http://www.w3.org/2000/svg',reduce=matchMedia('(prefers-reduced-motion: reduce)').matches,phone=()=>innerWidth<=980||reduce;
+const PLAY=document.documentElement.classList.contains('play');
+const NS='http://www.w3.org/2000/svg',reduce=matchMedia('(prefers-reduced-motion: reduce)').matches,phone=()=>innerWidth<=980||reduce||PLAY;
 const ease=t=>t<.5?2*t*t:1-Math.pow(-2*t+2,2)/2;
-const $=id=>document.getElementById(id),sec=$('x4'),st=sec.querySelector('.x4st');
+const $=id=>document.getElementById(id),sec=$('x4');if(!sec)return;const st=sec.querySelector('.x4st');
 const pen=(d,vb)=>`<svg viewBox="${vb}" preserveAspectRatio="none" aria-hidden="true"><path class="x4pn" pathLength="1" d="${d}"/></svg>`;
 const draw=p=>{p.classList.remove('go');void p.getBoundingClientRect();requestAnimationFrame(()=>p.classList.add('go'))};
 const undraw=p=>p&&p.classList.remove('go');
@@ -161,7 +162,7 @@ function stage(i){if(i===cur)return;const prev=cur;cur=i;if(prev!==null&&Math.mi
  if(s===2){showMsg(5,true,true);flow(true,true);later(()=>setRow(2,true),1900)}
  if(s===3){setRow(3,false);typeIn(M[6].typed,()=>showMsg(6,true,true))}
  if(s===4){setRow(3,false);later(()=>showMsg(7,true,true),150);later(()=>setRow(4,true),1500)}}
-function ask(k){if(k!=='a')return;if(phone()){tapped=true;clearInterval(auto);kk=1;stage(1);return}
+function ask(k){if(k!=='a'){sec.dispatchEvent(new CustomEvent('deck-ask',{detail:{k,q:Q[k]}}));return}if(phone()){tapped=true;clearInterval(auto);kk=1;stage(1);return}
  deckPin.go(sec,0)}
 
 // ---- drive: desktop by scroll thresholds (pinned), phone by tap or autoplay
@@ -171,9 +172,10 @@ function onScroll(){if(phone())return;const k=deckPin.at(sec);if(k<0){stage(0);r
 dots.forEach((d,j)=>d.addEventListener('click',()=>{if(phone()){tapped=true;clearInterval(auto);auto=null;kk=j;stage(j)}else if(j>0)deckPin.go(sec,j-1)}));
 addEventListener('scroll',()=>requestAnimationFrame(onScroll),{passive:true});
 let auto=null,kk=0,tapped=false;
+sec.deckTo=j=>{if(j<0||j>4)return -1;tapped=true;clearInterval(auto);auto=null;kk=j;stage(kk);return kk};sec.deckGo=d=>sec.deckTo((cur===null?0:Math.min(cur,4))+d);
 $('x4next').addEventListener('click',()=>{if(!phone()){const k=deckPin.at(sec);deckPin.go(sec,Math.min(3,k+1));return}tapped=true;clearInterval(auto);auto=null;kk=(kk+1)%5;stage(kk)});
 const io=new IntersectionObserver(es=>es.forEach(e=>{if(e.isIntersecting){sec.classList.add('x4in');const p=sec.querySelector('h2 .x4pn');if(!p.classList.contains('go'))later(()=>draw(p),420)}
- if(!phone())return;if(e.isIntersecting){if(!auto&&!tapped&&!reduce)auto=setInterval(()=>{kk=(kk+1)%5;stage(kk)},3600)}else{clearInterval(auto);auto=null}}),{threshold:.25});
+ if(!phone())return;if(e.isIntersecting){if(!auto&&!tapped&&!reduce&&!PLAY)auto=setInterval(()=>{kk=(kk+1)%5;stage(kk)},3600)}else{clearInterval(auto);auto=null}}),{threshold:.25});
 io.observe($('x4win'));
 addEventListener('resize',()=>{const c=cur;cur=null;if(!phone())onScroll();else stage(c===null?0:Math.min(c,4))});
 {const pin=()=>{th.scrollTop=th.scrollHeight},ro=new ResizeObserver(pin);ro.observe(th);[...th.children].forEach(c=>ro.observe(c));new MutationObserver(ms=>{ms.forEach(m=>m.addedNodes.forEach(n=>{if(n.nodeType===1)ro.observe(n)}));pin()}).observe(th,{childList:true,subtree:true,attributes:true,attributeFilter:['class']})}
@@ -181,7 +183,7 @@ setRow(0,false);
 if(reduce){sec.classList.add('x4in');sec.querySelector('h2 .x4pn').classList.add('go');stage(4)}else if(phone())stage(0);else onScroll();
 })();
 
-(()=>{const sec=document.getElementById('x5'),reduce=matchMedia('(prefers-reduced-motion: reduce)').matches;
+(()=>{const sec=document.getElementById('x5');if(!sec)return;const reduce=matchMedia('(prefers-reduced-motion: reduce)').matches;
 // ---- a page of the file, as the export paints it (the preview is the file)
 const PL=[[14,'<span class="k">export async function</span> <span class="f">getUser</span>(id: <span class="t">string</span>) {'],[15,'  <span class="k">const</span> key = <span class="s">`user:${id}`</span>;'],[16,'  <span class="k">const</span> hit = <span class="k">await</span> cache.<span class="f">get</span>(key);'],[17,'  <span class="k">if</span> (hit) <span class="k">return</span> hit;'],[18,''],[19,'  <span class="k">const</span> user = <span class="k">await</span> <span class="f">once</span>(key, () =&gt; db.users.<span class="f">find</span>(id));'],[20,''],[21,'  <span class="k">await</span> cache.<span class="f">set</span>(key, user, { ttl: <span class="n">60</span> });'],[22,'  <span class="k">return</span> user;'],[23,'}']];
 const page=()=>`<div class="x5pg"><div class="x5pgb"><div class="x5pgd">Cache stampede on user lookups · group 2 of 4</div><div class="x5pgt">A thousand requests, one query per server<em><i>▮▮▯</i>Medium</em></div><p class="x5pgp">Now <code>once()</code> lets the first miss ask, and the rest wait for its answer.</p></div>
@@ -195,7 +197,7 @@ new IntersectionObserver((es,o)=>es.forEach(e=>{if(!e.isIntersecting)return;sec.
 })();
 
 (()=>{
-const sec=document.getElementById('x6'),reduce=matchMedia('(prefers-reduced-motion: reduce)').matches,phone=()=>innerWidth<=980;
+const sec=document.getElementById('x6');if(!sec)return;const reduce=matchMedia('(prefers-reduced-motion: reduce)').matches,phone=()=>innerWidth<=980;
 const pans=[...sec.querySelectorAll('.x6pan')];
 // ---- listen (row 5): a word at a time, the lines of its sentence lit, the track filling. Silent: deck's voice is not in the page.
 const walk=sec.querySelector('[data-walk]'),wp=walk&&walk.closest('.x6pan');let wt=0;
@@ -265,13 +267,13 @@ else{const io=new IntersectionObserver(es=>{if(es.some(e=>e.isIntersecting)){set
 document.querySelectorAll('#x7 [data-sig]').forEach(el=>{el.innerHTML=SIG;const s=el.firstChild;const io=new IntersectionObserver(es=>{if(es.some(e=>e.isIntersecting)){s.classList.add('go');io.disconnect()}},{threshold:.6});io.observe(s)})})();
 
 (()=>{const ua=navigator.userAgent,dl=document.getElementById('dl');
-const photo=document.getElementById('photo');
+const photo=document.getElementById('photo');if(!photo)return;
 new IntersectionObserver((es,o)=>{if(es[0].isIntersecting){photo.classList.add('go');o.disconnect()}},{threshold:.3}).observe(photo);})();
 
 // The copy, in one place. Each sentence reveals in turn; words wrapped in *stars* turn orange when they land.
 const COPY={lines:['The agent said "Done."','You said *"LGTM."*'],coda:"<b>Don't say it yet.</b>Make it explain itself first. <i>Claim by claim.</i>"};
 (document.fonts?document.fonts.ready:Promise.resolve()).then(()=>{
-const line=document.getElementById('line'),field=document.getElementById('field'),coda=document.getElementById('coda'),sec=document.getElementById('reveal');
+const line=document.getElementById('line'),field=document.getElementById('field'),coda=document.getElementById('coda'),sec=document.getElementById('reveal');if(!sec)return;
 sec.setAttribute('aria-label',COPY.lines.join(' ').replace(/\*/g,''));coda.innerHTML=COPY.coda;
 const words=[];COPY.lines.forEach((t,si)=>{const s=document.createElement('span');s.className='s';t.split(' ').forEach(w=>{const e=document.createElement('span');e.className='w';if(/^\*.*\*/.test(w)){e.classList.add('hi');w=w.replace(/\*/g,'')}e.textContent=w;e.dataset.s=si;s.append(e,' ');words.push(e)});line.append(s)});
 // Real posts, verbatim, each with its source. [[...]] marks the phrase that lights up when "LGTM" lands.
@@ -346,13 +348,14 @@ addEventListener('scroll',()=>requestAnimationFrame(frame),{passive:true});{cons
 })();
 
 (()=>{
-const NS='http://www.w3.org/2000/svg',reduce=matchMedia('(prefers-reduced-motion: reduce)').matches,phone=()=>innerWidth<=980||reduce;
+const PLAY=document.documentElement.classList.contains('play');
+const NS='http://www.w3.org/2000/svg',reduce=matchMedia('(prefers-reduced-motion: reduce)').matches,phone=()=>innerWidth<=980||reduce||PLAY;
 const ease=t=>t<.5?2*t*t:1-Math.pow(-2*t+2,2)/2; /* close to cubic-bezier(.45,0,.55,1) */
 const pen=(d,vb,cls='')=>`<svg viewBox="${vb}" preserveAspectRatio="none" aria-hidden="true"><path class="pn3 ${cls}" pathLength="1" d="${d}"/></svg>`;
 const draw=root=>root.querySelectorAll('.pn3').forEach(p=>{p.classList.remove('go');void p.getBoundingClientRect();requestAnimationFrame(()=>p.classList.add('go'))});
 const mk=(tag,attrs,parent)=>{const e=document.createElementNS(NS,tag);Object.entries(attrs).forEach(([k,v])=>e.setAttribute(k,v));if(parent)parent.append(e);return e};
 const $=id=>document.getElementById(id);
-const sec=$('x3'),st=sec.querySelector('.st'),lede=sec.querySelector('.x3lede'),h2=$('x3h'),readEl=sec.querySelector('.read');
+const sec=$('x3');if(!sec)return;const st=sec.querySelector('.st'),lede=sec.querySelector('.x3lede'),h2=$('x3h'),readEl=sec.querySelector('.read');
 
 // ---- code
 const CODE=[[14,'<span class="x3k">export async function</span> <span class="x3f">getUser</span>(id: <span class="x3t">string</span>) {'],[15,'  <span class="x3k">const</span> key = <span class="x3s">`user:${id}`</span>;'],[16,'  <span class="x3k">const</span> hit = <span class="x3k">await</span> cache.<span class="x3f">get</span>(key);'],[17,'  <span class="x3k">if</span> (hit) <span class="x3k">return</span> hit;'],[18,''],['19-','  <span class="x3k">const</span> user = <span class="x3k">await</span> db.users.<span class="x3f">find</span>(id);'],['19+','  <span class="x3k">const</span> user = <span class="x3k">await</span> <span class="x3f">once</span>(key, () =&gt; db.users.<span class="x3f">find</span>(id));'],[20,''],[21,'  <span class="x3k">await</span> cache.<span class="x3f">set</span>(key, user, { ttl: <span class="x3n">60</span> });'],[22,'  <span class="x3k">return</span> user;'],[23,'}']];
@@ -497,7 +500,9 @@ if(document.fonts)document.fonts.ready.then(()=>{if(!phone()&&cur!==null&&cur<0)
 // phone: unpinned; tap, and auto-advance until the first tap
 let auto=null,k=0,tapped=false;const nextBtn=$('next');
 nextBtn.addEventListener('click',()=>{tapped=true;clearInterval(auto);k=(k+1)%4;stage(k)});
-new IntersectionObserver(es=>es.forEach(e=>{if(!phone())return;if(e.isIntersecting){if(cur===null||cur<0){k=0;stage(0)}if(!auto&&!tapped&&!reduce)auto=setInterval(()=>{k=(k+1)%4;stage(k)},3200)}else{clearInterval(auto);auto=null}}),{threshold:.3}).observe(row);
+// /play/ steps the claims with n and p: deckGo(+1|-1) and deckTo(j) return the claim, or -1 past either end
+sec.deckTo=j=>{if(j<0||j>3)return -1;tapped=true;clearInterval(auto);k=j;stage(k);return k};sec.deckGo=d=>sec.deckTo((cur===null||cur<0?-1:k)+d);
+new IntersectionObserver(es=>es.forEach(e=>{if(!phone())return;if(e.isIntersecting){if(cur===null||cur<0){k=0;stage(0)}if(!auto&&!tapped&&!reduce&&!PLAY)auto=setInterval(()=>{k=(k+1)%4;stage(k)},3200)}else{clearInterval(auto);auto=null}}),{threshold:.3}).observe(row);
 if(reduce&&phone())stage(2);else onScroll();
 })();
 
