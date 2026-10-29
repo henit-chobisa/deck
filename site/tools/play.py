@@ -150,6 +150,8 @@ def page() -> str:
           "isPartOf": {"@type": "WebSite", "name": "deck", "url": f"{ORIGIN}/"},
           "about": {"@type": "SoftwareApplication", "name": "deck", "applicationCategory": "DeveloperApplication",
                     "operatingSystem": "macOS, Linux, Windows", "url": f"{ORIGIN}/"}}
+    # outside the f-string: a backslash inside one is a SyntaxError before Python 3.12
+    ld_json = json.dumps(ld, ensure_ascii=False).replace("</", "<\\/")
     return f"""<!doctype html>
 <html lang="en" class="play">
 <head>
@@ -171,7 +173,7 @@ def page() -> str:
 <meta name="twitter:description" content="{DESC}">
 <meta name="twitter:image" content="{ORIGIN}/assets/og.png">
 <meta name="theme-color" content="#070707">
-<script type="application/ld+json">{json.dumps(ld, ensure_ascii=False).replace("</", "<\\/")}</script>
+<script type="application/ld+json">{ld_json}</script>
 <link rel="icon" href="/assets/mark.svg" type="image/svg+xml">
 <!-- shell:head -->
 {shell.FONTS}
