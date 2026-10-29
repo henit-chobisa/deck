@@ -267,7 +267,8 @@ async function asks(page, label) {
 // a change of width (a zoom step is one) lays the page out again in place, and never reloads it
 async function noReload(page, label, width, height) {
   await page.evaluate(() => { window.__kept = 1 })
-  await page.setViewportSize({ width: width - 140, height })
+  // down to a narrow desktop and back: WebKit once kept 4px of #x3's overflow from the narrow layout
+  await page.setViewportSize({ width: Math.min(width - 140, 1100), height })
   await page.waitForTimeout(500)
   await page.setViewportSize({ width, height })
   await page.waitForTimeout(500)

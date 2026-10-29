@@ -177,7 +177,7 @@ let extra=[];const askedHere=new Set(),clearExtra=()=>{extra.forEach(e=>e.remove
 function ask(k,edit){
  if(edit){resetCmp();cmp.textContent=Q[k];cmp.classList.add('held');return}
  if(k==='a'){if(phone()){tapped=true;clearInterval(auto);kk=1;stage(1);return}deckPin.go(sec,0);return}
- if(askedHere.has(k))return;askedHere.add(k)
+ if(askedHere.has(k))return;askedHere.add(k);resetCmp()
  if(phone()){tapped=true;clearInterval(auto);auto=null}
  if(pills[k])pills[k].classList.add('asked');
  const you=msgEl({who:'you',dot:'',where:'get-user.ts:19 · asked',t:'now',txt:Q[k]});you.classList.add('show');extra.push(you);
