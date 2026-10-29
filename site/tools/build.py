@@ -125,7 +125,7 @@ FOOT = "<!-- shell:foot -->\n" + shell.FOOT + "\n<!-- /shell:foot -->\n</body>\n
 
 CTA = """<aside class="g-cta" aria-label="Try deck">
   <div>
-    <p class="g-cta-title">See your agent's decisions on the lines.</p>
+    <p class="g-cta-title">Take part in every decision, on the lines.</p>
     <p>deck is free and open source. It works with Claude Code, Codex, Cursor, Amp and any agent with a shell.</p>
   </div>
   <div class="g-cta-actions">
