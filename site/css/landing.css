@@ -49,12 +49,14 @@ h1,h2,h3,.text{color:var(--text);transition:color var(--turn) var(--ease)}
 .btn.ghost{border:1px solid var(--line2);color:var(--text)}
 .btn:hover{transform:translateY(-1px)}.btn:active{transform:translateY(1px)}
 .ctas{display:flex;gap:calc(10*var(--u));flex-wrap:wrap;justify-content:center;margin-top:calc(30*var(--u))}
-.try{margin-top:calc(26*var(--u));font-size:max(var(--fmin,0px),calc(13*var(--u)))}
+.try{margin-top:calc(26*var(--u));font-size:max(12px,calc(13*var(--u)))}
 .try a{color:var(--soft);border-bottom:1px solid transparent;padding-block:calc(2*var(--u));background:linear-gradient(100deg,var(--soft) 0 39%,#f2b55a 50%,var(--soft) 61% 100%) 100% 0/250% 100% no-repeat;-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;transition:border-color 150ms var(--ease)}
 .try a:hover,.try a:focus-visible{border-color:var(--line2);animation:trysheen 1800ms var(--ease) 1}
 @keyframes trysheen{from{background-position:100% 0}to{background-position:0 0}}
 @media (max-width:640px){.try{display:none}}
-.fine{margin-top:calc(20*var(--u));font-size:max(var(--fmin,0px),calc(13*var(--u)));color:var(--dim);transition:color var(--turn) var(--ease)}
+/* forced colours drop the gradient the link's text is painted with: give it the system's link colour, still */
+@media (forced-colors:active){.try a{-webkit-text-fill-color:LinkText;color:LinkText;background:none;animation:none}}
+.fine{margin-top:calc(20*var(--u));font-size:max(12px,calc(13*var(--u)));color:var(--dim);transition:color var(--turn) var(--ease)}
 .hand{font:600 clamp(max(var(--fmin,0px),calc(18*var(--u))),1.8vw,calc(25*var(--u)))/1.05 var(--hand);color:var(--accent-ink);letter-spacing:.01em;transition:color var(--turn) var(--ease)}
 .ink{fill:none;stroke:var(--accent);stroke-width:2.6;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:1 1.01;stroke-dashoffset:1.005;vector-effect:non-scaling-stroke}
 @keyframes draw{to{stroke-dashoffset:0}}
