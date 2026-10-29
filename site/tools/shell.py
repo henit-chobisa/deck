@@ -44,11 +44,15 @@ def nav(current: str = "") -> str:
     def link(href, text):
         cur = ' aria-current="page"' if href == current else ""
         return f'<a href="{href}"{cur}>{text}</a>'
+    # Plain variables rather than quotes nested in the f-strings, which need Python 3.12.
+    brand = "#top" if home else "/"
+    install = "#install" if home else "/#install"
+    mark = MARK.replace('<rect x="35.5" y="74.6"', '<rect class="lit" x="35.5" y="74.6"')
     return (
         '<header class="nav" id="nav"><div class="wrap">\n'
-        f' <a class="brand" href="{'#top' if home else '/'}" aria-label="deck, home">{MARK.replace('<rect x="35.5" y="74.6"', '<rect class="lit" x="35.5" y="74.6"')}deck</a>\n'
+        f' <a class="brand" href="{brand}" aria-label="deck, home">{mark}deck</a>\n'
         f' <nav class="links" aria-label="Main">{link("/docs/", "Docs")}{link("/changelog/", "Changelog")}'
-        f'<a class="gh" href="{REPO}" aria-label="deck on GitHub">{GITHUB}</a><a class="cta" href="{'#install' if home else '/#install'}">Install</a></nav>\n'
+        f'<a class="gh" href="{REPO}" aria-label="deck on GitHub">{GITHUB}</a><a class="cta" href="{install}">Install</a></nav>\n'
         '</div></header>'
     )
 
