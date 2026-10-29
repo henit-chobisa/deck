@@ -651,7 +651,7 @@ body{overflow-x:clip}
 #x4 .x4txt u svg{position:absolute;left:-2%;bottom:-.24em;width:104%;height:.32em;overflow:visible}
 #x4 .x4brought{display:block;margin-top:calc(6*var(--u));font:max(var(--fmin,0px),calc(11.5*var(--u))) var(--mono);color:#c9a27c}
 #x4 .x4cmp{flex:none;margin:calc(6*var(--u)) calc(12*var(--u)) calc(12*var(--u));min-height:calc(40*var(--u));display:flex;align-items:center;padding:calc(8*var(--u)) calc(12*var(--u));border:1px solid var(--d-edge);border-radius:calc(10*var(--u));font:max(var(--fmin,0px),calc(13.5*var(--u)))/1.4 var(--sans);color:#6a6863;transition:border-color 150ms var(--ease)}
-#x4 .x4cmp.typing{border-color:#5a3418;color:var(--d-fg)}
+#x4 .x4cmp.typing,#x4 .x4cmp.held{border-color:#5a3418;color:var(--d-fg)}
 #x4 .x4cmp.typing::after{content:"";width:1.5px;height:1.1em;margin-left:1px;background:var(--accent);animation:x4blink 1s steps(1) infinite}
 @keyframes x4blink{50%{opacity:0}}
 

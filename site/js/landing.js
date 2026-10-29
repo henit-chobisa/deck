@@ -100,7 +100,7 @@ function showMsg(i,on,anim){const m=M[i],e=m.el,p=e.querySelector('.x4pn');if(!o
  if(!e.classList.contains('show')){e.classList.add('show');if(p)anim?later(()=>draw(p),420):p.classList.add('go')}}
 function typeIn(text,done){const id=++typeJ;if(reduce){done();return}ckey.classList.add('down');setTimeout(()=>ckey.classList.remove('down'),300);
  cmp.classList.add('typing');cmp.textContent='';let k=0;const step=()=>{if(id!==typeJ)return;k++;cmp.textContent=text.slice(0,k);if(k<text.length)setTimeout(step,26);else setTimeout(()=>{if(id!==typeJ)return;cmp.classList.remove('typing');cmp.textContent='Write a comment · c';done()},420)};setTimeout(step,300)}
-const resetCmp=()=>{typeJ++;cmp.classList.remove('typing');cmp.textContent='Write a comment · c';ckey.classList.remove('down')};
+const resetCmp=()=>{typeJ++;cmp.classList.remove('typing','held');cmp.textContent='Write a comment · c';ckey.classList.remove('down')};
 
 // ---- the questions, renewing after each answer (asked one sinks; new ones glide in at the front)
 const Q={a:'What happens with eight servers?',b:'Why not a Redis lock?',c:'Draw it: miss → once → db',d:'Does a slow query hold all 1,000?',e:'What if the db call throws?',f:'Would a shared lock make it one?',g:'Show the eight queries on a page'};
@@ -173,10 +173,11 @@ function stage(i){if(i===cur)return;const prev=cur;cur=i;if(prev!==null&&Math.mi
 // A pill, as in deck: a click asks it; ⌘ or Ctrl and a click puts it in the comment box to edit first.
 // The recording answers "eight servers" (the story's next step); any other question is asked in the
 // thread and answered honestly: this window is a recording.
-let extra=[];const clearExtra=()=>{extra.forEach(e=>e.remove());extra=[]};
+let extra=[];const askedHere=new Set(),clearExtra=()=>{extra.forEach(e=>e.remove());extra=[];askedHere.clear()};
 function ask(k,edit){
- if(edit){resetCmp();cmp.textContent=Q[k];cmp.classList.add('typing');return}
+ if(edit){resetCmp();cmp.textContent=Q[k];cmp.classList.add('held');return}
  if(k==='a'){if(phone()){tapped=true;clearInterval(auto);kk=1;stage(1);return}deckPin.go(sec,0);return}
+ if(askedHere.has(k))return;askedHere.add(k)
  if(phone()){tapped=true;clearInterval(auto);auto=null}
  if(pills[k])pills[k].classList.add('asked');
  const you=msgEl({who:'you',dot:'',where:'get-user.ts:19 · asked',t:'now',txt:Q[k]});you.classList.add('show');extra.push(you);
