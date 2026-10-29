@@ -301,25 +301,29 @@ const Q=[
  ["If you can't answer questions about [[your own PR]] during code review, that's a problem.","Open Transit Software Foundation","https://opentransitsoftwarefoundation.org/2025/12/our-policy-on-ai-generated-contributions/"],
 ];
 let seed=7;const rnd=()=>(seed=(seed*16807)%2147483647)/2147483647;
-const F=field.getBoundingClientRect(),narrow=innerWidth<700,CW=narrow?190:260;
+// measured, and measured again in place when the window changes size (a zoom step changes it too)
+let F,pts=[],placed=[];
 const box=el=>{const b=el.getBoundingClientRect();return{l:(b.left-F.left)/F.width-.03,r:(b.right-F.left)/F.width+.03,t:(b.top-F.top)/F.height-.05,b:(b.bottom-F.top)/F.height+.04}};
-coda.style.visibility='hidden';coda.classList.add('on');const keep=[box(line),box(coda)];coda.classList.remove('on');coda.style.visibility='';
 const esc=t=>t.replace(/&/g,'&amp;').replace(/</g,'&lt;');
 // build first, measure, then place
 const nodes=Q.map(([t,src,url])=>{const el=document.createElement('a');el.className='v';el.href=url;el.target='_blank';el.rel='noopener';el.tabIndex=-1;
- el.style.setProperty('--w',`calc(${CW}*var(--u))`);el.innerHTML=`<div class="c"><q>${esc(t).replace(/\[\[(.+?)\]\]/,'<k>$1</k>')}</q><cite>${esc(src)}</cite></div>`;field.append(el);return el});
-const pts=nodes.map((el,i)=>{const z=.6+rnd()*.42,w=el.offsetWidth*z,h=el.offsetHeight*z,ww=w/F.width,hh=h/F.height;return{z,ww,hh}});
-const placed=[];
-pts.forEach((p,i)=>{let x,y,t=0,ok;
+ el.innerHTML=`<div class="c"><q>${esc(t).replace(/\[\[(.+?)\]\]/,'<k>$1</k>')}</q><cite>${esc(src)}</cite></div>`;field.append(el);return el});
+function measure(){seed=7;F=field.getBoundingClientRect();const CW=innerWidth<700?190:260;
+ const was=coda.classList.contains('on');coda.style.visibility='hidden';coda.classList.add('on');const keep=[box(line),box(coda)];coda.classList.toggle('on',was);coda.style.visibility='';
+ nodes.forEach(el=>{el.style.display='';el.style.filter='';el.style.setProperty('--w',`calc(${CW}*var(--u))`)});
+ pts=nodes.map((el,i)=>{const z=.6+rnd()*.42,w=el.offsetWidth*z,h=el.offsetHeight*z,ww=w/F.width,hh=h/F.height;return{z,ww,hh}});
+ placed=[];
+ pts.forEach((p,i)=>{let x,y,t=0,ok;
  do{x=.015+rnd()*(.97-p.ww);y=.04+rnd()*(.93-p.hh);t++;
   ok=!keep.some(q=>x+p.ww>q.l&&x<q.r&&y+p.hh>q.t&&y<q.b)&&!placed.some(o=>x<o.x+o.ww+.01&&x+p.ww+.01>o.x&&y<o.y+o.hh+.014&&y+p.hh+.014>o.y)}while(!ok&&t<1500);
  Object.assign(p,{x,y,skip:!ok});if(ok)placed.push(p);else nodes[i].style.display='none';
  nodes[i].style.setProperty('--o',(.4+.6*(p.z-.6)/.42).toFixed(2));if(p.z<.78)nodes[i].style.filter=`blur(${((.78-p.z)*6).toFixed(1)}px)`});
+ paths.forEach((pa,i)=>{pa.style.display=pts[i].skip?'none':''})}
 function place(prog){pts.forEach((p,i)=>{if(p.skip)return;const dx=(.5-p.x-p.ww/2)*F.width*.02*prog,dy=(1-p.z)*-40*(prog-.5);
  nodes[i].style.transform=`translate(${p.x*F.width+dx}px,${p.y*F.height+dy}px) scale(${p.z})`})}
 // Threads: every voice runs to the same word.
 const NS='http://www.w3.org/2000/svg',svg=document.getElementById('threads'),hi=words.find(w=>w.classList.contains('hi'));
-const paths=nodes.map((n,i)=>{const p=document.createElementNS(NS,'path');svg.append(p);if(pts[i].skip)p.style.display='none';return p});
+const paths=nodes.map(()=>{const p=document.createElementNS(NS,'path');svg.append(p);return p});measure();
 hi.insertAdjacentHTML('beforeend','<svg class="strike" viewBox="0 0 100 10" preserveAspectRatio="none" aria-hidden="true"><path pathLength="1" d="M1 6.5 C 22 3.5, 45 7.5, 68 4.6 S 92 5.4, 99 3.8"/></svg>');
 function thread(){const F=field.getBoundingClientRect(),T=hi.getBoundingClientRect(),tx=T.left+T.width/2-F.left,ty=T.top+T.height/2-F.top;
  nodes.forEach((n,i)=>{if(pts[i].skip)return;const r=n.getBoundingClientRect();const cx=r.left+r.width/2-F.left,cy=r.top+r.height/2-F.top;
@@ -338,7 +342,7 @@ function frame(){const r=sec.getBoundingClientRect(),L=innerHeight*.45,p=reduce?
  const np=clamp((p-.02)/.42);arrive.forEach((k,i)=>nodes[k].classList.toggle('on',np*arrive.length>i));
  const hp=clamp((p-.66)/.2);turn.forEach((k,i)=>nodes[k].classList.toggle('hot',hp*turn.length>i));
  place(p);thread();coda.classList.toggle('on',p>.88);hi.classList.toggle('struck',p>.9);note.classList.toggle('on',p>.3)}
-addEventListener('scroll',()=>requestAnimationFrame(frame),{passive:true});{const w0=innerWidth,h0=innerHeight;addEventListener('resize',()=>{if(innerWidth!==w0||Math.abs(innerHeight-h0)>160)location.reload()})}frame();
+addEventListener('scroll',()=>requestAnimationFrame(frame),{passive:true});{let w0=innerWidth,h0=innerHeight,rt=0;addEventListener('resize',()=>{clearTimeout(rt);rt=setTimeout(()=>{if(innerWidth===w0&&Math.abs(innerHeight-h0)<=160)return;w0=innerWidth;h0=innerHeight;measure();frame()},150)})}frame();
 });
 
 // glide the header line between its two places (FLIP), and let the headline ease its size
