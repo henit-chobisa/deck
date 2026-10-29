@@ -250,6 +250,31 @@ async function playHands(page, label) {
   assert.equal(await stepOf(page), at, 'paused, it stays where it is')
 }
 
+// #x4's questions: a click asks (any but the story's own is answered with what is true here: a recording),
+// and ⌘ or Ctrl with a click puts the question in the comment box
+async function asks(page, label) {
+  const pill = page.locator('#x4row .x4pill[data-k="b"]')
+  await pill.scrollIntoViewIfNeeded()
+  // let a pinned section settle on its stop first: a new stop clears what was asked on the last one
+  await page.waitForTimeout(1200)
+  await pill.click()
+  await page.waitForFunction(() => /a recording/.test(document.getElementById('x4th').textContent), null, { timeout: 4000 })
+  assert.match(await page.locator('#x4th').textContent(), /Why not a Redis lock\?/, `${label}: a question is asked in the thread`)
+  await page.locator('#x4row .x4pill[data-k="c"]').click({ modifiers: ['ControlOrMeta'] })
+  assert.equal(await page.locator('#x4cmp').textContent(), 'Draw it: miss → once → db', `${label}: ⌘-click puts the question in the comment box`)
+}
+
+// a change of width (a zoom step is one) lays the page out again in place, and never reloads it
+async function noReload(page, label, width, height) {
+  await page.evaluate(() => { window.__kept = 1 })
+  await page.setViewportSize({ width: width - 140, height })
+  await page.waitForTimeout(500)
+  await page.setViewportSize({ width, height })
+  await page.waitForTimeout(500)
+  assert.equal(await page.evaluate(() => window.__kept), 1, `${label}: resizing reloads the page`)
+  await fits(page, label + ' after a width change')
+}
+
 async function check(engine, name, width, height, reducedMotion = 'no-preference') {
   const browser = await engine.launch()
   try {
@@ -275,6 +300,8 @@ async function check(engine, name, width, height, reducedMotion = 'no-preference
       for (const pen of ['#x7h .x7pn', '#x7bh .x7bpn', '#x4h .x4pn']) assert(await page.locator(pen).evaluate((el) => el.classList.contains('go')), `${pen}: drawn at once`)
     }
     await features(page)
+    await asks(page, name)
+    if (width > 900) await noReload(page, name, width, height)
     await install(page, engine === chromium ? 'chromium' : 'webkit')
     await fitsAll(page, name)
     if (width === 390) {

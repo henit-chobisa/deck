@@ -82,3 +82,35 @@ jobs:
     steps:
       - id: deployment
         uses: actions/deploy-pages@v4
+
+  layouts:
+    name: Layouts
+    # The behaviour suite (site/tools/check-ui.cjs): every viewport and both
+    # engines, the pinned steps, /play/ by keys, clicks and taps. Pull requests
+    # only; a push to main already ran it on its pull request.
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: The changelog, from the releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api -H "Accept: application/vnd.github.html+json" \
+            "repos/${{ github.repository }}/releases?per_page=100" \
+            --jq '[.[] | select(.draft | not) | {tag: .tag_name, name, prerelease, published: .published_at, url: .html_url, html: .body_html}]' \
+            > site/changelog/releases.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: site/tools/package-lock.json
+      - name: Install Playwright and its browsers
+        working-directory: site/tools
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium webkit
+      - name: Check the layouts
+        working-directory: site/tools
+        run: npm test
