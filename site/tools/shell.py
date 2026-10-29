@@ -38,15 +38,17 @@ FONTS = (
 
 
 def nav(current: str = "") -> str:
-    """current: '/docs/' or '/changelog/' marks that link as the page you are on."""
+    """current: '/docs/' or '/changelog/' marks that link as the page you are on; '/' is the home
+    page itself, where the brand goes to the top and Install to #install without leaving the page."""
+    home = current == "/"
     def link(href, text):
         cur = ' aria-current="page"' if href == current else ""
         return f'<a href="{href}"{cur}>{text}</a>'
     return (
         '<header class="nav" id="nav"><div class="wrap">\n'
-        f' <a class="brand" href="/" aria-label="deck, home">{MARK}deck</a>\n'
+        f' <a class="brand" href="{'#top' if home else '/'}" aria-label="deck, home">{MARK.replace('<rect x="35.5" y="74.6"', '<rect class="lit" x="35.5" y="74.6"')}deck</a>\n'
         f' <nav class="links" aria-label="Main">{link("/docs/", "Docs")}{link("/changelog/", "Changelog")}'
-        f'<a class="gh" href="{REPO}" aria-label="deck on GitHub">{GITHUB}</a><a class="cta" href="/#install">Install</a></nav>\n'
+        f'<a class="gh" href="{REPO}" aria-label="deck on GitHub">{GITHUB}</a><a class="cta" href="{'#install' if home else '/#install'}">Install</a></nav>\n'
         '</div></header>'
     )
 

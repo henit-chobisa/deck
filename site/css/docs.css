@@ -54,3 +54,4 @@
 @media (max-width:640px){
  .cmdline code{white-space:pre;overflow-x:auto;scrollbar-width:none;overflow-wrap:normal}
 }
+.doc>h1+p{margin-top:calc(22*var(--u))}

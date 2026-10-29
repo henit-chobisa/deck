@@ -18,32 +18,29 @@
 <meta name="twitter:title" content="Looking for a CodeRabbit alternative? A different kind of AI code review">
 <meta name="twitter:description" content="CodeRabbit and similar bots comment on your pull request after the fact. deck is the step before: your own agent shows you each decision on the lines, and you decide. Free and open source.">
 <meta name="twitter:image" content="https://trydeck.dev/assets/og.png">
-<meta name="theme-color" content="#0d0f0f">
+<meta name="theme-color" content="#070707">
 <link rel="icon" href="/assets/mark.svg" type="image/svg+xml">
+<!-- shell:head -->
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/css/legacy.css">
-<link rel="stylesheet" href="/css/legacy-docs.css">
-<link rel="stylesheet" href="/css/legacy-guide.css">
-<script type="application/ld+json">[{"@context": "https://schema.org", "@type": "Article", "headline": "A different kind of CodeRabbit alternative", "description": "CodeRabbit and similar bots comment on your pull request after the fact. deck is the step before: your own agent shows you each decision on the lines, and you decide. Free and open source.", "author": {"@type": "Person", "name": "Henit Chobisa", "url": "https://github.com/henit-chobisa"}, "publisher": {"@type": "Organization", "name": "deck", "url": "https://trydeck.dev", "logo": {"@type": "ImageObject", "url": "https://trydeck.dev/assets/mark.svg"}}, "image": "https://trydeck.dev/assets/og.png", "mainEntityOfPage": "https://trydeck.dev/coderabbit-alternative/", "dateModified": "2026-10-09"}, {"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "deck", "item": "https://trydeck.dev/"}, {"@type": "ListItem", "position": 2, "name": "Guides", "item": "https://trydeck.dev/guides/"}, {"@type": "ListItem", "position": 3, "name": "A different kind of CodeRabbit alternative", "item": "https://trydeck.dev/coderabbit-alternative/"}]}, {"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "Is deck a CodeRabbit competitor?", "acceptedAnswer": {"@type": "Answer", "text": "Not directly. CodeRabbit comments on pull requests. deck lets your own agent show you its changes before you approve. You can use both."}}, {"@type": "Question", "name": "Does deck integrate with GitHub?", "acceptedAnswer": {"@type": "Answer", "text": "No integration is needed. It runs on your machine with the agent you already use; your PR process stays as it is."}}, {"@type": "Question", "name": "How much does deck cost?", "acceptedAnswer": {"@type": "Answer", "text": "Nothing. It is free and open source under Apache-2.0."}}]}]</script>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&amp;family=IBM+Plex+Sans:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap">
+<link rel="stylesheet" href="/css/site.css">
+<!-- /shell:head -->
+<link rel="stylesheet" href="/css/docs.css">
+<link rel="stylesheet" href="/css/guide.css">
+<script type="application/ld+json">[{"@context": "https://schema.org", "@type": "Article", "headline": "A different kind of CodeRabbit alternative", "description": "CodeRabbit and similar bots comment on your pull request after the fact. deck is the step before: your own agent shows you each decision on the lines, and you decide. Free and open source.", "author": {"@type": "Person", "name": "Henit Chobisa", "url": "https://github.com/henit-chobisa"}, "publisher": {"@type": "Organization", "name": "deck", "url": "https://trydeck.dev", "logo": {"@type": "ImageObject", "url": "https://trydeck.dev/assets/mark.svg"}}, "image": "https://trydeck.dev/assets/og.png", "mainEntityOfPage": "https://trydeck.dev/coderabbit-alternative/", "dateModified": "2026-10-29"}, {"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "deck", "item": "https://trydeck.dev/"}, {"@type": "ListItem", "position": 2, "name": "Guides", "item": "https://trydeck.dev/guides/"}, {"@type": "ListItem", "position": 3, "name": "A different kind of CodeRabbit alternative", "item": "https://trydeck.dev/coderabbit-alternative/"}]}, {"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "Is deck a CodeRabbit competitor?", "acceptedAnswer": {"@type": "Answer", "text": "Not directly. CodeRabbit comments on pull requests. deck lets your own agent show you its changes before you approve. You can use both."}}, {"@type": "Question", "name": "Does deck integrate with GitHub?", "acceptedAnswer": {"@type": "Answer", "text": "No integration is needed. It runs on your machine with the agent you already use; your PR process stays as it is."}}, {"@type": "Question", "name": "How much does deck cost?", "acceptedAnswer": {"@type": "Answer", "text": "Nothing. It is free and open source under Apache-2.0."}}]}]</script>
 </head>
 <body class="docs">
 <a class="skip" href="#doc">Skip to content</a>
-<header class="nav solid">
-  <a class="brand" href="/" aria-label="deck, home"><img src="/assets/mark.svg" alt="" width="28" height="28"><span>deck</span></a>
-  <nav aria-label="Main">
-    <a href="/#x3">How it works</a>
-    <a href="/#x4" class="nav-try"><span class="live-dot" aria-hidden="true"></span>Try it<span class="wide"> live</span></a>
-    <a href="/docs/">Docs</a>
-    <a href="/guides/">Guides</a>
-    <a href="https://github.com/henit-chobisa/deck">GitHub</a>
-    <a class="nav-install" href="/#install">Install</a>
-  </nav>
-</header>
+<!-- shell:nav -->
+<header class="nav" id="nav"><div class="wrap">
+ <a class="brand" href="/" aria-label="deck, home"><svg viewBox="0 0 128 128" aria-hidden="true"><rect x="1.5" y="1.5" width="125" height="125" rx="35.6" fill="#2f2f2f" stroke="#4a4542" stroke-width="3"/><rect x="35.5" y="39.1" width="56.9" height="14.2" rx="7.1" fill="#7c6f64"/><rect class="lit" x="35.5" y="74.6" width="56.9" height="14.2" rx="7.1" fill="#fe8019"/></svg>deck</a>
+ <nav class="links" aria-label="Main"><a href="/docs/">Docs</a><a href="/changelog/">Changelog</a><a class="gh" href="https://github.com/henit-chobisa/deck" aria-label="deck on GitHub"><svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg></a><a class="cta" href="/#install">Install</a></nav>
+</div></header>
+<!-- /shell:nav -->
 <main class="g-wrap" id="doc">
   <nav class="crumbs" aria-label="Breadcrumb"><a href="/">deck</a> <span>/</span> <a href="/guides/">Guides</a></nav>
-  <article class="doc g-doc">
+  <article class="doc g-doc prose">
     <p class="eyebrow accent">CodeRabbit alternative</p>
     <h1>A different kind of CodeRabbit alternative</h1>
     <p class="lede">CodeRabbit and similar bots comment on your pull request after the fact. deck is the step before: your own agent shows you each decision on the lines, and you decide. Free and open source.</p>
@@ -57,25 +54,35 @@
 <h2 id="use-both-if-you-like">Use both, if you like</h2>
 <p>Nothing stops you running a review bot on the PR and using deck before it. Many teams will want both: a bot to catch slips, and a way for the person approving to actually understand the change.</p>
 <p><a href="/#x4">Try a real deck in your browser</a>, or <a href="/#install">install it</a>.</p>
-    <aside class="cta" aria-label="Try deck">
+    <aside class="g-cta" aria-label="Try deck">
   <div>
-    <p class="cta-title">See your agent's decisions on the lines.</p>
+    <p class="g-cta-title">Take part in every decision, on the lines.</p>
     <p>deck is free and open source. It works with Claude Code, Codex, Cursor, Amp and any agent with a shell.</p>
   </div>
-  <div class="cta-actions">
-    <a class="star" href="/#install">Install deck</a>
-    <a class="cta-alt" href="/#x4">Try a live deck before you install</a>
+  <div class="g-cta-actions">
+    <a class="btn solid" href="/#install">Install deck</a>
+    <a class="btn ghost" href="/docs/">Read the docs</a>
   </div>
 </aside>
     <section class="g-faq" aria-labelledby="faq"><h2 id="faq">Questions</h2><details><summary>Is deck a CodeRabbit competitor?</summary><p>Not directly. CodeRabbit comments on pull requests. deck lets your own agent show you its changes before you approve. You can use both.</p></details><details><summary>Does deck integrate with GitHub?</summary><p>No integration is needed. It runs on your machine with the agent you already use; your PR process stays as it is.</p></details><details><summary>How much does deck cost?</summary><p>Nothing. It is free and open source under Apache-2.0.</p></details></section>
     <section class="g-related" aria-labelledby="more"><h2 id="more">Keep reading</h2><ul><li><a href="/ai-code-review-tools/">AI code review tools, compared honestly</a></li><li><a href="/ai-code-review-noise/">When AI code review becomes noise</a></li><li><a href="/comprehension-debt/">Comprehension debt, and how to pay it down</a></li></ul></section>
   </article>
 </main>
+<!-- shell:foot -->
 <footer class="foot">
-  <div class="wrap foot-base">
-    <span>deck · free and open source · Apache-2.0</span>
-    <span>Made for people who still prefer quality.</span>
+ <div class="foot-fin">
+  <div class="foot-left">
+   <a class="foot-brand" href="/" aria-label="deck, home"><svg viewBox="0 0 128 128" aria-hidden="true"><rect x="1.5" y="1.5" width="125" height="125" rx="35.6" fill="#2f2f2f" stroke="#4a4542" stroke-width="3"/><rect x="35.5" y="39.1" width="56.9" height="14.2" rx="7.1" fill="#7c6f64"/><rect x="35.5" y="74.6" width="56.9" height="14.2" rx="7.1" fill="#fe8019"/></svg>deck<small>Make your agent answer for your understanding.</small></a>
   </div>
+  <nav class="foot-cols" aria-label="Footer">
+   <div><p class="foot-ch">Product</p><a href="/#install">Install</a><a href="/play/">Try a full deck</a><a href="/docs/">Docs</a><a href="/guides/">Guides</a><a href="/changelog/">Changelog</a><a href="https://github.com/henit-chobisa/deck/releases">Releases</a><a href="/telemetry/">Telemetry</a></div>
+   <div><p class="foot-ch">Open source</p><a href="https://github.com/henit-chobisa/deck">GitHub</a><a href="https://github.com/henit-chobisa/deck/blob/main/LICENSE">License · Apache-2.0</a><a href="https://github.com/henit-chobisa/deck/blob/main/README.md">README</a></div>
+   <div><p class="foot-ch">Henit</p><a href="https://henit.blog">Blog</a><a href="/#note">Why I'm building it</a><button type="button" class="foot-cl" data-email="chobisa.henit@gmail.com">Email<span class="foot-cs" aria-live="polite"></span></button></div>
+  </nav>
+  <div class="foot-base"><span>© 2026 Henit Chobisa · Apache-2.0 · macOS, Linux and Windows</span></div>
+ </div>
 </footer>
+<script src="/js/site.js" defer></script>
+<!-- /shell:foot -->
 </body>
 </html>

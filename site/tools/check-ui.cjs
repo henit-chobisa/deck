@@ -37,11 +37,11 @@ async function links(page) {
   assert.deepEqual(nav, [['deck', '#top'], ['Docs', '/docs/'], ['Changelog', '/changelog/'], ['deck on GitHub', GH], ['Install', '#install']])
   assert.deepEqual(await page.locator('.hero .ctas a').evaluateAll((as) => as.map((a) => a.getAttribute('href'))), ['#install', GH])
   assert.deepEqual(await page.locator('.x7btns a').evaluateAll((as) => as.map((a) => a.getAttribute('href'))), ['#install', GH])
-  const foot = await page.locator('.x7cols a').evaluateAll((as) => as.map((a) => a.getAttribute('href')))
-  assert.deepEqual(foot, ['#install', '/play/', '/docs/', '/changelog/', GH + '/releases', '/telemetry/', GH, GH + '/blob/main/LICENSE', GH + '/blob/main/README.md', 'https://henit.blog', '#note'])
+  const foot = await page.locator('.foot-cols a').evaluateAll((as) => as.map((a) => a.getAttribute('href')))
+  assert.deepEqual(foot, ['/#install', '/play/', '/docs/', '/guides/', '/changelog/', GH + '/releases', '/telemetry/', GH, GH + '/blob/main/LICENSE', GH + '/blob/main/README.md', 'https://henit.blog', '/#note'])
   // every in-page link has its target, and every local page answers
   for (const href of await page.locator('a[href]').evaluateAll((as) => as.map((a) => a.getAttribute('href')))) {
-    if (href.startsWith('#')) assert.equal(await page.locator(href).count(), 1, `${href} must name exactly one element`)
+    if (href.startsWith('#') || href.startsWith('/#')) assert.equal(await page.locator(href.replace(/^\//, '')).count(), 1, `${href} must name exactly one element`)
     else if (href.startsWith('/')) assert((await page.request.get(base + href)).ok(), `${href} must exist`)
   }
   assert.equal(await page.locator('#note').evaluate((el) => el.tagName), 'FIGURE', '#note is Henit\'s note')
@@ -66,7 +66,7 @@ async function install(page, engine) {
     assert.equal(label, 'Copied')
     assert.equal(await page.evaluate(() => navigator.clipboard.readText()), cmd)
   } else assert.match(label, /^(Copied|Press (⌘C|Ctrl\+C))$/)
-  for (const [button, status] of [['#x7mailcopy', '#x7mailst'], ['#x7mail2', '#x7mail2s']]) {
+  for (const [button, status] of [['#x7mailcopy', '#x7mailst'], ['.foot-cl[data-email]', '.foot-cs']]) {
     await page.locator(button).scrollIntoViewIfNeeded()
     await page.locator(button).click()
     await page.waitForFunction((s) => document.querySelector(s).textContent.trim() !== '', status)
@@ -215,9 +215,11 @@ async function check(engine, name, width, height, reducedMotion = 'no-preference
     }
     if (name === 'webkit-desktop' || name === 'chromium-desktop') await windowsPick(browser)
     await play(page, name)
-    for (const path of ['/docs/', '/guides/', '/changelog/', '/ai-code-review/']) {
+    for (const path of ['/docs/', '/guides/', '/changelog/', '/telemetry/', '/works-with/', '/ai-code-review/', '/coderabbit-alternative/', '/404.html']) {
       await page.goto(base + path)
       await fits(page, name + path)
+      if (path === '/changelog/') await page.waitForSelector('.rel', { state: 'attached', timeout: 5000 })
+      assert.equal(await page.locator('.foot-cols a[href="/docs/"]').count(), 1, `${path}: the shared footer`)
       // the nav names Docs (on phones, as on the home page, it folds to the GitHub icon and Install,
       // and Docs is in the footer)
       const docs = page.locator('.nav a', { hasText: /^Docs$/ })

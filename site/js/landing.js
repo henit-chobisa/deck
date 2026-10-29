@@ -249,10 +249,7 @@ const mail=$('x7mail'),st=$('x7mailst'),mb=$('x7mailcopy');
 mb.addEventListener('click',()=>copy(mail.textContent,mail,
  ()=>{st.textContent='Email address copied';mb.setAttribute('aria-label','Copied');setTimeout(()=>mb.setAttribute('aria-label','Copy email address'),1800)},
  ()=>{st.textContent='Selected. Press '+(mac?'⌘C':'Ctrl+C')+' to copy.'}));
-const m2=$('x7mail2'),m2s=$('x7mail2s');let m2t=0;
-m2.addEventListener('click',()=>copy(mail.textContent,mail,
- ()=>{m2s.textContent='copied';clearTimeout(m2t);m2t=setTimeout(()=>m2s.textContent='',1800)},
- ()=>{m2s.textContent='selected, press '+(mac?'⌘C':'Ctrl+C');}));
+// the footer's Email is the shared shell's (js/site.js)
 const bpen=sec.querySelector('.x7bpn');
 if(reduce||!('IntersectionObserver' in window))bpen.classList.add('go');
 else{const io2=new IntersectionObserver(es=>{if(es.some(e=>e.isIntersecting)){setTimeout(()=>bpen.classList.add('go'),420);io2.disconnect()}},{threshold:.6});io2.observe($('x7bh'))}

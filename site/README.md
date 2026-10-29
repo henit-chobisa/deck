@@ -4,9 +4,21 @@ deck's website: `index.html` (the home page), `docs/` (how to use it), the
 changelog, the guides, and nothing to build. Plain HTML, CSS and JavaScript,
 no libraries.
 
-The home page is `index.html`, `css/landing.css`, `js/landing.js` and two
-images in `assets/`: `deck-live.webp`, the real deck window in the hero, and
-`henit.jpg`. The inner pages use `css/site.css`.
+Every page shares one shell: `css/site.css` (the tokens, the `--u` scale, the
+nav, the footer and the reading type) and `js/site.js` (the footer's Email).
+Its markup lives once, in `tools/shell.py`: `tools/build.py` writes it into the
+generated guides, and `python3 site/tools/shell.py` stamps it into the other
+pages between `<!-- shell: -->` markers (`--check` fails on a stale page).
+
+- The home page adds `css/landing.css`, `js/landing.js`, and two images in
+  `assets/`: `deck-live.webp`, the real deck window in the hero, and `henit.jpg`.
+- `/play/` is the home page's deck, playable on its own: `python3
+  site/tools/play.py` builds it from the home page's windows, and `js/play.js`
+  steps it. It is a recorded example, and says so.
+- The docs, the guides and the telemetry page add `css/docs.css` (and
+  `css/guide.css`); the changelog adds `css/changelog.css` and `js/changelog.js`.
+- The guides are written in `tools/guides.py`; `python3 site/tools/build.py`
+  writes them, their hub, `sitemap.xml` and `robots.txt`.
 
 ## Run it
 

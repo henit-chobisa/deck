@@ -4,19 +4,19 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>AI code review: how to review code your agent wrote</title>
-<meta name="description" content="Reviewing AI-generated code is not like reviewing a colleague&#x27;s. Here is what to look for, why diffs and summaries fall short, and how to see the decisions your agent made.">
+<meta name="description" content="Reviewing AI-generated code is not like reviewing a colleague&#x27;s. Here is what to look for, why diffs and summaries fall short, and how to see the decisions in the change and take part in them.">
 <link rel="canonical" href="https://trydeck.dev/ai-code-review/">
 <meta property="og:type" content="article">
 <meta property="og:site_name" content="deck">
 <meta property="og:title" content="AI code review: how to review code your agent wrote">
-<meta property="og:description" content="Reviewing AI-generated code is not like reviewing a colleague&#x27;s. Here is what to look for, why diffs and summaries fall short, and how to see the decisions your agent made.">
+<meta property="og:description" content="Reviewing AI-generated code is not like reviewing a colleague&#x27;s. Here is what to look for, why diffs and summaries fall short, and how to see the decisions in the change and take part in them.">
 <meta property="og:url" content="https://trydeck.dev/ai-code-review/">
 <meta property="og:image" content="https://trydeck.dev/assets/og.png">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="AI code review: how to review code your agent wrote">
-<meta name="twitter:description" content="Reviewing AI-generated code is not like reviewing a colleague&#x27;s. Here is what to look for, why diffs and summaries fall short, and how to see the decisions your agent made.">
+<meta name="twitter:description" content="Reviewing AI-generated code is not like reviewing a colleague&#x27;s. Here is what to look for, why diffs and summaries fall short, and how to see the decisions in the change and take part in them.">
 <meta name="twitter:image" content="https://trydeck.dev/assets/og.png">
 <meta name="theme-color" content="#070707">
 <link rel="icon" href="/assets/mark.svg" type="image/svg+xml">
@@ -28,13 +28,13 @@
 <!-- /shell:head -->
 <link rel="stylesheet" href="/css/docs.css">
 <link rel="stylesheet" href="/css/guide.css">
-<script type="application/ld+json">[{"@context": "https://schema.org", "@type": "Article", "headline": "How to review code your agent wrote", "description": "Reviewing AI-generated code is not like reviewing a colleague's. Here is what to look for, why diffs and summaries fall short, and how to see the decisions your agent made.", "author": {"@type": "Person", "name": "Henit Chobisa", "url": "https://github.com/henit-chobisa"}, "publisher": {"@type": "Organization", "name": "deck", "url": "https://trydeck.dev", "logo": {"@type": "ImageObject", "url": "https://trydeck.dev/assets/mark.svg"}}, "image": "https://trydeck.dev/assets/og.png", "mainEntityOfPage": "https://trydeck.dev/ai-code-review/", "dateModified": "2026-10-29"}, {"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "deck", "item": "https://trydeck.dev/"}, {"@type": "ListItem", "position": 2, "name": "Guides", "item": "https://trydeck.dev/guides/"}, {"@type": "ListItem", "position": 3, "name": "How to review code your agent wrote", "item": "https://trydeck.dev/ai-code-review/"}]}, {"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "Do I still need to read the diff?", "acceptedAnswer": {"@type": "Answer", "text": "Yes, for the parts that matter. The point is to find them quickly: the decisions, not the formatting. A deck puts those first and leaves the rest in the diff."}}, {"@type": "Question", "name": "Can an AI agent review its own code?", "acceptedAnswer": {"@type": "Answer", "text": "It can explain and defend it, which is useful. The judgement is still yours. deck is built so the agent makes its case on the lines and you decide."}}, {"@type": "Question", "name": "Does deck replace pull requests or code review tools?", "acceptedAnswer": {"@type": "Answer", "text": "No. It sits before the approval: your agent shows you what it did and why, you push back, and then the change goes through your normal review."}}]}]</script>
+<script type="application/ld+json">[{"@context": "https://schema.org", "@type": "Article", "headline": "How to review code your agent wrote", "description": "Reviewing AI-generated code is not like reviewing a colleague's. Here is what to look for, why diffs and summaries fall short, and how to see the decisions in the change and take part in them.", "author": {"@type": "Person", "name": "Henit Chobisa", "url": "https://github.com/henit-chobisa"}, "publisher": {"@type": "Organization", "name": "deck", "url": "https://trydeck.dev", "logo": {"@type": "ImageObject", "url": "https://trydeck.dev/assets/mark.svg"}}, "image": "https://trydeck.dev/assets/og.png", "mainEntityOfPage": "https://trydeck.dev/ai-code-review/", "dateModified": "2026-10-29"}, {"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "deck", "item": "https://trydeck.dev/"}, {"@type": "ListItem", "position": 2, "name": "Guides", "item": "https://trydeck.dev/guides/"}, {"@type": "ListItem", "position": 3, "name": "How to review code your agent wrote", "item": "https://trydeck.dev/ai-code-review/"}]}, {"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "Do I still need to read the diff?", "acceptedAnswer": {"@type": "Answer", "text": "Yes, for the parts that matter. The point is to find them quickly: the decisions, not the formatting. A deck puts those first and leaves the rest in the diff."}}, {"@type": "Question", "name": "Can an AI agent review its own code?", "acceptedAnswer": {"@type": "Answer", "text": "It can explain and defend it, which is useful. The judgement is still yours. deck is built so the agent makes its case on the lines and you decide."}}, {"@type": "Question", "name": "Does deck replace pull requests or code review tools?", "acceptedAnswer": {"@type": "Answer", "text": "No. It sits before the approval: your agent shows you what it did and why, you push back, and then the change goes through your normal review."}}]}]</script>
 </head>
 <body class="docs">
 <a class="skip" href="#doc">Skip to content</a>
 <!-- shell:nav -->
 <header class="nav" id="nav"><div class="wrap">
- <a class="brand" href="/" aria-label="deck, home"><svg viewBox="0 0 128 128" aria-hidden="true"><rect x="1.5" y="1.5" width="125" height="125" rx="35.6" fill="#2f2f2f" stroke="#4a4542" stroke-width="3"/><rect x="35.5" y="39.1" width="56.9" height="14.2" rx="7.1" fill="#7c6f64"/><rect x="35.5" y="74.6" width="56.9" height="14.2" rx="7.1" fill="#fe8019"/></svg>deck</a>
+ <a class="brand" href="/" aria-label="deck, home"><svg viewBox="0 0 128 128" aria-hidden="true"><rect x="1.5" y="1.5" width="125" height="125" rx="35.6" fill="#2f2f2f" stroke="#4a4542" stroke-width="3"/><rect x="35.5" y="39.1" width="56.9" height="14.2" rx="7.1" fill="#7c6f64"/><rect class="lit" x="35.5" y="74.6" width="56.9" height="14.2" rx="7.1" fill="#fe8019"/></svg>deck</a>
  <nav class="links" aria-label="Main"><a href="/docs/">Docs</a><a href="/changelog/">Changelog</a><a class="gh" href="https://github.com/henit-chobisa/deck" aria-label="deck on GitHub"><svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg></a><a class="cta" href="/#install">Install</a></nav>
 </div></header>
 <!-- /shell:nav -->
@@ -43,9 +43,9 @@
   <article class="doc g-doc prose">
     <p class="eyebrow accent">AI code review</p>
     <h1>How to review code your agent wrote</h1>
-    <p class="lede">Reviewing AI-generated code is not like reviewing a colleague&#x27;s. Here is what to look for, why diffs and summaries fall short, and how to see the decisions your agent made.</p>
+    <p class="lede">Reviewing AI-generated code is not like reviewing a colleague&#x27;s. Here is what to look for, why diffs and summaries fall short, and how to see the decisions in the change and take part in them.</p>
     <p>Your agent finished. The diff is 900 lines across eleven files, and the summary says it "refactored the pricing flow and added caching". You have to approve it, and you did not write any of it.</p>
-<p>Reviewing code an agent wrote is a different job from reviewing a colleague's. A colleague made a few decisions and can tell you why. An agent made dozens, quickly, and the reasons live in a conversation you may have skimmed.</p>
+<p>Reviewing code an agent wrote is a different job from reviewing a colleague's. A colleague made a few decisions and can tell you why. An agent's change carries dozens, made quickly, and the reasons live in a conversation you may have skimmed.</p>
 <h2 id="review-the-decisions-not-the-lines">Review the decisions, not the lines</h2>
 <p>You do not need to read every line. You need to find the handful of places where something was <strong>decided</strong>: a timeout chosen, a cache added, an error swallowed, a query moved, a field made optional. Those are the lines that will page someone at three in the morning.</p>
 <p>A useful order:</p>
@@ -62,7 +62,7 @@
 <p>Ask your agent to answer those as a deck, and you review the reasoning instead of hunting for it.</p>
     <aside class="g-cta" aria-label="Try deck">
   <div>
-    <p class="g-cta-title">See your agent's decisions on the lines.</p>
+    <p class="g-cta-title">Take part in every decision, on the lines.</p>
     <p>deck is free and open source. It works with Claude Code, Codex, Cursor, Amp and any agent with a shell.</p>
   </div>
   <div class="g-cta-actions">
