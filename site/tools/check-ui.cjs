@@ -36,6 +36,12 @@ async function links(page) {
   const nav = await page.locator('.nav a').evaluateAll((as) => as.map((a) => [a.textContent.trim() || a.getAttribute('aria-label'), a.getAttribute('href')]))
   assert.deepEqual(nav, [['deck', '#top'], ['Docs', '/docs/'], ['Changelog', '/changelog/'], ['deck on GitHub', GH], ['Install', '#install']])
   assert.deepEqual(await page.locator('.hero .ctas a').evaluateAll((as) => as.map((a) => a.getAttribute('href'))), ['#install', GH])
+  const tryIt = page.locator('.hero .try a')
+  assert.equal(await tryIt.getAttribute('href'), '/play/', 'the hero has a quiet way to try deck in the browser')
+  assert.equal((await tryIt.textContent()).replace(/\u00a0/g, ' '), 'or try it in your browser →')
+  // on phones the hero keeps to its two buttons
+  const phone = page.viewportSize().width <= 640
+  assert.equal(await tryIt.isVisible(), !phone, phone ? 'the try link is hidden on phones' : 'the try link is visible')
   assert.deepEqual(await page.locator('.x7btns a').evaluateAll((as) => as.map((a) => a.getAttribute('href'))), ['#install', GH])
   const foot = await page.locator('.foot-cols a').evaluateAll((as) => as.map((a) => a.getAttribute('href')))
   assert.deepEqual(foot, ['/#install', '/play/', '/docs/', '/guides/', '/changelog/', GH + '/releases', '/telemetry/', GH, GH + '/blob/main/LICENSE', GH + '/blob/main/README.md', 'https://henit.blog', '/#note'])
@@ -46,6 +52,13 @@ async function links(page) {
   }
   assert.equal(await page.locator('#note').evaluate((el) => el.tagName), 'FIGURE', '#note is Henit\'s note')
   assert.equal(await page.locator('#x3 .x3try a').getAttribute('href'), '/play/', 'one way to the full deck, under #x3')
+  // the hero's quiet link takes a keyboard, shows its focus, and opens /play/
+  if (phone) return
+  await tryIt.focus()
+  assert.notEqual(await tryIt.evaluate((a) => getComputedStyle(a).outlineStyle), 'none', 'the try link shows a focus ring')
+  await Promise.all([page.waitForURL((u) => new URL(u).pathname === '/play/'), page.keyboard.press('Enter')])
+  await page.goto(base)
+  await page.waitForSelector('#reveal .w', { state: 'attached' })
 }
 
 async function install(page, engine) {
