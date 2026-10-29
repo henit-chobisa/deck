@@ -1245,3 +1245,6 @@ body{overflow-x:clip}
 
 /* the shared footer (site.css) sits inside the closing band here: the band's glow shows through */
 :is(#x7,#x7tail) .foot{background:none}
+
+/* WebKit kept 4px of stale scrollable overflow in #x3 after a narrow resize and back; clip, which keeps the pin sticky */
+#x3{overflow-x:clip}
