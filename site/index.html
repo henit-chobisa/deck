@@ -110,7 +110,7 @@
    <div class="x4body">
     <div class="x4panes">
      <div class="x4p x4code"><div class="x4ph"><b>once</b>src/users/get-user.ts:9-27<small>the change</small></div><div class="x4lines" id="x4code"></div></div>
-     <div class="x4p x4flow" id="x4flow"><div><div class="x4ph"><b>eight</b>brought by the agent<small>what eight servers do</small></div><div class="x4fl"><svg viewBox="0 0 420 620" id="x4svg" aria-label="Eight servers, each through its own once(key), make eight queries to the database instead of a thousand."></svg></div></div></div>
+     <div class="x4p x4flow" id="x4flow"><div><div class="x4ph"><b>eight</b>brought by the agent<small>what eight servers do</small></div><div class="x4fl"><svg viewBox="0 0 420 620" id="x4svg" role="img" aria-label="Eight servers, each through its own once(key), make eight queries to the database instead of a thousand."></svg></div></div></div>
     </div>
     <aside class="x4rail" aria-label="Chat">
      <div class="x4rh"><i aria-hidden="true">›</i>CHAT<span>live walk</span></div>
@@ -120,7 +120,7 @@
    </div>
    <div class="x4foot"><span>group 2 of 4</span><span class="sp"></span><span class="x4key"><kbd>n</kbd>next</span><span class="x4key"><kbd>p</kbd>previous</span><span class="x4key" id="x4c"><kbd>c</kbd>comment</span></div>
   </div>
-  <div class="x4asks" aria-label="Suggested questions"><span class="x4arr" aria-hidden="true">‹</span><div class="x4row" id="x4row"></div><span class="x4arr" aria-hidden="true">›</span></div>
+  <div class="x4asks" role="group" aria-label="Suggested questions"><span class="x4arr" aria-hidden="true">‹</span><div class="x4row" id="x4row"></div><span class="x4arr" aria-hidden="true">›</span></div>
   <p class="x4narr" id="x4narr" aria-live="polite"><b>deck</b><span></span></p>
   <div class="x4ctl"><div class="x4dots" id="x4dots"><i></i><i></i><i></i><i></i><i></i></div><button class="x4next" id="x4next" type="button">next →</button></div>
   <div class="x4after"><small>Example: you question the cache fix from above.</small></div>
@@ -283,9 +283,13 @@
     <a class="x7ic" id="x7li" href="https://www.linkedin.com/in/henit-chobisa-260536202/" aria-label="Henit on LinkedIn" hidden><svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M2 1.5h12a.5.5 0 0 1 .5.5v12a.5.5 0 0 1-.5.5H2a.5.5 0 0 1-.5-.5V2a.5.5 0 0 1 .5-.5zM4 6.3v5.7h1.8V6.3H4zm.9-2.8a1 1 0 1 0 0 2 1 1 0 0 0 0-2zM7.1 6.3V12h1.8V9.1c0-.8.4-1.3 1-1.3s.9.4.9 1.3V12H12V8.7c0-1.6-.8-2.5-2-2.5-.7 0-1.2.3-1.5.8v-.7H7.1z"/></svg></a></div>
    </figure></div>
  </div>
+</section>
 
+</main>
+<!-- the last band, outside main so its footer is the page's contentinfo; landing.css styles it as part of #x7 -->
+<div class="x7tail" id="x7tail">
  <div class="x7band">
-  <div class="x7cta">
+  <div class="x7cta" role="region" aria-labelledby="x7bh">
    <h2 class="x7big" id="x7bh">Speed shouldn’t cost you <span class="x7bu">clarity<svg viewBox="0 0 100 10" preserveAspectRatio="none" aria-hidden="true"><path class="x7pn x7bpn" pathLength="1" d="M2 6 C 25 3, 55 8, 98 4.5"/></svg></span>.</h2>
    <p class="x7sub">Point at any claim and ask why. Your agent answers until it clicks.<br> Free and open source. Works with Claude Code, Codex, Cursor and Amp.</p>
    <div class="x7btns"><a class="x7b x7solid" href="#install">Install deck</a><a class="x7b x7ghost" href="https://github.com/henit-chobisa/deck">View on GitHub</a></div>
@@ -307,9 +311,7 @@
 <script src="/js/site.js" defer></script>
 <!-- /shell:foot -->
  </div>
-</section>
-
-</main>
+</div>
 <script src="/js/landing.js" defer></script>
 </body>
 </html>

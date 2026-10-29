@@ -266,7 +266,7 @@ mb.addEventListener('click',()=>copy(mail.textContent,mail,
  ()=>{st.textContent='Email address copied';mb.setAttribute('aria-label','Copied');setTimeout(()=>mb.setAttribute('aria-label','Copy email address'),1800)},
  ()=>{st.textContent='Selected. Press '+(mac?'⌘C':'Ctrl+C')+' to copy.'}));
 // the footer's Email is the shared shell's (js/site.js)
-const bpen=sec.querySelector('.x7bpn');
+const bpen=document.querySelector('#x7tail .x7bpn');
 if(reduce||!('IntersectionObserver' in window))bpen.classList.add('go');
 else{const io2=new IntersectionObserver(es=>{if(es.some(e=>e.isIntersecting)){setTimeout(()=>bpen.classList.add('go'),420);io2.disconnect()}},{threshold:.6});io2.observe($('x7bh'))}
 const li=$('x7li');if(LINKEDIN_URL){li.href=LINKEDIN_URL;li.hidden=false}
