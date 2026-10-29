@@ -146,32 +146,95 @@ async function features(page) {
   }
 }
 
-// /play/: the recorded deck, stepped with n / p, a suggested question answered from the recording,
-// a comment that says it stayed on the page, and the honest label
-async function play(page, label) {
+// /play/: the recorded deck in ten steps. Every step by keys (n, and Enter on the bar's Open, which
+// takes the focus), and again by clicks, or taps on a touch screen (Open on the bar, a question
+// under the window, the frame itself). At every step: the honest strip, the scene it names, no
+// overflow, nothing under the nav. Then holding a line and commenting on it, a question of your
+// own, and Play it for me pausing the moment a key is pressed.
+const stepOf = (page) => page.locator('#pl-stage').getAttribute('data-step').then(Number)
+const SCENE = (n) => (n <= 3 ? '#sc-term' : n <= 9 ? '#sc-win' : '#sc-end')
+
+async function atStep(page, label, n, reduce) {
+  await page.waitForTimeout(reduce ? 150 : 650)
+  const where = `${label} /play/ step ${n}`
+  assert.equal(await page.locator(SCENE(n)).evaluate((el) => el.classList.contains('on') && !el.inert), true, `${where}: its scene is shown`)
+  assert.equal(await page.locator('#pl-rail button[aria-current]').getAttribute('data-go'), String(n - 1), `${where}: the rail marks it`)
+  assert.match(await page.locator('#pl-no').textContent(), new RegExp(`^${n} / 10$`))
+  const strip = await page.locator('.pl-honest').evaluate((el) => { const r = el.getBoundingClientRect(); return { text: el.textContent, top: r.top, bottom: r.bottom, nav: document.querySelector('.nav').getBoundingClientRect().bottom } })
+  assert.match(strip.text, /A recorded example: nothing here runs a model\..*example app, fictional code/s, `${where}: says it is recorded`)
+  assert(strip.top >= strip.nav - 1 && strip.bottom <= await page.evaluate(() => innerHeight), `${where}: the recorded-example strip is on screen, not under the nav ${JSON.stringify(strip)}`)
+  await fits(page, where)
+  // typed at a real pace, and already typed with reduced motion; written out by the bar either way
+  if ((n === 2 && reduce) || n === 3) assert.equal(await page.locator('#tm-deck pre.shown').count(), await page.locator('#tm-deck pre').count(), `${where}: every command is written out`)
+  if (n === 3) assert.match(await page.locator('#bar-c').textContent(), /^4 groups$/, `${where}: the bar counts the sealed deck`)
+  if (n >= 4 && n <= 9) assert.match(await page.locator('#dk .dk-strip .grp').textContent(), new RegExp(`^group ${Math.min(n - 3, 4)} of 4$`), `${where}: the strip names the group`)
+  // the decision types itself, then the export, then the pull request with the PDF on it
+  if (n === 9) { await page.locator('#pr').waitFor({ state: 'visible', timeout: 9000 }); assert.match(await page.locator('#pr .pr-f').textContent(), /fix-random-logouts\.pdf/); await fits(page, where + ' exported') }
+}
+
+async function playThrough(page, label, how, reduce) {
   await page.goto(base + '/play/')
-  assert.match(await page.locator('.play-note').textContent(), /recorded example/i, 'the demo says it is recorded')
-  await fits(page, label + ' /play/')
-  const at = () => page.locator('#play-at').textContent()
-  assert.match(await at(), /group 1 of 4/)
-  await page.locator('#deck').focus()
-  const seen = []
-  for (let i = 0; i < 10; i++) { await page.keyboard.press('n'); await page.waitForTimeout(450); seen.push(await at()) }
-  for (const want of ['claim 1 of 4', 'claim 4 of 4', 'conversation, 1 of 5', 'conversation, 5 of 5']) assert(seen.some((t) => t.includes(want)), `/play/: n reaches ${want}`)
-  await fits(page, label + ' /play/ stepped')
-  await page.locator('#x4row .x4pill[data-k="b"]').click()
-  await page.waitForFunction(() => document.querySelectorAll('#x4th .rec').length > 0)
+  await page.waitForFunction(() => document.documentElement.classList.contains('pl-ready'))
+  await atStep(page, label, 1, reduce)
+  if (how === 'keys') await page.locator('#pl').focus()
+  for (let want = 2; want <= 10; want++) {
+    for (let tries = 0; await stepOf(page) < want; tries++) {
+      assert(tries < 6, `${label} /play/ ${how}: reaches step ${want}`)
+      const at = await stepOf(page)
+      const asked = await page.locator('#dk .dk-msg .rec').count() > 0
+      if (how === 'keys') {
+        if (at === 3 && await page.evaluate(() => document.activeElement.id === 'bar-open')) await page.keyboard.press('Enter')
+        else await page.keyboard.press(tries % 2 ? 'ArrowRight' : 'n')
+      } else {
+        const act = (sel) => (how === 'taps' ? page.locator(sel).first().tap() : page.locator(sel).first().click())
+        if (at === 3) await act('#bar-open')
+        else if (at === 8 && !asked) { await act('#dk-asks .ak[data-ask^="Does logout"]'); await page.waitForSelector('#dk .dk-msg .rec', { timeout: 5000 }) }
+        else if (how === 'taps') await act(at <= 3 ? '#sc-term .tm-tb' : at <= 9 ? '#dk .dk-num' : '#sc-end .end-t')
+        else await act('#pl-next')
+      }
+      await page.waitForTimeout(reduce ? 150 : 450)
+    }
+    await atStep(page, label, want, reduce)
+    // step 8 is left by asking: by n (the question types itself) or by the question under the window
+    if (want === 9) assert.match(await page.locator('#dk .dk-chat').textContent(), /never revokes the refresh token, so with a 30-day TTL a stolen token lives 30 days\./, `${label} /play/ ${how}: the recorded answer`)
+  }
+  assert.match(await page.locator('#dk .dk-chat').textContent(), /Keep 1h TTL, add revocation on logout instead/, `${label} /play/ ${how}: the decision is a comment`)
+  for (const [sel, href] of [['#sc-end a.btn.solid', '/#install'], ['#sc-end a.btn.ghost', GH]]) assert.equal(await page.locator(sel).getAttribute('href'), href)
+  if (how === 'keys') {
+    for (let i = 0; i < 14 && await stepOf(page) > 1; i++) { await page.keyboard.press(i % 2 ? 'ArrowLeft' : 'p'); await page.waitForTimeout(160) }
+    assert.equal(await stepOf(page), 1, `${label} /play/: p goes back to the start`)
+  } else {
+    await page.locator('#pl-replay').click()
+    assert.equal(await stepOf(page), 1, `${label} /play/: Replay starts again`)
+  }
+}
+
+async function playHands(page, label) {
+  await page.goto(base + '/play/')
+  await page.waitForFunction(() => document.documentElement.classList.contains('pl-ready'))
+  await page.locator('#pl-rail button[data-go="3"]').click()
+  await page.waitForTimeout(500)
+  await page.locator('#dk .dk-pane').first().locator('[data-ln]').nth(11).click()
+  await page.locator('#pl').focus()
   await page.keyboard.press('c')
-  assert(await page.locator('#play-text').evaluate((el) => el === document.activeElement), 'c opens the comment box')
-  await page.locator('#play-text').fill('Keep the queue bounded.')
-  await page.locator('.play-cmp .btn').click()
-  assert.match(await page.locator('#play-cmp-note').textContent(), /Nothing was sent/)
-  await page.locator('#deck').focus()
-  for (let i = 0; i < 12; i++) { await page.keyboard.press('p'); await page.waitForTimeout(150) }
-  assert.match(await at(), /group 1 of 4/, '/play/: p goes back to the start')
-  await page.locator('.play-steps button').nth(2).click()
-  assert.match(await at(), /conversation/, 'the group buttons jump')
-  await fits(page, label + ' /play/ end')
+  await page.waitForFunction(() => document.activeElement === document.querySelector('#dk .dk-compose textarea'))
+  assert.equal(await page.locator('#dk .dk-compose .on').textContent(), 'comment on session.ts:12', 'c comments on the held line')
+  await page.keyboard.type('Is 30 days what product asked for?')
+  await page.locator('#dk .dk-compose .later').click()
+  assert.equal(await page.locator('#dk .dk-send').textContent(), '· 1 to send', 'Add to review keeps it')
+  await page.locator('#dk .dk-compose textarea').click()
+  await page.keyboard.type('What does the mobile app do?')
+  await page.locator('#dk .dk-compose .now').click()
+  await page.waitForFunction(() => /a recording/.test(document.querySelector('#dk .dk-chat').textContent), null, { timeout: 5000 })
+  // Play it for me runs on its own, and a key pauses it
+  await page.locator('#pl-rail button[data-go="0"]').click()
+  await page.locator('#pl-auto').click()
+  await page.waitForFunction(() => document.getElementById('pl-stage').dataset.step === '2', null, { timeout: 8000 })
+  await page.keyboard.press('Shift')
+  assert.equal(await page.locator('#pl-auto').getAttribute('aria-pressed'), 'false', 'a key pauses Play it for me')
+  const at = await stepOf(page)
+  await page.waitForTimeout(3000)
+  assert.equal(await stepOf(page), at, 'paused, it stays where it is')
 }
 
 async function check(engine, name, width, height, reducedMotion = 'no-preference') {
@@ -214,7 +277,10 @@ async function check(engine, name, width, height, reducedMotion = 'no-preference
       await page.screenshot({ path: resolve(process.env.SCREENSHOTS, `${name}-top.png`) })
     }
     if (name === 'webkit-desktop' || name === 'chromium-desktop') await windowsPick(browser)
-    await play(page, name)
+    const touch = width <= 900, reduce = reducedMotion === 'reduce'
+    if (!touch) await playThrough(page, name, 'keys', reduce)
+    await playThrough(page, name, touch ? 'taps' : 'clicks', reduce)
+    if (name === 'chromium-desktop' || name === 'webkit-desktop') await playHands(page, name)
     for (const path of ['/docs/', '/guides/', '/changelog/', '/telemetry/', '/works-with/', '/ai-code-review/', '/coderabbit-alternative/', '/404.html']) {
       await page.goto(base + path)
       await fits(page, name + path)
@@ -247,5 +313,9 @@ async function check(engine, name, width, height, reducedMotion = 'no-preference
     await check(webkit, 'webkit-1100x1700', 1100, 1700)
     await check(chromium, 'chromium-1100x1700', 1100, 1700)
     await check(webkit, 'webkit-reduced-motion', 1440, 900, 'reduce')
+    await check(chromium, 'chromium-1280x800', 1280, 800)
+    await check(webkit, 'webkit-1920x1080', 1920, 1080)
+    await check(chromium, 'chromium-390x844', 390, 844)
+    await check(chromium, 'chromium-reduced-motion-390', 390, 844, 'reduce')
   } finally { server.kill() }
 })().catch((error) => { console.error(error); process.exitCode = 1 })

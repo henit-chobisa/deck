@@ -12,9 +12,11 @@ pages between `<!-- shell: -->` markers (`--check` fails on a stale page).
 
 - The home page adds `css/landing.css`, `js/landing.js`, and two images in
   `assets/`: `deck-live.webp`, the real deck window in the hero, and `henit.jpg`.
-- `/play/` is the home page's deck, playable on its own: `python3
-  site/tools/play.py` builds it from the home page's windows, and `js/play.js`
-  steps it. It is a recorded example, and says so.
+- `/play/` is a recorded deck in ten steps, from an agent's summary to the
+  reader's decision: `python3 site/tools/play.py` writes the page,
+  `js/play-deck.js` is the deck (groups, refs, values, recorded answers), and
+  `js/play.js` draws its window the way deck draws it and plays the steps. The
+  app in it is made up, and the page says so on every step.
 - The docs, the guides and the telemetry page add `css/docs.css` (and
   `css/guide.css`); the changelog adds `css/changelog.css` and `js/changelog.js`.
 - The guides are written in `tools/guides.py`; `python3 site/tools/build.py`
@@ -56,7 +58,7 @@ WebKit and Chromium, and reduced motion: the links, the pinned steps of
 `#x3` and `#x4` by Space and Page Down (by their buttons on phones and with
 reduced motion), the `#x5` features by keyboard, the install tabs and copy
 buttons, horizontal overflow, browser errors, and navigation on the inner
-pages. Set `SCREENSHOTS` to an existing directory to save captures. WebKit
+pages, and every step of `/play/` by keys, by clicks and by taps. Set `SCREENSHOTS` to an existing directory to save captures. WebKit
 checks do not replace testing Safari on a physical iPhone.
 
 ## What is real
@@ -67,3 +69,9 @@ checks do not replace testing Safari on a physical iPhone.
 - **The windows** in `#x3` to `#x6` are drawn to deck's own window: its band,
   panes and footer. The cache stampede in them is an example; `#x3` and `#x4`
   say so under the window.
+- **The window in `/play/`** is drawn to deck's own: the band, the review and
+  the conversation down the side, whole files with their range lit, a proposed
+  change as rows going and arriving, values on the lines, the strip and the
+  asks, at the sizes in `crates/render/src/metrics.rs` and in the colours of
+  the hero's screenshot. The commands it types are deck's real ones. The app,
+  its code, its test runs and the answers are made up, and the page says so.

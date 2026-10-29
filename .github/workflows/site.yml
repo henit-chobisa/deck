@@ -49,8 +49,8 @@ jobs:
             grep -q "id=\"$id\"" site/index.html || { echo "site/index.html links to #$id, which is not there"; exit 1; }
           done
       - name: Check the shared shell and the demo deck are fresh
-        # tools/shell.py writes the nav and footer into every page, tools/play.py builds /play/ from
-        # the home page's windows; a page edited by hand instead would drift.
+        # tools/shell.py writes the nav and footer into every page, tools/play.py writes /play/;
+        # a page edited by hand instead would drift.
         run: |
           python3 site/tools/shell.py --check
           python3 site/tools/play.py --check
