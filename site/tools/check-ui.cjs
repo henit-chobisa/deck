@@ -188,6 +188,11 @@ async function oneView(page, where) {
   // and the window takes the rest: Back/Next near the bottom unless the stage is at its 860px most
   if (r.stage < 859) assert(r.h - r.next <= 40, `${where}: height left unused under Back/Next ${JSON.stringify(r)}`)
   if (r.w >= 1440 && r.h >= 900) assert(r.dk >= 560, `${where}: the window is short ${JSON.stringify(r)}`)
+  // over 1100px the steps are a column on the left, Play it for me on top, the window beside them
+  if (r.w > 1100) {
+    const col = await page.evaluate(() => { const bs = [...document.querySelectorAll('#pl-rail button')].map((b) => b.getBoundingClientRect()); const st = document.getElementById('pl-stage').getBoundingClientRect(); return { stacked: bs.every((b, i) => !i || b.top >= bs[i - 1].bottom - 1), left: Math.max(...bs.map((b) => b.right)) <= st.left, auto: document.getElementById('pl-auto').getBoundingClientRect().bottom <= bs[0].top } })
+    assert.deepEqual(col, { stacked: true, left: true, auto: true }, `${where}: the steps are a column beside the window`)
+  }
 }
 
 async function atStep(page, label, n, reduce) {
