@@ -618,7 +618,7 @@ fn render_token(
         .fold(0., f32::max);
     // The ground the voice gives a word it is on, and the band's own where
     // it is on none.
-    let heard_ground = palette.band.mix(palette.accent, 0.14 * heard);
+    let heard_ground = palette.band.mix(palette.accent, 0.2 * heard);
 
     // A pane's name answers the pointer by lighting its pane. It is still a
     // word a selection can run across, so it keeps `over`; it does not take
