@@ -508,7 +508,7 @@
     stolen: { steps: ['logout', 'copy', 'end'], html:
       '<div class="tl"><div class="tl-ax"><span style="left:0">login</span><span style="left:30%">logout</span><span style="left:100%">day 30</span></div>' +
       '<div class="tl-r" data-k="logout"><span class="lb">the cookie</span><div class="tr"><i class="f a" style="--w:30%"></i><span class="click" style="left:30%"></span><b class="x" style="left:30%">cleared</b></div></div>' +
-      '<div class="tl-r hot" data-k="copy"><span class="lb">a copied refresh token<b>refresh → 200, to day 30</b></span><div class="tr"><i class="f a" style="--w:30%"></i><i class="f b" style="--l:30%;--w:70%"></i><i class="m" style="left:52%"></i><i class="m" style="left:76%"></i><i class="m" style="left:100%"></i></div></div>' +
+      '<div class="tl-r hot" data-k="copy"><span class="lb">copied token<b>200 until day 30</b></span><div class="tr"><i class="f a" style="--w:30%"></i><i class="f b" style="--l:30%;--w:70%"></i><i class="m" style="left:52%"></i><i class="m" style="left:76%"></i><i class="m" style="left:100%"></i></div></div>' +
       '<p class="tl-n">nothing revokes it · values from logout.spec.ts</p></div>' },
   }
   function pageOf(name, holder) {

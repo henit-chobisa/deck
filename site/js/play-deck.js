@@ -23,7 +23,7 @@ window.PLAY_DECK = {
       '}',
     ],
     'src/auth/logout.ts': [
-      'export async function logout(req: Request, res: Response) {',
+      'export async function logout(req, res) {',
       '  const token = req.cookies.refresh;',
       '  res.clearCookie("sid");',
       '  res.clearCookie("refresh");',
