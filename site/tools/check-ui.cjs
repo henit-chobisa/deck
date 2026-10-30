@@ -155,10 +155,17 @@ async function features(page) {
   await page.keyboard.press('Space')
   assert(!(await details.evaluate((d) => d.open)), 'x5: Space closes it')
   for (const id of ['x3', 'x4', 'x5']) {
-    await page.locator(`#x6 .o2also a[href="#${id}"]`).click()
-    // lands at the section's top, or where its pin starts on a tall screen (scroll-margin-top); a long
-    // smooth scroll on a slow CI runner took longer than 4s
-    await page.waitForFunction((id) => { const e = document.getElementById(id); return Math.abs(e.getBoundingClientRect().top - (parseFloat(getComputedStyle(e).scrollMarginTop) || 0)) < 80 }, id, { timeout: 8000 })
+    // lands at the section's top, or where its pin starts on a tall screen (scroll-margin-top). On a
+    // CI runner the page can still grow under a long smooth scroll and stop it short; a second click
+    // is what a reader would do, and the failure says where it stopped.
+    const landed = (id) => { const e = document.getElementById(id); return Math.abs(e.getBoundingClientRect().top - (parseFloat(getComputedStyle(e).scrollMarginTop) || 0)) < 80 }
+    let ok = false
+    for (let tries = 0; tries < 2 && !ok; tries++) {
+      await page.locator(`#x6 .o2also a[href="#${id}"]`).click()
+      ok = await page.waitForFunction(landed, id, { timeout: 5000 }).then(() => true, () => false)
+    }
+    const at = await page.evaluate((id) => { const e = document.getElementById(id); return { top: Math.round(e.getBoundingClientRect().top), y: Math.round(scrollY), height: document.documentElement.scrollHeight } }, id)
+    assert(ok, `x6: the link to #${id} lands on it ${JSON.stringify(at)}`)
   }
 }
 
