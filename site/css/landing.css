@@ -1023,6 +1023,8 @@ body{overflow-x:clip}
 @media (max-width:980px){
  #x6.o2 .ow{padding:0 calc(16*var(--u))}
  #x6.o2 h2{font-size:clamp(max(var(--fmin,0px),calc(30*var(--u))),8.4vw,calc(44*var(--u)))}
+ /* with a wider fallback font the phrase may not fit a phone; let it wrap there, not scroll */
+ #x6.o2 h2 .x6u{white-space:normal}
  #x6.o2 .o2tiles{grid-template-columns:minmax(0,1fr);gap:calc(28*var(--u));margin-top:calc(32*var(--u))}
  #x6.o2 .o2m{height:calc(230*var(--u))}
  #x6.o2 h3{font-size:max(var(--fmin,0px),calc(17*var(--u)))}
