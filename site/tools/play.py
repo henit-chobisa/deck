@@ -137,9 +137,9 @@ def story() -> str:
  </div>
  <div class="pl-foot">
   <p class="pl-cap" id="pl-cap" aria-live="polite"><b id="pl-no">1 / {len(STEPS)}</b> <span id="pl-say">{first}</span></p>
+  <p class="pl-keys"><kbd>n</kbd> <kbd>→</kbd> next · <kbd>p</kbd> <kbd>←</kbd> back · <kbd>c</kbd> comment</p>
   <div class="pl-nav"><button type="button" class="btn ghost" id="pl-prev">Back</button><button type="button" class="btn solid" id="pl-next">Next</button></div>
  </div>
- <p class="pl-keys"><kbd>n</kbd> or <kbd>→</kbd> next · <kbd>p</kbd> or <kbd>←</kbd> back · <kbd>c</kbd> comment<span> · on a phone, tap the frame</span></p>
  <noscript><p class="pl-nojs">The demo needs JavaScript. <a href="/docs/">The docs</a> show the same deck in words.</p></noscript>
 </div>"""
 

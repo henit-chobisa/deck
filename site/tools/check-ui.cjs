@@ -167,6 +167,26 @@ async function features(page) {
 const stepOf = (page) => page.locator('#pl-stage').getAttribute('data-step').then(Number)
 const SCENE = (n) => (n <= 3 ? '#sc-term' : n <= 9 ? '#sc-win' : '#sc-end')
 
+// Nothing from a later step shows early: no thread, comments or brought panes before step 8 (the question),
+// no decision before step 9. Stepping back takes them away again.
+async function nothingAhead(page, where, n) {
+  const seen = await page.evaluate(() => ({
+    msgs: document.querySelectorAll('#dk .dk-msg').length,
+    brought: document.querySelectorAll('#dk .dk-pane.brought').length,
+    counted: document.querySelectorAll('#dk .dk-toc .cm').length + (document.querySelector('#dk .dk-send').textContent ? 1 : 0),
+    decision: /Keep 1h TTL/.test(document.querySelector('#dk .dk-chat').textContent),
+    pr: !document.getElementById('pr').hidden,
+  }))
+  if (n <= 7) assert.deepEqual(seen, { msgs: 0, brought: 0, counted: 0, decision: false, pr: false }, `${where}: shows a later step's thread, panes or comments`)
+  if (n === 8) assert.equal(seen.decision || seen.pr, false, `${where}: shows step 9's decision`)
+}
+
+// On a desktop screen the demo fits in one view as the page opens: the rail under the nav, Back and Next on screen.
+async function oneView(page, where) {
+  const r = await page.evaluate(() => { const b = (s) => document.querySelector(s).getBoundingClientRect(); return { nav: b('.nav').bottom, rail: b('#pl-rail').top, next: b('#pl-next').bottom, asks: b('#dk-asks').bottom, h: innerHeight } })
+  assert(r.rail >= r.nav - 1 && r.next <= r.h && r.asks <= r.h, `${where}: the demo does not fit in one view ${JSON.stringify(r)}`)
+}
+
 async function atStep(page, label, n, reduce) {
   await page.waitForTimeout(reduce ? 150 : 650)
   const where = `${label} /play/ step ${n}`
@@ -177,6 +197,8 @@ async function atStep(page, label, n, reduce) {
   assert.match(strip.text, /A recorded example: nothing here runs a model\..*example app, fictional code/s, `${where}: says it is recorded`)
   assert(strip.top >= strip.nav - 1 && strip.bottom <= await page.evaluate(() => innerHeight), `${where}: the recorded-example strip is on screen, not under the nav ${JSON.stringify(strip)}`)
   await fits(page, where)
+  await nothingAhead(page, where, n)
+  if (await page.evaluate(() => innerWidth > 980)) await oneView(page, where)
   // typed at a real pace, and already typed with reduced motion; written out by the bar either way
   if ((n === 2 && reduce) || n === 3) assert.equal(await page.locator('#tm-deck pre.shown').count(), await page.locator('#tm-deck pre').count(), `${where}: every command is written out`)
   if (n === 3) assert.match(await page.locator('#bar-c').textContent(), /^4 groups$/, `${where}: the bar counts the sealed deck`)
@@ -214,7 +236,10 @@ async function playThrough(page, label, how, reduce) {
   assert.match(await page.locator('#dk .dk-chat').textContent(), /Keep 1h TTL, add revocation on logout instead/, `${label} /play/ ${how}: the decision is a comment`)
   for (const [sel, href] of [['#sc-end a.btn.solid', '/#install'], ['#sc-end a.btn.ghost', GH]]) assert.equal(await page.locator(sel).getAttribute('href'), href)
   if (how === 'keys') {
-    for (let i = 0; i < 14 && await stepOf(page) > 1; i++) { await page.keyboard.press(i % 2 ? 'ArrowLeft' : 'p'); await page.waitForTimeout(160) }
+    for (let i = 0; i < 14 && await stepOf(page) > 1; i++) {
+      await page.keyboard.press(i % 2 ? 'ArrowLeft' : 'p'); await page.waitForTimeout(160)
+      await nothingAhead(page, `${label} /play/ back at step ${await stepOf(page)}`, await stepOf(page))
+    }
     assert.equal(await stepOf(page), 1, `${label} /play/: p goes back to the start`)
   } else {
     await page.locator('#pl-replay').click()
@@ -355,6 +380,7 @@ async function check(engine, name, width, height, reducedMotion = 'no-preference
     await check(chromium, 'chromium-1100x1700', 1100, 1700)
     await check(webkit, 'webkit-reduced-motion', 1440, 900, 'reduce')
     await check(chromium, 'chromium-1280x800', 1280, 800)
+    await check(webkit, 'webkit-1366x768', 1366, 768)
     await check(webkit, 'webkit-1920x1080', 1920, 1080)
     await check(chromium, 'chromium-390x844', 390, 844)
     await check(chromium, 'chromium-reduced-motion-390', 390, 844, 'reduce')

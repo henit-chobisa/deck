@@ -2,14 +2,14 @@
    own, at its own measurements (crates/render/src/metrics.rs) and in the colours of the real
    window on the home page (assets/deck-live.webp). Motion is the site's: 150, 420 and 760 ms,
    one easing. */
-.play-head{max-width:var(--plw);margin:0 auto;padding:calc(40*var(--u)) max(calc(24*var(--u)),env(safe-area-inset-left,0px)) 0}
+.play-head{max-width:var(--plw);margin:0 auto;padding:calc(28*var(--u)) max(calc(24*var(--u)),env(safe-area-inset-left,0px)) 0}
 :root{--plw:calc(1200*var(--u))}
 @media (min-width:981px){:root{--plw:min(1280px,calc(100vw - 48px))}}
 .play-head .eyebrow{margin-bottom:calc(12*var(--u))}
-.play-head h1{font-size:clamp(calc(30*var(--u)),3.4vw,calc(44*var(--u)))}
+.play-head h1{font-size:clamp(calc(30*var(--u)),3vw,calc(40*var(--u)))}
 .play-lede{margin:calc(10*var(--u)) 0 0;max-width:68ch;color:var(--soft);font-size:var(--fs-small)}
 
-.pl{max-width:var(--plw);margin:0 auto;padding:calc(22*var(--u)) max(calc(24*var(--u)),env(safe-area-inset-left,0px)) calc(72*var(--u));outline:none}
+.pl{max-width:var(--plw);margin:0 auto;padding:calc(16*var(--u)) max(calc(24*var(--u)),env(safe-area-inset-left,0px)) calc(72*var(--u));outline:none}
 .pl-top{display:flex;align-items:center;gap:calc(16*var(--u))}
 .pl-rail{flex:1;min-width:0;display:grid;grid-template-columns:repeat(10,minmax(0,1fr));gap:4px;margin:0;padding:0;list-style:none}
 .pl-rail button{appearance:none;display:block;width:100%;padding:8px 0 4px;border:0;background:none;cursor:pointer;text-align:left;color:var(--dim);font:500 max(11px,calc(12*var(--u)))/1.2 var(--display)}
@@ -28,18 +28,18 @@
 
 /* the stage: the same box for every step; one scene at a time */
 .pl{scroll-margin-top:calc(var(--navh) - 10px)}
-.pl-stage{position:relative;margin-top:14px;height:clamp(560px,calc(100svh - var(--navh) - 196px),860px);outline:none;scroll-margin-top:var(--navh)}
+.pl-stage{position:relative;margin-top:12px;height:clamp(420px,calc(100svh - var(--navh) - 300px),860px);outline:none;scroll-margin-top:var(--navh)}
 .sc{position:absolute;inset:0;opacity:0;visibility:hidden;transition:opacity 420ms var(--ease),visibility 0s linear 420ms}
 .sc.on{opacity:1;visibility:visible;transition-delay:0s}
-.pl-foot{display:flex;align-items:center;gap:20px;margin-top:16px}
+.pl-foot{display:flex;align-items:center;gap:20px;margin-top:10px}
 .pl-cap{flex:1;margin:0;color:var(--soft);font-size:var(--fs-small);line-height:1.55;min-height:3.1em}
 .pl-cap>b{margin-right:8px;font:500 12px var(--mono);color:var(--accent)}
 .pl-cap span b{color:var(--text);font-weight:500}
 .pl-nav{flex:none;display:flex;gap:8px}
 .pl-nav .btn{height:40px;padding:0 18px;font-size:14px}
 .pl-nav .btn:disabled{opacity:.4;cursor:default}
-.pl-keys{margin:12px 0 0;color:var(--dim);font-size:var(--fs-label)}
-.pl-keys span{display:none}
+.pl-keys{flex:none;margin:0;color:var(--dim);font-size:var(--fs-label);white-space:nowrap}
+@media (max-width:1299px){.pl-keys{display:none}}
 .pl-nojs{color:var(--soft)}
 
 /* ---- steps 1 to 3: the terminal, and the bar */
@@ -115,7 +115,7 @@
 .sc-win.opening .dk{animation:pl-open 760ms var(--ease) both}
 @keyframes pl-open{from{opacity:0;transform:translateY(40px) scale(.96)}to{opacity:1;transform:none}}
 :where(.dk) button{font:inherit;cursor:pointer}
-.dk-band{grid-column:1;grid-row:1;display:flex;flex-direction:column;gap:9px;padding-bottom:14px;min-height:min(231px,38vh);max-height:300px;border-bottom:1px solid var(--seam);min-width:0}
+.dk-band{grid-column:1;grid-row:1;display:flex;flex-direction:column;gap:9px;padding-bottom:14px;max-height:300px;border-bottom:1px solid var(--seam);min-width:0}
 .dk-head{display:flex;align-items:center;gap:14px;padding:15px 18px 0;min-width:0}
 .dk-num{flex:none;width:30px;text-align:center;font:300 36px/36px var(--sans);color:var(--num)}
 .dk-titles{display:flex;flex-direction:column;gap:2px;min-width:0}
@@ -388,7 +388,6 @@ button.dk-row{appearance:none;width:100%;border:0;background:none;text-align:lef
  .tl{padding:14px}
  .tl-ax{margin-left:0}
  .tl-r{grid-template-columns:1fr;height:auto;gap:30px;margin-bottom:22px}
- .pl-keys span{display:inline}
  .pl-keys{display:none}
  .pl-foot{position:sticky;bottom:0;z-index:4;margin:0 calc(-24*var(--u));padding:10px calc(24*var(--u)) calc(10px + env(safe-area-inset-bottom,0px));background:color-mix(in srgb,var(--ink) 92%,transparent);border-top:1px solid var(--line)}
  .pl-cap{min-height:0;font-size:13.5px}
