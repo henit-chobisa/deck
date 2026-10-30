@@ -2266,9 +2266,38 @@ impl DeckView {
             // and so does every one before it still on its way down.
             self.heard.follow(now);
             self.heard_paragraphs.follow(paragraph);
+            if let Some((crate::speech::Narration::Group(ix), (start, _))) = now
+                && ix == self.group_ix
+            {
+                self.follow_band(start);
+            }
             moved = true;
         }
         moved
+    }
+
+    /// Bring the sentence being heard into the band, when the prose is taller
+    /// than the band. Walking, the reader's eyes are on the voice; the words
+    /// it was reading went on below the edge and nothing followed them.
+    ///
+    /// Placed by how far through the prose the sentence starts, a third of the
+    /// way down the band, so what comes next is already in view. Only ever
+    /// moves forward: a reader who scrolled ahead is not pulled back.
+    fn follow_band(&self, word: usize) {
+        let Some(group) = self.group() else { return };
+        let (_, words) = crate::prose::sentence_starts(&group.say);
+        let most = f32::from(self.band_scroll.max_offset().y);
+        if most <= 0. || words == 0 {
+            return;
+        }
+        let tall = f32::from(self.band_scroll.bounds().size.height);
+        #[allow(clippy::cast_precision_loss)]
+        let through = word as f32 / words as f32;
+        let want = through.mul_add(most + tall, -tall / 3.).clamp(0., most);
+        let now = -f32::from(self.band_scroll.offset().y);
+        if want > now {
+            self.band_scroll.set_offset(point(px(0.), px(-want)));
+        }
     }
 
     /// The sentences of `of` being heard, with how lit each one is.
@@ -6198,6 +6227,12 @@ impl DeckView {
             },
             |group| group.say.clone(),
         );
+        // From where the prose was last drawn, as the review list counts its
+        // rows: a pixel of slack so a band scrolled to its end reads as ended.
+        let prose_below = {
+            let most = self.band_scroll.max_offset().y;
+            most > px(1.) && -self.band_scroll.offset().y < most - px(1.)
+        };
 
         div()
             .h_flex()
@@ -6386,6 +6421,16 @@ impl DeckView {
                         ),
                     )
                     .child(
+                        // Holds the prose and, over its bottom edge, the sign
+                        // that it goes on. A long `say` ended at the band's
+                        // edge mid-paragraph with nothing to say there was
+                        // more, so the rest went unread.
+                        div()
+                            .relative()
+                            .flex_1()
+                            .min_h_0()
+                            .v_flex()
+                            .child(
                         // The prose is pickable too. An objection to what the
                         // group claims has to be able to land on the claim,
                         // not on some line of code chosen for want of anywhere
@@ -6512,6 +6557,53 @@ impl DeckView {
                                         },
                                     )),
                             ),
+                            )
+                            .when(prose_below, |this| {
+                                let ground = paint(self.palette.band);
+                                let mut clear = ground;
+                                clear.a = 0.;
+                                let scroll = self.band_scroll.clone();
+                                this.child(
+                                    div()
+                                        .absolute()
+                                        .bottom_0()
+                                        .left_0()
+                                        .right_0()
+                                        .h(px(30.))
+                                        .bg(linear_gradient(
+                                            180.,
+                                            linear_color_stop(clear, 0.),
+                                            linear_color_stop(ground, 1.),
+                                        )),
+                                )
+                                .child(
+                                    div()
+                                        .id("band-down")
+                                        .absolute()
+                                        .bottom_0()
+                                        .right(px(BAND_SIDE))
+                                        .px(px(7.))
+                                        .py(px(1.))
+                                        .rounded(px(crate::radius::CAP))
+                                        .bg(paint(self.palette.wash))
+                                        .border_1()
+                                        .border_color(paint(self.palette.edge))
+                                        .font_family(cx.theme().mono_font_family.clone())
+                                        .text_size(px(10.5))
+                                        .text_color(paint(self.palette.muted))
+                                        .cursor_pointer()
+                                        .on_click(cx.listener(move |_, _, _, cx| {
+                                            let view = scroll.bounds().size.height;
+                                            let mut at = scroll.offset();
+                                            at.y = (at.y - view * 0.8)
+                                                .min(px(0.))
+                                                .max(-scroll.max_offset().y);
+                                            scroll.set_offset(at);
+                                            cx.notify();
+                                        }))
+                                        .child("↓ more"),
+                                )
+                            }),
                     )
                     .children(self.render_track(cx)),
             )
@@ -9822,10 +9914,14 @@ impl Render for DeckView {
         let closing_beside = |place: usize| -> f32 {
             let first = place / cols * cols;
             let last = (first + cols).min(count);
+            // The least folded neighbour, not the most: the share only stops
+            // meaning anything once *every* other pane in the row is going.
+            // Taking the most, one folded pane of three pinned the other two
+            // at a share of one each, and their seam dragged nothing.
             (first..last)
                 .filter(|beside| *beside != place)
                 .map(folding_at)
-                .fold(0., f32::max)
+                .fold(1., f32::min)
         };
         // How far gone a row is: one when everything in it has folded.
         let gone = |row: usize| -> f32 {
@@ -9974,10 +10070,12 @@ impl Render for DeckView {
                     // for.
                     .flex_grow({
                         let dragged = self.shares.get(row_ix).copied().unwrap_or(1.);
+                        // Every other row gone, not any: the same reason
+                        // as `closing_beside`, along the other axis.
                         let closing = (0..row_count)
                             .filter(|row| *row != row_ix)
                             .map(gone)
-                            .fold(0., f32::max);
+                            .fold(1., f32::min);
                         dragged.mul_add(1. - closing, closing) * held
                     })
                     .flex_basis(px(0.))
