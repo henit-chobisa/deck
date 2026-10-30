@@ -356,6 +356,7 @@
   function post(kind, who, text, tag) {
     const empty = chat.querySelector('.dk-empty'); if (empty) empty.remove()
     const m = el('div', 'dk-msg ' + kind)
+    m.dataset.step = String(cur) // what happened at a step goes when the reader steps back before it
     const w = el('div', 'who'); w.append(el('span', null, who), el('time', null, stamp()))
     m.append(el('i'), w)
     if (text !== null) m.append(el('p', null, text))
@@ -400,7 +401,7 @@
     const at = where()
     const P = G.panes[st.heldPane]
     const held = st.held && P ? { file: P.ref.file, ref: P.ref.name, a: Math.min(st.held.a, st.held.b), b: Math.max(st.held.a, st.held.b) } : { file: '', ref: '', a: -1, b: -1 }
-    st.review.push(Object.assign({ g: st.g, at, text }, held))
+    st.review.push(Object.assign({ g: st.g, at, text, step: cur }, held))
     post('you', 'you · ' + at + ' · in review', text)
     composeOpen(false); marks(); tocPaint()
     say('Kept for the review. Press s to send it.')
@@ -650,6 +651,14 @@
     const forward = how !== 'rail' && i === cur + 1
     if (st.replyNow) st.replyNow()
     hush(); pending = null
+    // only what has happened by step i: later steps' questions, answers, panes and comments go
+    chat.querySelectorAll('.dk-msg').forEach((m) => { if (+m.dataset.step > i) m.remove() })
+    if (!chat.querySelector('.dk-msg, .dk-empty')) chat.innerHTML = '<p class="dk-empty">The floor is yours</p>'
+    st.review = st.review.filter((c) => c.step <= i)
+    if (i < 7) { answeredYet = false; st.brought = false; st.asked.clear() }
+    if (i < 8) decided = false
+    // before the window opens, it holds nothing either (it is drawn again when it opens)
+    if (G && i < 3) { open(0); st.seen.clear() }
     const from = cur
     cur = i
     stage.dataset.step = String(i + 1)
@@ -799,6 +808,17 @@
     next('tap')
   })
 
+  // The stage takes the height the screen has: everything from the rail to Back and Next fits in one view
+  // as the page opens, the window growing on a taller screen up to 860px, as deck's would. Phones stack.
+  function fit() {
+    if (phone()) { stage.style.height = ''; return }
+    const top = stage.getBoundingClientRect().top + scrollY
+    const below = document.querySelector('.pl-foot').getBoundingClientRect().bottom - stage.getBoundingClientRect().bottom
+    stage.style.height = Math.round(Math.max(400, Math.min(860, innerHeight - top - below - 14))) + 'px'
+  }
+  fit()
+  let fitT = 0
+  addEventListener('resize', () => { clearTimeout(fitT); fitT = setTimeout(fit, 120) })
   render(0, 'load')
   document.documentElement.classList.add('pl-ready')
 })()
