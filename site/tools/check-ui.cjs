@@ -195,6 +195,14 @@ async function deskStep(page, label, n, reduce) {
   await fits(page, where)
 }
 
+// A click where the element is, as a hand would: the desktop is fixed to the viewport, and WebKit in
+// full screen can stall Playwright's scroll-into-view before a locator click.
+async function hand(page, sel) {
+  const b = await page.locator(sel).first().boundingBox()
+  assert(b, `${sel}: on screen to click`)
+  await page.mouse.click(b.x + b.width / 2, b.y + b.height / 2)
+}
+
 async function playDesk(page, label, how, reduce) {
   await page.goto(base + '/play/')
   await page.waitForFunction(() => document.documentElement.classList.contains('pl-ready'))
@@ -212,9 +220,9 @@ async function playDesk(page, label, how, reduce) {
       if (how === 'keys') {
         if (at === 3 && await page.evaluate(() => document.activeElement.id === 'bar-open')) await page.keyboard.press('Enter')
         else await page.keyboard.press(tries % 2 ? 'ArrowRight' : 'n')
-      } else if (at === 3) await page.locator('#bar-open').click()
-      else if (at === 8 && !asked) { await page.locator('#dk-asks .ak[data-ask^="Does logout"]').click(); await page.waitForSelector('#dk .dk-msg .rec', { timeout: 5000 }) }
-      else await page.locator('#pl-next').click()
+      } else if (at === 3) await hand(page, '#bar-open')
+      else if (at === 8 && !asked) { await hand(page, '#dk-asks .ak[data-ask^="Does logout"]'); await page.waitForSelector('#dk .dk-msg .rec', { timeout: 5000 }) }
+      else await hand(page, '#pl-next')
       await page.waitForTimeout(reduce ? 150 : 450)
     }
     await deskStep(page, label, want, reduce)
@@ -230,7 +238,7 @@ async function playDesk(page, label, how, reduce) {
     }
     assert.equal(await stepOf(page), 1, `${label} /play/: p goes back to the start`)
     await page.keyboard.press('Escape')
-  } else await page.locator('#dx').click()
+  } else await hand(page, '#dx')
   await page.waitForFunction(() => document.getElementById('desk').hidden)
   await page.waitForTimeout(300) // fullscreen ends a beat after the desktop closes
   assert.deepEqual(await page.evaluate(() => [document.activeElement.id, !!document.fullscreenElement, document.getElementById('main').inert]), ['pi-start', false, false], `${label}: leaving gives the page back, focus on Start`)
