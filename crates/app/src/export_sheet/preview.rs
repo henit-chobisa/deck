@@ -97,7 +97,11 @@ fn own_size(svg: &str) -> Option<(f32, f32)> {
 
 /// `page`, painted to fill as much of the canvas as its shape allows,
 /// centred in it.
-pub fn page(page: Arc<Page>, drawings: Arc<Drawings>) -> impl IntoElement {
+///
+/// `edge` is drawn round the sheet. A dark theme's page is as dark as the
+/// stage it sits on, and without an edge the cover read as a title floating
+/// in the dark rather than a page; transparent where something else frames it.
+pub fn page(page: Arc<Page>, drawings: Arc<Drawings>, edge: Hsla) -> impl IntoElement {
     canvas(
         |_, _, _| (),
         move |bounds, (), window, cx| {
@@ -111,6 +115,16 @@ pub fn page(page: Arc<Page>, drawings: Arc<Drawings>) -> impl IntoElement {
                 bounds.origin.y + (room.height - px(page.height * k)) / 2.,
             );
             paint_page(&page, &drawings, origin, k, window, cx);
+            if edge.a > 0. {
+                window.paint_quad(outline(
+                    Bounds {
+                        origin,
+                        size: size(px(page.width * k), px(page.height * k)),
+                    },
+                    edge,
+                    BorderStyle::Solid,
+                ));
+            }
         },
     )
     .size_full()
