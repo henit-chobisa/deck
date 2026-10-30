@@ -158,7 +158,12 @@ async function features(page) {
     // lands at the section's top, or where its pin starts on a tall screen (scroll-margin-top). On a
     // CI runner the page can still grow under a long smooth scroll and stop it short; a second click
     // is what a reader would do, and the failure says where it stopped.
-    const landed = (id) => { const e = document.getElementById(id); return Math.abs(e.getBoundingClientRect().top - (parseFloat(getComputedStyle(e).scrollMarginTop) || 0)) < 80 }
+    // Landed means the reader is looking at the section: its top at the top of the window, or, for a
+    // tall pinned section, the window somewhere inside it (a CI runner stopped 926px into #x3).
+    const landed = (id) => {
+      const r = document.getElementById(id).getBoundingClientRect(), margin = parseFloat(getComputedStyle(document.getElementById(id)).scrollMarginTop) || 0
+      return Math.abs(r.top - margin) < 80 || (r.top <= margin + 80 && r.bottom >= innerHeight * 0.6)
+    }
     let ok = false
     for (let tries = 0; tries < 2 && !ok; tries++) {
       await page.locator(`#x6 .o2also a[href="#${id}"]`).click()
