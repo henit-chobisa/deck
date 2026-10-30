@@ -20,6 +20,19 @@
 .pi-phone{display:none}
 .pi-honest{margin:calc(16*var(--u)) 0 0;color:var(--dim);font-size:var(--fs-label)}
 .pi-honest b{color:#d98a4a;font-weight:500}
+/* Desktop: the words on the left, the desktop on the right, centred in the window */
+@media (min-width:1101px){
+ .pi{display:grid;grid-template-columns:minmax(300px,4fr) 7fr;grid-template-areas:"head frame" "honest frame";column-gap:calc(56*var(--u));align-content:center;min-height:calc(100svh - 64px);padding-block:calc(40*var(--u))}
+ .pi-head{grid-area:head;align-self:end;max-width:44ch}
+ .pi-head h1{font-size:clamp(calc(36*var(--u)),3.4vw,calc(56*var(--u)));line-height:1.04;letter-spacing:-.02em;text-wrap:balance}
+ .pi-line{margin-top:calc(16*var(--u))}
+ .pi-steps{display:grid;gap:calc(10*var(--u));margin:calc(28*var(--u)) 0 0;padding:0;list-style:none;counter-reset:s}
+ .pi-steps li{counter-increment:s;display:flex;align-items:baseline;gap:12px;color:var(--soft);font-size:var(--fs-label)}
+ .pi-steps li::before{content:counter(s,decimal-leading-zero);font:400 11px var(--mono);color:var(--accent);flex:none}
+ .pi-frame{grid-area:frame;align-self:center;margin-top:0;max-width:100%}
+ .pi-honest{grid-area:honest;align-self:start;margin-top:calc(28*var(--u))}
+}
+@media (max-width:1100px){.pi-steps{display:none}}
 /* phones, tablets and narrow windows: a still of it, and where to watch it */
 @media (max-width:1100px),(hover:none),(pointer:coarse){
  .pi-start{display:none}
@@ -100,7 +113,15 @@ html.desk-on,html.desk-on body{overflow:hidden}
 .tw-ft{flex:none;display:flex;justify-content:space-between;padding:4px 2px 0;font-size:11.5px;color:var(--dim)}
 .dw{left:max(24px,calc(50% - 740px));right:max(24px,calc(50% - 740px));top:calc(var(--mbh) + 22px);bottom:calc(var(--dockh) + 40px);background:#000}
 .dw .dk{flex:1;min-height:0;border:0;border-radius:0;box-shadow:none}
-.dw .dk-asks{flex:none;height:auto;padding:8px 10px;background:#0b0b0b;border-top:1px solid #000}
+.dw{overflow:visible;bottom:calc(var(--dockh) + 92px)}
+/* deck has no titlebar: the lights sit over the band, as in the app */
+.dw .wbar{position:absolute;top:0;left:0;z-index:3;height:30px;padding:0 14px;background:none;border:0;pointer-events:none}
+.dw .wt{display:none}
+.dw .dk{border-radius:12px;overflow:hidden}
+.dw .dk-band{padding-top:30px}
+/* the asks float under the window, as in the app, not in a strip inside it */
+.dw .dk-asks{position:absolute;top:calc(100% + 12px);left:0;right:0;height:auto;padding:0;background:none;border:0}
+.dw .ak,.dw .ak-n{background:#0f0f0fe6;border-color:#2e2e2c;box-shadow:0 8px 24px -10px #000000b3;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
 
 /* the desktop's controls: a slim step rail that shows while a hand is about, the caption, the honest line */
 .srail{position:absolute;left:50%;top:calc(var(--mbh) + 7px);z-index:4;transform:translateX(-50%);display:flex;gap:4px;opacity:0;transition:opacity 420ms var(--ease)}
