@@ -114,11 +114,9 @@ html.desk-on,html.desk-on body{overflow:hidden}
 .dw{left:max(24px,calc(50% - 740px));right:max(24px,calc(50% - 740px));top:calc(var(--mbh) + 22px);bottom:calc(var(--dockh) + 40px);background:#000}
 .dw .dk{flex:1;min-height:0;border:0;border-radius:0;box-shadow:none}
 .dw{overflow:visible;bottom:calc(var(--dockh) + 92px)}
-/* deck has no titlebar: the lights sit over the band, as in the app */
-.dw .wbar{position:absolute;top:0;left:0;z-index:3;height:30px;padding:0 14px;background:none;border:0;pointer-events:none}
-.dw .wt{display:none}
+/* deck has no titlebar and no traffic lights: the band is the top of the window */
+.dw .wbar{display:none}
 .dw .dk{border-radius:12px;overflow:hidden}
-.dw .dk-band{padding-top:30px}
 /* the asks float under the window, as in the app, not in a strip inside it */
 .dw .dk-asks{position:absolute;top:calc(100% + 12px);left:0;right:0;height:auto;padding:0;background:none;border:0}
 .dw .ak,.dw .ak-n{background:#0f0f0fe6;border-color:#2e2e2c;box-shadow:0 8px 24px -10px #000000b3;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
