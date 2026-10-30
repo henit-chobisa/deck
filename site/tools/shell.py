@@ -27,6 +27,8 @@ GITHUB = (
     '1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>'
 )
 REPO = "https://github.com/henit-chobisa/deck"
+# the launch post, in the nav and the footer
+BLOG = "https://henit.blog/posts/i-hand-agents-the-code-not-the-decisions/"
 
 def fonts(extra: str = "") -> str:
     """The head's font and site stylesheets. `extra` adds Google Fonts families (as in the css2 URL,
@@ -59,6 +61,7 @@ def nav(current: str = "") -> str:
         '<header class="nav" id="nav"><div class="wrap">\n'
         f' <a class="brand" href="{brand}" aria-label="deck, home">{mark}deck</a>\n'
         f' <nav class="links" aria-label="Main">{link("/docs/", "Docs")}{link("/changelog/", "Changelog")}'
+        f'<a href="{BLOG}" rel="noopener">Blog</a>'
         f'<a class="gh" href="{REPO}" aria-label="deck on GitHub">{GITHUB}</a><a class="cta" href="{install}">Install</a></nav>\n'
         '</div></header>'
     )
@@ -75,7 +78,7 @@ FOOT = (
     f'<a href="/changelog/">Changelog</a><a href="{REPO}/releases">Releases</a><a href="/telemetry/">Telemetry</a></div>\n'
     f'   <div><p class="foot-ch">Open source</p><a href="{REPO}">GitHub</a><a href="{REPO}/blob/main/LICENSE">License · Apache-2.0</a>'
     f'<a href="{REPO}/blob/main/README.md">README</a></div>\n'
-    '   <div><p class="foot-ch">Henit</p><a href="https://henit.blog">Blog</a><a href="/#note">Why I\'m building it</a>'
+    '   <div><p class="foot-ch">Henit</p><a href="' + BLOG + '" rel="noopener">Blog</a><a href="/#note">Why I\'m building it</a>'
     '<button type="button" class="foot-cl" data-email="chobisa.henit@gmail.com">Email<span class="foot-cs" aria-live="polite"></span></button></div>\n'
     '  </nav>\n'
     '  <div class="foot-base"><span>© 2026 Henit Chobisa · Apache-2.0 · macOS, Linux and Windows</span></div>\n'

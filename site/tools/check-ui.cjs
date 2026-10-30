@@ -7,6 +7,8 @@ const base = 'http://127.0.0.1:8765'
 const server = spawn('python3', ['-m', 'http.server', '8765', '--bind', '127.0.0.1', '--directory', resolve(__dirname, '..')], { stdio: 'ignore' })
 const pause = (ms) => new Promise((r) => setTimeout(r, ms))
 const GH = 'https://github.com/henit-chobisa/deck'
+// The launch post. It goes live after this lands, so nothing here fetches it: an early 404 is expected.
+const BLOG = 'https://henit.blog/posts/i-hand-agents-the-code-not-the-decisions/'
 
 // The page sets scroll-behavior: smooth; a test jump must not animate.
 const jump = (page, y) => page.evaluate((y) => window.scrollTo({ top: y, behavior: 'instant' }), y)
@@ -34,7 +36,7 @@ async function fitsAll(page, label) {
 
 async function links(page) {
   const nav = await page.locator('.nav a').evaluateAll((as) => as.map((a) => [a.textContent.trim() || a.getAttribute('aria-label'), a.getAttribute('href')]))
-  assert.deepEqual(nav, [['deck', '#top'], ['Docs', '/docs/'], ['Changelog', '/changelog/'], ['deck on GitHub', GH], ['Install', '#install']])
+  assert.deepEqual(nav, [['deck', '#top'], ['Docs', '/docs/'], ['Changelog', '/changelog/'], ['Blog', BLOG], ['deck on GitHub', GH], ['Install', '#install']])
   assert.deepEqual(await page.locator('.hero .ctas a').evaluateAll((as) => as.map((a) => a.getAttribute('href'))), ['#install', GH])
   const tryIt = page.locator('.hero .try a')
   assert.equal(await tryIt.getAttribute('href'), '/play/', 'the hero has a quiet way to try deck in the browser')
@@ -44,7 +46,7 @@ async function links(page) {
   assert.equal(await tryIt.isVisible(), !phone, phone ? 'the try link is hidden on phones' : 'the try link is visible')
   assert.deepEqual(await page.locator('.x7btns a').evaluateAll((as) => as.map((a) => a.getAttribute('href'))), ['#install', GH])
   const foot = await page.locator('.foot-cols a').evaluateAll((as) => as.map((a) => a.getAttribute('href')))
-  assert.deepEqual(foot, ['/#install', '/play/', '/docs/', '/guides/', '/changelog/', GH + '/releases', '/telemetry/', GH, GH + '/blob/main/LICENSE', GH + '/blob/main/README.md', 'https://henit.blog', '/#note'])
+  assert.deepEqual(foot, ['/#install', '/play/', '/docs/', '/guides/', '/changelog/', GH + '/releases', '/telemetry/', GH, GH + '/blob/main/LICENSE', GH + '/blob/main/README.md', BLOG, '/#note'])
   // every in-page link has its target, and every local page answers
   for (const href of await page.locator('a[href]').evaluateAll((as) => as.map((a) => a.getAttribute('href')))) {
     if (href.startsWith('#') || href.startsWith('/#')) assert.equal(await page.locator(href.replace(/^\//, '')).count(), 1, `${href} must name exactly one element`)
