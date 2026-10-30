@@ -563,7 +563,12 @@
   lines.forEach((pre) => { const w = document.createTreeWalker(pre, NodeFilter.SHOW_TEXT); pre._n = []; while (w.nextNode()) pre._n.push(w.currentNode); pre._f = pre._n.map((t) => t.data) })
   const part = (k) => lines.filter((p) => (p.dataset.ty || p.dataset.out) === k)
   const show = (pre, on) => { pre._n.forEach((t, j) => { t.data = on ? pre._f[j] : '' }); pre.classList.toggle('shown', on); pre.classList.remove('typing') }
+  const spinner = $('tw-spin'), typing = $('tw-type'), hint = $('tw-ph')
+  const spin = (on) => { spinner.hidden = !on }
+  const input = (t) => { typing.textContent = t; hint.hidden = !!t }
+  const PROMPT = part('p')[0]._f.join('').replace(/^>\s*/, '')
   function fill(keys) {
+    spin(false); input('')
     lines.forEach((pre) => show(pre, keys.includes(pre.dataset.ty || pre.dataset.out)))
     if (keys.includes('d')) { barTo('seal'); typed.d = true }
     if (keys.includes('a')) typed.p = true
@@ -704,11 +709,20 @@
   async function run(i, forward, my) {
     if (i === 0) {
       if (forward && !typed.p && !reduce) {
+        // typed into the input box, sent, then the agent works: its tool calls and their results, then its answer
         fill([])
         pending = () => { pending = null; seq++; fill(['p', 'a']) }
         await wait(500)
-        if (!(await typeLine(part('p')[0], my, 1))) return
-        for (const pre of part('a')) { await wait(pre.id === 'tm-sum' ? 900 : 520); if (my !== seq) return; show(pre, true); tx.scrollTop = tx.scrollHeight }
+        for (let at = 1; at <= PROMPT.length; at++) { if (my !== seq) return; input(PROMPT.slice(0, at)); await wait(38) }
+        await wait(380)
+        if (my !== seq) return
+        input(''); show(part('p')[0], true); spin(true)
+        for (const pre of part('a')) {
+          await wait(pre.id === 'tm-sum' ? 1000 : 700)
+          if (my !== seq) return
+          if (pre.id === 'tm-sum') spin(false)
+          show(pre, true); tx.scrollTop = tx.scrollHeight
+        }
         typed.p = true; pending = null
       } else fill(['p', 'a'])
       await glide($('tm-sum'), my)
@@ -716,13 +730,14 @@
       if (forward && !typed.d && !reduce) {
         fill(['p', 'a'])
         pending = () => { pending = null; seq++; fill(['p', 'a', 'd']) }
+        spin(true)
         for (const pre of part('d')) {
           if (pre.dataset.out) { await wait(300); if (my !== seq) return; show(pre, true); tx.scrollTop = tx.scrollHeight; continue }
           await wait(420)
           if (!(await typeLine(pre, my, 3))) return
           if (pre.dataset.bar) barTo(pre.dataset.bar === 'seal' ? 'seal' : +pre.dataset.bar)
         }
-        typed.d = true; pending = null
+        typed.d = true; pending = null; spin(false)
       } else fill(['p', 'a', 'd'])
     } else if (i === 2) {
       fill(['p', 'a', 'd'])

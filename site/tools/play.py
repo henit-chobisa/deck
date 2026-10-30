@@ -121,31 +121,42 @@ MENU = """<div class="mb" aria-hidden="true">
 
 TERM = """<section class="win tw" id="tw" aria-label="The agent's terminal">
  <div class="wbar"><span class="lights" aria-hidden="true"><i></i><i></i><i></i></span><span class="wt">agent — ~/shop-api</span></div>
- <div class="tm-tx" id="tm-tx">
-  <pre class="tu" data-ty="p"><span>›</span> users keep getting logged out at random. fix it</pre>
-  <pre class="ta" data-out="a"><span>⏺</span> Read <b>src/auth/session.ts</b></pre>
-  <pre class="ta" data-out="a"><span>⏺</span> Read <b>src/auth/login.ts</b></pre>
-  <pre class="ta" data-out="a"><span>⏺</span> Ran <b>npm test</b> <em>· 42 passed</em></pre>
-  <pre class="tsum" data-out="a" id="tm-sum"><span>⏺</span> <b>Done.</b> Users were getting logged out randomly. Fixed by extending the session refresh. Tests pass.</pre>
-  <div class="tm-deck" id="tm-deck">
-   <pre class="ta" data-out="d"><span>⏺</span> Writing it up as a deck, so you can check it on the code.</pre>
-   <pre class="tc" data-ty="d"><span class="tp">$</span> <b>deck new</b> --title <s>"Fix random logouts"</s> --total 4</pre>
-   <pre class="to" data-out="d">~/.deck/decks/d-1793261705-4127.deck</pre>
-   <pre class="tc" data-ty="d" data-bar="0"><span class="tp">$</span> <b>deck open</b> $deck   <u># in the background: the bar goes up</u></pre>
-   <pre class="tc" data-ty="d" data-bar="1"><span class="tp">$</span> <b>deck group</b> $deck \\
-    --title <s>"The refresh now extends the session's lifetime"</s> \\
-    --confidence high \\
-    --say <s>'Users who leave a tab for an hour come back signed out. [point 9-11 refresh] …'</s> \\
-    --ref <s>'src/auth/session.ts:7-15 [refresh] where a session is kept alive'</s> \\
-    --ref <s>'src/auth/session.ts:5 [ttl] a proposed change'</s> \\
-    --after <s>'export const SESSION_TTL = 30 * 24 * 60 * 60;  // 30 days'</s></pre>
-   <pre class="tc" data-ty="d" data-bar="2"><span class="tp">$</span> <b>deck group</b> $deck --title <s>'A refresh is what keeps you signed in'</s> --diagram flow.json …</pre>
-   <pre class="tc" data-ty="d" data-bar="3"><span class="tp">$</span> <b>deck group</b> $deck --title <s>'Now only logout signs you out'</s> --page life.html …</pre>
-   <pre class="tc" data-ty="d" data-bar="4"><span class="tp">$</span> <b>deck group</b> $deck --title <s>'Tested: a refresh lands thirty days out'</s> \\
-    --values <s>'[{"line":12,"at":"expiresAt","is":"2026-11-28T10:14:07Z","lit":true}, …]'</s> \\
-    --ask <s>'Does logout still kill the session?'</s> …</pre>
-   <pre class="tc" data-ty="d" data-bar="seal"><span class="tp">$</span> <b>deck seal</b> $deck</pre>
+ <div class="tui">
+  <div class="tm-tx" id="tm-tx">
+   <div class="tw-hd"><b><i>✻</i> agent</b><span>cwd: ~/shop-api</span><span>/help for help · /model to switch models</span></div>
+   <pre class="tu" data-out="p"><span>&gt;</span> users keep getting logged out at random. fix it</pre>
+   <pre class="tool" data-out="a"><i>●</i> <b>Read</b>(<u>src/auth/session.ts</u>)
+  <em>⎿</em>  <q>Read 15 lines</q></pre>
+   <pre class="tool" data-out="a"><i>●</i> <b>Read</b>(<u>src/auth/login.ts</u>)
+  <em>⎿</em>  <q>Read 31 lines</q></pre>
+   <pre class="tool" data-out="a"><i>●</i> <b>Bash</b>(npm test)
+  <em>⎿</em>  <s>42 passed</s> <q>(3.1s)</q></pre>
+   <pre class="say" data-out="a" id="tm-sum"><i>●</i> Done. Users were getting logged out randomly. Fixed by extending the session refresh. Tests pass.</pre>
+   <pre class="say" data-out="d"><i>●</i> Writing it up as a deck, so you can check it on the code.</pre>
+   <pre class="tool" data-ty="d"><i>●</i> <b>Bash</b>(deck new --title <s>"Fix random logouts"</s> --total 4)</pre>
+   <pre class="res" data-out="d">  <em>⎿</em>  <u>~/.deck/decks/d-1793261705-4127.deck</u></pre>
+   <pre class="tool" data-ty="d" data-bar="0"><i>●</i> <b>Bash</b>(deck open $deck)</pre>
+   <pre class="res" data-out="d">  <em>⎿</em>  <q>Running in the background: the bar is up</q></pre>
+   <pre class="tool" data-ty="d" data-bar="1"><i>●</i> <b>Bash</b>(deck group $deck \\
+<q>     --title "The refresh now extends the session's lifetime" \\
+     --confidence high \\
+     --say 'Users who leave a tab for an hour come back signed out. [point 9-11 refresh] …' \\
+     --ref 'src/auth/session.ts:7-15 [refresh] where a session is kept alive' \\
+     --ref 'src/auth/session.ts:5 [ttl] a proposed change' \\
+     --after 'export const SESSION_TTL = 30 * 24 * 60 * 60;  // 30 days'</q>)</pre>
+   <pre class="res" data-out="d">  <em>⎿</em>  <q>group 1 of 4</q></pre>
+   <pre class="tool" data-ty="d" data-bar="2"><i>●</i> <b>Bash</b>(deck group $deck --title 'A refresh is what keeps you signed in' <q>--diagram flow.json …</q>)</pre>
+   <pre class="tool" data-ty="d" data-bar="3"><i>●</i> <b>Bash</b>(deck group $deck --title 'Now only logout signs you out' <q>--page life.html …</q>)</pre>
+   <pre class="tool" data-ty="d" data-bar="4"><i>●</i> <b>Bash</b>(deck group $deck --title 'Tested: a refresh lands thirty days out' \\
+<q>     --values '[{"line":12,"at":"expiresAt","is":"2026-11-28T10:14:07Z","lit":true}, …]' \\
+     --ask 'Does logout still kill the session?' …</q>)</pre>
+   <pre class="res" data-out="d">  <em>⎿</em>  <q>groups 2 to 4 of 4</q></pre>
+   <pre class="tool" data-ty="d" data-bar="seal"><i>●</i> <b>Bash</b>(deck seal $deck)</pre>
+   <pre class="res" data-out="d">  <em>⎿</em>  <s>sealed · 4 groups</s></pre>
   </div>
+  <div class="tw-spin" id="tw-spin" hidden><i>✻</i> Working… <q>(esc to interrupt)</q></div>
+  <div class="tw-in"><span>&gt;</span> <span id="tw-type"></span><b class="caret" aria-hidden="true"></b><q id="tw-ph">Describe a task, or ask a question</q></div>
+  <div class="tw-ft"><span>? for shortcuts</span><span>auto-accept off</span></div>
  </div>
 </section>"""
 
