@@ -172,6 +172,9 @@ const stepOf = (page) => page.locator('#desk').getAttribute('data-step').then(Nu
 
 async function deskStep(page, label, n, reduce) {
   await page.waitForTimeout(reduce ? 150 : 600)
+  // The deck window grows out of the bar when it opens; its box crosses the caption until that
+  // settles, and a slow runner was still mid-way at 600ms. Measure the window at rest.
+  await page.waitForFunction(() => document.getElementById('dw').getAnimations().length === 0, null, { timeout: 5000 })
   const where = `${label} /play/ step ${n}`
   const s = await page.evaluate(() => {
     const r = (e) => e.getBoundingClientRect(), dw = document.getElementById('dw'), cap = r(document.getElementById('cap')), honest = r(document.querySelector('.dhonest'))
