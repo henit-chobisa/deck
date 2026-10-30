@@ -10,6 +10,10 @@
   const D = window.PLAY_DECK
   const $ = (id) => document.getElementById(id)
   const desk = $('desk'), dk = $('dk'), start = $('pi-start')
+  // The window ends above the caption card and the asks under it, however tall the caption wraps:
+  // on a narrower screen it runs to four lines and the window's foot sat on it.
+  const capCard = $('cap')
+  if (capCard && 'ResizeObserver' in window) new ResizeObserver(() => desk.style.setProperty('--caph', capCard.offsetHeight + 'px')).observe(capCard)
   if (!D || !desk || !dk || !start) return
   const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches
   const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]))

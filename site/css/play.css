@@ -113,7 +113,7 @@ html.desk-on,html.desk-on body{overflow:hidden}
 .tw-ft{flex:none;display:flex;justify-content:space-between;padding:4px 2px 0;font-size:11.5px;color:var(--dim)}
 .dw{left:max(24px,calc(50% - 740px));right:max(24px,calc(50% - 740px));top:calc(var(--mbh) + 22px);bottom:calc(var(--dockh) + 40px);background:#000}
 .dw .dk{flex:1;min-height:0;border:0;border-radius:0;box-shadow:none}
-.dw{overflow:visible;bottom:calc(var(--dockh) + 92px)}
+.dw{overflow:visible;bottom:calc(max(var(--dockh), var(--caph, 92px) + 10px) + 70px)}
 /* deck has no titlebar and no traffic lights: the band is the top of the window */
 .dw .wbar{display:none}
 .dw .dk{border-radius:12px;overflow:hidden}
