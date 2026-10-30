@@ -17,6 +17,7 @@ from datetime import date
 
 sys.path.insert(0, os.path.dirname(__file__))
 from guides import GUIDES  # noqa: E402
+import shell  # noqa: E402
 
 SITE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 ORIGIN = "https://trydeck.dev"
@@ -104,49 +105,32 @@ HEAD = """<!doctype html>
 <meta name="twitter:title" content="{title}">
 <meta name="twitter:description" content="{description}">
 <meta name="twitter:image" content="{origin}/assets/og.png">
-<meta name="theme-color" content="#0d0f0f">
+<meta name="theme-color" content="#070707">
 <link rel="icon" href="/assets/mark.svg" type="image/svg+xml">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/css/site.css">
+<!-- shell:head -->
+{fonts}
+<!-- /shell:head -->
 <link rel="stylesheet" href="/css/docs.css">
 <link rel="stylesheet" href="/css/guide.css">
 <script type="application/ld+json">{ld}</script>
 </head>
 <body class="docs">
 <a class="skip" href="#doc">Skip to content</a>
-<header class="nav solid">
-  <a class="brand" href="/" aria-label="deck, home"><img src="/assets/mark.svg" alt="" width="28" height="28"><span>deck</span></a>
-  <nav aria-label="Main">
-    <a href="/#agent">How it works</a>
-    <a href="/#play" class="nav-try"><span class="live-dot" aria-hidden="true"></span>Try it<span class="wide"> live</span></a>
-    <a href="/docs/">Docs</a>
-    <a href="/guides/"{guides_current}>Guides</a>
-    <a href="https://github.com/henit-chobisa/deck">GitHub</a>
-    <a class="nav-install" href="/#install">Install</a>
-  </nav>
-</header>
+<!-- shell:nav -->
+{nav}
+<!-- /shell:nav -->
 """
 
-FOOT = """<footer class="foot">
-  <div class="wrap foot-base">
-    <span>deck · free and open source · Apache-2.0</span>
-    <span>Made for people who still prefer quality.</span>
-  </div>
-</footer>
-</body>
-</html>
-"""
+FOOT = "<!-- shell:foot -->\n" + shell.FOOT + "\n<!-- /shell:foot -->\n</body>\n</html>\n"
 
-CTA = """<aside class="cta" aria-label="Try deck">
+CTA = """<aside class="g-cta" aria-label="Try deck">
   <div>
-    <p class="cta-title">See your agent's decisions on the lines.</p>
+    <p class="g-cta-title">Take part in every decision, on the lines.</p>
     <p>deck is free and open source. It works with Claude Code, Codex, Cursor, Amp and any agent with a shell.</p>
   </div>
-  <div class="cta-actions">
-    <a class="star" href="/#install">Install deck</a>
-    <a class="cta-alt" href="/#play">Try a live deck before you install</a>
+  <div class="g-cta-actions">
+    <a class="btn solid" href="/#install">Install deck</a>
+    <a class="btn ghost" href="/docs/">Read the docs</a>
   </div>
 </aside>"""
 
@@ -184,7 +168,7 @@ def guide_page(g: dict, related: list) -> str:
         })
     head = HEAD.format(
         title=html.escape(g["title"]), description=html.escape(g["description"]), url=url, origin=ORIGIN,
-        og_type="article", ld=json.dumps(ld, ensure_ascii=False).replace("</", "<\\/"), guides_current="",
+        og_type="article", ld=json.dumps(ld, ensure_ascii=False).replace("</", "<\\/"), fonts=shell.FONTS, nav=shell.nav(),
     )
     faq_html = ""
     if faq:
@@ -194,7 +178,7 @@ def guide_page(g: dict, related: list) -> str:
     rel = "".join(f'<li><a href="/{r["slug"]}/">{html.escape(r["h1"])}</a></li>' for r in related)
     return head + f"""<main class="g-wrap" id="doc">
   <nav class="crumbs" aria-label="Breadcrumb"><a href="/">deck</a> <span>/</span> <a href="/guides/">Guides</a></nav>
-  <article class="doc g-doc">
+  <article class="doc g-doc prose">
     <p class="eyebrow accent">{html.escape(g['eyebrow'])}</p>
     <h1>{html.escape(g['h1'])}</h1>
     <p class="lede">{html.escape(g['description'])}</p>
@@ -220,7 +204,7 @@ def hub_page() -> str:
         title="Guides: reviewing and understanding code your AI agent wrote | deck",
         description="Practical guides for engineers working with coding agents: AI code review, large pull requests, comprehension debt, review fatigue, and keeping your judgement.",
         url=url, origin=ORIGIN, og_type="website", ld=json.dumps(ld, ensure_ascii=False).replace("</", "<\\/"),
-        guides_current=' aria-current="page"',
+        fonts=shell.FONTS, nav=shell.nav(),
     )
     cards = "".join(
         f'<a class="g-card" href="/{g["slug"]}/"><span class="eyebrow accent">{html.escape(g["eyebrow"])}</span>'
@@ -249,7 +233,7 @@ def main() -> None:
     with open(os.path.join(SITE, "guides", "index.html"), "w") as f:
         f.write(hub_page())
 
-    pages = ["", "docs/", "changelog/", "guides/", "telemetry/"] + [g["slug"] + "/" for g in GUIDES]
+    pages = ["", "play/", "docs/", "changelog/", "guides/", "telemetry/"] + [g["slug"] + "/" for g in GUIDES]
     urls = "".join(
         f"  <url><loc>{ORIGIN}/{p}</loc><lastmod>{TODAY}</lastmod><priority>{'1.0' if p == '' else '0.8' if p in ('docs/', 'guides/') else '0.7'}</priority></url>\n"
         for p in pages

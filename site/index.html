@@ -2,385 +2,315 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>deck — see what your AI coding agent decided, on the lines</title>
-<meta name="description" content="Free, open-source AI code review you can see. Your coding agent (Claude Code, Codex, Cursor, Amp) shows each decision on the code it changed, you push back on the line, and you decide what ships.">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>deck — Hand agents the keyboard. Keep the whiteboard.</title>
+<meta name="description" content="The why stays with you: each claim on its real lines, with timelines and values. Press c on any line to argue.">
 <link rel="canonical" href="https://trydeck.dev/">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="deck">
-<meta property="og:title" content="deck — see what your AI coding agent decided, on the lines">
-<meta property="og:description" content="Free, open-source AI code review you can see. Your coding agent (Claude Code, Codex, Cursor, Amp) shows each decision on the code it changed, you push back on the line, and you decide what ships.">
+<meta property="og:title" content="deck — Hand agents the keyboard. Keep the whiteboard.">
+<meta property="og:description" content="The why stays with you: each claim on its real lines, with timelines and values. Press c on any line to argue.">
 <meta property="og:url" content="https://trydeck.dev/">
 <meta property="og:image" content="https://trydeck.dev/assets/og.png">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
 <meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="deck — see what your AI coding agent decided, on the lines">
-<meta name="twitter:description" content="Free, open-source AI code review you can see. Your coding agent (Claude Code, Codex, Cursor, Amp) shows each decision on the code it changed, you push back on the line, and you decide what ships.">
+<meta name="twitter:title" content="deck — Hand agents the keyboard. Keep the whiteboard.">
+<meta name="twitter:description" content="The why stays with you: each claim on its real lines, with timelines and values. Press c on any line to argue.">
 <meta name="twitter:image" content="https://trydeck.dev/assets/og.png">
-<meta name="theme-color" content="#0d0f0f">
-<script type="application/ld+json">{"@context": "https://schema.org", "@graph": [{"@type": "SoftwareApplication", "name": "deck", "url": "https://trydeck.dev/", "description": "Free, open-source AI code review you can see. Your coding agent (Claude Code, Codex, Cursor, Amp) shows each decision on the code it changed, you push back on the line, and you decide what ships.", "applicationCategory": "DeveloperApplication", "applicationSubCategory": "Code review", "operatingSystem": "macOS, Linux, Windows", "softwareVersion": "0.1.4", "license": "https://www.apache.org/licenses/LICENSE-2.0", "isAccessibleForFree": true, "offers": {"@type": "Offer", "price": "0", "priceCurrency": "USD"}, "downloadUrl": "https://github.com/henit-chobisa/deck/releases", "codeRepository": "https://github.com/henit-chobisa/deck", "image": "https://trydeck.dev/assets/og.png", "author": {"@type": "Person", "name": "Henit Chobisa", "url": "https://github.com/henit-chobisa"}, "keywords": "AI code review, code review, coding agent, Claude Code, Codex, Cursor, Amp, pull request review, comprehension debt"}, {"@type": "WebSite", "name": "deck", "url": "https://trydeck.dev/"}]}</script>
-<script>document.documentElement.classList.add('js')</script>
+<meta name="theme-color" content="#ece8df">
+<script type="application/ld+json">{"@context": "https://schema.org", "@graph": [{"@type": "SoftwareApplication", "name": "deck", "url": "https://trydeck.dev/", "description": "The why stays with you: each claim on its real lines, with timelines and values. Press c on any line to argue.", "applicationCategory": "DeveloperApplication", "applicationSubCategory": "Code review", "operatingSystem": "macOS, Linux, Windows", "softwareVersion": "0.1.6", "license": "https://www.apache.org/licenses/LICENSE-2.0", "isAccessibleForFree": true, "offers": {"@type": "Offer", "price": "0", "priceCurrency": "USD"}, "downloadUrl": "https://github.com/henit-chobisa/deck/releases", "codeRepository": "https://github.com/henit-chobisa/deck", "image": "https://trydeck.dev/assets/og.png", "author": {"@type": "Person", "name": "Henit Chobisa", "url": "https://github.com/henit-chobisa"}, "keywords": "AI code review, code review, coding agent, Claude Code, Codex, Cursor, Amp, pull request review, comprehension debt"}, {"@type": "WebSite", "name": "deck", "url": "https://trydeck.dev/"}]}</script>
 <link rel="icon" href="/assets/mark.svg" type="image/svg+xml">
+<!-- shell:head fonts="Caveat:wght@600" -->
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/site.css">
-<link rel="stylesheet" href="css/deck.css">
-<link rel="stylesheet" href="css/questions.css">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&amp;family=IBM+Plex+Sans:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500&amp;family=Caveat:wght@600&amp;display=swap">
+<link rel="stylesheet" href="/css/site.css">
+<!-- /shell:head -->
+<link rel="preload" href="/assets/deck-live.webp" as="image" type="image/webp" imagesrcset="/assets/deck-live-1200.webp 1200w, /assets/deck-live.webp 2160w" imagesizes="(max-width: 980px) 176vw, 864px">
+<link rel="stylesheet" href="/css/landing.css">
 </head>
 <body>
-<a class="skip" href="#main">Skip to content</a>
+<!-- shell:nav current="/" -->
+<header class="nav" id="nav"><div class="wrap">
+ <a class="brand" href="#top" aria-label="deck, home"><svg viewBox="0 0 128 128" aria-hidden="true"><rect x="1.5" y="1.5" width="125" height="125" rx="35.6" fill="#2f2f2f" stroke="#4a4542" stroke-width="3"/><rect x="35.5" y="39.1" width="56.9" height="14.2" rx="7.1" fill="#7c6f64"/><rect class="lit" x="35.5" y="74.6" width="56.9" height="14.2" rx="7.1" fill="#fe8019"/></svg>deck</a>
+ <nav class="links" aria-label="Main"><a href="/docs/">Docs</a><a href="/changelog/">Changelog</a><a href="https://henit.blog/posts/i-hand-agents-the-code-not-the-decisions/" rel="noopener">Blog</a><a class="gh" href="https://github.com/henit-chobisa/deck" aria-label="deck on GitHub"><svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg></a><a class="cta" href="#install">Install</a></nav>
+</div></header>
+<!-- /shell:nav -->
 
-<header class="nav" id="top">
-  <a class="brand" href="./" aria-label="deck, home">
-    <img src="assets/mark.svg" alt="" width="28" height="28">
-    <span>deck</span>
-  </a>
-  <nav aria-label="Main">
-    <a href="#agent">How it works</a>
-    <a href="#play" class="nav-try"><span class="live-dot" aria-hidden="true"></span>Try it<span class="wide"> live</span></a>
-    <a href="docs/">Docs</a>
-    <a href="guides/">Guides</a>
-    <a href="changelog/">Changelog</a>
-    <a href="https://github.com/henit-chobisa/deck">GitHub</a>
-    <a class="nav-install" href="#install">Install</a>
-  </nav>
-</header>
+<main id="top">
+<section class="hero" data-ground="paper"><div class="wrap">
+ <h1>Hand agents the keyboard. <span class="u">Keep the whiteboard.<svg viewBox="0 0 560 20" preserveAspectRatio="none" aria-hidden="true"><path class="ink" pathLength="1" d="M7 13 C 112 5, 224 17, 336 9 S 504 7, 553 12"/></svg></span></h1>
+ <p class="sub"><b>The why stays with you:</b> each claim on its real lines, with timelines and values. Press <kbd>c</kbd> on any line to argue.</p>
+ <div class="ctas"><a class="btn primary" href="#install"><span id="dl">Install deck</span></a><a class="btn ghost" href="https://github.com/henit-chobisa/deck">View on GitHub</a></div>
+ <p class="try"><a href="/play/">or try it in your browser&nbsp;→</a></p>
+ <p class="fine">Free and open source · macOS · Windows · Linux · works with Claude Code, Codex, Cursor and Amp</p>
+ <div class="photo" id="photo"><div class="canvas">
+  <img class="shot" src="/assets/deck-live.webp" srcset="/assets/deck-live-1200.webp 1200w, /assets/deck-live.webp 2160w" sizes="(max-width: 980px) 176vw, 864px" width="2160" height="1706" alt="The real deck window, on group 4 of 5. The agent explains that it cut Stripe webhook retries from five to one; a timeline compares before and after; in the chat, the reader pushes back and the agent agrees to change it.">
+  <svg class="pen" viewBox="0 0 2160 1706" preserveAspectRatio="none" aria-hidden="true"><path class="ink e1" pathLength="1" d="M328 876 C 346 877, 343 896, 346 905 C 348 910, 354 911, 363 911 C 354 911, 348 915, 346 920 C 343 928, 346 949, 328 951"/><text class="pentext" x="376" y="944">not in the summary</text></svg>
+  <span class="note hand n1">not in the summary</span>
+  <span class="note hand n2">↑ the questions you were about to ask</span>
+ </div></div>
+</div></section>
 
-<main id="main">
-
-  <!-- 0 + 1: the chatter, and the signal -->
-  <section class="scene hero" data-scene="hero" aria-label="Introduction">
-    <div class="stage">
-      <canvas class="sky" aria-hidden="true"></canvas>
-      <div class="hush" aria-hidden="true"></div>
-      <div class="hero-copy">
-        <p class="eyebrow">Free and open source · Focused on engineers, built for agents</p>
-        <h1 class="ask-line"><span class="sr">Do you know what your agent just shipped?</span><span class="stream" aria-hidden="true">Do you know what your agent just&nbsp;shipped?</span></h1>
-        <p class="lede">It moves faster than anyone can follow, so decisions get made that nobody chose. Scroll, and listen.</p>
-      </div>
-      <div class="signal">
-        <img class="signal-mark" src="assets/mark.svg" alt="" width="112" height="112">
-        <h2 class="ask-line"><span class="sr">Make it show you.</span><span class="stream" aria-hidden="true">Make it show you.</span></h2>
-        <p class="lede">Not less agent, and not more trust. A better way to work with the one you have: it shows you each decision on the lines where it lives, you push back where you disagree, and what ships is something you both chose.</p>
-        <a class="try-live" href="#play"><span class="live-dot" aria-hidden="true"></span>Try a live deck before you install</a>
-      </div>
-      <div class="cue" aria-hidden="true"><span>scroll</span><i></i></div>
+<section class="reveal" id="reveal">
+ <div class="pin">
+  <div class="field" id="field" aria-hidden="true"><svg class="threads" id="threads"></svg></div>
+  <div class="vsay"><p id="line" aria-hidden="true"></p></div>
+  <p class="coda" id="coda"></p>
+  <p class="disclaim" id="disclaim">Real posts by developers, linked. None of them endorse deck.</p>
+ </div>
+</section>
+<section class="x3" id="x3" aria-labelledby="x3h" data-step="460" data-stops="5">
+ <div class="st">
+  <h2 id="x3h">deck makes every sentence <span class="x3u">show its work<svg viewBox="0 0 100 10" preserveAspectRatio="none" aria-hidden="true"><path pathLength="1" d="M2 6 C 25 3, 55 8, 98 4.5"/></svg></span>.</h2>
+  <p class="x3lede">Every sentence the agent writes is pinned to the lines, the path and the page it means. Read it, and all three light.</p>
+  <div class="x3win" id="frame">
+   <div class="x3shell" aria-hidden="true"></div>
+   <div class="x3band">
+    <div class="x3no" aria-hidden="true">2</div>
+    <div class="x3ttl" aria-hidden="true">A thousand requests, one query<em><i>▮▮▯</i>Medium</em></div>
+    <div class="read"><p class="sen" id="sen" aria-live="polite"></p><p class="x3cav" id="cav"><code>once()</code> is per process; <span class="es">eight servers</span> still make eight queries</p></div>
+    <div class="x3prog"><div class="dots" id="dots"><i></i><i></i><i></i><i></i></div><button class="next" id="next" type="button">next sentence →</button></div>
+   </div>
+   <div class="x3body">
+    <div class="row lit-mode" id="row">
+     <div class="p"><div class="x3ph"><b>code</b><span class="x3path">src/users/get-user.ts:14-23</span></div><div class="lines" id="code"></div></div>
+     <div class="p"><div class="x3ph x3fh"><b>flow</b><span class="cap">a path you can play</span><div class="routes"><span class="rt" id="rb">key expires, before</span><span class="rt" id="rn">key expires, now</span></div></div><div class="fl"><svg viewBox="20 4 304 346" id="fsvg" aria-hidden="true"></svg><div class="fl4" id="fl4" aria-hidden="true"><span data-k="get">cache.get</span><i>→</i><span data-k="once">once(key)</span><i>→</i><span data-k="db">db.find<em>×1,000</em></span><i>→</i><span data-k="set">cache.set</span></div><div class="x3pace" aria-hidden="true"><span>slow</span><span class="on">normal</span><span>fast</span></div></div></div>
+     <div class="p x3pg"><div class="x3ph"><b>page</b><span class="x3path">the second the key expires</span></div>
+      <div class="pg dimable" id="pg"><div class="x3card">
+       <div class="ttl" id="ttl">ttl <b>58s</b></div>
+       <div class="dz"><div class="reqs" id="reqs"></div><div class="bar" id="bar"><i></i></div></div>
+       <div class="db" id="db"><span class="qn" id="qn"><span class="qv"><span class="qt" id="qt">0</span></span><span class="q1">1</span></span><small>db · queries</small></div>
+      </div></div></div>
     </div>
-  </section>
-
-  <!-- 2a: without deck -->
-  <section class="scene steps" data-scene="bare" data-steps="4" id="without" aria-labelledby="bare-title">
-    <div class="stage split">
-      <div class="side">
-        <p class="eyebrow">Without deck</p>
-        <h2 id="bare-title" class="swap">
-          <span data-at="0">You ask.</span>
-          <span data-at="1">It answers. All of it.</span>
-          <span data-at="2">You push back.</span>
-          <span data-at="3">Then the menu.</span>
-        </h2>
-        <p class="lede swap">
-          <span data-at="0">A fair question about your own code.</span>
-          <span data-at="1">The decision is in there somewhere. Go and find it.</span>
-          <span data-at="2">Ask about one line. Get another essay.</span>
-          <span data-at="3">You pick Recommended. Everyone does.</span>
-        </p>
-        <dl class="tally" data-show="1">
-          <div><dt>words</dt><dd data-count="words">0</dd></div>
-          <div><dt>file:line</dt><dd data-count="refs">0</dd></div>
-          <div><dt>lines shown</dt><dd>0</dd></div>
-        </dl>
-        <p class="verdict" data-show="3">Do you understand all the options and trade-offs?<br><span>Did you decide anything at all?</span></p>
-        <ol class="dots" aria-hidden="true"><li></li><li></li><li></li><li></li></ol>
-      </div>
-      <div class="term" role="img" aria-label="A terminal where an agent answers a question with long paragraphs and a multiple-choice menu">
-        <div class="term-head"><i></i><i></i><i></i><span>your agent · ~/acme/catalog</span></div>
-        <div class="term-body"><div class="term-roll">
-          <div class="ask"><b>&gt;</b> why does checkout stall at the top of every hour?</div>
-          <div class="work"><b class="spin">✻</b> Reading pricing.service.ts, cache.module.ts, price.entity.ts, database.ts… <span class="dim">(6 files)</span></div>
-          <div class="wall" data-show="1" data-words>
-            <p><b class="bullet">⏺</b> The stall comes from a cache stampede. In <u>services/catalog/src/pricing/pricing.service.ts:26-40</u>, <u>priceFor()</u> reads from Redis through <u>this.cache.get()</u> at <u>pricing.service.ts:29</u>, and on a miss falls back to Postgres with <u>effective_price()</u> at <u>pricing.service.ts:33</u>. Every key is written at <u>pricing.service.ts:38</u> with <u>ONE_HOUR</u>, defined at <u>pricing.service.ts:10</u>, so they all expire together.</p>
-            <p>When they expire, every in-flight request misses at once. Each miss takes a connection from the pool configured in <u>src/config/database.ts:9</u> with a maximum of 40, and requests beyond that queue until one frees, which is why the p99 reaches roughly four seconds on the dashboard referenced in <u>docs/runbooks/checkout.md:112</u>.</p>
-            <p>Note also that <u>CheckoutController.quote()</u> at <u>checkout.controller.ts:33</u> calls <u>priceFor()</u> once per line item rather than batching, which amplifies the effect for larger carts, and <u>CartService.total()</u> at <u>cart.service.ts:87</u> calls it again…</p>
-            <p>There are several ways to address this. Option A is to add jitter to the TTL at <u>pricing.service.ts:38</u>. Option B is request coalescing with a single-flight lock around the miss at <u>pricing.service.ts:33</u>. Option C is a background refresher in <u>src/jobs/refresh.ts</u>. Option D is raising the pool in <u>database.ts:9</u>, though this may shift load onto Postgres…</p>
-          </div>
-          <div class="more" data-show="2" data-words>
-            <div class="ask"><b>&gt;</b> wait. which line actually sets the TTL? and is a stale price ok for us?</div>
-            <p><b class="bullet">⏺</b> Great question! Let me break this down in detail.</p>
-            <p><b class="h">## 1. Where the TTL is set</b><br>The TTL is passed as the third argument to <u>this.cache.set()</u> at <u>pricing.service.ts:38</u>, using <u>ONE_HOUR</u> from <u>pricing.service.ts:10</u>. It may also be influenced by the default <u>ttl</u> in <u>cache.module.ts:14</u>, although that value appears to be overridden…</p>
-            <p><b class="h">## 2. Staleness considerations</b><br>Whether stale prices are acceptable depends on several factors:<br>• How often prices change in your catalog<br>• Whether flash sales or time-limited promotions exist<br>• Regulatory requirements around displayed versus charged price<br>• Customer trust implications of…</p>
-            <p><b class="h">## 3. Trade-offs</b><br>| Approach | Staleness | Complexity | Load |</p>
-          </div>
-          <div class="menu" data-show="3">
-            <p class="menu-tag">☐ Fix approach</p>
-            <p class="menu-q">How should we fix the stampede?</p>
-            <ol>
-              <li class="pick"><span>❯ 1. TTL jitter + single-flight lock <b>(Recommended)</b></span><small>Spread expiries and coalesce refills.</small></li>
-              <li><span>2. Background refresher job</span><small>Rewrite keys before they expire.</small></li>
-              <li><span>3. Raise the pool to 120 connections</span><small>More headroom during the spike.</small></li>
-              <li><span>4. Type something.</span></li>
-            </ol>
-            <p class="menu-keys">Enter to select · ↑/↓ to navigate · Esc to cancel</p>
-            <svg class="pointer" width="26" height="32" viewBox="0 0 28 34" aria-hidden="true"><path d="M2 2 L2 28 L9 21 L14 32 L19 30 L14 19 L24 19 Z" fill="#ebdbb2" stroke="#0d0f0f" stroke-width="1.6" stroke-linejoin="round"/></svg>
-          </div>
-        </div></div>
-      </div>
-    </div>
-  </section>
-
-  <!-- 2b: the same agent opens deck -->
-  <section class="scene steps" data-scene="agent" data-steps="6" id="agent" aria-labelledby="agent-title">
-    <div class="stage split">
-      <div class="side">
-        <p class="eyebrow accent">With deck</p>
-        <h2 id="agent-title">Same question. Same agent.</h2>
-        <p class="lede">deck never runs a model. The agent you are already talking to, in the same session with everything it just read, writes the deck with a few shell commands and puts it on your screen.</p>
-        <ul class="beats">
-          <li data-at="0">You ask, exactly as before.</li>
-          <li data-at="1">It reads the code, exactly as before.</li>
-          <li data-at="2"><code>deck new</code> starts a deck.</li>
-          <li data-at="3"><code>deck open</code> puts a bar on your screen.</li>
-          <li data-at="4"><code>deck group</code> adds one claim and the code that proves it. A ref to a line that does not exist is refused.</li>
-          <li data-at="5"><code>deck seal</code>. Open it when you are ready. The agent cannot open it for you.</li>
-        </ul>
-      </div>
-      <div class="term launch" role="img" aria-label="Your agent's terminal running deck new, deck open, deck group and deck seal, while a bar appears at the bottom of the screen">
-        <div class="term-head"><i></i><i></i><i></i><span>your agent · ~/acme/catalog</span></div>
-        <div class="term-body"><div class="term-roll">
-          <div class="ask"><b>&gt;</b> why does checkout stall at the top of every hour?</div>
-          <div class="work" data-show="1"><b class="bullet">⏺</b> Read <span class="hl">pricing.service.ts</span>, <span class="hl">map of the catalog</span>, <span class="hl">10:00 traffic</span>. Two or more locations: this is a deck.</div>
-          <div class="cmd" data-show="2"><b>$</b> deck new --title <s>"Every hour, on the hour, checkout p99 jumps to 4 seconds"</s> --total 2</div>
-          <div class="out" data-show="2">~/.deck/decks/d-1791214494-5575.deck</div>
-          <div class="cmd" data-show="3"><b>$</b> D=~/.deck/decks/d-1791214494-5575.deck; deck open $D <span class="dim">&amp;  # waits for your review</span></div>
-          <div class="cmd" data-show="4"><b>$</b> deck group $D --say <s>"[point calm] Most of the hour, [point 29-30 redis] [pricing] answers from Redis in two milliseconds. [point expire] At 10:00:00 every price key expires at once…"</s> \<br>&nbsp;&nbsp;--ref <s>"services/catalog/src/pricing/pricing.service.ts:26-40 [pricing]"</s> \<br>&nbsp;&nbsp;--diagram <s>"map.json [map]"</s> --page <s>"requests.html [requests]"</s></div>
-          <div class="cmd" data-show="5"><b>$</b> deck group $D --say <s>"[point fix] Spread the expiry, and [requests] stays quiet…"</s> --ref <s>"…pricing.service.ts:38 [pricing]"</s> --after <s>"…"</s></div>
-          <div class="cmd" data-show="5"><b>$</b> deck seal $D</div>
-          <div class="work" data-show="5"><b class="bullet">⏺</b> The deck is on your screen. I'll wait for your review.</div>
-        </div></div>
-        <div class="desk" aria-hidden="true">
-          <div class="pill" data-show="3">
-            <span class="pill-mark"><i></i><i></i></span>
-            <span class="pill-name">deck</span>
-            <span class="pill-rule"></span>
-            <span class="pill-title">Every hour, on the hour, checkout p99 jumps to 4 seconds</span>
-            <span class="pill-dot" data-hide="5"></span>
-            <span class="pill-count">
-              <span data-only="3">Getting deck ready… 0/2</span>
-              <span data-only="4">Getting deck ready… 1/2</span>
-              <span data-only="5">2 groups</span>
-            </span>
-            <span class="pill-open">Open</span>
-            <span class="pill-x">×</span>
-          </div>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- 2c: in the window, real frames scrubbed by scroll -->
-  <section class="scene reel" data-scene="reel" id="window" aria-labelledby="reel-title">
-    <div class="stage split wide">
-      <div class="side">
-        <p class="eyebrow accent">In the window</p>
-        <h2 id="reel-title" class="swap">
-          <span data-at="0">Every claim arrives with its evidence.</span>
-          <span data-at="1">See the failure, not a description of it.</span>
-          <span data-at="2">Judge the fix against the same moment.</span>
-          <span data-at="3">Big changes, one concern at a time.</span>
-          <span data-at="4">Push back where the decision is.</span>
-          <span data-at="5">Questions come back with proof.</span>
-        </h2>
-        <p class="lede swap">
-          <span data-at="0">Your agent states what it found, and the lines that prove it are already in view. You check the reasoning instead of hunting for it.</span>
-          <span data-at="1">At ten o'clock the requests queue behind forty connections. A timeline you can watch is harder to misread than a paragraph about one.</span>
-          <span data-at="2">The proposed fix replays the same seconds with the expiry spread out, so you weigh it against the failure it claims to remove.</span>
-          <span data-at="3">A large branch comes as chapters. Each one brings only the files its argument needs, and the change lands as a diff beside its reason.</span>
-          <span data-at="4">Select the lines and say what you would change. Ask now, or hold it for the review; either way it reaches your agent pinned to those lines.</span>
-          <span data-at="5">Ask why popularity counts for 30 per cent, and the answer is the experiment that chose it: from the same agent, in the same session.</span>
-        </p>
-        <ol class="chapters" aria-hidden="true">
-          <li data-at="0">evidence</li><li data-at="1">behaviour</li><li data-at="2">the fix</li><li data-at="3">chapters</li><li data-at="4">your call</li><li data-at="5">answers</li>
-        </ol>
-        <p class="real">Real recordings of deck 0.1.4. Nothing on the right is a mock-up.</p>
-        <a class="try-live small" href="#play"><span class="live-dot" aria-hidden="true"></span>Now review one yourself</a>
-      </div>
-      <figure class="reel-frame">
-        <canvas class="reel-canvas" role="img" aria-label="Recordings of deck: a narrated walk lighting code line by line, a request timeline piling up, a diff arriving, a comment typed on a line, and the agent's answer as a chart"></canvas>
-        <div class="reel-progress" aria-hidden="true"><i></i></div>
-      </figure>
-    </div>
-  </section>
-
-  <!-- 2d: suggested questions, out of the code and back into deck -->
-<section id="qs-oc" aria-label="Suggested questions">
-  <div class="qs-stage" id="qs-stage">
-    <div class="qs-wrap" id="qs-wrap">
-
-      <div class="qs-text">
-        <div class="qs-head" id="qs-head">
-          <div class="qs-kicker">Suggested questions</div>
-          <h2 class="qs-h">It takes the words <span class="qs-w2">right out of your mouth.</span></h2>
-          <div class="qs-swap">
-            <p class="qs-sub" id="qs-sub">As deck walks you through a decision, it lights the lines the claim rests on. The question forming in your head is already waiting below, written by your agent from everything you've said.</p>
-            <div class="qs-answer" id="qs-answerD"></div>
-          </div>
-        </div>
-        <div class="qs-answer" id="qs-answerM"></div>
-      </div>
-
-      <div class="qs-pane" role="group" aria-label="checkout/service.ts">
-        <div class="qs-pane-h"><span class="qs-dot"></span>checkout/service.ts<span class="qs-r">ts</span></div>
-        <div class="qs-code" id="qs-code">
-          <div class="qs-band" id="qs-band"></div>
-<div class="qs-ln" data-w="1"><span class="qs-n">34</span><span class="qs-c"><span class="qs-k">export</span> <span class="qs-k">async</span> <span class="qs-k">function</span> <span class="qs-f">checkout</span>(req: <span class="qs-t">Request</span>) {</span></div>
-<div class="qs-ln" data-w="1"><span class="qs-n">35</span><span class="qs-c">  <span class="qs-k">const</span> order = <span class="qs-k">await</span> orders.<span class="qs-f">create</span>(req.body)</span></div>
-<div class="qs-ln" data-w="1.7" data-whisper="what does it cost?"><span class="qs-n">36</span><span class="qs-c">  <span class="qs-k">await</span> payments.<span class="qs-f">capture</span>(order.id, order.total)</span></div>
-<div class="qs-ln" data-w="4.6"><span class="qs-n">37</span><span class="qs-c">  <span class="qs-k">await</span> <span class="qs-tok" id="qs-t-outbox">outbox</span>.<span class="qs-f">write</span>(order.id, <span class="qs-s">"receipt.ready"</span>)</span></div>
-<div class="qs-ln" data-w=".4"><span class="qs-n">38</span><span class="qs-c"> </span></div>
-<div class="qs-ln" data-w="1"><span class="qs-n">39</span><span class="qs-c">  <span class="qs-cm">// the response waits on everything below</span></span></div>
-<div class="qs-ln" data-w="1.7" data-whisper="what if it's null?"><span class="qs-n">40</span><span class="qs-c">  <span class="qs-k">const</span> user = <span class="qs-k">await</span> users.<span class="qs-f">find</span>(order.userId)</span></div>
-<div class="qs-ln" data-w=".4"><span class="qs-n">41</span><span class="qs-c"> </span></div>
-<div class="qs-ln" data-w="5.2"><span class="qs-n">42</span><span class="qs-c">  <span class="qs-k">const</span> pdf = <span class="qs-k">await</span> <span class="qs-tok qs-f" id="qs-t-render">renderReceipt</span>(order)   <span class="qs-cm">// 3.9 s of the 4.2</span></span></div>
-<div class="qs-ln" data-w="4.6"><span class="qs-n">43</span><span class="qs-c">  <span class="qs-k">await</span> queue.<span class="qs-tok qs-f" id="qs-t-enqueue">enqueue</span>(<span class="qs-s">"email.receipt"</span>, { order, pdf })</span></div>
-<div class="qs-ln" data-w=".4"><span class="qs-n">44</span><span class="qs-c"> </span></div>
-<div class="qs-ln" data-w="1.7" data-whisper="do we need this at all?"><span class="qs-n">45</span><span class="qs-c">  <span class="qs-k">return</span> { ok: <span class="qs-v">true</span>, orderId: order.id }</span></div>
-<div class="qs-ln" data-w="1"><span class="qs-n">46</span><span class="qs-c">}</span></div>
-<div class="qs-ln" data-w=".4"><span class="qs-n">47</span><span class="qs-c"> </span></div>
-<div class="qs-ln" data-w="4.6"><span class="qs-n">48</span><span class="qs-c">queue.<span class="qs-f">worker</span>(<span class="qs-s">"email.receipt"</span>, { <span class="qs-tok" id="qs-t-retry"><span class="qs-p">retry</span>: { <span class="qs-p">attempts</span>: <span class="qs-v">Infinity</span> }</span> })</span></div>
-        </div>
-      </div>
-
-      <div class="qs-row-area">
-        <div class="qs-row-label qs-kicker"><span class="qs-l1">From the lines you read</span><span class="qs-l2">Renewed after your answer</span></div>
-        <div class="qs-row" id="qs-row" role="list"></div>
-      </div>
-    </div>
-    <div class="qs-win" id="qs-win" aria-hidden="true">
-      <div class="qs-win-band" id="qs-winBand">
-        <div class="qs-say">
-          <div class="qs-ttl">Checkout waits 4.2 seconds for a receipt</div>
-          <div class="qs-nar">Say you've just paid. The spinner turns for 4.2 seconds, and the receipt lands nine minutes later. <span class="qs-lit">Both come from</span> <span class="qs-chip">line 42</span>.</div>
-        </div>
-        <div class="qs-keys"><div><b>n</b>next</div><div><b>p</b>previous</div><div><b>c</b>comment</div><div><b>s</b>submit</div></div>
-      </div>
-      <div class="qs-win-side" id="qs-winSide">timeline · one checkout
-        <div class="qs-tl">
-          <div><span>request</span><span class="qs-bar"><i style="width:100%;background:var(--edge2)"></i></span></div>
-          <div><span>render pdf</span><span class="qs-bar"><i style="width:93%"></i></span></div>
-          <div><span>enqueue</span><span class="qs-bar"><i style="width:4%;margin-left:93%;background:var(--blue)"></i></span></div>
-        </div>
-        <div class="qs-scale"><span>0s</span><span>2s</span><span>4.2s</span></div>
-      </div>
-      <div class="qs-win-foot"><span>group 1/3 · <span class="qs-on">walking you through it</span></span><span>1 question asked · deck 0.1.6</span></div>
-    </div>
-    <div class="qs-finale" id="qs-finale">
-      <div class="qs-kicker">Inside deck</div>
-      <h3>Grill the intent. Then the evidence.</h3>
-    </div>
-    <div class="qs-fly" id="qs-fly" aria-hidden="true">
-      <svg class="qs-cursor" id="qs-cursor" viewBox="0 0 18 22"><path d="M2 1.5v16.2l4.3-4 2.9 6.6 2.7-1.2-2.9-6.5h5.9z" fill="#ebdbb2" stroke="#0d0f0f" stroke-width="1.2" stroke-linejoin="round"/></svg>
-    </div>
+   </div>
+   <div class="x3foot"><span aria-hidden="true">group 2 of 4</span><span class="x3sp"></span><span class="x3keys"><kbd>n</kbd>next</span><span class="x3keys"><kbd>p</kbd>previous</span><span class="x3keys"><kbd>c</kbd>comment</span></div>
   </div>
+  <p class="x3narr" id="x3narr" aria-live="polite"><b>deck</b><span></span></p>
+  <div class="after"><small>Example: an agent explains a fix to a cache stampede.</small></div>
+ </div>
+ <p class="x3try"><a href="/play/">Try a full deck <i aria-hidden="true">→</i></a></p>
 </section>
 
-  <!-- 3: play -->
-  <section class="play" id="play" aria-labelledby="play-title">
-    <div class="wrap">
-      <p class="eyebrow accent"><span class="live-dot" aria-hidden="true"></span>Live in your browser · try it before you install</p>
-      <h2 id="play-title">A real deck. Review it yourself.</h2>
-      <p class="lede">Your agent was asked to take the receipt off checkout. This is the plan it wrote, before a line of code changed. Tap a sentence to see what it rests on. Use Next and Previous to move through the plan. Select a line, choose Comment, and say what you would change. On a keyboard, use <kbd>n</kbd>, <kbd>p</kbd> and <kbd>c</kbd>.</p>
+<section class="x4" id="x4" aria-labelledby="x4h" data-step="460" data-stops="4">
+ <div class="x4st">
+  <div class="x4head">
+   <h2 id="x4h">deck lets you <span class="x4u">talk back<svg viewBox="0 0 100 10" preserveAspectRatio="none" aria-hidden="true"><path class="x4pn slow" pathLength="1" d="M2 6 C 25 3, 55 8, 98 4.5"/></svg></span>.</h2>
+   <p class="x4lede">Tap the question you were about to ask, or press <kbd>c</kbd> on any line. Your agent answers in the thread, and opens the pane that shows it.</p>
+  </div>
+  <div class="x4win" id="x4win">
+   <div class="x4band">
+    <div class="x4no" aria-hidden="true">2</div>
+    <div class="x4deck">Cache stampede on user lookups</div>
+    <div class="x4ttl"><span>A thousand requests, one query</span><em><i>▮▮▯</i>Medium</em></div>
+    <p class="x4prose">Now <code>once()</code> lets the first miss ask, and the rest wait for its answer.</p>
+   </div>
+   <div class="x4body">
+    <div class="x4panes">
+     <div class="x4p x4code"><div class="x4ph"><b>once</b>src/users/get-user.ts:9-27<small>the change</small></div><div class="x4lines" id="x4code"></div></div>
+     <div class="x4p x4flow" id="x4flow"><div><div class="x4ph"><b>eight</b>brought by the agent<small>what eight servers do</small></div><div class="x4fl"><svg viewBox="0 0 420 620" id="x4svg" role="img" aria-label="Eight servers, each through its own once(key), make eight queries to the database instead of a thousand."></svg></div></div></div>
     </div>
-    <div class="wrap wide">
-      <div class="dk" id="dk" tabindex="0" aria-label="A working deck. Keys: n next group, p previous group, c comment on the selected lines, z lights, esc discard.">
-        <noscript><p class="dk-nojs">This deck needs JavaScript to run. The recordings above show the real window.</p></noscript>
-      </div>
-      <div class="shelf" role="group" aria-label="Questions you can ask the agent">
-        <button type="button" class="shelf-arrow" data-dir="-1" aria-label="Previous questions">&lsaquo;</button>
-        <div class="shelf-row">
-          <button type="button" class="shelf-q" data-ask="0"><span class="sq">Where does the 260 ms come from?</span><span class="sh">click to ask</span></button>
-          <button type="button" class="shelf-q" data-ask="1"><span class="sq">What if a worker crashes mid-receipt?</span><span class="sh">click to ask</span></button>
-          <button type="button" class="shelf-q" data-ask="2"><span class="sq">Why not buy bigger checkout machines?</span><span class="sh">click to ask</span></button>
-        </div>
-        <button type="button" class="shelf-arrow" data-dir="1" aria-label="More questions">&rsaquo;</button>
-      </div>
-      <p class="note shelf-note">Press one, the way you would in deck. This deck runs in your browser with answers written in advance; in the real window, your own agent answers whatever you ask.</p>
-    </div>
-  </section>
+    <aside class="x4rail" aria-label="Chat">
+     <div class="x4rh"><i aria-hidden="true">›</i>CHAT<span>live walk</span></div>
+     <div class="x4th" id="x4th" aria-live="polite"></div>
+     <div class="x4cmp" id="x4cmp">Write a comment · c</div>
+    </aside>
+   </div>
+   <div class="x4foot"><span>group 2 of 4</span><span class="sp"></span><span class="x4key"><kbd>n</kbd>next</span><span class="x4key"><kbd>p</kbd>previous</span><span class="x4key" id="x4c"><kbd>c</kbd>comment</span></div>
+  </div>
+  <div class="x4asks" role="group" aria-label="Suggested questions"><span class="x4arr" aria-hidden="true">‹</span><div class="x4row" id="x4row"></div><span class="x4arr" aria-hidden="true">›</span></div>
+  <p class="x4narr" id="x4narr" aria-live="polite"><b>deck</b><span></span></p>
+  <div class="x4ctl"><div class="x4dots" id="x4dots"><i></i><i></i><i></i><i></i><i></i></div><button class="x4next" id="x4next" type="button">next →</button></div>
+  <div class="x4after"><small>Example: you question the cache fix from above.</small></div>
+  <div class="x4hand" id="x4hand" aria-hidden="true"><svg viewBox="0 0 22 26" width="22" height="26"><path d="M3 2 L3 20 L7.5 15.8 L10.6 23 L13.6 21.7 L10.6 14.8 L16.6 14.6 Z" fill="#f2f2f0" stroke="#070707" stroke-width="1.4" stroke-linejoin="round"/></svg></div>
+ </div>
+</section>
 
-  <!-- 5: why it is free -->
-  <section class="free" aria-labelledby="free-title">
-    <div class="wrap free-box">
-      <div class="free-copy">
-        <p class="eyebrow accent">Free and open source</p>
-        <h2 id="free-title">No price. No plan to charge.</h2>
-        <p class="lede">I built deck to give something back to the community that taught me most of what I know. There is no paid tier, no account to make, and nothing to upgrade to later. The code is all on GitHub under Apache-2.0.</p>
-        <p class="signed">Henit</p>
-      </div>
-      <div class="free-cta">
-        <a class="star" href="https://github.com/henit-chobisa/deck" aria-label="Star deck on GitHub">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M12 2.8l2.83 5.73 6.33.92-4.58 4.46 1.08 6.3L12 17.24l-5.66 2.97 1.08-6.3L2.84 9.45l6.33-.92z"/></svg>
-          <span>Star on GitHub</span>
-          <span class="star-count" hidden></span>
-        </a>
-        <ul class="free-facts">
-          <li>Apache-2.0</li>
-          <li>No account</li>
-          <li>No paid tier</li>
-          <li>Built in the open</li>
-        </ul>
-      </div>
+<section class="x5 lp" id="x5" aria-labelledby="x5h">
+ <div class="lpw">
+  <h2 id="x5h">deck lets you <span class="x5u">pass it on<svg viewBox="0 0 100 10" preserveAspectRatio="none" aria-hidden="true"><path class="x5pn" pathLength="1" d="M2 6 C 25 3, 55 8, 98 4.5"/></svg></span>.</h2>
+  <p class="lplede">Export a finished deck as a PDF or one HTML file, in any editor theme you have. Whoever opens it reads the same walk, and what was said.</p>
+  <a class="lplink" href="/docs/">Read the docs <i aria-hidden="true">→</i></a>
+  <div class="lpstage" aria-hidden="true">
+   <div class="lw lw1">
+    <div class="x5sheet">
+     <div class="x5opts">
+      <div class="x5sht">Export this deck<small>Cache stampede on user lookups · 4 groups</small></div>
+      <div><div class="x5lab">Format</div><div class="x5pair"><div class="x5ch">PDF<small>to send, print, attach</small></div><div class="x5ch on">HTML<small>one file, plays in a browser</small></div></div></div>
+      <div class="x5lay"><div class="x5lab">Layout</div><div class="x5pair"><div class="x5ch off">Portrait<small>a cover, a group a page</small></div><div class="x5ch off">Landscape<small>each page is the window</small></div></div></div>
+      <div class="x5fld"><div class="x5lab">Theme</div><div class="x5field focus"><span>Solarized Light · VS Code</span><i>▾</i></div></div>
+      <div class="x5cmt"><span class="x5box">✓</span><div>Include comments<small>The argument after each group: 4 remarks and 4 answers.</small></div></div>
+      <div class="x5go">Export HTML · 1 file…</div>
+     </div>
+     <div class="x5prev"><div class="x5lab">Preview<span>group 2 of 4, a group to a screen</span></div><div class="x5frame lpf1"></div></div>
     </div>
-  </section>
+   </div>
+   <div class="lw lw2"><div class="x5file"><div class="x5bar"><i></i><i></i><i></i><span>cache-stampede.html</span>2 / 4</div><div class="x5frame lpf2"></div></div></div>
+   <div class="lw lw3">
+    <div class="x5prh">Fix cache stampede on user lookups <span>#482</span><em>Open</em></div>
+    <div class="x5conv">
+     <div class="x5c"><div class="x5ch2"><span>you · commented</span><span>now</span></div>
+      <div class="x5cb">Read this first. It walks the fix claim by claim, with what I asked.
+       <div class="x5chip"><b>HTML</b><div><span>cache-stampede.html</span><small>4 groups · opens in any browser</small></div></div></div></div>
+     <div class="x5c x5re"><div class="x5ch2"><span>teammate · commented</span><span>now</span></div><div class="x5cb">Read it. The eight-servers part was my question too.</div></div>
+    </div>
+   </div>
+  </div>
+  <div class="lpf">
+   <small>Features</small>
+   <div class="lpl">
+    <details><summary>PDF or one HTML file<i aria-hidden="true">+</i></summary><p>A PDF, portrait or landscape, or one HTML file that shows the window a group to a screen.</p></details>
+    <details><summary>Any editor theme<i aria-hidden="true">+</i></summary><p>deck’s own themes, or any theme of an editor you have installed.</p></details>
+    <details><summary>Comments included<i aria-hidden="true">+</i></summary><p>What you and the agent said goes with it. Leave it out, and the file and its <code>.deck</code> carry none.</p></details>
+    <details><summary>deck pack (.deck)<i aria-hidden="true">+</i></summary><p>The deck as one <code>.deck</code> file, with its code. Paths become repo-relative, and a secret stops the pack.</p></details>
+    <details><summary>Attach to a PR<i aria-hidden="true">+</i></summary><p>The HTML file carries the <code>.deck</code> inside, so whoever you send it to can open it in deck and answer.</p></details>
+    <details><summary>Works offline<i aria-hidden="true">+</i></summary><p>The fonts are embedded and there is no script. It reads the same on a plane.</p></details>
+   </div>
+  </div>
+ </div>
+</section>
 
-  <!-- 6: install -->
-  <section class="install" id="install" aria-labelledby="install-title">
-    <div class="wrap center">
-      <img src="assets/mark.svg" alt="" width="64" height="64">
-      <h2 id="install-title">Install deck</h2>
-      <p class="lede">Free, now and later. One script: it downloads deck for your machine, checks the download, puts it on your PATH and runs <code>deck setup</code>. Run it as yourself, not with <code>sudo</code>.</p>
-      <div class="tabs" role="tablist" aria-label="Your system">
-        <button type="button" role="tab" id="tab-unix" aria-selected="true" aria-controls="pane-unix">macOS and Linux</button>
-        <button type="button" role="tab" id="tab-win" aria-selected="false" aria-controls="pane-win" tabindex="-1">Windows</button>
+<section class="x6 o2" id="x6" aria-labelledby="x6h">
+ <div class="ow">
+  <div class="x6head">
+   <h2 id="x6h">Ship as fast. <span class="x6u">Know what you shipped<svg viewBox="0 0 100 10" preserveAspectRatio="none" aria-hidden="true"><path class="x6pn" pathLength="1" d="M2 6 C 25 3, 55 8, 98 4.5"/></svg></span>.</h2>
+   <p class="olede">deck adds no steps to how you work. Your agent writes the deck as it goes; you open it when you’re ready, and ship knowing what changed.</p>
+  </div>
+  <div class="o2tiles">
+   <div class="x6pan o2t"><div class="o2m" aria-hidden="true">
+     <div class="x6win" aria-hidden="true">
+      <div class="x6band"><div class="x6no">1</div><div class="x6dk">Cache stampede on user lookups</div><div class="x6ttl">On a miss, every request goes to the database</div></div>
+      <div class="x6body x6b1">
+       <div class="x6pane"><div class="x6ph2"><span>get-user.ts</span><span class="sp"></span><span class="ic on" title="values">◉</span><span class="ic">⌄</span></div>
+        <div class="x6code">
+<div class="x6cl"><span class="g">14</span><span><span class="x6k">export async function</span> <span class="x6f">getUser</span>(id: <span class="x6t">string</span>) {</span></div>
+<div class="x6cl"><span class="g">15</span><span>  <span class="x6k">const</span> key<span class="x6v">"user:42"</span> = <span class="x6s">`user:${id}`</span>;</span></div>
+<div class="x6cl lit"><span class="g">16</span><span>  <span class="x6k">const</span> hit<span class="x6tg inl"><span class="x6v lit">undefined</span><svg class="x6lp" viewBox="0 0 100 40" preserveAspectRatio="none" aria-hidden="true"><path pathLength="1" d=""/></svg></span> = <span class="x6k">await</span> cache.<span class="x6f">get</span>(key);</span></div>
+<div class="x6cl"><span class="g">17</span><span>  <span class="x6k">if</span> (hit) <span class="x6k">return</span> hit;</span></div>
+<div class="x6cl"><span class="g">18</span><span>  <span class="x6k">const</span> user = <span class="x6k">await</span> db.users.<span class="x6f">find</span>(id);</span></div>
+<div class="x6cl ex"><span class="g"></span><span>  <span class="tw">↳</span> <span class="nm">user</span> ▾ User { id: "42", plan: "pro", … }</span></div>
+<div class="x6cl kv"><span class="g"></span><span><span class="x6kv" style="--kw:5ch"><span class="kk">id</span><span class="vv lit">"42"</span><span class="wy">the key every request shares</span></span></span></div>
+<div class="x6cl kv"><span class="g"></span><span><span class="x6kv" style="--kw:5ch"><span class="kk">plan</span><span class="vv">"pro"</span><span class="wy"></span></span></span></div>
+<div class="x6cl"><span class="g">19</span><span>  <span class="x6k">await</span> cache.<span class="x6f">set</span>(key, user, { ttl: <span class="x6n">60</span> });</span></div>
+<div class="x6cl"><span class="g">20</span><span>  <span class="x6k">return</span> user;</span></div>
+<div class="x6cl"><span class="g">21</span><span>}</span></div>
+<div class="x6cl far"><span class="g">22</span><span> </span></div>
+<div class="x6cl far"><span class="g">23</span><span><span class="x6k">export function</span> <span class="x6f">forget</span>(id: <span class="x6t">string</span>) {</span></div>
+<div class="x6cl far"><span class="g">24</span><span>  <span class="x6k">return</span> cache.<span class="x6f">del</span>(<span class="x6s">`user:${id}`</span>);</span></div>
+<div class="x6cl far"><span class="g">25</span><span>}</span></div>
+        </div></div>
       </div>
-      <div class="cmdline" role="tabpanel" id="pane-unix" aria-labelledby="tab-unix">
-        <code><span class="dim">$</span> curl -fsSL https://raw.githubusercontent.com/henit-chobisa/deck/main/install | sh</code>
-        <button type="button" class="copy" data-copy="curl -fsSL https://raw.githubusercontent.com/henit-chobisa/deck/main/install | sh" aria-label="Copy the install command">Copy</button>
+      <div class="x6foot"><span>group 1 of 4</span><span class="sp"></span><span>n next</span><span>p previous</span></div>
+     </div>
+   </div><h3>See the value each claim rests on.</h3></div>
+   <div class="x6pan o2t"><div class="o2m" aria-hidden="true">
+     <div class="x6win" aria-hidden="true">
+      <div class="x6band"><div class="x6no">2</div><div class="x6dk">Cache stampede on user lookups</div><div class="x6ttl">A thousand requests, one query per server</div></div>
+      <div class="x6code x6walkc" data-walk>
+<div class="x6cl"><span class="g">14</span><span><span class="x6k">export async function</span> <span class="x6f">getUser</span>(id: <span class="x6t">string</span>) {</span></div>
+<div class="x6cl"><span class="g">15</span><span>  <span class="x6k">const</span> key = <span class="x6s">`user:${id}`</span>;</span></div>
+<div class="x6cl" data-s="0"><span class="g">16</span><span>  <span class="x6k">const</span> hit = <span class="x6k">await</span> cache.<span class="x6f">get</span>(key);</span></div>
+<div class="x6cl" data-s="0"><span class="g">17</span><span>  <span class="x6k">if</span> (hit) <span class="x6k">return</span> hit;</span></div>
+<div class="x6cl"><span class="g">18</span><span> </span></div>
+<div class="x6cl" data-s="1"><span class="g">19</span><span>  <span class="x6k">const</span> user = <span class="x6k">await</span> <span class="x6f">once</span>(key, load);</span></div>
+<div class="x6cl"><span class="g">20</span><span> </span></div>
+<div class="x6cl" data-s="2"><span class="g">21</span><span>  <span class="x6k">await</span> cache.<span class="x6f">set</span>(key, user, { ttl: 60 });</span></div>
+<div class="x6cl" data-s="2"><span class="g">22</span><span>  <span class="x6k">return</span> user;</span></div>
+<div class="x6cl"><span class="g">23</span><span>}</span></div>
+<div class="x6cl"><span class="g">24</span><span> </span></div>
+<div class="x6cl"><span class="g">25</span><span><span class="x6k">export function</span> <span class="x6f">forget</span>(id: <span class="x6t">string</span>) {</span></div>
+<div class="x6cl"><span class="g">26</span><span>  <span class="x6k">return</span> cache.<span class="x6f">del</span>(<span class="x6s">`user:${id}`</span>);</span></div>
+<div class="x6cl"><span class="g">27</span><span>}</span></div>
+<div class="x6cl"><span class="g">28</span><span> </span></div>
+<div class="x6cl"><span class="g">29</span><span><span class="x6k">export async function</span> <span class="x6f">warm</span>(ids: <span class="x6t">string</span>[]) {</span></div>
+<div class="x6cl"><span class="g">30</span><span>  <span class="x6k">for</span> (<span class="x6k">const</span> id <span class="x6k">of</span> ids) <span class="x6k">await</span> <span class="x6f">getUser</span>(id);</span></div>
+<div class="x6cl"><span class="g">31</span><span>}</span></div>
       </div>
-      <div class="cmdline" role="tabpanel" id="pane-win" aria-labelledby="tab-win" hidden>
-        <code><span class="dim">&gt;</span> irm https://raw.githubusercontent.com/henit-chobisa/deck/main/install | iex</code>
-        <button type="button" class="copy" data-copy="irm https://raw.githubusercontent.com/henit-chobisa/deck/main/install | iex" aria-label="Copy the install command">Copy</button>
-      </div>
-      <p class="after">Then ask your agent about some code. <a href="docs/">Read the docs</a> · <a href="docs/#from-source">Build from source</a> · <a href="https://github.com/henit-chobisa/deck">Star on GitHub</a></p>
-    </div>
-  </section>
+      <div class="x6nar"><p><span class="x6w" data-s="0">A</span> <span class="x6w" data-s="0">miss</span> <span class="x6w" data-s="0">used</span> <span class="x6w" data-s="0">to</span> <span class="x6w" data-s="0">go</span> <span class="x6w" data-s="0">straight</span> <span class="x6w" data-s="0">to</span> <span class="x6w" data-s="0">the</span> <span class="x6w" data-s="0">database.</span> <span class="x6w" data-s="1">Now</span> <span class="x6w" data-s="1">the</span> <span class="x6w" data-s="1">first</span> <span class="x6w" data-s="1">request</span> <span class="x6w" data-s="1">on</span> <span class="x6w" data-s="1">each</span> <span class="x6w" data-s="1">server</span> <span class="x6w" data-s="1">loads</span> <span class="x6w" data-s="1">it,</span> <span class="x6w" data-s="1">and</span> <span class="x6w" data-s="1">the</span> <span class="x6w" data-s="1">rest</span> <span class="x6w" data-s="1">wait</span> <span class="x6w" data-s="1">on</span> <span class="x6w" data-s="1">that</span> <span class="x6w" data-s="1">one</span> <span class="x6w" data-s="1">promise.</span> <span class="x6w" data-s="2">The</span> <span class="x6w" data-s="2">cache</span> <span class="x6w" data-s="2">is</span> <span class="x6w" data-s="2">filled</span> <span class="x6w" data-s="2">once,</span> <span class="x6w" data-s="2">and</span> <span class="x6w" data-s="2">every</span> <span class="x6w" data-s="2">waiter</span> <span class="x6w" data-s="2">gets</span> <span class="x6w" data-s="2">the</span> <span class="x6w" data-s="2">same</span> <span class="x6w" data-s="2">user.</span></p>
+       <div class="x6trk"><span class="x6tg inl"><span class="bt">❚❚</span> <span class="bt">↺</span><svg class="x6lp" viewBox="0 0 100 40" preserveAspectRatio="none" aria-hidden="true"><path pathLength="1" d=""/></svg></span><span class="tr"><i data-s="0"><b></b></i><i data-s="1"><b></b></i><i data-s="2"><b></b></i></span></div></div>
+     </div>
+   </div><h3>Hear the argument while you watch the code.</h3></div>
+  </div>
+  <p class="o2also">And from above: <a href="#x3">every claim arrives with its proof</a>, <a href="#x4">you ask what you were about to ask</a>, and <a href="#x5">the reasoning outlives the merge</a>.</p>
+  <p class="x6bridge">Next: <b>the one line</b>, and the first deck. ↓</p>
+ </div>
+</section>
+
+<section class="x7" id="x7" aria-labelledby="x7h">
+ <div class="x7main" id="install">
+  <div class="x7head">
+   <h2 id="x7h">deck is <span class="x7u">one line<svg viewBox="0 0 100 10" preserveAspectRatio="none" aria-hidden="true"><path class="x7pn" pathLength="1" d="M2 6 C 25 3, 55 8, 98 4.5"/></svg></span> away.</h2>
+   <p class="x7lede">One script downloads deck for your machine, checks the download is intact, and puts it on your PATH. Then <code>deck setup</code> asks a few questions.</p>
+  </div>
+  <div class="x7cmd">
+   <div class="x7tabs" role="tablist" aria-label="Your system">
+    <button class="x7tab" role="tab" id="x7t0" aria-selected="true" aria-controls="x7cmdrow" data-os="0">macOS · Linux</button>
+    <button class="x7tab" role="tab" id="x7t1" aria-selected="false" aria-controls="x7cmdrow" data-os="1" tabindex="-1">Windows</button>
+    <span class="x7sh" id="x7sh" aria-hidden="true">in a terminal</span>
+   </div>
+   <div class="x7row" id="x7cmdrow" role="tabpanel" aria-labelledby="x7t0">
+    <p class="x7line"><span class="x7ps" id="x7ps" aria-hidden="true">$</span><span id="x7cmdtxt">curl -fsSL https://raw.githubusercontent.com/henit-chobisa/deck/main/install | sh</span></p>
+    <button class="x7copy" id="x7copy" type="button"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="5.5" y="5.5" width="8" height="8" rx="1.6"/><path d="M10.5 3.2V3a.5.5 0 0 0-.5-.5H3a.5.5 0 0 0-.5.5v7a.5.5 0 0 0 .5.5h.2"/></svg><span id="x7copyl">Copy</span></button>
+   </div>
+  </div>
+  <p class="x7fine">Run it as yourself, not with <code>sudo</code>.<span class="x7dot" aria-hidden="true">·</span>Usage counts are sent only if you say yes. <a href="/telemetry/">See what is sent</a>.<br>Rather read it first? <a href="https://github.com/henit-chobisa/deck/blob/main/install">Read the script</a>, or download the tarball and its checksum from <a href="https://github.com/henit-chobisa/deck/releases/latest">Releases</a>.</p>
+
+  <div class="x7then">
+   <div>
+    <p class="x7k">Then, the first deck</p>
+    <ol>
+     <li><span class="x7n" aria-hidden="true">1</span><div><b><code>deck setup</code> asks a few questions.</b><p>How deck should look; it can borrow your editor's theme. And whether to give each agent it finds a short skill, so it knows when to reach for deck.</p></div></li>
+     <li><span class="x7n" aria-hidden="true">2</span><div><b>Ask your agent about some code.</b><p>A bug, a plan, or a review. The skill tells it to show you in a deck, not summarise in chat.</p></div></li>
+     <li><span class="x7n" aria-hidden="true">3</span><div><b>A bar appears at the bottom of your screen.</b><p>That's your first deck. Open it when you're ready. The agent can't open it for you.</p></div></li>
+    </ol>
+   </div>
+
+  </div>
+ <div class="ln"><figure class="x7note x7paper" id="note" aria-labelledby="x7nk">
+    <p class="x7k" id="x7nk">Why I'm building it</p>
+    <div class="x7hd"><img src="/assets/henit.jpg" width="48" height="48" alt=""><div><b>Henit Chobisa</b><span>building deck</span></div></div>
+    <p>I'm Henit. A lot of engineers I know, the ones who really care about their work, are burning out. They're not really part of it anymore. Agents write code faster than anyone can read it, and they end up approving changes they only half understand.</p>
+    <p>I'm one of them. I started building deck, and the first person I'm building it for is me. In deck, the agent has to make sure you actually get it.</p>
+    <p>It's free and open source. If anything feels off, <a href="https://github.com/henit-chobisa/deck/issues">I'd really like to hear it</a>.</p>
+    <div class="x7ft"><span data-sig></span></div>
+    <div class="x7reach"><span class="x7mail"><output id="x7mail">chobisa.henit@gmail.com</output><button class="x7ic" id="x7mailcopy" type="button" aria-label="Copy email address"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="5.5" y="5.5" width="8" height="8" rx="1.6"/><path d="M10.5 3.2V3a.5.5 0 0 0-.5-.5H3a.5.5 0 0 0-.5.5v7a.5.5 0 0 0 .5.5h.2"/></svg></button><span class="x7tip" id="x7mailst" role="status"></span></span>
+    <span class="x7sep" aria-hidden="true"></span>
+    <a class="x7ic" href="https://github.com/henit-chobisa" aria-label="Henit on GitHub"><svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg></a>
+    <a class="x7ic" href="https://twitter.com/henit_chobisa" aria-label="Henit on X"><svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M12.6.75h2.45l-5.36 6.14L16 15.25h-4.94l-3.87-5.07-4.42 5.07H.32l5.73-6.57L0 .75h5.06l3.5 4.63L12.6.75zm-.86 13.03h1.36L4.32 2.15H2.87l8.87 11.63z"/></svg></a>
+    <a class="x7ic" href="https://henit.blog" aria-label="Henit's blog"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 13.5h10M4 10.5l7-7 2 2-7 7H4z"/></svg></a>
+    <a class="x7ic" id="x7li" href="https://www.linkedin.com/in/henit-chobisa-260536202/" aria-label="Henit on LinkedIn"><svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M2 1.5h12a.5.5 0 0 1 .5.5v12a.5.5 0 0 1-.5.5H2a.5.5 0 0 1-.5-.5V2a.5.5 0 0 1 .5-.5zM4 6.3v5.7h1.8V6.3H4zm.9-2.8a1 1 0 1 0 0 2 1 1 0 0 0 0-2zM7.1 6.3V12h1.8V9.1c0-.8.4-1.3 1-1.3s.9.4.9 1.3V12H12V8.7c0-1.6-.8-2.5-2-2.5-.7 0-1.2.3-1.5.8v-.7H7.1z"/></svg></a></div>
+   </figure></div>
+ </div>
+</section>
+
 </main>
-
+<!-- the last band, outside main so its footer is the page's contentinfo; landing.css styles it as part of #x7 -->
+<div class="x7tail" id="x7tail">
+ <div class="x7band">
+  <div class="x7cta" role="region" aria-labelledby="x7bh">
+   <h2 class="x7big" id="x7bh">Speed shouldn’t cost you <span class="x7bu">clarity<svg viewBox="0 0 100 10" preserveAspectRatio="none" aria-hidden="true"><path class="x7pn x7bpn" pathLength="1" d="M2 6 C 25 3, 55 8, 98 4.5"/></svg></span>.</h2>
+   <p class="x7sub">Point at any claim and ask why. Your agent answers until it clicks.<br> Free and open source. Works with Claude Code, Codex, Cursor and Amp.</p>
+   <div class="x7btns"><a class="x7b x7solid" href="#install">Install deck</a><a class="x7b x7ghost" href="https://github.com/henit-chobisa/deck">View on GitHub</a></div>
+  </div>
+  <!-- shell:foot -->
 <footer class="foot">
-  <div class="wrap foot-top">
-    <div class="foot-brand">
-      <a class="brand" href="./" aria-label="deck, home"><img src="assets/mark.svg" alt="" width="28" height="28"><span>deck</span></a>
-      <p>Focused on engineers, built for agents.<br>Free and open source, under Apache-2.0.</p>
-      <a class="foot-badge" href="https://peerpush.com/p/deck-b4018c15" target="_blank" rel="noopener"><img src="https://peerpush.com/p/deck-b4018c15/badge.png" alt="deck on PeerPush" width="230" height="65" loading="lazy"></a>
-    </div>
-    <nav class="foot-cols" aria-label="Footer">
-      <div><h3>Product</h3><a href="#play">Try it</a><a href="#install">Install</a><a href="docs/">Docs</a><a href="changelog/">Changelog</a></div>
-      <div><h3>Project</h3><a href="https://github.com/henit-chobisa/deck">GitHub</a><a href="https://github.com/henit-chobisa/deck/issues">Issues</a><a href="docs/#from-source">Build from source</a><a href="https://github.com/henit-chobisa/deck/blob/main/LICENSE">Apache-2.0</a></div>
-      <div><h3>Guides</h3><a href="ai-code-review/">Reviewing AI-written code</a><a href="review-large-pull-requests/">Large pull requests</a><a href="comprehension-debt/">Comprehension debt</a><a href="coderabbit-alternative/">A CodeRabbit alternative</a><a href="guides/">All guides</a></div>
-      <div><h3>Writing</h3><a href="https://henit.blog">henit.blog</a></div>
-    </nav>
+ <div class="foot-fin">
+  <div class="foot-left">
+   <a class="foot-brand" href="/" aria-label="deck, home"><svg viewBox="0 0 128 128" aria-hidden="true"><rect x="1.5" y="1.5" width="125" height="125" rx="35.6" fill="#2f2f2f" stroke="#4a4542" stroke-width="3"/><rect x="35.5" y="39.1" width="56.9" height="14.2" rx="7.1" fill="#7c6f64"/><rect x="35.5" y="74.6" width="56.9" height="14.2" rx="7.1" fill="#fe8019"/></svg>deck<small>Make your agent answer for your understanding.</small></a>
   </div>
-  <div class="wrap foot-base">
-    <span>deck · Apache-2.0</span>
-    <span>Made for people who still prefer quality.</span>
-  </div>
+  <nav class="foot-cols" aria-label="Footer">
+   <div><p class="foot-ch">Product</p><a href="/#install">Install</a><a href="/play/">Try a full deck</a><a href="/docs/">Docs</a><a href="/guides/">Guides</a><a href="/changelog/">Changelog</a><a href="https://github.com/henit-chobisa/deck/releases">Releases</a><a href="/telemetry/">Telemetry</a></div>
+   <div><p class="foot-ch">Open source</p><a href="https://github.com/henit-chobisa/deck">GitHub</a><a href="https://github.com/henit-chobisa/deck/blob/main/LICENSE">License · Apache-2.0</a><a href="https://github.com/henit-chobisa/deck/blob/main/README.md">README</a></div>
+   <div><p class="foot-ch">Henit</p><a href="https://henit.blog/posts/i-hand-agents-the-code-not-the-decisions/" rel="noopener">Blog</a><a href="/#note">Why I'm building it</a><button type="button" class="foot-cl" data-email="chobisa.henit@gmail.com">Email<span class="foot-cs" aria-live="polite"></span></button></div>
+  </nav>
+  <div class="foot-base"><span>© 2026 Henit Chobisa · Apache-2.0 · macOS, Linux and Windows</span></div>
+ </div>
 </footer>
-
-<script src="https://cdn.jsdelivr.net/npm/lenis@1.1.13/dist/lenis.min.js" integrity="sha384-B2WBjDzEjJpYvhmi2UyEn7rektqkf5suS6sNoyyrf0EBAwBHdkiXxIlU0V5Ru2ed" crossorigin="anonymous" defer></script>
-<script src="js/deck-data.js" defer></script>
-<script src="js/play.js" defer></script>
-<script src="js/main.js" defer></script>
-<script src="js/questions.js" defer></script>
+<script src="/js/site.js" defer></script>
+<!-- /shell:foot -->
+ </div>
+</div>
+<script src="/js/landing.js" defer></script>
 </body>
 </html>

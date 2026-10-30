@@ -1,9 +1,6 @@
 # The website, deck's front door, published to GitHub Pages.
 #
-# The pages live in site/. The frames the scroll plays — 360 stills cut from
-# recordings of the window — do not: committed here they
-# would be in every clone forever. They sit on the pr-assets branch under
-# site-frames/, and are copied in at build time.
+# The pages live in site/; there is nothing to build.
 name: Site
 
 on:
@@ -26,17 +23,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Bring in the frames
-        run: |
-          git fetch --depth=1 origin pr-assets
-          git archive FETCH_HEAD site-frames | tar -x
-          mkdir -p site/frames
-          cp -r site-frames/l site-frames/s site/frames/
-          if [ -d site-frames/retina ]; then
-            cp -r site-frames/retina site/frames/
-          else
-            echo '::warning::Retina frames are not published on pr-assets yet; the player will use the legacy frames.'
-          fi
       - name: The changelog, from the releases
         # GitHub's own rendering of each release, which it sanitises, so the
         # notes and their images read exactly as they do there.
@@ -48,26 +34,26 @@ jobs:
             --jq '[.[] | select(.draft | not) | {tag: .tag_name, name, prerelease, published: .published_at, url: .html_url, html: .body_html}]' \
             > site/changelog/releases.json
           [ "$(jq length site/changelog/releases.json)" -gt 0 ] || { echo "no releases came back"; exit 1; }
-      - name: Check that every frame and every local link is there
+      - name: Check that every local link is there
         run: |
-          for set in l s; do
-            n=$(ls site/frames/$set/*.webp | wc -l)
-            [ "$n" -eq 360 ] || { echo "site/frames/$set has $n frames, not 360"; exit 1; }
-          done
-          if [ -d site/frames/retina ]; then
-            for set in l h; do
-              n=$(ls site/frames/retina/$set/*.webp | wc -l)
-              [ "$n" -eq 360 ] || { echo "retina/$set has $n frames, not 360"; exit 1; }
-            done
-          fi
-          for page in site/index.html site/docs/index.html site/changelog/index.html; do
+          for page in site/index.html site/play/index.html site/docs/index.html site/changelog/index.html; do
             dir=$(dirname "$page")
             grep -oE '(src|href)="[^"#:]+"' "$page" | sed -E 's/^(src|href)="//; s/"$//' | while read -r ref; do
-              target="$dir/$ref"
+              case "$ref" in /*) target="site$ref" ;; *) target="$dir/$ref" ;; esac
               case "$ref" in */) target="$target/index.html" ;; esac
               [ -e "$target" ] || { echo "$page links to $ref, which is not there"; exit 1; }
             done
           done
+          # and every #anchor on the home page has its target
+          grep -oE 'href="#[^"]+"' site/index.html | sed -E 's/^href="#//; s/"$//' | sort -u | while read -r id; do
+            grep -q "id=\"$id\"" site/index.html || { echo "site/index.html links to #$id, which is not there"; exit 1; }
+          done
+      - name: Check the shared shell and the demo deck are fresh
+        # tools/shell.py writes the nav and footer into every page, tools/play.py writes /play/;
+        # a page edited by hand instead would drift.
+        run: |
+          python3 site/tools/shell.py --check
+          python3 site/tools/play.py --check
       - name: Count visits
         # Every page gets the website's visit counter. What it counts is on
         # /telemetry/; the app's own usage counts stay opt-in and separate.
@@ -96,3 +82,35 @@ jobs:
     steps:
       - id: deployment
         uses: actions/deploy-pages@v4
+
+  layouts:
+    name: Layouts
+    # The behaviour suite (site/tools/check-ui.cjs): every viewport and both
+    # engines, the pinned steps, /play/ by keys, clicks and taps. Pull requests
+    # only; a push to main already ran it on its pull request.
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: The changelog, from the releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api -H "Accept: application/vnd.github.html+json" \
+            "repos/${{ github.repository }}/releases?per_page=100" \
+            --jq '[.[] | select(.draft | not) | {tag: .tag_name, name, prerelease, published: .published_at, url: .html_url, html: .body_html}]' \
+            > site/changelog/releases.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: site/tools/package-lock.json
+      - name: Install Playwright and its browsers
+        working-directory: site/tools
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium webkit
+      - name: Check the layouts
+        working-directory: site/tools
+        run: npm test

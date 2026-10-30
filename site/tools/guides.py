@@ -14,12 +14,12 @@ GUIDES = [
         "slug": "ai-code-review",
         "title": "AI code review: how to review code your agent wrote",
         "h1": "How to review code your agent wrote",
-        "description": "Reviewing AI-generated code is not like reviewing a colleague's. Here is what to look for, why diffs and summaries fall short, and how to see the decisions your agent made.",
+        "description": "Reviewing AI-generated code is not like reviewing a colleague's. Here is what to look for, why diffs and summaries fall short, and how to see the decisions in the change and take part in them.",
         "eyebrow": "AI code review",
         "body": """
 Your agent finished. The diff is 900 lines across eleven files, and the summary says it "refactored the pricing flow and added caching". You have to approve it, and you did not write any of it.
 
-Reviewing code an agent wrote is a different job from reviewing a colleague's. A colleague made a few decisions and can tell you why. An agent made dozens, quickly, and the reasons live in a conversation you may have skimmed.
+Reviewing code an agent wrote is a different job from reviewing a colleague's. A colleague made a few decisions and can tell you why. An agent's change carries dozens, made quickly, and the reasons live in a conversation you may have skimmed.
 
 ## Review the decisions, not the lines
 
@@ -200,7 +200,7 @@ The answer comes back as something you can check, not something you have to beli
         "slug": "review-codex-cursor-changes",
         "title": "Reviewing changes from Codex, Cursor and Amp",
         "h1": "Reviewing what Codex, Cursor or Amp changed",
-        "description": "Whichever coding agent you use, the review problem is the same: fast changes, long summaries, decisions you never made. How to see them on the lines instead.",
+        "description": "Whichever coding agent you use, the review problem is the same: fast changes, long summaries, decisions you never weighed in on. How to see them on the lines instead.",
         "eyebrow": "Codex, Cursor, Amp",
         "body": """
 Every coding agent has the same shape of problem at the end of a task. The work is done, it is mostly right, and the explanation is a block of prose with file names in it.
@@ -314,7 +314,7 @@ At the end of any change that adds state or changes failure handling, ask your a
         "faq": [
             ("Is AI-generated code lower quality?", "Not line by line. The risk is decisions made quickly and approved without being understood. Review the decisions and quality holds."),
             ("How do I keep an AI-written codebase maintainable?", "Make sure every decision that adds state or changes failure handling is shown to someone and chosen on purpose."),
-            ("Where does deck help with quality?", "It makes your agent show its decisions on the actual lines, so you can agree or push back before they ship."),
+            ("Where does deck help with quality?", "It makes your agent show each decision on the actual lines, so you can agree or push back before they ship."),
         ],
     },
     {
@@ -343,7 +343,7 @@ Reading every line kills the vibe. Looking at the few lines that matter does not
 ## A lightweight loop
 
 1. Build with your agent as usual.
-2. At a natural stopping point, ask it to show you the decisions it made.
+2. At a natural stopping point, ask it to show you the decisions in what it changed.
 3. Push back on anything you would not have chosen.
 4. Keep going, knowing what you shipped.
 """,
@@ -456,7 +456,7 @@ That is the decision, and it is only visible with both numbers in front of you.
 
 ## Plan in a deck
 
-[deck](/) lets your agent present a plan exactly like that: today's checkout code, the proposed change shown as old lines going and new lines arriving, and a chart of what the change does to latency and to the busiest day of the year. You can [try that exact deck here](/#play).
+[deck](/) lets your agent present a plan exactly like that: today's checkout code, the proposed change shown as old lines going and new lines arriving, and a chart of what the change does to latency and to the busiest day of the year. You can [try that exact deck here](/#x4).
 
 You decide, comment on the lines you want different, and the agent writes the code with your decision in hand.
 """,
@@ -535,7 +535,7 @@ A review bot answers "is anything wrong with this diff?". The question that is u
 
 Nothing stops you running a review bot on the PR and using deck before it. Many teams will want both: a bot to catch slips, and a way for the person approving to actually understand the change.
 
-[Try a real deck in your browser](/#play), or [install it](/#install).
+[Try a real deck in your browser](/#x4), or [install it](/#install).
 """,
         "faq": [
             ("Is deck a CodeRabbit competitor?", "Not directly. CodeRabbit comments on pull requests. deck lets your own agent show you its changes before you approve. You can use both."),
@@ -565,13 +565,13 @@ What they do not do is transfer understanding. After a bot review, the code may 
 ## Which do you need?
 
 - **"We miss bugs in review."** A review bot helps.
-- **"Nobody understands what the agent changed."** You need the agent to show its decisions. That is deck.
+- **"Nobody understands what the agent changed."** You need the agent to show you the decisions in the change. That is deck.
 - **"Our PRs are too big to review."** Split them into concerns; deck can walk each one as a chapter.
 - **"The bot's comments are noise."** Fewer, better comments help. So does reviewing decisions instead of lines.
 
 ## They fit together
 
-A sensible setup for a team using coding agents: the agent shows you its decisions before the PR (deck), a bot checks the PR for slips, and a human approves knowing what was decided.
+A sensible setup for a team using coding agents: the agent shows you each decision before the PR (deck), a bot checks the PR for slips, and a human approves knowing what was decided.
 """,
         "faq": [
             ("What is the best AI code review tool?", "It depends on the job. Bots like CodeRabbit or Greptile catch mistakes in pull requests. deck helps you understand and decide on what your agent changed. Many teams want both."),
@@ -610,7 +610,7 @@ That is a deck. With [deck](/), the agent that made the change shows you three o
         "faq": [
             ("Why are AI code reviews so noisy?", "Most bots flag anything that might be wrong rather than proving that it is, so real issues get buried among nits and maybes."),
             ("How do I reduce AI code review noise?", "Turn off style comments, review one concern at a time, and ask for the few decisions that matter instead of every finding."),
-            ("Does deck add more comments to my PR?", "No. It does not touch your PR. It is where your agent shows you its decisions before you approve."),
+            ("Does deck add more comments to my PR?", "No. It does not touch your PR. It is where your agent shows you each decision before you approve."),
         ],
     },
     {
@@ -669,7 +669,7 @@ That only works if someone tells you where the decisions are. The person best pl
 
 ## Let the author do the explaining
 
-[deck](/) gives your agent a way to hand you its decisions instead of its diff. One claim per group, the lines lit beside each sentence, a chart when the claim is about load or timing. You review the argument in minutes and push back on the lines that matter. The agent answers with everything it knew when it wrote the code.
+[deck](/) gives your agent a way to hand you the decisions in a change instead of its diff. One claim per group, the lines lit beside each sentence, a chart when the claim is about load or timing. You review the argument in minutes and push back on the lines that matter. The agent answers with everything it knew when it wrote the code.
 
 Review stays a human decision. It just stops being a reading contest.
 """,

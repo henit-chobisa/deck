@@ -70,8 +70,8 @@ def main(root: str) -> None:
             continue
         at = html.lower().find("</head>")
         if at < 0:
-            # A fragment, not a page: play/plan.html is a deck page the site
-            # shows inside another, which already counts the visit.
+            # A fragment, not a page: shown inside another page, which
+            # already counts the visit.
             continue
         page.write_text(html[:at] + SNIPPET + html[at:], encoding="utf-8")
         counted += 1
