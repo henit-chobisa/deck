@@ -67,46 +67,30 @@ def ridge(seed: int, base: float, amp: float, rough: float, n: int = 64) -> str:
     return " ".join(f"{i * step:.0f},{y:.0f}" for i, y in enumerate(pts))
 
 
-def stars() -> str:
-    out, s = [], 7
-    for _ in range(46):
-        s = (s * 16807) % 2147483647
-        x = s % 1600
-        s = (s * 16807) % 2147483647
-        y = s % 330
-        s = (s * 16807) % 2147483647
-        r = 0.6 + (s % 10) / 10
-        out.append(f'<circle cx="{x}" cy="{y}" r="{r:.1f}" opacity="{0.25 + (s % 7) / 10:.2f}"/>')
-    return "".join(out)
-
-
 def wallpaper() -> str:
-    """Dusk over a lake, in layers: sky, sun, stars, three ranges, mist, the water and its reflection."""
-    far, mid, near = ridge(11, 470, 150, 0.56), ridge(23, 530, 120, 0.52), ridge(37, 945, 70, 0.5)
-    rng = lambda pts, fill: f'<polygon points="0,1000 {pts} 1600,1000" fill="url(#{fill})"/>'
+    """A calm beach by day, in layers: sky and soft clouds, a hazy headland, the sea, its foam, the sand."""
+    head = ridge(11, 520, 70, 0.55, 32)
+    cloud = lambda x, y, s, o: (f'<g transform="translate({x} {y}) scale({s})" opacity="{o}"><ellipse cx="0" cy="0" rx="120" ry="26"/>'
+                                f'<ellipse cx="-60" cy="-14" rx="62" ry="30"/><ellipse cx="40" cy="-22" rx="74" ry="38"/></g>')
     return f"""<svg class="wall" viewBox="0 0 1600 1000" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
 <defs>
-<linearGradient id="sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#0a0f26"/><stop offset=".3" stop-color="#1b1d4b"/><stop offset=".48" stop-color="#4a3270"/><stop offset=".58" stop-color="#a65278"/><stop offset=".64" stop-color="#ef8f68"/><stop offset=".66" stop-color="#f6b37a"/></linearGradient>
-<radialGradient id="sun" cx="1080" cy="600" r="520" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#ffd59a" stop-opacity=".9"/><stop offset=".18" stop-color="#ff9f6e" stop-opacity=".55"/><stop offset=".55" stop-color="#c25a7c" stop-opacity=".18"/><stop offset="1" stop-color="#c25a7c" stop-opacity="0"/></radialGradient>
-<linearGradient id="far" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#6b4a7e"/><stop offset=".25" stop-color="#3e2f5e"/></linearGradient>
-<linearGradient id="mid" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#3a2b55"/><stop offset=".3" stop-color="#211b3c"/></linearGradient>
-<linearGradient id="near" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#17142b"/><stop offset=".2" stop-color="#0c0b19"/></linearGradient>
-<linearGradient id="lake" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#5b3b6c"/><stop offset=".15" stop-color="#2b2148"/><stop offset="1" stop-color="#070712"/></linearGradient>
-<linearGradient id="mist" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffd2b0" stop-opacity="0"/><stop offset=".5" stop-color="#ffd2b0" stop-opacity=".16"/><stop offset="1" stop-color="#ffd2b0" stop-opacity="0"/></linearGradient>
-<linearGradient id="glint" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffcf98" stop-opacity=".7"/><stop offset="1" stop-color="#ffcf98" stop-opacity="0"/></linearGradient>
-<clipPath id="above"><rect width="1600" height="650"/></clipPath>
+<linearGradient id="sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#7fc3ea"/><stop offset=".35" stop-color="#a9d8f2"/><stop offset=".56" stop-color="#e4f3fa"/></linearGradient>
+<radialGradient id="sun" cx="1220" cy="150" r="460" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#fffbe8" stop-opacity=".95"/><stop offset=".2" stop-color="#fff4d1" stop-opacity=".45"/><stop offset="1" stop-color="#fff4d1" stop-opacity="0"/></radialGradient>
+<linearGradient id="head" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#8fb6b4"/><stop offset="1" stop-color="#b9d3d0"/></linearGradient>
+<linearGradient id="sea" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#5aa9cf"/><stop offset=".55" stop-color="#5fbfd6"/><stop offset="1" stop-color="#8fdad9"/></linearGradient>
+<linearGradient id="sand" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#efe0bf"/><stop offset="1" stop-color="#e6cf9f"/></linearGradient>
+<linearGradient id="wet" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#d8c7a0"/><stop offset="1" stop-color="#e9d8b2" stop-opacity="0"/></linearGradient>
+<clipPath id="land"><rect width="1600" height="566"/></clipPath>
 </defs>
 <rect width="1600" height="1000" fill="url(#sky)"/>
 <rect width="1600" height="1000" fill="url(#sun)"/>
-<g fill="#fff">{stars()}</g>
-<circle cx="1080" cy="610" r="40" fill="#ffe3b8" opacity=".92"/>
-<g clip-path="url(#above)">{rng(far, "far")}{rng(mid, "mid")}</g>
-<rect y="560" width="1600" height="110" fill="url(#mist)"/>
-<rect y="650" width="1600" height="350" fill="url(#lake)"/>
-<g transform="translate(0 1300) scale(1 -1)" opacity=".28" clip-path="url(#above)">{rng(far, "far")}{rng(mid, "mid")}</g>
-<path d="M1050 652 h60 l14 340 h-88 z" fill="url(#glint)" opacity=".5"/>
-<g fill="#ffe0b8" opacity=".35"><rect x="1030" y="672" width="100" height="2" rx="1"/><rect x="1046" y="700" width="70" height="2" rx="1"/><rect x="1020" y="736" width="118" height="1.5" rx="1"/><rect x="1056" y="780" width="52" height="1.5" rx="1"/></g>
-{rng(near, "near")}
+<g fill="#fff">{cloud(300, 170, 1, .75)}{cloud(760, 110, .7, .6)}{cloud(1480, 260, .85, .55)}{cloud(1040, 300, .55, .45)}</g>
+<g clip-path="url(#land)"><polygon points="900,1000 {" ".join(p for p in head.split() if float(p.split(",")[0]) >= 900)} 1600,1000" fill="url(#head)"/></g>
+<rect y="566" width="1600" height="300" fill="url(#sea)"/>
+<g fill="none" stroke="#ffffff" stroke-linecap="round" opacity=".55"><path d="M120 620h180M520 650h240M980 610h160M1300 680h200M240 720h260M760 760h220" stroke-width="2"/></g>
+<path d="M0 820 C 200 800, 360 840, 560 822 S 960 800, 1160 826 S 1460 808, 1600 820 V 1000 H 0 Z" fill="url(#sand)"/>
+<path d="M0 820 C 200 800, 360 840, 560 822 S 960 800, 1160 826 S 1460 808, 1600 820 V 860 H 0 Z" fill="url(#wet)"/>
+<path d="M0 818 C 200 798, 360 838, 560 820 S 960 798, 1160 824 S 1460 806, 1600 818" fill="none" stroke="#fffdf6" stroke-width="5" stroke-linecap="round" opacity=".9"/>
 </svg>"""
 
 
