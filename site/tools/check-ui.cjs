@@ -183,8 +183,11 @@ async function nothingAhead(page, where, n) {
 
 // On a desktop screen the demo fits in one view as the page opens: the rail under the nav, Back and Next on screen.
 async function oneView(page, where) {
-  const r = await page.evaluate(() => { const b = (s) => document.querySelector(s).getBoundingClientRect(); return { nav: b('.nav').bottom, rail: b('#pl-rail').top, next: b('#pl-next').bottom, asks: b('#dk-asks').bottom, h: innerHeight } })
+  const r = await page.evaluate(() => { const b = (s) => document.querySelector(s).getBoundingClientRect(); return { nav: b('.nav').bottom, rail: b('#pl-rail').top, next: b('#pl-next').bottom, asks: b('#dk-asks').bottom, stage: b('#pl-stage').height, dk: document.getElementById('dk').offsetHeight, w: innerWidth, h: innerHeight } })
   assert(r.rail >= r.nav - 1 && r.next <= r.h && r.asks <= r.h, `${where}: the demo does not fit in one view ${JSON.stringify(r)}`)
+  // and the window takes the rest: Back/Next near the bottom unless the stage is at its 860px most
+  if (r.stage < 859) assert(r.h - r.next <= 40, `${where}: height left unused under Back/Next ${JSON.stringify(r)}`)
+  if (r.w >= 1440 && r.h >= 900) assert(r.dk >= 560, `${where}: the window is short ${JSON.stringify(r)}`)
 }
 
 async function atStep(page, label, n, reduce) {
@@ -211,7 +214,7 @@ async function playThrough(page, label, how, reduce) {
   await page.goto(base + '/play/')
   await page.waitForFunction(() => document.documentElement.classList.contains('pl-ready'))
   await atStep(page, label, 1, reduce)
-  if (how === 'keys') await page.locator('#pl').focus()
+  if (how === 'keys') await page.evaluate(() => document.getElementById('pl').focus({ preventScroll: true }))
   for (let want = 2; want <= 10; want++) {
     for (let tries = 0; await stepOf(page) < want; tries++) {
       assert(tries < 6, `${label} /play/ ${how}: reaches step ${want}`)
@@ -253,7 +256,7 @@ async function playHands(page, label) {
   await page.locator('#pl-rail button[data-go="3"]').click()
   await page.waitForTimeout(500)
   await page.locator('#dk .dk-pane').first().locator('[data-ln]').nth(11).click()
-  await page.locator('#pl').focus()
+  await page.evaluate(() => document.getElementById('pl').focus({ preventScroll: true }))
   await page.keyboard.press('c')
   await page.waitForFunction(() => document.activeElement === document.querySelector('#dk .dk-compose textarea'))
   assert.equal(await page.locator('#dk .dk-compose .on').textContent(), 'comment on session.ts:12', 'c comments on the held line')

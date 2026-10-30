@@ -8,6 +8,13 @@
 .play-head .eyebrow{margin-bottom:calc(12*var(--u))}
 .play-head h1{font-size:clamp(calc(30*var(--u)),3vw,calc(40*var(--u)))}
 .play-lede{margin:calc(10*var(--u)) 0 0;max-width:68ch;color:var(--soft);font-size:var(--fs-small)}
+/* desktop: the header is one line (the eyebrow, the title, the description) so the window gets the height */
+@media (min-width:981px){
+ .play-head{display:flex;align-items:baseline;gap:16px;padding-top:18px}
+ .play-head .eyebrow{flex:none;margin:0}
+ .play-head h1{flex:none;font-size:26px;line-height:1.2;letter-spacing:-.02em}
+ .play-lede{flex:1;min-width:0;margin:0;max-width:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+}
 
 .pl{max-width:var(--plw);margin:0 auto;padding:calc(16*var(--u)) max(calc(24*var(--u)),env(safe-area-inset-left,0px)) calc(72*var(--u));outline:none}
 .pl-top{display:flex;align-items:center;gap:calc(16*var(--u))}

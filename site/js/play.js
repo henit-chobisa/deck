@@ -814,9 +814,12 @@
     if (phone()) { stage.style.height = ''; return }
     const top = stage.getBoundingClientRect().top + scrollY
     const below = document.querySelector('.pl-foot').getBoundingClientRect().bottom - stage.getBoundingClientRect().bottom
-    stage.style.height = Math.round(Math.max(400, Math.min(860, innerHeight - top - below - 14))) + 'px'
+    stage.style.height = Math.round(Math.max(400, Math.min(860, innerHeight - top - below - 16))) + 'px'
   }
   fit()
+  // the web fonts change the header's height when they arrive: fit again then
+  if (document.fonts) document.fonts.ready.then(fit)
+  addEventListener('load', fit)
   let fitT = 0
   addEventListener('resize', () => { clearTimeout(fitT); fitT = setTimeout(fit, 120) })
   render(0, 'load')
