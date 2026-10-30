@@ -221,6 +221,7 @@ INTRO = """<section class="pi" aria-labelledby="pi-h">
   <p class="eyebrow accent">Try a full deck</p>
   <h1 id="pi-h">Fixed the random logouts</h1>
   <p class="pi-line">An agent's one-line fix, on a desktop like yours: it writes a deck, you open it, question it and decide. About a minute and a half.</p>
+  <ol class="pi-steps"><li>The agent writes a deck</li><li>You open it from the bar</li><li>You question it on the code</li><li>You decide and export</li></ol>
  </div>
  <div class="pi-frame">
   <img class="pi-still" src="/assets/play-still.webp" srcset="/assets/play-still-800.webp 800w, /assets/play-still.webp 1440w" sizes="(max-width: 1100px) 100vw, 1200px" width="1440" height="900" alt="A desktop with the deck window open on group 4: the values each line held, the review down the side, and the questions under the window." decoding="async">
