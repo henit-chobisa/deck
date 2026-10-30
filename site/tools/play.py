@@ -1,14 +1,16 @@
-"""Write /play/: a recorded deck you can play, from "Tests pass." to the decision the summary hid.
+"""Write /play/: a recorded deck, played full screen on a desktop drawn for it.
 
     python3 site/tools/play.py            # write site/play/index.html
     python3 site/tools/play.py --check    # fail if it is stale (the site workflow runs this)
 
-The page is the shell (tools/shell.py) around ten steps: an agent's fix for random logouts, the deck
-it writes, the bar, the deck window, the question that finds what the summary left out, and the
-reader's decision. js/play-deck.js is the deck itself (its groups, refs, values and recorded
-answers); js/play.js draws its window the way deck draws it (crates/app: the band, the panes, the
-rail, the strip, the asks) and plays the steps; css/play.css is both. The app and its code are made
-up, and every answer is recorded; the page says so on every step.
+The page opens on an intro; Start goes full screen (or fills the window when fullscreen is refused)
+onto a desktop: a wallpaper, a menu bar and a dock, all drawn here. On it, ten steps: an agent's fix
+for random logouts in a terminal, the deck it writes with deck's real commands, the bar, the deck
+window, the question that finds what the summary left out, and the reader's decision. Phones and
+narrow screens get a still of it instead. js/play-deck.js is the deck (groups, refs, values,
+recorded answers); js/play.js draws its window the way deck draws it and plays the steps;
+css/play.css is both. The app and its code are made up and every answer is recorded, and the page
+says so. assets/play-still.webp is a capture of step 7 (see tools/play-still.cjs).
 """
 
 import json
@@ -21,66 +23,157 @@ import shell  # noqa: E402
 SITE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 ORIGIN = "https://trydeck.dev"
 TITLE = "Try deck in your browser: the decision inside a one-line fix | deck"
-DESC = ("Play a recorded deck: an agent fixes random logouts, shows the change claim by claim on the lines, "
-        "and when you ask about logout, finds the decision its summary never mentioned. No install, no model.")
+DESC = ("Watch a recorded deck on a desktop: an agent fixes random logouts, shows the change claim by claim on "
+        "the lines, and when you ask about logout, finds the decision its summary never mentioned. No install, no model.")
 
-# (rail label, caption under the stage)
+# (rail label, caption)
 STEPS = [
     ("The problem", "The agent says it is done, in a paragraph. <b>A decision you would sign off on without seeing it.</b>"),
-    ("It writes a deck", "Instead of a summary, it writes a deck: one claim per group, each pinned to the lines it is about."),
+    ("It writes a deck", "Instead of a summary, it writes a deck with deck's own commands: one claim per group, pinned to the lines."),
     ("The bar", "A small bar comes up with the deck's title. <b>Only you open it</b>: the agent cannot."),
-    ("The change", "Each sentence lights the lines it is about. Click one. The change is drawn on today's code, before anything is edited."),
+    ("The change", "Each sentence lights the lines it is about. The change is drawn on today's code, before anything is edited."),
     ("The flow", "The path the code takes, beside the code. Play a route, and the same step lights in both."),
     ("The timeline", "An idea that only makes sense moving gets a page: a session's life, before and now."),
     ("The values", "What each line held when the test ran, written on the line, like a debugger."),
-    ("You ask", "Push back where you doubt it: select a line and press <kbd>c</kbd>, or tap a question under the window."),
-    ("You decide", "You decide, in a comment on the line. The deck exports with the argument, for the pull request."),
+    ("You ask", "Push back where you doubt it: hold a line and press <kbd>c</kbd>, or pick a question under the window."),
+    ("You decide", "You decide, in a comment on the line, and export the deck with the argument in it."),
     ("That's deck", "Your agent shows you. You take part. What ships is something you both chose."),
 ]
 
-MARK = ('<span class="bm" aria-hidden="true"><i></i><i></i></span>')
+MARK = '<span class="bm" aria-hidden="true"><i></i><i></i></span>'
+DECK_MARK = ('<svg viewBox="0 0 128 128" aria-hidden="true"><rect x="1.5" y="1.5" width="125" height="125" rx="35.6" fill="#2f2f2f" '
+             'stroke="#4a4542" stroke-width="3"/><rect x="35.5" y="39.1" width="56.9" height="14.2" rx="7.1" fill="#7c6f64"/>'
+             '<rect x="35.5" y="74.6" width="56.9" height="14.2" rx="7.1" fill="#fe8019"/></svg>')
 
-TERM = """<section class="sc sc-term" id="sc-term" aria-label="The agent's terminal">
- <div class="tm">
-  <div class="tm-tb" aria-hidden="true"><i></i><i></i><i></i><span>claude · ~/shop-api</span></div>
-  <div class="tm-tx" id="tm-tx">
-   <p class="tu"><span>›</span> users keep getting logged out at random. fix it</p>
-   <p class="ta"><span>⏺</span> Read <b>src/auth/session.ts</b>, <b>src/auth/login.ts</b></p>
-   <p class="ta"><span>⏺</span> Ran <b>npm test</b> <em>· 42 passed</em></p>
-   <div class="tm-done" id="tm-done">
-    <p class="tsum"><span>⏺</span> Users were getting logged out randomly. Fixed by extending the session refresh. Tests pass.</p>
-    <div class="tm-pr"><span class="pr-n">#318 Fix random logouts <small>+1 −1</small></span><span class="pr-ok" id="pr-ok">Approve · LGTM<i class="cur" aria-hidden="true"></i></span></div>
-   </div>
-   <div class="tm-deck" id="tm-deck">
-    <p class="ta"><span>⏺</span> Writing it up as a deck, so you can check it on the code.</p>
-    <pre class="tc" data-ty><span class="tp">$</span> <b>deck new</b> --title <s>"Fix random logouts"</s> --total 4</pre>
-    <pre class="to" data-out>~/.deck/decks/d-1793261705-4127.deck</pre>
-    <pre class="tc" data-ty data-bar="0"><span class="tp">$</span> <b>deck open</b> $deck   <u># in the background: the bar goes up</u></pre>
-    <pre class="tc" data-ty data-bar="1"><span class="tp">$</span> <b>deck group</b> $deck \\
+
+def ridge(seed: int, base: float, amp: float, rough: float, n: int = 64) -> str:
+    """A mountain line, by midpoint displacement from a fixed seed: the same range on every build."""
+    s = seed
+
+    def rnd():
+        nonlocal s
+        s = (s * 9301 + 49297) % 233280
+        return s / 233280 - 0.5
+
+    pts = [base + rnd() * amp, base + rnd() * amp]
+    spread = amp
+    while len(pts) < n:
+        spread *= rough
+        nxt = []
+        for a, b in zip(pts, pts[1:]):
+            nxt += [a, (a + b) / 2 + rnd() * spread]
+        pts = nxt + [pts[-1]]
+    step = 1600 / (len(pts) - 1)
+    return " ".join(f"{i * step:.0f},{y:.0f}" for i, y in enumerate(pts))
+
+
+def stars() -> str:
+    out, s = [], 7
+    for _ in range(46):
+        s = (s * 16807) % 2147483647
+        x = s % 1600
+        s = (s * 16807) % 2147483647
+        y = s % 330
+        s = (s * 16807) % 2147483647
+        r = 0.6 + (s % 10) / 10
+        out.append(f'<circle cx="{x}" cy="{y}" r="{r:.1f}" opacity="{0.25 + (s % 7) / 10:.2f}"/>')
+    return "".join(out)
+
+
+def wallpaper() -> str:
+    """Dusk over a lake, in layers: sky, sun, stars, three ranges, mist, the water and its reflection."""
+    far, mid, near = ridge(11, 470, 150, 0.56), ridge(23, 530, 120, 0.52), ridge(37, 945, 70, 0.5)
+    rng = lambda pts, fill: f'<polygon points="0,1000 {pts} 1600,1000" fill="url(#{fill})"/>'
+    return f"""<svg class="wall" viewBox="0 0 1600 1000" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+<defs>
+<linearGradient id="sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#0a0f26"/><stop offset=".3" stop-color="#1b1d4b"/><stop offset=".48" stop-color="#4a3270"/><stop offset=".58" stop-color="#a65278"/><stop offset=".64" stop-color="#ef8f68"/><stop offset=".66" stop-color="#f6b37a"/></linearGradient>
+<radialGradient id="sun" cx="1080" cy="600" r="520" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#ffd59a" stop-opacity=".9"/><stop offset=".18" stop-color="#ff9f6e" stop-opacity=".55"/><stop offset=".55" stop-color="#c25a7c" stop-opacity=".18"/><stop offset="1" stop-color="#c25a7c" stop-opacity="0"/></radialGradient>
+<linearGradient id="far" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#6b4a7e"/><stop offset=".25" stop-color="#3e2f5e"/></linearGradient>
+<linearGradient id="mid" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#3a2b55"/><stop offset=".3" stop-color="#211b3c"/></linearGradient>
+<linearGradient id="near" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#17142b"/><stop offset=".2" stop-color="#0c0b19"/></linearGradient>
+<linearGradient id="lake" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#5b3b6c"/><stop offset=".15" stop-color="#2b2148"/><stop offset="1" stop-color="#070712"/></linearGradient>
+<linearGradient id="mist" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffd2b0" stop-opacity="0"/><stop offset=".5" stop-color="#ffd2b0" stop-opacity=".16"/><stop offset="1" stop-color="#ffd2b0" stop-opacity="0"/></linearGradient>
+<linearGradient id="glint" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffcf98" stop-opacity=".7"/><stop offset="1" stop-color="#ffcf98" stop-opacity="0"/></linearGradient>
+<clipPath id="above"><rect width="1600" height="650"/></clipPath>
+</defs>
+<rect width="1600" height="1000" fill="url(#sky)"/>
+<rect width="1600" height="1000" fill="url(#sun)"/>
+<g fill="#fff">{stars()}</g>
+<circle cx="1080" cy="610" r="40" fill="#ffe3b8" opacity=".92"/>
+<g clip-path="url(#above)">{rng(far, "far")}{rng(mid, "mid")}</g>
+<rect y="560" width="1600" height="110" fill="url(#mist)"/>
+<rect y="650" width="1600" height="350" fill="url(#lake)"/>
+<g transform="translate(0 1300) scale(1 -1)" opacity=".28" clip-path="url(#above)">{rng(far, "far")}{rng(mid, "mid")}</g>
+<path d="M1050 652 h60 l14 340 h-88 z" fill="url(#glint)" opacity=".5"/>
+<g fill="#ffe0b8" opacity=".35"><rect x="1030" y="672" width="100" height="2" rx="1"/><rect x="1046" y="700" width="70" height="2" rx="1"/><rect x="1020" y="736" width="118" height="1.5" rx="1"/><rect x="1056" y="780" width="52" height="1.5" rx="1"/></g>
+{rng(near, "near")}
+</svg>"""
+
+
+# The dock: generic tools drawn here, and deck's own mark.
+ICONS = {
+    "Terminal": '<svg viewBox="0 0 64 64" aria-hidden="true"><defs><linearGradient id="it" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#3a3d42"/><stop offset="1" stop-color="#16181b"/></linearGradient></defs><rect x="2" y="2" width="60" height="60" rx="14" fill="url(#it)"/><rect x="2.5" y="2.5" width="59" height="59" rx="13.5" fill="none" stroke="#ffffff1f"/><path d="M15 22l9 8-9 8" fill="none" stroke="#9fe08c" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><rect x="28" y="36" width="16" height="4" rx="2" fill="#9fe08c"/></svg>',
+    "Browser": '<svg viewBox="0 0 64 64" aria-hidden="true"><defs><linearGradient id="ib" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#7cc4ff"/><stop offset="1" stop-color="#2a6fd6"/></linearGradient></defs><rect x="2" y="2" width="60" height="60" rx="14" fill="url(#ib)"/><circle cx="32" cy="32" r="17" fill="none" stroke="#fff" stroke-width="3"/><ellipse cx="32" cy="32" rx="7" ry="17" fill="none" stroke="#fff" stroke-width="2.4"/><path d="M15 32h34M18 23h28M18 41h28" stroke="#fff" stroke-width="2.4"/></svg>',
+    "Editor": '<svg viewBox="0 0 64 64" aria-hidden="true"><defs><linearGradient id="ie" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#3b4a6b"/><stop offset="1" stop-color="#1c2335"/></linearGradient></defs><rect x="2" y="2" width="60" height="60" rx="14" fill="url(#ie)"/><path d="M24 22l-10 10 10 10M40 22l10 10-10 10" fill="none" stroke="#8ab4ff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><path d="M35 18l-6 28" stroke="#ffb86b" stroke-width="3.6" stroke-linecap="round"/></svg>',
+    "Notes": '<svg viewBox="0 0 64 64" aria-hidden="true"><defs><linearGradient id="in" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffe08a"/><stop offset="1" stop-color="#f4b740"/></linearGradient></defs><rect x="2" y="2" width="60" height="60" rx="14" fill="#fffaf0"/><path d="M2 16a14 14 0 0 1 14-14h32a14 14 0 0 1 14 14v4H2z" fill="url(#in)"/><path d="M13 32h38M13 41h38M13 50h26" stroke="#d9cfbd" stroke-width="2.4" stroke-linecap="round"/></svg>',
+    "Files": '<svg viewBox="0 0 64 64" aria-hidden="true"><defs><linearGradient id="if" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#8fd0ff"/><stop offset="1" stop-color="#3b8be8"/></linearGradient></defs><path d="M6 18a6 6 0 0 1 6-6h13l6 6h21a6 6 0 0 1 6 6v24a6 6 0 0 1-6 6H12a6 6 0 0 1-6-6z" fill="#2f78d4"/><rect x="6" y="22" width="52" height="32" rx="6" fill="url(#if)"/></svg>',
+    "deck": DECK_MARK,
+}
+
+
+def dock() -> str:
+    items = []
+    for name, svg in ICONS.items():
+        cls = " on" if name == "Terminal" else ""
+        sep = '<i class="dsep" aria-hidden="true"></i>' if name == "deck" else ""
+        items.append(f'{sep}<span class="di{cls}" data-app="{name}" title="{name}">{svg}<b aria-hidden="true"></b></span>')
+    return '<div class="dock" aria-hidden="true">' + "".join(items) + "</div>"
+
+
+MENU = """<div class="mb" aria-hidden="true">
+ <span class="mb-l"><svg viewBox="0 0 16 16"><path d="M8 1.5l5.6 3.25v6.5L8 14.5l-5.6-3.25v-6.5z" fill="none" stroke="currentColor" stroke-width="1.5"/><circle cx="8" cy="8" r="2" fill="currentColor"/></svg><b id="mb-app">Terminal</b><span>File</span><span>Edit</span><span>View</span><span>Window</span><span>Help</span></span>
+ <span class="mb-r"><svg viewBox="0 0 18 14"><path d="M1 5a12 12 0 0 1 16 0M4 8a7.5 7.5 0 0 1 10 0M7 11a3 3 0 0 1 4 0" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg><svg viewBox="0 0 26 12"><rect x=".75" y=".75" width="21.5" height="10.5" rx="3" fill="none" stroke="currentColor" stroke-width="1.2" opacity=".7"/><rect x="2.5" y="2.5" width="15" height="7" rx="1.6" fill="currentColor"/><rect x="23.4" y="4" width="1.8" height="4" rx=".9" fill="currentColor" opacity=".7"/></svg><span id="mb-clock">Thu 10:42</span></span>
+</div>"""
+
+TERM = """<section class="win tw" id="tw" aria-label="The agent's terminal">
+ <div class="wbar"><span class="lights" aria-hidden="true"><i></i><i></i><i></i></span><span class="wt">agent — ~/shop-api</span></div>
+ <div class="tm-tx" id="tm-tx">
+  <pre class="tu" data-ty="p"><span>›</span> users keep getting logged out at random. fix it</pre>
+  <pre class="ta" data-out="a"><span>⏺</span> Read <b>src/auth/session.ts</b></pre>
+  <pre class="ta" data-out="a"><span>⏺</span> Read <b>src/auth/login.ts</b></pre>
+  <pre class="ta" data-out="a"><span>⏺</span> Ran <b>npm test</b> <em>· 42 passed</em></pre>
+  <pre class="tsum" data-out="a" id="tm-sum"><span>⏺</span> <b>Done.</b> Users were getting logged out randomly. Fixed by extending the session refresh. Tests pass.</pre>
+  <div class="tm-deck" id="tm-deck">
+   <pre class="ta" data-out="d"><span>⏺</span> Writing it up as a deck, so you can check it on the code.</pre>
+   <pre class="tc" data-ty="d"><span class="tp">$</span> <b>deck new</b> --title <s>"Fix random logouts"</s> --total 4</pre>
+   <pre class="to" data-out="d">~/.deck/decks/d-1793261705-4127.deck</pre>
+   <pre class="tc" data-ty="d" data-bar="0"><span class="tp">$</span> <b>deck open</b> $deck   <u># in the background: the bar goes up</u></pre>
+   <pre class="tc" data-ty="d" data-bar="1"><span class="tp">$</span> <b>deck group</b> $deck \\
     --title <s>"The refresh now extends the session's lifetime"</s> \\
     --confidence high \\
     --say <s>'Users who leave a tab for an hour come back signed out. [point 9-11 refresh] …'</s> \\
     --ref <s>'src/auth/session.ts:7-15 [refresh] where a session is kept alive'</s> \\
     --ref <s>'src/auth/session.ts:5 [ttl] a proposed change'</s> \\
     --after <s>'export const SESSION_TTL = 30 * 24 * 60 * 60;  // 30 days'</s></pre>
-    <pre class="tc" data-ty data-bar="2"><span class="tp">$</span> <b>deck group</b> $deck --title <s>'A refresh is what keeps you signed in'</s> --diagram flow.json …</pre>
-    <pre class="tc" data-ty data-bar="3"><span class="tp">$</span> <b>deck group</b> $deck --title <s>'Now only logout signs you out'</s> --page life.html …</pre>
-    <pre class="tc" data-ty data-bar="4"><span class="tp">$</span> <b>deck group</b> $deck --title <s>'Tested: a refresh lands thirty days out'</s> \\
+   <pre class="tc" data-ty="d" data-bar="2"><span class="tp">$</span> <b>deck group</b> $deck --title <s>'A refresh is what keeps you signed in'</s> --diagram flow.json …</pre>
+   <pre class="tc" data-ty="d" data-bar="3"><span class="tp">$</span> <b>deck group</b> $deck --title <s>'Now only logout signs you out'</s> --page life.html …</pre>
+   <pre class="tc" data-ty="d" data-bar="4"><span class="tp">$</span> <b>deck group</b> $deck --title <s>'Tested: a refresh lands thirty days out'</s> \\
     --values <s>'[{"line":12,"at":"expiresAt","is":"2026-11-28T10:14:07Z","lit":true}, …]'</s> \\
     --ask <s>'Does logout still kill the session?'</s> …</pre>
-    <pre class="tc" data-ty data-bar="seal"><span class="tp">$</span> <b>deck seal</b> $deck</pre>
-   </div>
+   <pre class="tc" data-ty="d" data-bar="seal"><span class="tp">$</span> <b>deck seal</b> $deck</pre>
   </div>
- </div>
- <div class="pill" id="pl-bar" role="group" aria-label="deck's bar">
-  <span class="bar-brand">""" + MARK + """<span>deck</span><i aria-hidden="true"></i></span>
-  <span class="bar-said"><span class="bar-t">Fix random logouts</span><i class="bar-dot" aria-hidden="true"></i><span class="bar-c" id="bar-c">Getting deck ready… 0/4</span></span>
-  <button type="button" class="bar-open" id="bar-open">Open</button>
-  <button type="button" class="bar-x" id="bar-x" aria-label="Later"><svg viewBox="0 0 12 12" aria-hidden="true"><path d="M3 3l6 6M9 3l-6 6"/></svg></button>
  </div>
 </section>"""
 
-WIN = """<section class="sc sc-win" id="sc-win" aria-label="The deck window">
+BAR = """<div class="pill" id="pl-bar" role="group" aria-label="deck's bar">
+ <span class="bar-brand">""" + MARK + """<span>deck</span><i aria-hidden="true"></i></span>
+ <span class="bar-said"><span class="bar-t">Fix random logouts</span><i class="bar-dot" aria-hidden="true"></i><span class="bar-c" id="bar-c">Getting deck ready… 0/4</span></span>
+ <button type="button" class="bar-open" id="bar-open">Open</button>
+ <button type="button" class="bar-x" id="bar-x" aria-label="Put the deck away"><svg viewBox="0 0 12 12" aria-hidden="true"><path d="M3 3l6 6M9 3l-6 6"/></svg></button>
+</div>"""
+
+DECKWIN = """<section class="win dw" id="dw" aria-label="The deck window">
+ <div class="wbar"><span class="lights" aria-hidden="true"><i></i><i></i><i></i></span><span class="wt">deck — Fix random logouts</span></div>
  <div class="dk" id="dk" tabindex="-1" aria-label="deck: Fix random logouts"></div>
  <div class="dk-asks" id="dk-asks" role="group" aria-label="Questions to ask"></div>
  <div class="xs" id="xs" role="dialog" aria-label="Export this deck" hidden>
@@ -90,58 +183,60 @@ WIN = """<section class="sc sc-win" id="sc-win" aria-label="The deck window">
   <div class="xs-l">Layout</div>
   <div class="xs-seg"><span>Portrait</span><span class="on">Landscape</span></div>
   <div class="xs-ck"><i aria-hidden="true">✓</i>Include comments<small>Each group's comments and answers, after it.</small></div>
-  <div class="xs-b"><span class="xs-st" id="xs-st" aria-live="polite"></span><span class="xs-c">Cancel</span><button type="button" class="xs-go" id="xs-go">Export PDF</button></div>
- </div>
- <div class="pr" id="pr" hidden>
-  <div class="pr-h"><b>Fix random logouts</b> <span>#318</span><em>Changes requested</em></div>
-  <div class="pr-c">
-   <div class="pr-w"><b>you</b> requested changes · now</div>
-   <p>Keep the 1h TTL and revoke the refresh token on logout instead. The argument is in the deck.</p>
-   <div class="pr-f"><b>PDF</b><span>fix-random-logouts.pdf<small>4 groups · with comments</small></span></div>
-  </div>
-  <p class="pr-n">Nothing is downloaded here: the export is part of the recording.</p>
- </div>
-</section>"""
-
-END = """<section class="sc sc-end" id="sc-end" aria-label="That's deck">
- <div class="end">
-  <p class="end-t">That's deck.</p>
-  <p class="end-s">Your agent shows you. You take part. What ships is something you both chose.</p>
-  <div class="end-b"><a class="btn solid" href="/#install">Install deck</a><a class="btn ghost" href="https://github.com/henit-chobisa/deck">View on GitHub</a><button type="button" class="btn ghost" id="pl-replay">Replay</button></div>
+  <div class="xs-b"><span class="xs-st" id="xs-st" aria-live="polite"></span><button type="button" class="xs-c" id="xs-c">Cancel</button><button type="button" class="xs-go" id="xs-go">Export PDF</button></div>
  </div>
 </section>"""
 
 
 def rail() -> str:
-    out = []
-    for i, (label, cap) in enumerate(STEPS):
-        out.append(f'   <li><button type="button" data-go="{i}" data-cap="{cap.replace(chr(34), "&quot;")}" '
-                   f'aria-label="Step {i + 1} of {len(STEPS)}: {label}"><i></i><span>{label}</span></button></li>')
-    return "\n".join(out)
+    return "\n".join(
+        f'  <button type="button" data-go="{i}" data-cap="{cap.replace(chr(34), "&quot;")}" aria-label="Step {i + 1} of {len(STEPS)}: {label}">'
+        f'<i></i><span>{label}</span></button>' for i, (label, cap) in enumerate(STEPS))
 
 
-def story() -> str:
-    first = STEPS[0][1]
-    return f"""<div class="pl" id="pl" tabindex="-1">
- <div class="pl-top">
-  <ol class="pl-rail" id="pl-rail" aria-label="Steps">
-{rail()}
-  </ol>
-  <button type="button" class="pl-auto" id="pl-auto" aria-pressed="false"><span class="pl-ai" aria-hidden="true"></span><span class="pl-at">Play it for me</span></button>
- </div>
- <p class="pl-honest"><b>A recorded example:</b> nothing here runs a model. <span>example app, fictional code</span></p>
- <div class="pl-stage" id="pl-stage" data-step="1">
+def desk() -> str:
+    return f"""<div class="desk" id="desk" tabindex="-1" role="dialog" aria-modal="true" aria-label="deck on a desktop, a recorded example" hidden>
+{wallpaper()}
+{MENU}
+<div class="dt-file" id="dt-file" hidden><svg viewBox="0 0 48 60" aria-hidden="true"><path d="M4 4h28l12 12v40H4z" fill="#f4f1ea"/><path d="M32 4v12h12" fill="#d8d2c4"/><rect x="9" y="38" width="30" height="12" rx="2" fill="#da3633"/><text x="24" y="47.5" text-anchor="middle" font-size="9" font-weight="700" fill="#fff" font-family="system-ui,sans-serif">PDF</text></svg><span>fix-random-logouts.pdf</span></div>
 {TERM}
-{WIN}
-{END}
- </div>
- <div class="pl-foot">
-  <p class="pl-cap" id="pl-cap" aria-live="polite"><b id="pl-no">1 / {len(STEPS)}</b> <span id="pl-say">{first}</span></p>
-  <p class="pl-keys"><kbd>n</kbd> <kbd>→</kbd> next · <kbd>p</kbd> <kbd>←</kbd> back · <kbd>c</kbd> comment</p>
-  <div class="pl-nav"><button type="button" class="btn ghost" id="pl-prev">Back</button><button type="button" class="btn solid" id="pl-next">Next</button></div>
- </div>
- <noscript><p class="pl-nojs">The demo needs JavaScript. <a href="/docs/">The docs</a> show the same deck in words.</p></noscript>
+{DECKWIN}
+{BAR}
+{dock()}
+<nav class="srail" id="pl-rail" aria-label="Steps">
+{rail()}
+</nav>
+<div class="cap" id="cap">
+ <p class="cap-t" aria-live="polite"><b id="pl-no">1 / {len(STEPS)}</b> <span id="pl-say">{STEPS[0][1]}</span></p>
+ <div class="cap-b"><button type="button" class="cb" id="pl-prev">Back</button><button type="button" class="cb solid" id="pl-next">Next</button><button type="button" class="cb auto" id="pl-auto" aria-pressed="false"><span class="pl-ai" aria-hidden="true"></span><span class="pl-at">Play it for me</span></button></div>
+</div>
+<p class="dhonest"><b>A recorded example:</b> nothing here runs a model · example app, fictional code</p>
+<button type="button" class="dx" id="dx" aria-label="Leave full screen">✕</button>
+<div class="endc" id="endc" hidden>
+ <p class="end-t">That's deck.</p>
+ <p class="end-s">Your agent shows you. You take part. What ships is something you both chose.</p>
+ <div class="end-b"><a class="btn solid" href="/#install">Install deck</a><a class="btn ghost" href="{shell.REPO}">View on GitHub</a><button type="button" class="btn ghost" id="pl-replay">Replay</button></div>
+</div>
+<svg class="cursor" id="cursor" viewBox="0 0 22 26" aria-hidden="true"><path d="M3 2 L3 20 L7.5 15.8 L10.6 23 L13.6 21.7 L10.6 14.8 L16.6 14.6 Z" fill="#f7f7f5" stroke="#111" stroke-width="1.3" stroke-linejoin="round"/></svg>
 </div>"""
+
+
+INTRO = """<section class="pi" aria-labelledby="pi-h">
+ <div class="pi-head">
+  <p class="eyebrow accent">Try a full deck</p>
+  <h1 id="pi-h">Fixed the random logouts</h1>
+  <p class="pi-line">An agent's one-line fix, on a desktop like yours: it writes a deck, you open it, question it and decide. About a minute and a half.</p>
+ </div>
+ <div class="pi-frame">
+  <img class="pi-still" src="/assets/play-still.webp" srcset="/assets/play-still-800.webp 800w, /assets/play-still.webp 1440w" sizes="(max-width: 1100px) 100vw, 1200px" width="1440" height="900" alt="A desktop with the deck window open on group 4: the values each line held, the review down the side, and the questions under the window." decoding="async">
+  <button type="button" class="pi-start" id="pi-start"><span class="pi-play" aria-hidden="true"></span><span>Start</span><small>full screen</small></button>
+  <div class="pi-phone">
+   <p><b>Best on a desktop.</b> Open trydeck.dev/play on your computer to watch it full screen.</p>
+   <div class="pi-links"><a class="btn solid" href="/#install">Install deck</a><a class="btn ghost" href="REPO">View on GitHub</a></div>
+  </div>
+ </div>
+ <p class="pi-honest"><b>A recorded example:</b> nothing here runs a model, and the app in it is made up.</p>
+</section>""".replace("REPO", shell.REPO)
 
 
 def page() -> str:
@@ -181,21 +276,17 @@ def page() -> str:
 <link rel="stylesheet" href="/css/play.css">
 </head>
 <body>
-<a class="skip" href="#pl">Skip to the demo</a>
+<a class="skip" href="#main">Skip to the demo</a>
 <!-- shell:nav -->
 {shell.nav()}
 <!-- /shell:nav -->
 <main id="main">
-<header class="play-head">
- <p class="eyebrow accent">Try a full deck</p>
- <h1>Fixed the random logouts</h1>
- <p class="play-lede">An agent's one-line fix, as the deck it would write you. Ten steps, about a minute and a half, at your pace.</p>
-</header>
-{story()}
+{INTRO}
 </main>
 <!-- shell:foot -->
 {shell.FOOT}
 <!-- /shell:foot -->
+{desk()}
 <script src="/js/play-deck.js" defer></script>
 <script src="/js/play.js" defer></script>
 </body>

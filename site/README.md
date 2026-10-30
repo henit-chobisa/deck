@@ -12,11 +12,15 @@ pages between `<!-- shell: -->` markers (`--check` fails on a stale page).
 
 - The home page adds `css/landing.css`, `js/landing.js`, and two images in
   `assets/`: `deck-live.webp`, the real deck window in the hero, and `henit.jpg`.
-- `/play/` is a recorded deck in ten steps, from an agent's summary to the
-  reader's decision: `python3 site/tools/play.py` writes the page,
-  `js/play-deck.js` is the deck (groups, refs, values, recorded answers), and
-  `js/play.js` draws its window the way deck draws it and plays the steps. The
-  app in it is made up, and the page says so on every step.
+- `/play/` opens on an intro; Start goes full screen (or fills the window
+  when fullscreen is refused) onto a desktop drawn for it, where a recorded
+  deck plays in ten steps: the agent's summary in a terminal, deck's real
+  commands, the bar, the deck window, the question, the decision. Phones and
+  windows up to 1100px get a still of it. `python3 site/tools/play.py` writes
+  the page (the wallpaper, menu bar and dock are drawn there), `js/play-deck.js`
+  is the deck, and `js/play.js` draws its window the way deck draws it and
+  plays the steps. `tools/play-still.cjs` captures the still. The app in it is
+  made up, and the page says so on every step.
 - The docs, the guides and the telemetry page add `css/docs.css` (and
   `css/guide.css`); the changelog adds `css/changelog.css` and `js/changelog.js`.
 - The guides are written in `tools/guides.py`; `python3 site/tools/build.py`
@@ -58,7 +62,7 @@ WebKit and Chromium, and reduced motion: the links, the pinned steps of
 `#x3` and `#x4` by Space and Page Down (by their buttons on phones and with
 reduced motion), the `#x5` features by keyboard, the install tabs and copy
 buttons, horizontal overflow, browser errors, and navigation on the inner
-pages, and every step of `/play/` by keys, by clicks and by taps. Set `SCREENSHOTS` to an existing directory to save captures. WebKit
+pages, and every step of `/play/`'s desktop by keys and by clicks, in and out of full screen. Set `SCREENSHOTS` to an existing directory to save captures. WebKit
 checks do not replace testing Safari on a physical iPhone.
 
 ## What is real

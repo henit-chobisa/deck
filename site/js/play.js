@@ -1,4 +1,4 @@
-// /play/: a recorded deck, played in ten steps. The window is drawn the way deck draws it
+// /play/: a recorded deck, played full screen on a drawn desktop. The window is drawn the way deck draws it
 // (crates/app: view.rs, pane.rs, prose.rs, and the HTML export's measurements in
 // crates/render): the band with its number, titles and narration, the review and the
 // conversation down the side, panes of whole files with their range lit, a proposed change
@@ -9,8 +9,8 @@
   'use strict'
   const D = window.PLAY_DECK
   const $ = (id) => document.getElementById(id)
-  const pl = $('pl'), stage = $('pl-stage'), dk = $('dk')
-  if (!D || !pl || !stage || !dk) return
+  const desk = $('desk'), dk = $('dk'), start = $('pi-start')
+  if (!D || !desk || !dk || !start) return
   const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches
   const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]))
   const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e }
@@ -394,7 +394,7 @@
       if (focus) setTimeout(() => area.focus({ preventScroll: true }), 30)
     } else {
       area.value = ''; area.placeholder = 'Write a comment · c'
-      if (document.activeElement === area) { area.blur(); pl.focus({ preventScroll: true }) }
+      if (document.activeElement === area) { area.blur(); desk.focus({ preventScroll: true }) }
     }
   }
   function keep(text) {
@@ -529,212 +529,292 @@
     return { to: (k) => { run++; to(k) }, again: play, play }
   }
 
-  // ------------------------------------------------------------------ story
+  // ------------------------------------------------------------------ the desktop
+  // Ten steps on a desktop: the terminal, deck's commands, the bar, the deck window, the answer,
+  // the decision, the end. A pointer acts for the reader when they let it (Play it for me, or
+  // Next); everything it does, the reader can do by hand.
   const N = 10
-  const railBtns = [...document.querySelectorAll('#pl-rail button')]
-  const scenes = { term: $('sc-term'), win: $('sc-win'), end: $('sc-end') }
-  const sceneOf = (i) => (i <= 2 ? 'term' : i <= 8 ? 'win' : 'end')
-  const bar = $('pl-bar'), barC = $('bar-c'), openBtn = $('bar-open'), tx = $('tm-tx')
+  const E = 'cubic-bezier(.45,0,.55,1)'
+  const railBtns = [...desk.querySelectorAll('#pl-rail button')]
+  const tw = $('tw'), dw = $('dw'), bar = $('pl-bar'), barC = $('bar-c'), openBtn = $('bar-open'), tx = $('tm-tx')
+  const cursor = $('cursor'), endc = $('endc'), file = $('dt-file'), mbApp = $('mb-app')
   const auto = $('pl-auto'), nextBtn = $('pl-next'), prevBtn = $('pl-prev')
-  const xs = $('xs'), pr = $('pr'), xsGo = $('xs-go'), xsSt = $('xs-st')
-  const phone = () => matchMedia('(max-width: 980px)').matches
-  let cur = -1, pending = null, playing = false, typed = false, decided = false, answeredYet = false, busyNow = false
-  const visited = new Set()
+  const xs = $('xs'), xsGo = $('xs-go'), xsSt = $('xs-st')
+  const deckDot = desk.querySelector('.di[data-app="deck"]')
+  let cur = -1, pending = null, playing = false, decided = false, answeredYet = false, busyNow = false, seq = 0, shown = false
+  const typed = { p: false, d: false }
+  const wait = (ms) => new Promise((r) => later(r, reduce ? 0 : ms))
 
   function track(i, how) {
     try { if (window.posthog && window.posthog.capture) window.posthog.capture('play step', { step: i + 1, name: railBtns[i].textContent, how }) } catch (_) {}
   }
 
-  // ---- the bar, as pill.rs: the title, "Getting deck ready… n/total" while groups arrive,
-  // then how many there are; Open and the cross, and no keys.
-  function barTo(n) {
+  // ---- the bar, as pill.rs: the title, "Getting deck ready… n/total" while groups arrive, then the
+  // count; Open and the cross, and no keys
+  function barTo(n, said) {
     if (n === null) { bar.classList.remove('up'); return }
     bar.classList.add('up')
     bar.classList.toggle('writing', n !== 'seal')
-    barC.textContent = n === 'seal' ? D.groups.length + ' groups' : 'Getting deck ready… ' + n + '/' + D.groups.length
+    barC.textContent = n === 'seal' ? D.groups.length + ' groups' + (said ? ' · ' + said + (said === 1 ? ' comment' : ' comments') : '') : 'Getting deck ready… ' + n + '/' + D.groups.length
   }
 
-  // ---- typing: every text node of a command is emptied and filled again a few characters at
-  // a time, so the colours stay; an output line appears when its command is done.
-  const cmds = [...document.querySelectorAll('#tm-deck pre')]
-  function nodesOf(pre) { const w = document.createTreeWalker(pre, NodeFilter.SHOW_TEXT); const out = []; while (w.nextNode()) out.push(w.currentNode); return out }
-  cmds.forEach((pre) => { pre._nodes = nodesOf(pre); pre._full = pre._nodes.map((t) => t.data) })
-  function fillAll() {
-    cmds.forEach((pre) => { pre._nodes.forEach((t, k) => { t.data = pre._full[k] }); pre.classList.add('shown'); pre.classList.remove('typing') })
-    barTo('seal'); typed = true; tx.scrollTop = tx.scrollHeight
+  // ---- the terminal: lines typed a few characters at a time, their colours kept; outputs appear whole
+  const lines = [...tx.querySelectorAll('pre')]
+  lines.forEach((pre) => { const w = document.createTreeWalker(pre, NodeFilter.SHOW_TEXT); pre._n = []; while (w.nextNode()) pre._n.push(w.currentNode); pre._f = pre._n.map((t) => t.data) })
+  const part = (k) => lines.filter((p) => (p.dataset.ty || p.dataset.out) === k)
+  const show = (pre, on) => { pre._n.forEach((t, j) => { t.data = on ? pre._f[j] : '' }); pre.classList.toggle('shown', on); pre.classList.remove('typing') }
+  function fill(keys) {
+    lines.forEach((pre) => show(pre, keys.includes(pre.dataset.ty || pre.dataset.out)))
+    if (keys.includes('d')) { barTo('seal'); typed.d = true }
+    if (keys.includes('a')) typed.p = true
+    tx.scrollTop = tx.scrollHeight
   }
-  function type(done) {
-    cmds.forEach((pre) => { pre._nodes.forEach((t) => { t.data = '' }); pre.classList.remove('shown') })
-    barTo(null)
-    let c = 0, k = 0, at = 0
-    const tick = () => {
-      if (c >= cmds.length) { typed = true; pending = null; done(); return }
-      const pre = cmds[c]
-      pre.classList.add('shown')
-      if (pre.hasAttribute('data-out')) { pre._nodes.forEach((t, j) => { t.data = pre._full[j] }); c++; k = 0; at = 0; tx.scrollTop = tx.scrollHeight; later(tick, 260); return }
-      pre.classList.add('typing')
-      const full = pre._full[k]
-      at = Math.min(full.length, at + 3)
-      pre._nodes[k].data = full.slice(0, at)
-      if (at >= full.length) { k++; at = 0 }
-      tx.scrollTop = tx.scrollHeight
-      if (k >= pre._nodes.length) {
-        pre.classList.remove('typing')
-        if (pre.dataset.bar) barTo(pre.dataset.bar === 'seal' ? 'seal' : +pre.dataset.bar)
-        c++; k = 0; later(tick, 420)
-      } else later(tick, 24)
+  async function typeLine(pre, my, cps) {
+    pre.classList.add('shown', 'typing')
+    for (let k = 0; k < pre._n.length; k++) {
+      const full = pre._f[k]
+      for (let at = 0; at < full.length;) {
+        if (my !== seq) return false
+        at = Math.min(full.length, at + cps); pre._n[k].data = full.slice(0, at); tx.scrollTop = tx.scrollHeight
+        await wait(cps > 2 ? 24 : 38)
+      }
     }
-    pending = () => { hush(); fillAll(); pending = null; done() }
-    later(tick, 500)
+    pre.classList.remove('typing')
+    return my === seq
   }
 
-  // ---- the window's walk: each point a beat apart, as deck walk reads it
-  function walk(done) {
-    const starts = pieceStarts()
-    if (!starts.length || reduce) { if (starts.length) pickSentence(starts[0][1], starts[0][0]); done(); return }
-    starts.forEach(([piece, sentence], i) => later(() => pickSentence(sentence, piece), 600 + i * 2300))
-    later(done, 600 + starts.length * 2300)
+  // ---- the pointer: it travels on a gentle curve, eased, and presses what it lands on
+  let px = 0, py = 0, raf = 0
+  function place(x, y) { px = x; py = y; cursor.style.transform = `translate(${x}px,${y}px)` }
+  function aim(target) { const r = target.getBoundingClientRect(); return [r.left + Math.min(r.width * 0.55, 60), r.top + r.height * 0.55] }
+  function glide(target, my) {
+    return new Promise((done) => {
+      if (my !== seq) return done(false)
+      const [x1, y1] = aim(target)
+      cursor.classList.add('on')
+      if (reduce) { place(x1, y1); return done(true) }
+      const x0 = px, y0 = py, d = Math.hypot(x1 - x0, y1 - y0)
+      const bend = Math.min(120, d * 0.18), cx = (x0 + x1) / 2 - ((y1 - y0) / (d || 1)) * bend, cy = (y0 + y1) / 2 + ((x1 - x0) / (d || 1)) * bend
+      const ms = Math.min(1100, 420 + d * 0.45), t0 = performance.now()
+      cancelAnimationFrame(raf)
+      const ease = (t) => (t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2)
+      const step = (now) => {
+        if (my !== seq) return done(false)
+        const t = Math.min(1, (now - t0) / ms), e = ease(t), u = 1 - e
+        place(u * u * x0 + 2 * u * e * cx + e * e * x1, u * u * y0 + 2 * u * e * cy + e * e * y1)
+        if (t < 1) raf = requestAnimationFrame(step); else done(true)
+      }
+      raf = requestAnimationFrame(step)
+    })
+  }
+  async function press(target, my, act) {
+    if (!(await glide(target, my))) return false
+    await wait(160)
+    if (my !== seq) return false
+    cursor.classList.add('down'); target.classList.add('pressed')
+    await wait(140)
+    cursor.classList.remove('down'); target.classList.remove('pressed')
+    if (my !== seq) return false
+    if (act) act(); else target.click()
+    return true
+  }
+  // a key pressed for the reader, shown as a keycap by the pointer
+  function keycap(k) { const c = el('kbd', 'keycap', k); c.style.transform = `translate(${px + 18}px,${py + 22}px)`; desk.append(c); later(() => c.remove(), reduce ? 600 : 900) }
+
+  // ---- the deck window opens out of the bar, and closes back into it
+  function fromBar() {
+    const b = bar.getBoundingClientRect(), w = dw.getBoundingClientRect()
+    return `translate(${(b.left + b.width / 2 - (w.left + w.width / 2)).toFixed(0)}px,${(b.top + b.height / 2 - (w.top + w.height / 2)).toFixed(0)}px) scale(${Math.max(0.12, b.width / w.width).toFixed(3)})`
+  }
+  function grow(out) {
+    if (reduce || !dw.animate) return
+    const k = [{ transform: fromBar(), opacity: 0 }, { transform: 'none', opacity: 1 }]
+    dw.animate(out ? k.reverse() : k, { duration: 760, easing: E, fill: out ? 'forwards' : 'none' })
   }
 
-  // ---- step 9: the reader's decision, a comment on the line, the export and the pull request
-  const DECISION = 'Keep 1h TTL, add revocation on logout instead'
   function holdLine(n) {
     const ix = G.panes.findIndex((P) => P.code && P.ref.file === 'src/auth/session.ts')
-    if (ix < 0) return
+    if (ix < 0) return null
     const i = G.panes[ix].rows.findIndex((r) => r.n === n && r.kind !== 'fresh')
-    st.held = { a: i, b: i }; st.heldPane = ix; showHeld()
     G.panes[ix].code.scrollTop = Math.max(0, G.panes[ix].rowEls[i].offsetTop - 2 * ROW)
+    return { ix, i, row: G.panes[ix].rowEls[i] }
   }
-  function exported(then) {
-    xsGo.classList.add('press'); xsSt.textContent = 'Laying out the pages…'
-    later(() => { xsGo.classList.remove('press'); xsSt.textContent = 'Done.'; later(() => { xs.hidden = true; pr.hidden = false; decided = true; pending = null; if (then) then() }, reduce ? 0 : 700) }, reduce ? 0 : 900)
+  const holdIt = (h) => { st.held = { a: h.i, b: h.i }; st.heldPane = h.ix; showHeld() }
+
+  // ---- the walk: each point a beat apart, as deck walk reads it
+  async function walk(my) {
+    const starts = pieceStarts()
+    if (!starts.length) return
+    if (reduce) { pickSentence(starts[0][1], starts[0][0]); return }
+    for (const [piece, sentence] of starts) { await wait(600); if (my !== seq) return; pickSentence(sentence, piece); await wait(1700) }
   }
-  function decide(done, instant) {
-    if (decided) { pr.hidden = false; done(); return }
-    xs.hidden = true; pr.hidden = true; xsSt.textContent = ''
-    holdLine(5); composeOpen(true, false)
+
+  // ---- step 8: ask, by holding a line, c, and the question typed
+  const QUESTION = 'Does logout still kill the session?'
+  async function askIt(my) {
+    if (answeredYet) return
+    const h = holdLine(12)
+    pending = () => { pending = null; seq++; composeOpen(false); if (h) holdIt(h); if (!answeredYet && !busyNow) ask(QUESTION, QUESTION, 'session.ts:12'); if (st.replyNow) st.replyNow() }
+    if (reduce) { pending(); return }
+    if (h && !(await press(h.row, my, () => holdIt(h)))) return
+    keycap('c'); composeOpen(true, false)
+    for (let at = 1; at <= QUESTION.length; at++) { if (my !== seq) return; area.value = QUESTION.slice(0, at); await wait(42) }
+    await wait(300)
+    if (my !== seq) return
+    pending = null
+    await press(compose.querySelector('.now'), my, () => finish(true))
+  }
+
+  // ---- step 9: decide, in a comment on the line; export it
+  const DECISION = 'Keep 1h TTL, add revocation on logout instead'
+  function done9() {
+    xs.hidden = true; xsSt.textContent = ''; decided = true; pending = null
+    file.hidden = false
+  }
+  async function decide(my, instant) {
+    if (decided) { done9(); return }
+    xs.hidden = true; file.hidden = true
     const finishAll = () => {
-      hush()
-      if (!st.review.some((c) => c.text === DECISION)) { holdLine(5); area.value = DECISION; keep(DECISION) }
-      xs.hidden = true; pr.hidden = false; xsSt.textContent = 'Done.'; decided = true; pending = null; done()
+      seq++
+      if (!st.review.some((c) => c.text === DECISION)) { const h = holdLine(5); if (h) holdIt(h); area.value = DECISION; keep(DECISION) }
+      done9()
     }
     pending = finishAll
     if (reduce || instant) { finishAll(); return }
-    let at = 0
-    const tick = () => {
-      at++; area.value = DECISION.slice(0, at)
-      if (at < DECISION.length) { later(tick, 34); return }
-      later(() => { keep(DECISION); later(() => { xs.hidden = false; later(() => exported(done), 900) }, 700) }, 500)
-    }
-    later(tick, 700)
+    const h = holdLine(5)
+    if (h && !(await press(h.row, my, () => holdIt(h)))) return
+    keycap('c'); composeOpen(true, false)
+    for (let at = 1; at <= DECISION.length; at++) { if (my !== seq) return; area.value = DECISION.slice(0, at); await wait(34) }
+    await wait(300)
+    if (!(await press(compose.querySelector('.later'), my, () => keep(DECISION)))) return
+    await wait(500)
+    if (!(await press(dk.querySelector('.dk-exp'), my, () => { xs.hidden = false }))) return
+    await wait(500)
+    if (!(await press(xsGo, my, () => { xsSt.textContent = 'Laying out the pages…' }))) return
+    await wait(900)
+    if (my !== seq) return
+    xsSt.textContent = 'Done.'
+    await wait(600)
+    if (my !== seq) return
+    done9()
   }
 
   // ---- one step
-  const DWELL = [4200, 1800, 2600, 2400, 2800, 2800, 3400, 5500, 3200]
+  const DWELL = [2600, 1800, 2400, 2000, 2400, 2600, 3000, 5200, 3000]
+  async function run(i, forward, my) {
+    if (i === 0) {
+      if (forward && !typed.p && !reduce) {
+        fill([])
+        pending = () => { pending = null; seq++; fill(['p', 'a']) }
+        await wait(500)
+        if (!(await typeLine(part('p')[0], my, 1))) return
+        for (const pre of part('a')) { await wait(pre.id === 'tm-sum' ? 900 : 520); if (my !== seq) return; show(pre, true); tx.scrollTop = tx.scrollHeight }
+        typed.p = true; pending = null
+      } else fill(['p', 'a'])
+      await glide($('tm-sum'), my)
+    } else if (i === 1) {
+      if (forward && !typed.d && !reduce) {
+        fill(['p', 'a'])
+        pending = () => { pending = null; seq++; fill(['p', 'a', 'd']) }
+        for (const pre of part('d')) {
+          if (pre.dataset.out) { await wait(300); if (my !== seq) return; show(pre, true); tx.scrollTop = tx.scrollHeight; continue }
+          await wait(420)
+          if (!(await typeLine(pre, my, 3))) return
+          if (pre.dataset.bar) barTo(pre.dataset.bar === 'seal' ? 'seal' : +pre.dataset.bar)
+        }
+        typed.d = true; pending = null
+      } else fill(['p', 'a', 'd'])
+    } else if (i === 2) {
+      fill(['p', 'a', 'd'])
+      if (playing) { await wait(DWELL[2]); if (await press(openBtn, my, () => {})) go(3, 'auto'); return }
+    } else if (i <= 6) await walk(my)
+    else if (i === 7) {
+      if (answeredYet) { const S = G.panes.find((x) => x.ref.name === 'stolen'); if (S) S.page.to('end') }
+      else if (playing) { await wait(1200); await askIt(my); return }
+    } else if (i === 8) await decide(my, !forward)
+    if (my === seq) ready()
+  }
   function ready() {
     if (!playing || cur >= N - 1) { if (cur >= N - 1) setAuto(false); return }
-    if (cur === 2) { later(() => { openBtn.classList.add('press'); later(() => { openBtn.classList.remove('press'); go(3, 'auto') }, 380) }, DWELL[2]); return }
-    if (cur === 7 && !answeredYet) { later(askTyped, 1400); return }
-    later(() => go(cur + 1, 'auto'), DWELL[cur])
-  }
-  function askTyped() {
-    const Q = 'Does logout still kill the session?'
-    holdLine(12); composeOpen(true, false)
-    let at = 0
-    pending = () => { hush(); area.value = Q; pending = null; finish(true); if (st.replyNow) st.replyNow() }
-    if (reduce) { pending(); return }
-    const tick = () => { at++; area.value = Q.slice(0, at); if (at < Q.length) later(tick, 40); else later(() => { pending = null; finish(true) }, 400) }
-    later(tick, 300)
+    const my = seq
+    later(() => { if (my === seq) go(cur + 1, 'auto') }, DWELL[cur])
   }
 
   function render(i, how) {
     const forward = how !== 'rail' && i === cur + 1
     if (st.replyNow) st.replyNow()
-    hush(); pending = null
+    hush(); pending = null; const my = ++seq
     // only what has happened by step i: later steps' questions, answers, panes and comments go
     chat.querySelectorAll('.dk-msg').forEach((m) => { if (+m.dataset.step > i) m.remove() })
     if (!chat.querySelector('.dk-msg, .dk-empty')) chat.innerHTML = '<p class="dk-empty">The floor is yours</p>'
     st.review = st.review.filter((c) => c.step <= i)
     if (i < 7) { answeredYet = false; st.brought = false; st.asked.clear() }
-    if (i < 8) decided = false
-    // before the window opens, it holds nothing either (it is drawn again when it opens)
-    if (G && i < 3) { open(0); st.seen.clear() }
+    if (i < 8) { decided = false; file.hidden = true }
+    if (st.composing) composeOpen(false)
     const from = cur
     cur = i
-    stage.dataset.step = String(i + 1)
-    for (const [k, s] of Object.entries(scenes)) { const on = sceneOf(i) === k; s.classList.toggle('on', on); s.inert = !on; s.setAttribute('aria-hidden', String(!on)) }
-    railBtns.forEach((b, k) => { b.toggleAttribute('aria-current', k === i); if (k === i) b.setAttribute('aria-current', 'step'); b.classList.toggle('done', k < i) })
+    desk.dataset.step = String(i + 1)
+    railBtns.forEach((b, k) => { if (k === i) b.setAttribute('aria-current', 'step'); else b.removeAttribute('aria-current'); b.classList.toggle('done', k < i) })
     $('pl-no').textContent = i + 1 + ' / ' + N
     $('pl-say').innerHTML = railBtns[i].dataset.cap
     prevBtn.disabled = i === 0; nextBtn.disabled = i === N - 1
-    if (document.activeElement && document.activeElement.closest('[inert]')) pl.focus({ preventScroll: true })
-    const first = !visited.has(i); visited.add(i)
-    scenes.term.classList.toggle('s1', i === 0); scenes.term.classList.toggle('s3', i === 2)
+    const inWin = i >= 3 && i <= 8
+    mbApp.textContent = i <= 2 ? 'Terminal' : inWin ? 'deck' : 'Desktop'
+    deckDot.classList.toggle('on', inWin)
+    tw.classList.toggle('on', i <= 2); tw.classList.toggle('back', i === 2)
+    endc.hidden = i !== 9; xs.hidden = true
     bar.classList.remove('gone'); const gone = $('bar-gone'); if (gone) gone.hidden = true
-    scenes.win.classList.toggle('opening', from === 2 && i === 3 && !reduce)
-    if (i === 0) { barTo(null); ready() }
-    else if (i === 1) { if (forward && first && !typed && !reduce) type(ready); else { fillAll(); ready() } }
-    else if (i === 2) { fillAll(); ready() }
-    else if (i <= 8) {
+    if (i === 0) barTo(null)
+    if (i >= 2 && !inWin) barTo('seal', i === 9 ? st.review.length : 0)
+    if (inWin) {
+      bar.classList.remove('up')
       if (!st.opened) st.opened = Date.now()
       open(Math.min(i - 3, 3))
-      xs.hidden = true; pr.hidden = i !== 8 || !decided
       asks.classList.toggle('invite', i === 7 && !answeredYet)
-      if (i === 7) { if (answeredYet) { const S = G.panes.find((x) => x.ref.name === 'stolen'); if (S) S.page.to('end'); ready() } else ready() }
-      else if (i === 8) decide(ready, !forward)
-      else walk(ready)
-    } else ready()
-    // One frame a screen: when the step does not fit where the page is, bring the demo up under the nav.
-    if (how !== 'load') {
-      const navh = document.querySelector('.nav').getBoundingClientRect().bottom
-      const r = stage.getBoundingClientRect(), top = pl.getBoundingClientRect().top
-      if (top < navh - 12 || (phone() ? r.top > innerHeight * 0.5 : r.bottom > innerHeight + 1)) pl.scrollIntoView({ block: 'start', behavior: reduce ? 'auto' : 'smooth' })
+      if (!shown) { shown = true; dw.classList.add('on'); if (from === 2 && forward) grow(false) }
+    } else if (shown) {
+      shown = false
+      if (i === 9 && from === 8 && !reduce && dw.animate) { grow(true); later(() => { dw.classList.remove('on'); dw.getAnimations().forEach((a) => a.cancel()) }, 760) } else dw.classList.remove('on')
     }
+    if (i >= 3 && i <= 6) cursor.classList.remove('on')
+    if (document.activeElement && document.activeElement.closest('[inert], [hidden]')) desk.focus({ preventScroll: true })
     if (how !== 'load') track(i, how)
+    run(i, forward, my)
   }
-  function go(i, how) { if (i < 0 || i >= N) return; render(i, how) }
+  function go(i, how) { if (i >= 0 && i < N) render(i, how) }
   function next(how) {
     if (busyNow) { if (st.replyNow) st.replyNow(); return }
     if (pending) { pending(); return }
-    if (cur === 2) { openBtn.focus({ preventScroll: true }); openBtn.classList.remove('pulse'); void openBtn.offsetWidth; openBtn.classList.add('pulse'); say2('Open is yours to press.'); return }
-    if (cur === 7 && !answeredYet) { askTyped(); return }
+    if (cur === 2) { openBtn.focus({ preventScroll: true }); openBtn.classList.remove('pulse'); void openBtn.offsetWidth; openBtn.classList.add('pulse'); return }
+    if (cur === 7 && !answeredYet) { askIt(seq); return }
     go(cur + 1, how)
   }
   function prev(how) { if (cur > 0) go(cur - 1, how) }
-  function say2(text) { $('pl-say').textContent = text; later(() => { if (cur >= 0) $('pl-say').innerHTML = railBtns[cur].dataset.cap }, 2600) }
 
-  // ---- play it for me
+  // ---- play it for me: any hand pauses it, except the one pressing it
   function setAuto(on) {
     playing = on
     auto.setAttribute('aria-pressed', String(on))
     auto.querySelector('.pl-at').textContent = on ? 'Pause' : cur > 0 && cur < N - 1 ? 'Resume' : 'Play it for me'
   }
   auto.addEventListener('click', () => {
-    if (playing) { setAuto(false); hush(); return }
+    if (playing) { setAuto(false); hush(); seq++; return }
     setAuto(true)
-    if (cur >= N - 1) { reset(); go(0, 'auto') } else if (!pending) ready()
+    if (cur >= N - 1) { reset(); go(0, 'auto') } else go(cur, 'auto')
   })
-  // Any hand pauses it, except the one pressing Play it for me itself (a click, Enter or Space on it).
-  const pause = (e) => { if (playing && !(auto.contains(e.target) && (e.type !== 'keydown' || e.key === 'Enter' || e.key === ' '))) { setAuto(false); hush() } }
-  for (const t of ['pointerdown', 'keydown', 'wheel', 'touchstart']) document.addEventListener(t, pause, { capture: true, passive: true })
-
-  function reset() {
-    st.review = []; st.asked.clear(); st.brought = false; st.seen.clear(); st.opened = 0; st.held = null
-    chat.innerHTML = '<p class="dk-empty">The floor is yours</p>'
-    typed = decided = answeredYet = false; visited.clear(); cur = -1
-    pr.hidden = true; xs.hidden = true
-  }
+  const pause = (e) => { if (playing && !(auto.contains(e.target) && (e.type !== 'keydown' || e.key === 'Enter' || e.key === ' '))) { setAuto(false); hush(); seq++ } }
+  for (const t of ['pointerdown', 'keydown', 'wheel']) desk.addEventListener(t, pause, { capture: true, passive: true })
   const story = {
-    touch() { if (playing) { setAuto(false); hush() } },
+    touch() { if (playing) { setAuto(false); hush(); seq++ } },
     busy(on) { busyNow = on },
-    answered() { answeredYet = true; asks.classList.remove('invite'); if (cur === 7) ready() },
+    answered() { answeredYet = true; asks.classList.remove('invite'); if (cur === 7 && playing) ready() },
   }
 
-  // ---- hands: the buttons, the rail, the bar, the window's own controls
+  // ---- hands: the controls, the rail, the bar, the window's own buttons
   nextBtn.addEventListener('click', () => next('next'))
   prevBtn.addEventListener('click', () => prev('back'))
   railBtns.forEach((b, k) => b.addEventListener('click', () => go(k, 'rail')))
-  openBtn.addEventListener('click', () => { if (cur === 2 || cur === 1) go(3, 'open') })
+  openBtn.addEventListener('click', () => { if (cur === 1 || cur === 2 || cur === 9) go(3, 'open') })
   $('bar-x').addEventListener('click', () => {
     bar.classList.add('gone')
     let note = $('bar-gone')
@@ -743,11 +823,11 @@
       note.append('Put away for good: the cross takes the deck off the bar. ')
       const back = el('button', 'bar-back', 'Bring it back'); back.type = 'button'
       back.addEventListener('click', () => { bar.classList.remove('gone'); note.hidden = true; openBtn.focus({ preventScroll: true }) })
-      note.append(back); scenes.term.append(note)
+      note.append(back); desk.append(note)
     }
     note.hidden = false
   })
-  $('pl-replay').addEventListener('click', () => { reset(); go(0, 'replay'); pl.focus({ preventScroll: true }) })
+  $('pl-replay').addEventListener('click', () => { reset(); go(0, 'replay'); desk.focus({ preventScroll: true }) })
   toc.addEventListener('click', (e) => { const b = e.target.closest('button[data-g]'); if (b) go(3 + +b.dataset.g, 'review') })
   asks.addEventListener('click', (e) => {
     const n = e.target.closest('.ak-n'); if (n) { asks.querySelector('.ak-row').scrollBy({ left: +n.dataset.dir * 240, behavior: reduce ? 'auto' : 'smooth' }); return }
@@ -758,70 +838,88 @@
     t: 't turns the panes a quarter: one above the other.', h: 'h puts the deck back on the bar, comments and all.',
     q: 'q closes without answering. Your agent hears that you closed it.', w: 'w reads the deck aloud, once deck walk has a voice.', z: 'z dims the rest of your screen behind the deck.',
   }
+  const dockKey = (on) => { dock.hidden = !on; q('[data-key="?"]').setAttribute('aria-expanded', String(on)) }
   function key(k) {
-    if (k === 'n') next('key')
-    else if (k === 'p') prev('key')
-    else if (k === 'c') composeOpen(true)
+    if (k === 'c') composeOpen(true)
     else if (k === 's') submit()
-    else if (k === '?') { dock.hidden = !dock.hidden; q('[data-key="?"]').setAttribute('aria-expanded', String(!dock.hidden)) }
-    else if (k === 'Escape') { if (!dock.hidden) { dock.hidden = true; q('[data-key="?"]').setAttribute('aria-expanded', 'false') } else clear() }
+    else if (k === '?') dockKey(dock.hidden)
     else if (k === 'export') { xs.hidden = false; xsSt.textContent = ''; xsGo.focus({ preventScroll: true }) }
+    else if (k === 'n') next('key')
+    else if (k === 'p') prev('key')
     else if (MESSAGES[k]) say(MESSAGES[k])
   }
   q('.dk-strip').addEventListener('click', (e) => { const b = e.target.closest('button[data-key]'); if (b) key(b.dataset.key) })
-  xsGo.addEventListener('click', () => { if (pending && cur === 8) pending(); else exported(() => { if (cur !== 8) { pr.hidden = true; say('Exported. Nothing is downloaded here: it is part of the recording.') } }) })
-  xs.querySelector('.xs-c').addEventListener('click', () => { xs.hidden = true })
+  xsGo.addEventListener('click', () => {
+    if (pending && cur === 8) { pending(); return }
+    xsSt.textContent = 'Laying out the pages…'
+    later(() => { xsSt.textContent = 'Done.'; later(() => { xs.hidden = true; file.hidden = false; say('Exported. Nothing is downloaded here: it is part of the recording.') }, reduce ? 0 : 600) }, reduce ? 0 : 900)
+  })
+  $('xs-c').addEventListener('click', () => { xs.hidden = true })
   compose.querySelector('.later').addEventListener('click', () => finish(false))
   compose.querySelector('.now').addEventListener('click', () => finish(true))
   area.addEventListener('focus', () => { if (!st.composing) composeOpen(true) })
   area.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') { e.preventDefault(); composeOpen(false); pl.focus({ preventScroll: true }) }
+    if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); composeOpen(false) }
     else if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); finish(!e.shiftKey) }
   })
 
-  // ---- keys: the story's (n, p and the arrows) and, in the window, deck's own
-  const inView = () => { const r = pl.getBoundingClientRect(); return r.bottom > 0 && r.top < innerHeight }
+  // ---- keys, while the desktop is up: n p and the arrows step; in the window, deck's own; Esc leaves
   document.addEventListener('keydown', (e) => {
-    if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey) return
+    if (desk.hidden || e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey) return
     const t = e.target
-    if (/^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName) || t.isContentEditable) return
-    if (!inView() || (t !== document.body && !pl.contains(t) && t !== document.documentElement)) return
+    if (/^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName)) return
     const k = e.key.length === 1 ? e.key.toLowerCase() : e.key
+    if (k === 'Escape') { e.preventDefault(); if (!dock.hidden) dockKey(false); else if (!xs.hidden) xs.hidden = true; else leave(); return }
     if (k === 'n' || k === 'ArrowRight') { e.preventDefault(); next('key') }
     else if (k === 'p' || k === 'ArrowLeft') { e.preventDefault(); prev('key') }
-    else if (cur >= 3 && cur <= 8 && (k === 'c' || k === 's' || k === '?' || k === 'Escape' || MESSAGES[k])) { e.preventDefault(); key(k) }
-  })
+    else if (cur >= 3 && cur <= 8 && (k === 'c' || k === 's' || k === '?' || MESSAGES[k])) { e.preventDefault(); key(k) }
+  }, true)
 
-  // ---- phones: one frame a screen; a tap outside a control moves on, a swipe moves either way
-  let swipe = null, swiped = 0
-  stage.addEventListener('touchstart', (e) => { const t = e.touches[0]; swipe = t && e.touches.length === 1 ? [t.clientX, t.clientY] : null }, { passive: true })
-  stage.addEventListener('touchend', (e) => {
-    const t = e.changedTouches[0]
-    if (!swipe || !t || !phone() || e.target.closest('.dk-code, .dk-chat, .ak-row, textarea')) return
-    const dx = t.clientX - swipe[0], dy = t.clientY - swipe[1]
-    if (Math.abs(dx) > 60 && Math.abs(dy) < 40) { swiped = Date.now(); if (dx < 0) next('swipe'); else prev('swipe') }
-  }, { passive: true })
-  stage.addEventListener('click', (e) => {
-    if (!phone() || Date.now() - swiped < 500) return
-    if (e.target.closest('button, a, textarea, input, label, [data-ln], .dk-w, .dk-prev, .dk-chat, .dk-compose, .dk-dg, .dk-page, .xs, .pr, .ak-row')) return
-    if (String(getSelection() || '')) return
-    next('tap')
-  })
-
-  // The stage takes the height the screen has: everything from the rail to Back and Next fits in one view
-  // as the page opens, the window growing on a taller screen up to 860px, as deck's would. Phones stack.
-  function fit() {
-    if (phone()) { stage.style.height = ''; return }
-    const top = stage.getBoundingClientRect().top + scrollY
-    const below = document.querySelector('.pl-foot').getBoundingClientRect().bottom - stage.getBoundingClientRect().bottom
-    stage.style.height = Math.round(Math.max(400, Math.min(860, innerHeight - top - below - 16))) + 'px'
+  // ---- going in and out: full screen when the browser allows it, the whole window when it does not
+  const page = [...document.querySelectorAll('body > :not(#desk):not(script)')]
+  const canDesk = () => innerWidth > 1100 && matchMedia('(hover: hover) and (pointer: fine)').matches
+  function reset() {
+    seq++; hush(); setAuto(false)
+    st.review = []; st.asked.clear(); st.brought = false; st.seen.clear(); st.opened = 0; st.held = null
+    chat.innerHTML = '<p class="dk-empty">The floor is yours</p>'
+    typed.p = typed.d = false; decided = answeredYet = shown = false; cur = -1
+    file.hidden = true; xs.hidden = true; endc.hidden = true
+    dw.classList.remove('on'); tw.classList.remove('on', 'back'); barTo(null)
+    cursor.classList.remove('on')
   }
-  fit()
-  // the web fonts change the header's height when they arrive: fit again then
-  if (document.fonts) document.fonts.ready.then(fit)
-  addEventListener('load', fit)
-  let fitT = 0
-  addEventListener('resize', () => { clearTimeout(fitT); fitT = setTimeout(fit, 120) })
-  render(0, 'load')
+  function enter() {
+    if (!canDesk()) return
+    reset()
+    desk.hidden = false
+    document.documentElement.classList.add('desk-on')
+    page.forEach((e) => { e.inert = true })
+    try { const r = desk.requestFullscreen && desk.requestFullscreen({ navigationUI: 'hide' }); if (r && r.catch) r.catch(() => {}) } catch (_) {}
+    place(innerWidth * 0.66, innerHeight * 0.72)
+    desk.focus({ preventScroll: true })
+    tick()
+    render(0, 'load')
+    track(0, 'start')
+  }
+  function close() {
+    if (desk.hidden) return
+    reset()
+    desk.hidden = true
+    document.documentElement.classList.remove('desk-on')
+    page.forEach((e) => { e.inert = false })
+    // the browser hands the focus to the page as fullscreen ends, after this: give it back to Start then too
+    const back = () => start.focus({ preventScroll: true })
+    back(); requestAnimationFrame(back); setTimeout(back, 120)
+  }
+  function leave() { if (document.fullscreenElement) document.exitFullscreen().catch(() => {}); close() }
+  document.addEventListener('fullscreenchange', () => { if (!document.fullscreenElement) { if (desk.hidden) start.focus({ preventScroll: true }); else close() } })
+  start.addEventListener('click', enter)
+  $('dx').addEventListener('click', leave)
+
+  // ---- the desktop's own life: the clock, and the step rail that shows while a hand is about
+  const clock = $('mb-clock')
+  function tick() { const d = new Date(); clock.textContent = d.toLocaleDateString('en-US', { weekday: 'short' }) + ' ' + d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }).replace(/\s?[AP]M$/, '') }
+  setInterval(() => { if (!desk.hidden) tick() }, 20000)
+  let chromeT = 0
+  desk.addEventListener('pointermove', () => { desk.classList.add('chrome'); clearTimeout(chromeT); chromeT = setTimeout(() => desk.classList.remove('chrome'), 2600) }, { passive: true })
   document.documentElement.classList.add('pl-ready')
 })()

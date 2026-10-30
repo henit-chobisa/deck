@@ -161,128 +161,114 @@ async function features(page) {
   }
 }
 
-// /play/: the recorded deck in ten steps. Every step by keys (n, and Enter on the bar's Open, which
-// takes the focus), and again by clicks, or taps on a touch screen (Open on the bar, a question
-// under the window, the frame itself). At every step: the honest strip, the scene it names, no
-// overflow, nothing under the nav. Then holding a line and commenting on it, a question of your
-// own, and Play it for me pausing the moment a key is pressed.
-const stepOf = (page) => page.locator('#pl-stage').getAttribute('data-step').then(Number)
-const SCENE = (n) => (n <= 3 ? '#sc-term' : n <= 9 ? '#sc-win' : '#sc-end')
+// /play/: an intro, then full screen (or the whole window, when fullscreen is refused) onto a drawn
+// desktop where the recorded deck plays in ten steps. On a desktop: every step by keys (n, and Enter on
+// the bar's Open, which takes the focus) and by clicks (Next, Open, a question under the window). At every
+// step: the scene, the rail, the honest line on screen, no overflow, the caption clear of the window, and
+// nothing from a later step. Then out by Esc or the ✕, the focus back on Start. Phones, tablets and windows
+// up to 1100px get a still and where to watch it instead.
+const stepOf = (page) => page.locator('#desk').getAttribute('data-step').then(Number)
 
-// Nothing from a later step shows early: no thread, comments or brought panes before step 8 (the question),
-// no decision before step 9. Stepping back takes them away again.
-async function nothingAhead(page, where, n) {
-  const seen = await page.evaluate(() => ({
-    msgs: document.querySelectorAll('#dk .dk-msg').length,
-    brought: document.querySelectorAll('#dk .dk-pane.brought').length,
-    counted: document.querySelectorAll('#dk .dk-toc .cm').length + (document.querySelector('#dk .dk-send').textContent ? 1 : 0),
-    decision: /Keep 1h TTL/.test(document.querySelector('#dk .dk-chat').textContent),
-    pr: !document.getElementById('pr').hidden,
-  }))
-  if (n <= 7) assert.deepEqual(seen, { msgs: 0, brought: 0, counted: 0, decision: false, pr: false }, `${where}: shows a later step's thread, panes or comments`)
-  if (n === 8) assert.equal(seen.decision || seen.pr, false, `${where}: shows step 9's decision`)
-}
-
-// On a desktop screen the demo fits in one view as the page opens: the rail under the nav, Back and Next on screen.
-async function oneView(page, where) {
-  const r = await page.evaluate(() => { const b = (s) => document.querySelector(s).getBoundingClientRect(); return { nav: b('.nav').bottom, rail: b('#pl-rail').top, next: b('#pl-next').bottom, asks: b('#dk-asks').bottom, stage: b('#pl-stage').height, dk: document.getElementById('dk').offsetHeight, w: innerWidth, h: innerHeight } })
-  assert(r.rail >= r.nav - 1 && r.next <= r.h && r.asks <= r.h, `${where}: the demo does not fit in one view ${JSON.stringify(r)}`)
-  // and the window takes the rest: Back/Next near the bottom unless the stage is at its 860px most
-  if (r.stage < 859) assert(r.h - r.next <= 40, `${where}: height left unused under Back/Next ${JSON.stringify(r)}`)
-  if (r.w >= 1440 && r.h >= 900) assert(r.dk >= 560, `${where}: the window is short ${JSON.stringify(r)}`)
-  // over 1100px the steps are a column on the left, Play it for me on top, the window beside them
-  if (r.w > 1100) {
-    const col = await page.evaluate(() => { const bs = [...document.querySelectorAll('#pl-rail button')].map((b) => b.getBoundingClientRect()); const st = document.getElementById('pl-stage').getBoundingClientRect(); return { stacked: bs.every((b, i) => !i || b.top >= bs[i - 1].bottom - 1), left: Math.max(...bs.map((b) => b.right)) <= st.left, auto: document.getElementById('pl-auto').getBoundingClientRect().bottom <= bs[0].top } })
-    assert.deepEqual(col, { stacked: true, left: true, auto: true }, `${where}: the steps are a column beside the window`)
-  }
-}
-
-async function atStep(page, label, n, reduce) {
-  await page.waitForTimeout(reduce ? 150 : 650)
+async function deskStep(page, label, n, reduce) {
+  await page.waitForTimeout(reduce ? 150 : 600)
   const where = `${label} /play/ step ${n}`
-  assert.equal(await page.locator(SCENE(n)).evaluate((el) => el.classList.contains('on') && !el.inert), true, `${where}: its scene is shown`)
-  assert.equal(await page.locator('#pl-rail button[aria-current]').getAttribute('data-go'), String(n - 1), `${where}: the rail marks it`)
-  assert.match(await page.locator('#pl-no').textContent(), new RegExp(`^${n} / 10$`))
-  const strip = await page.locator('.pl-honest').evaluate((el) => { const r = el.getBoundingClientRect(); return { text: el.textContent, top: r.top, bottom: r.bottom, nav: document.querySelector('.nav').getBoundingClientRect().bottom } })
-  assert.match(strip.text, /A recorded example: nothing here runs a model\..*example app, fictional code/s, `${where}: says it is recorded`)
-  assert(strip.top >= strip.nav - 1 && strip.bottom <= await page.evaluate(() => innerHeight), `${where}: the recorded-example strip is on screen, not under the nav ${JSON.stringify(strip)}`)
-  await fits(page, where)
-  await nothingAhead(page, where, n)
-  if (await page.evaluate(() => innerWidth > 980)) await oneView(page, where)
-  // typed at a real pace, and already typed with reduced motion; written out by the bar either way
-  if ((n === 2 && reduce) || n === 3) assert.equal(await page.locator('#tm-deck pre.shown').count(), await page.locator('#tm-deck pre').count(), `${where}: every command is written out`)
+  const s = await page.evaluate(() => {
+    const r = (e) => e.getBoundingClientRect(), dw = document.getElementById('dw'), cap = r(document.getElementById('cap')), honest = r(document.querySelector('.dhonest'))
+    return {
+      tw: document.getElementById('tw').classList.contains('on'), dw: dw.classList.contains('on'), end: !document.getElementById('endc').hidden,
+      rail: document.querySelector('#pl-rail button[aria-current]').dataset.go, no: document.getElementById('pl-no').textContent,
+      honest: honest.top >= 0 && honest.bottom <= innerHeight && /A recorded example: nothing here runs a model/.test(document.querySelector('.dhonest').textContent),
+      clear: !dw.classList.contains('on') || r(dw).bottom <= cap.top + 1, next: r(document.getElementById('pl-next')).bottom <= innerHeight,
+      msgs: document.querySelectorAll('#dk .dk-msg').length, brought: document.querySelectorAll('#dk .dk-pane.brought').length,
+      decision: /Keep 1h TTL/.test(document.querySelector('#dk .dk-chat').textContent),
+    }
+  })
+  assert.deepEqual([s.tw, s.dw, s.end], [n <= 3, n >= 4 && n <= 9, n === 10], `${where}: its window ${JSON.stringify(s)}`)
+  assert.equal(s.rail, String(n - 1), `${where}: the rail marks it`)
+  assert.equal(s.no, `${n} / 10`)
+  assert(s.honest && s.clear && s.next, `${where}: the honest line, Next, and the caption clear of the window ${JSON.stringify(s)}`)
+  if (n <= 7) assert.deepEqual([s.msgs, s.brought, s.decision], [0, 0, false], `${where}: shows a later step's thread or panes`)
+  if (n === 8) assert.equal(s.decision, false, `${where}: shows step 9's decision`)
   if (n === 3) assert.match(await page.locator('#bar-c').textContent(), /^4 groups$/, `${where}: the bar counts the sealed deck`)
-  if (n >= 4 && n <= 9) assert.match(await page.locator('#dk .dk-strip .grp').textContent(), new RegExp(`^group ${Math.min(n - 3, 4)} of 4$`), `${where}: the strip names the group`)
-  // the decision types itself, then the export, then the pull request with the PDF on it
-  if (n === 9) { await page.locator('#pr').waitFor({ state: 'visible', timeout: 9000 }); assert.match(await page.locator('#pr .pr-f').textContent(), /fix-random-logouts\.pdf/); await fits(page, where + ' exported') }
+  if (n >= 4 && n <= 9) assert.match(await page.locator('#dk .dk-strip .grp').textContent(), new RegExp(`^group ${Math.min(n - 3, 4)} of 4$`))
+  if (n === 9) await page.locator('#dt-file').waitFor({ state: 'attached', timeout: 9000 }).then(() => page.waitForFunction(() => !document.getElementById('dt-file').hidden, null, { timeout: 9000 }))
+  await fits(page, where)
 }
 
-async function playThrough(page, label, how, reduce) {
+async function playDesk(page, label, how, reduce) {
   await page.goto(base + '/play/')
   await page.waitForFunction(() => document.documentElement.classList.contains('pl-ready'))
-  await atStep(page, label, 1, reduce)
-  if (how === 'keys') await page.evaluate(() => document.getElementById('pl').focus({ preventScroll: true }))
+  assert(await page.locator('#pi-start').isVisible(), `${label}: Start is offered on a desktop`)
+  assert(!(await page.locator('.pi-phone').isVisible()), `${label}: no phone card on a desktop`)
+  if (how === 'keys') { await page.locator('#pi-start').focus(); await page.keyboard.press('Enter') } else await page.locator('#pi-start').click()
+  await page.waitForFunction(() => !document.getElementById('desk').hidden)
+  const box = await page.evaluate(() => { const r = document.getElementById('desk').getBoundingClientRect(); return [r.left, r.top, r.width, r.height, innerWidth, innerHeight, document.getElementById('main').inert] })
+  assert.deepEqual(box, [0, 0, box[4], box[5], box[4], box[5], true], `${label}: the desktop fills the screen and the page behind is inert`)
+  await deskStep(page, label, 1, reduce)
   for (let want = 2; want <= 10; want++) {
     for (let tries = 0; await stepOf(page) < want; tries++) {
       assert(tries < 6, `${label} /play/ ${how}: reaches step ${want}`)
-      const at = await stepOf(page)
-      const asked = await page.locator('#dk .dk-msg .rec').count() > 0
+      const at = await stepOf(page), asked = await page.locator('#dk .dk-msg .rec').count() > 0
       if (how === 'keys') {
         if (at === 3 && await page.evaluate(() => document.activeElement.id === 'bar-open')) await page.keyboard.press('Enter')
         else await page.keyboard.press(tries % 2 ? 'ArrowRight' : 'n')
-      } else {
-        const act = (sel) => (how === 'taps' ? page.locator(sel).first().tap() : page.locator(sel).first().click())
-        if (at === 3) await act('#bar-open')
-        else if (at === 8 && !asked) { await act('#dk-asks .ak[data-ask^="Does logout"]'); await page.waitForSelector('#dk .dk-msg .rec', { timeout: 5000 }) }
-        else if (how === 'taps') await act(at <= 3 ? '#sc-term .tm-tb' : at <= 9 ? '#dk .dk-num' : '#sc-end .end-t')
-        else await act('#pl-next')
-      }
+      } else if (at === 3) await page.locator('#bar-open').click()
+      else if (at === 8 && !asked) { await page.locator('#dk-asks .ak[data-ask^="Does logout"]').click(); await page.waitForSelector('#dk .dk-msg .rec', { timeout: 5000 }) }
+      else await page.locator('#pl-next').click()
       await page.waitForTimeout(reduce ? 150 : 450)
     }
-    await atStep(page, label, want, reduce)
-    // step 8 is left by asking: by n (the question types itself) or by the question under the window
+    await deskStep(page, label, want, reduce)
     if (want === 9) assert.match(await page.locator('#dk .dk-chat').textContent(), /never revokes the refresh token, so with a 30-day TTL a stolen token lives 30 days\./, `${label} /play/ ${how}: the recorded answer`)
   }
   assert.match(await page.locator('#dk .dk-chat').textContent(), /Keep 1h TTL, add revocation on logout instead/, `${label} /play/ ${how}: the decision is a comment`)
-  for (const [sel, href] of [['#sc-end a.btn.solid', '/#install'], ['#sc-end a.btn.ghost', GH]]) assert.equal(await page.locator(sel).getAttribute('href'), href)
+  for (const [sel, href] of [['#endc a.btn.solid', '/#install'], ['#endc a.btn.ghost', GH]]) assert.equal(await page.locator(sel).getAttribute('href'), href)
   if (how === 'keys') {
     for (let i = 0; i < 14 && await stepOf(page) > 1; i++) {
       await page.keyboard.press(i % 2 ? 'ArrowLeft' : 'p'); await page.waitForTimeout(160)
-      await nothingAhead(page, `${label} /play/ back at step ${await stepOf(page)}`, await stepOf(page))
+      const n = await stepOf(page)
+      if (n <= 7) assert.equal(await page.locator('#dk .dk-msg').count() + await page.locator('#dk .dk-pane.brought').count(), 0, `${label} /play/ back at step ${n}: a later step's thread or panes`)
     }
     assert.equal(await stepOf(page), 1, `${label} /play/: p goes back to the start`)
-  } else {
-    await page.locator('#pl-replay').click()
-    assert.equal(await stepOf(page), 1, `${label} /play/: Replay starts again`)
-  }
+    await page.keyboard.press('Escape')
+  } else await page.locator('#dx').click()
+  await page.waitForFunction(() => document.getElementById('desk').hidden)
+  await page.waitForTimeout(300) // fullscreen ends a beat after the desktop closes
+  assert.deepEqual(await page.evaluate(() => [document.activeElement.id, !!document.fullscreenElement, document.getElementById('main').inert]), ['pi-start', false, false], `${label}: leaving gives the page back, focus on Start`)
 }
 
 async function playHands(page, label) {
   await page.goto(base + '/play/')
-  await page.waitForFunction(() => document.documentElement.classList.contains('pl-ready'))
-  await page.locator('#pl-rail button[data-go="3"]').click()
-  await page.waitForTimeout(500)
+  await page.locator('#pi-start').click()
+  await page.locator('#pl-rail button[data-go="3"]').click({ force: true })
+  await page.waitForTimeout(600)
   await page.locator('#dk .dk-pane').first().locator('[data-ln]').nth(11).click()
-  await page.evaluate(() => document.getElementById('pl').focus({ preventScroll: true }))
+  await page.evaluate(() => document.getElementById('desk').focus({ preventScroll: true }))
   await page.keyboard.press('c')
   await page.waitForFunction(() => document.activeElement === document.querySelector('#dk .dk-compose textarea'))
   assert.equal(await page.locator('#dk .dk-compose .on').textContent(), 'comment on session.ts:12', 'c comments on the held line')
   await page.keyboard.type('Is 30 days what product asked for?')
   await page.locator('#dk .dk-compose .later').click()
   assert.equal(await page.locator('#dk .dk-send').textContent(), '· 1 to send', 'Add to review keeps it')
-  await page.locator('#dk .dk-compose textarea').click()
-  await page.keyboard.type('What does the mobile app do?')
-  await page.locator('#dk .dk-compose .now').click()
-  await page.waitForFunction(() => /a recording/.test(document.querySelector('#dk .dk-chat').textContent), null, { timeout: 5000 })
-  // Play it for me runs on its own, and a key pauses it
-  await page.locator('#pl-rail button[data-go="0"]').click()
+  await page.locator('#pl-rail button[data-go="0"]').click({ force: true })
   await page.locator('#pl-auto').click()
-  await page.waitForFunction(() => document.getElementById('pl-stage').dataset.step === '2', null, { timeout: 8000 })
+  await page.waitForFunction(() => document.getElementById('desk').dataset.step === '2', null, { timeout: 9000 })
   await page.keyboard.press('Shift')
   assert.equal(await page.locator('#pl-auto').getAttribute('aria-pressed'), 'false', 'a key pauses Play it for me')
   const at = await stepOf(page)
   await page.waitForTimeout(3000)
   assert.equal(await stepOf(page), at, 'paused, it stays where it is')
+  await page.locator('#dx').click()
+}
+
+async function playPhone(page, label) {
+  await page.goto(base + '/play/')
+  await page.waitForFunction(() => document.documentElement.classList.contains('pl-ready'))
+  assert(await page.locator('.pi-phone').isVisible(), `${label}: the phone card`)
+  assert(!(await page.locator('#pi-start').isVisible()), `${label}: no Start on a phone`)
+  assert.match(await page.locator('.pi-phone').textContent(), /Best on a desktop\. Open trydeck\.dev\/play on your computer/)
+  assert.deepEqual(await page.locator('.pi-phone a').evaluateAll((as) => as.map((a) => a.getAttribute('href'))), ['/#install', GH])
+  assert(await page.locator('#desk').isHidden(), `${label}: no desktop on a phone`)
+  await fits(page, label + ' /play/')
 }
 
 // #x4's questions: a click asks (any but the story's own is answered with what is true here: a recording),
@@ -354,9 +340,11 @@ async function check(engine, name, width, height, reducedMotion = 'no-preference
     }
     if (name === 'webkit-desktop' || name === 'chromium-desktop') await windowsPick(browser)
     const touch = width <= 900, reduce = reducedMotion === 'reduce'
-    if (!touch) await playThrough(page, name, 'keys', reduce)
-    await playThrough(page, name, touch ? 'taps' : 'clicks', reduce)
-    if (name === 'chromium-desktop' || name === 'webkit-desktop') await playHands(page, name)
+    if (width > 1100 && !touch) {
+      await playDesk(page, name, 'keys', reduce)
+      await playDesk(page, name, 'clicks', reduce)
+      if (name === 'chromium-desktop' || name === 'webkit-desktop') await playHands(page, name)
+    } else await playPhone(page, name)
     for (const path of ['/docs/', '/guides/', '/changelog/', '/telemetry/', '/works-with/', '/ai-code-review/', '/coderabbit-alternative/', '/404.html']) {
       await page.goto(base + path)
       await fits(page, name + path)
@@ -391,6 +379,9 @@ async function check(engine, name, width, height, reducedMotion = 'no-preference
     await check(webkit, 'webkit-reduced-motion', 1440, 900, 'reduce')
     await check(chromium, 'chromium-1280x800', 1280, 800)
     await check(webkit, 'webkit-1366x768', 1366, 768)
+    await check(chromium, 'chromium-1366x768', 1366, 768)
+    await check(webkit, 'webkit-1280x800', 1280, 800)
+    await check(chromium, 'chromium-1920x1080', 1920, 1080)
     await check(webkit, 'webkit-1920x1080', 1920, 1080)
     await check(chromium, 'chromium-390x844', 390, 844)
     await check(chromium, 'chromium-reduced-motion-390', 390, 844, 'reduce')
