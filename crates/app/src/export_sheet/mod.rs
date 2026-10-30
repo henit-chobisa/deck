@@ -2089,11 +2089,14 @@ impl Render for ExportSheet {
                     .relative()
                     .children(shown.map(|page| {
                         let drawings = self.drawings.clone();
+                        // A hair lighter than the window's own edge, so a
+                        // black page still has a border on a black stage.
+                        let page_edge = paint(palette.edge.mix(palette.muted, 0.3));
                         div()
                             .absolute()
                             .inset_0()
                             .when(stale, |this| this.opacity(0.45))
-                            .child(preview::page(page, drawings))
+                            .child(preview::page(page, drawings, page_edge))
                     }))
                     // Nothing laid out yet: the shape of a page, breathing,
                     // and what it is waiting on; or why it could not be.
@@ -2200,7 +2203,11 @@ impl Render for ExportSheet {
                                 sheet.page = ix;
                                 cx.notify();
                             }))
-                            .child(preview::page(page.clone(), self.drawings.clone()))
+                            .child(preview::page(
+                                page.clone(),
+                                self.drawings.clone(),
+                                transparent_black(),
+                            ))
                     })),
             );
         // The command that makes the same file, to copy: the sheet is `deck

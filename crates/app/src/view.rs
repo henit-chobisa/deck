@@ -265,6 +265,9 @@ const BAND_NATURAL: f32 = 168.;
 /// key is pressed: the pace of every light going out on its own.
 const GLOW: std::time::Duration = std::time::Duration::from_millis(760);
 
+/// How long the band takes to glide to the sentence being heard.
+const BAND_GLIDE: std::time::Duration = std::time::Duration::from_millis(520);
+
 // The group's number and the line that hangs from it, the band's padding and
 // its type, the rail and the strip: measured once, in `deck_render::metrics`,
 // so a page an export prints is the band this draws.
@@ -953,6 +956,9 @@ pub struct DeckView {
     /// reader has got to in this window, and a deck put away and brought back
     /// should start at the top of its prose.
     band_scroll: ScrollHandle,
+    /// Where the band is gliding from and to while walking, and when it set
+    /// off. See [`Self::follow_band`].
+    band_glide: Option<(f32, f32, std::time::Instant)>,
     /// A release's notes, laid over the window: which version, and the view
     /// that draws them. See [`crate::notes_body`] for why it is a view.
     notes: Option<(String, Entity<crate::notes_body::NotesBody>)>,
@@ -1306,6 +1312,7 @@ impl DeckView {
             sizing: None,
             band_height,
             band_scroll: ScrollHandle::new(),
+            band_glide: None,
             notes: None,
             notes_focus: cx.focus_handle(),
             quitting: false,
@@ -2266,9 +2273,59 @@ impl DeckView {
             // and so does every one before it still on its way down.
             self.heard.follow(now);
             self.heard_paragraphs.follow(paragraph);
+            if let Some((crate::speech::Narration::Group(ix), (start, _))) = now
+                && ix == self.group_ix
+            {
+                self.follow_band(start);
+            }
             moved = true;
         }
         moved
+    }
+
+    /// Bring the sentence being heard into the band, when the prose is taller
+    /// than the band. Walking, the reader's eyes are on the voice; the words
+    /// it was reading went on below the edge and nothing followed them.
+    ///
+    /// Placed by how far through the prose the sentence starts. Left alone
+    /// while it is still in the top two thirds of the band, so the band moves
+    /// a few times a group rather than on every sentence; when it does move it
+    /// glides, and only forward: a reader who scrolled ahead is not pulled back.
+    fn follow_band(&mut self, word: usize) {
+        let Some(group) = self.group() else { return };
+        let (_, words) = crate::prose::sentence_starts(&group.say);
+        let most = f32::from(self.band_scroll.max_offset().y);
+        if most <= 0. || words == 0 {
+            return;
+        }
+        let tall = f32::from(self.band_scroll.bounds().size.height);
+        #[allow(clippy::cast_precision_loss)]
+        let through = word as f32 / words as f32;
+        let at = through * (most + tall);
+        let now = -f32::from(self.band_scroll.offset().y);
+        if at >= now && at <= now + tall * 2. / 3. {
+            return;
+        }
+        let want = (at - tall / 3.).clamp(0., most);
+        if want > now {
+            self.band_glide = Some((now, want, std::time::Instant::now()));
+        }
+    }
+
+    /// Move the band along its glide, if it has one. Says whether it needs
+    /// another frame.
+    fn settle_band_glide(&mut self) -> bool {
+        let Some((from, to, at)) = self.band_glide else {
+            return false;
+        };
+        let t = (at.elapsed().as_secs_f32() / BAND_GLIDE.as_secs_f32()).min(1.);
+        let eased = t * t * 2f32.mul_add(-t, 3.);
+        let y = (to - from).mul_add(eased, from);
+        self.band_scroll.set_offset(point(px(0.), px(-y)));
+        if t >= 1. {
+            self.band_glide = None;
+        }
+        t < 1.
     }
 
     /// The sentences of `of` being heard, with how lit each one is.
@@ -6198,6 +6255,12 @@ impl DeckView {
             },
             |group| group.say.clone(),
         );
+        // From where the prose was last drawn, as the review list counts its
+        // rows: a pixel of slack so a band scrolled to its end reads as ended.
+        let prose_below = {
+            let most = self.band_scroll.max_offset().y;
+            most > px(1.) && -self.band_scroll.offset().y < most - px(1.)
+        };
 
         div()
             .h_flex()
@@ -6386,6 +6449,16 @@ impl DeckView {
                         ),
                     )
                     .child(
+                        // Holds the prose and, over its bottom edge, the sign
+                        // that it goes on. A long `say` ended at the band's
+                        // edge mid-paragraph with nothing to say there was
+                        // more, so the rest went unread.
+                        div()
+                            .relative()
+                            .flex_1()
+                            .min_h_0()
+                            .v_flex()
+                            .child(
                         // The prose is pickable too. An objection to what the
                         // group claims has to be able to land on the claim,
                         // not on some line of code chosen for want of anywhere
@@ -6512,6 +6585,57 @@ impl DeckView {
                                         },
                                     )),
                             ),
+                            )
+                            .when(prose_below, |this| {
+                                let ground = paint(self.palette.band);
+                                let mut clear = ground;
+                                clear.a = 0.;
+                                let scroll = self.band_scroll.clone();
+                                this.child(
+                                    div()
+                                        .absolute()
+                                        .bottom_0()
+                                        .left_0()
+                                        .right_0()
+                                        .h(px(30.))
+                                        .bg(linear_gradient(
+                                            180.,
+                                            linear_color_stop(clear, 0.),
+                                            linear_color_stop(ground, 1.),
+                                        )),
+                                )
+                                .child(
+                                    div()
+                                        .id("band-down")
+                                        // The prose under it must not take the
+                                        // click too: it picked the word behind
+                                        // the chip and paused the walk.
+                                        .block_mouse_except_scroll()
+                                        .absolute()
+                                        .bottom_0()
+                                        .right(px(BAND_SIDE))
+                                        .px(px(7.))
+                                        .py(px(1.))
+                                        .rounded(px(crate::radius::CAP))
+                                        .bg(paint(self.palette.wash))
+                                        .border_1()
+                                        .border_color(paint(self.palette.edge))
+                                        .font_family(cx.theme().mono_font_family.clone())
+                                        .text_size(px(10.5))
+                                        .text_color(paint(self.palette.muted))
+                                        .cursor_pointer()
+                                        .on_click(cx.listener(move |_, _, _, cx| {
+                                            let view = scroll.bounds().size.height;
+                                            let mut at = scroll.offset();
+                                            at.y = (at.y - view * 0.8)
+                                                .min(px(0.))
+                                                .max(-scroll.max_offset().y);
+                                            scroll.set_offset(at);
+                                            cx.notify();
+                                        }))
+                                        .child("↓ more"),
+                                )
+                            }),
                     )
                     .children(self.render_track(cx)),
             )
@@ -6946,20 +7070,52 @@ impl DeckView {
         // a drag has stopped resizing and started deleting.
         const LEAST: f32 = 0.08;
 
-        let total: f32 = self.shares.iter().sum();
-        if ix + 1 >= self.shares.len() || height <= px(0.) || total <= 0. {
+        // The row below that is still open: folded rows between are skipped,
+        // as the seam skips them.
+        let rows = self.shares.len();
+        let Some(below) = (ix + 1..rows).find(|row| self.row_open(*row) > 0.) else {
+            return;
+        };
+        // Weighed by how open each row is. A folded row's share still counts
+        // toward nothing on screen, and counted it made the seam outrun the
+        // pointer.
+        let total: f32 = (0..rows)
+            .map(|row| self.shares[row] * self.row_open(row))
+            .sum();
+        if height <= px(0.) || total <= 0. {
             return;
         }
 
         let delta = f32::from(by) / f32::from(height) * total;
-        let (a, b) = (self.shares[ix] + delta, self.shares[ix + 1] - delta);
+        let (a, b) = (self.shares[ix] + delta, self.shares[below] - delta);
         if a < LEAST * total || b < LEAST * total {
             return;
         }
 
         self.shares[ix] = a;
-        self.shares[ix + 1] = b;
+        self.shares[below] = b;
         cx.notify();
+    }
+
+    /// How open the pane standing at `place` is: one, or less while it folds.
+    fn place_open(&self, place: usize) -> f32 {
+        let count = self.widths.len();
+        let ix = if quarter(self.turn_now).1 {
+            count.saturating_sub(place + 1)
+        } else {
+            place
+        };
+        1. - self.folds.get(ix).map_or(0., crate::pane::Fade::level)
+    }
+
+    /// How open a row is: as open as the most open pane in it.
+    fn row_open(&self, row: usize) -> f32 {
+        let cols = self.cols.max(1);
+        let first = row * cols;
+        let last = (first + cols).min(self.widths.len());
+        (first..last)
+            .map(|place| self.place_open(place))
+            .fold(0., f32::max)
     }
 
     /// Move width across the seam to the right of pane `ix`.
@@ -6973,26 +7129,32 @@ impl DeckView {
         const LEAST: f32 = 0.12;
 
         let cols = self.cols.max(1);
-        if ix + 1 >= self.widths.len() || width <= px(0.) {
+        if width <= px(0.) {
             return;
         }
 
-        // Share is only comparable within a row, so the total is this row's.
+        // Share is only comparable within a row, so the total is this row's,
+        // weighed by how open each pane is, as `resize_panes` weighs rows.
         let first = ix / cols * cols;
         let last = (first + cols).min(self.widths.len());
-        let total: f32 = self.widths[first..last].iter().sum();
+        let Some(right) = (ix + 1..last).find(|place| self.place_open(*place) > 0.) else {
+            return;
+        };
+        let total: f32 = (first..last)
+            .map(|place| self.widths[place] * self.place_open(place))
+            .sum();
         if total <= 0. {
             return;
         }
 
         let delta = f32::from(by) / f32::from(width) * total;
-        let (a, b) = (self.widths[ix] + delta, self.widths[ix + 1] - delta);
+        let (a, b) = (self.widths[ix] + delta, self.widths[right] - delta);
         if a < LEAST * total || b < LEAST * total {
             return;
         }
 
         self.widths[ix] = a;
-        self.widths[ix + 1] = b;
+        self.widths[right] = b;
         cx.notify();
     }
 
@@ -9591,7 +9753,13 @@ impl Render for DeckView {
         // takes to go out, which is the pace it is drawn at.
         let hit = self.help_hit.is_some_and(|(_, at)| at.elapsed() < GLOW);
         self.export_fade.set(self.exportable());
-        if self.help.moving() || self.tip_fade.moving() || self.export_fade.moving() || hit {
+        let gliding = self.settle_band_glide();
+        if self.help.moving()
+            || self.tip_fade.moving()
+            || self.export_fade.moving()
+            || hit
+            || gliding
+        {
             window.request_animation_frame();
         }
         if std::mem::take(&mut self.review_settle) {
@@ -9822,10 +9990,14 @@ impl Render for DeckView {
         let closing_beside = |place: usize| -> f32 {
             let first = place / cols * cols;
             let last = (first + cols).min(count);
+            // The least folded neighbour, not the most: the share only stops
+            // meaning anything once *every* other pane in the row is going.
+            // Taking the most, one folded pane of three pinned the other two
+            // at a share of one each, and their seam dragged nothing.
             (first..last)
                 .filter(|beside| *beside != place)
                 .map(folding_at)
-                .fold(0., f32::max)
+                .fold(1., f32::min)
         };
         // How far gone a row is: one when everything in it has folded.
         let gone = |row: usize| -> f32 {
@@ -9919,8 +10091,12 @@ impl Render for DeckView {
                 .fold(0., f32::max)
         };
         for row_ix in 0..row_count {
-            if row_ix > 0 && open_in(row_ix) > 0. && open_in(row_ix - 1) > 0. {
-                stacked.push(self.render_seam(Divide::Panes(row_ix - 1), cx));
+            // To the nearest open row above, for the same reason as the
+            // column seams below.
+            if open_in(row_ix) > 0.
+                && let Some(above) = (0..row_ix).rev().find(|row| open_in(*row) > 0.)
+            {
+                stacked.push(self.render_seam(Divide::Panes(above), cx));
             }
 
             let first = row_ix * cols;
@@ -9936,19 +10112,21 @@ impl Render for DeckView {
                 // Asked for inside the guard, because the first pane of a row
                 // has nothing to its left: `ix - 1` there is an underflow, and
                 // in a debug build that is an abort in the middle of a click.
-                let beside = if ix > first {
-                    folding_at(ix).max(folding_at(ix - 1))
-                } else {
-                    1.
-                };
-                if ix > first && beside < 1. {
+                // The seam joins this pane to the nearest one on its left that
+                // is still open, so folding the middle of three leaves a
+                // handle between the two either side of it.
+                let left = (first..ix).rev().find(|place| folding_at(*place) < 1.);
+                let beside = left.map_or(1., |left| folding_at(ix).max(folding_at(left)));
+                if let Some(left) = left
+                    && beside < 1.
+                {
                     across.push(
                         div()
                             .flex_none()
                             .overflow_hidden()
                             .h_full()
                             .w(px(SEAM * (1. - beside)))
-                            .child(self.render_seam(Divide::Columns(ix - 1), cx))
+                            .child(self.render_seam(Divide::Columns(left), cx))
                             .into_any_element(),
                     );
                 }
@@ -9974,10 +10152,12 @@ impl Render for DeckView {
                     // for.
                     .flex_grow({
                         let dragged = self.shares.get(row_ix).copied().unwrap_or(1.);
+                        // Every other row gone, not any: the same reason
+                        // as `closing_beside`, along the other axis.
                         let closing = (0..row_count)
                             .filter(|row| *row != row_ix)
                             .map(gone)
-                            .fold(0., f32::max);
+                            .fold(1., f32::min);
                         dragged.mul_add(1. - closing, closing) * held
                     })
                     .flex_basis(px(0.))
