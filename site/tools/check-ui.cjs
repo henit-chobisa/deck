@@ -156,8 +156,9 @@ async function features(page) {
   assert(!(await details.evaluate((d) => d.open)), 'x5: Space closes it')
   for (const id of ['x3', 'x4', 'x5']) {
     await page.locator(`#x6 .o2also a[href="#${id}"]`).click()
-    // lands at the section's top, or where its pin starts on a tall screen (scroll-margin-top)
-    await page.waitForFunction((id) => { const e = document.getElementById(id); return Math.abs(e.getBoundingClientRect().top - (parseFloat(getComputedStyle(e).scrollMarginTop) || 0)) < 80 }, id, { timeout: 4000 })
+    // lands at the section's top, or where its pin starts on a tall screen (scroll-margin-top); a long
+    // smooth scroll on a slow CI runner took longer than 4s
+    await page.waitForFunction((id) => { const e = document.getElementById(id); return Math.abs(e.getBoundingClientRect().top - (parseFloat(getComputedStyle(e).scrollMarginTop) || 0)) < 80 }, id, { timeout: 8000 })
   }
 }
 
