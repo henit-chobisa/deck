@@ -233,7 +233,6 @@ fn paint_page(
                     rect: r,
                     svg,
                     scale,
-                    band,
                 } => {
                     let (Some(image), Some((w, h))) = (drawings.get(&key(svg)), own_size(svg))
                     else {
@@ -241,13 +240,9 @@ fn paint_page(
                     };
                     let (w, h) = (w * scale, h * scale);
                     // As the PDF places it: centred, or from the left edge
-                    // when wider than its room, and a band of a tall drawing
-                    // moved up so the band is what shows.
+                    // when wider than its room.
                     let x = r.x + ((r.w - w) / 2.).max(0.);
-                    let y = match band {
-                        Some([from, _]) => r.y - from * scale,
-                        None => r.y + ((r.h - h) / 2.).max(0.),
-                    };
+                    let y = r.y + ((r.h - h) / 2.).max(0.);
                     let drawn = Bounds {
                         origin: at(x, y),
                         size: size(px(w * k), px(h * k)),

@@ -174,11 +174,6 @@ pub enum Item {
         svg: String,
         /// Units of the page to one of the drawing's.
         scale: f32,
-        /// The band of the drawing this shows, top and bottom in its own
-        /// units, when it is too tall for one page and is cut across pages;
-        /// `None` for all of it.
-        #[serde(skip_serializing_if = "Option::is_none")]
-        band: Option<[f32; 2]>,
     },
     /// A field of dots to write in.
     Dots {
@@ -759,106 +754,8 @@ pub(super) enum Context {
     Trimmed,
 }
 
-/// Every box of a drawing deck wrote, as how far down it starts and ends
-/// from the drawing's top: the `data-top` and `data-bottom` the SVG writer
-/// puts on each.
-pub(super) fn boxes(svg: &str) -> Vec<(f32, f32)> {
-    let mut out = Vec::new();
-    for line in svg.lines() {
-        let attr = |name: &str| {
-            let key = format!("{name}=\"");
-            let at = line.find(&key)? + key.len();
-            line[at..at + line[at..].find('"')?].parse::<f32>().ok()
-        };
-        if line.starts_with("<g ")
-            && let (Some(top), Some(bottom)) = (attr("data-top"), attr("data-bottom"))
-        {
-            out.push((top, bottom));
-        }
-    }
-    out
-}
-
-/// Where a band that starts at `from` and could reach `limit` should end:
-/// `limit` itself when no box crosses it, and otherwise just above the box
-/// it would cut, so long as that leaves the band something. Whether it had
-/// to cut through a box anyway: one taller than the band.
-pub(super) fn snap(boxes: &[(f32, f32)], from: f32, limit: f32) -> (f32, bool) {
-    let crosses = |at: f32| boxes.iter().any(|&(top, bottom)| top < at && at < bottom);
-    if !crosses(limit) {
-        return (limit, false);
-    }
-    // The highest point at or below `limit` in a gap: just above a box's
-    // top, halfway into the gap over it where there is one.
-    let mut best: Option<f32> = None;
-    for &(top, _) in boxes {
-        if top <= from || top > limit {
-            continue;
-        }
-        let above = boxes
-            .iter()
-            .filter(|&&(_, bottom)| bottom <= top)
-            .map(|&(_, bottom)| bottom)
-            .fold(from, f32::max);
-        let at = (above + top) / 2.;
-        if at > from && !crosses(at) && best.is_none_or(|best| at > best) {
-            best = Some(at);
-        }
-    }
-    best.map_or((limit, true), |at| (at, false))
-}
-
-/// `svg` with only what lies in the band from `from` to `to` (in its own
-/// units, from its top): the boxes that reach into the band and the words
-/// whose line sits in it. The rest is clipped out of sight anyway, and left
-/// in, its words would be in the page's text where nobody can see them.
-pub(super) fn banded(svg: &str, from: f32, to: f32) -> String {
-    let top = svg
-        .find("viewBox=\"")
-        .and_then(|at| svg[at + 9..].split_whitespace().nth(1))
-        .and_then(|t| t.parse::<f32>().ok())
-        .unwrap_or(0.);
-    let mut out = String::with_capacity(svg.len());
-    let mut skipping = false;
-    for line in svg.lines() {
-        let attr = |name: &str| {
-            let key = format!(" {name}=\"");
-            let at = line.find(&key)? + key.len();
-            line[at..at + line[at..].find('"')?].parse::<f32>().ok()
-        };
-        if skipping {
-            if line == "</g>" {
-                skipping = false;
-            }
-            continue;
-        }
-        if line.starts_with("<g ")
-            && let (Some(t), Some(b)) = (attr("data-top"), attr("data-bottom"))
-            && (b <= from || t >= to)
-        {
-            skipping = true;
-            continue;
-        }
-        if line.starts_with("<text ")
-            && let Some(y) = attr("y")
-            && !(from..=to).contains(&(y - top))
-        {
-            continue;
-        }
-        out.push_str(line);
-        out.push('\n');
-    }
-    out
-}
-
 /// How many columns a tab takes, as the window's panes count it.
 const TAB: usize = 4;
-
-/// The smallest a diagram may be drawn, as a share of its own size: where a
-/// box's label, set at [`deck_core::drawing::LABEL`], is six points on the
-/// page. Smaller and it is not read, so a taller diagram is cut across
-/// pages instead and a wider one is cut at the edge.
-pub(super) const DIAGRAM_LEAST: f32 = 6. / (deck_core::drawing::LABEL.0 * 0.75);
 
 /// Where `n` numerals go in a gutter from `left` to `right`: each disc's
 /// centre across, how far below its row's middle it sits, and its radius.

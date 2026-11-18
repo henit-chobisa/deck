@@ -782,6 +782,15 @@ pub struct DeckView {
     /// The reader turned the wheel over the rail since it was last drawn, so
     /// whether it is pinned is read from where they left it.
     rail_wheeled: std::cell::Cell<bool>,
+    /// The width the rail's turns were last laid out at. A turn's height from
+    /// the last frame stands in for it off screen only while this holds.
+    rail_laid_wide: std::cell::Cell<f32>,
+    /// When the rail's edge was last dragged. While it moves, turns off
+    /// screen keep the height they had, and they are laid out at the new
+    /// width once it has stopped: see [`Self::RAIL_SETTLE`].
+    rail_dragged: Option<std::time::Instant>,
+    /// Lays the rail out once more when a drag of its edge has stopped.
+    rail_settle: Task<()>,
     /// Whether the narration is the thing a comment would land on.
     /// Which sentence of the narration is picked, if any.
     ///
@@ -1109,6 +1118,10 @@ fn ease(along: f32) -> f32 {
 }
 
 impl DeckView {
+    /// How long after the last move of the rail's edge its drag counts as
+    /// stopped.
+    const RAIL_SETTLE: std::time::Duration = std::time::Duration::from_millis(180);
+
     /// Open a deck, where it was left — which for a deck nobody has opened
     /// yet is the beginning of it.
     pub fn resume(session: Session, window: &mut Window, cx: &mut Context<Self>) -> Self {
@@ -1295,6 +1308,9 @@ impl DeckView {
             phrase_for: std::cell::Cell::new(None),
             ages: std::cell::RefCell::new(std::collections::HashMap::new()),
             rail_wheeled: std::cell::Cell::new(false),
+            rail_laid_wide: std::cell::Cell::new(0.),
+            rail_dragged: None,
+            rail_settle: Task::ready(()),
             picked_said,
             said_from: None,
             said_over: None,
@@ -7028,6 +7044,15 @@ impl DeckView {
         let from = self.rail_width.unwrap_or(RAIL);
         let wide = (from - f32::from(by)).clamp(LEAST, MOST);
         self.rail_width = Some(wide);
+        self.rail_dragged = Some(std::time::Instant::now());
+        // However the drag ends, even back at the width it started from, the
+        // frame after it lays every turn out once: turns that left the drawn
+        // band mid-drag kept a height from some width in between.
+        self.rail_laid_wide.set(f32::NAN);
+        self.rail_settle = cx.spawn(async move |deck, cx| {
+            cx.background_executor().timer(Self::RAIL_SETTLE).await;
+            deck.update(cx, |_, cx| cx.notify()).ok();
+        });
         // The placeholder is one line that never wraps, so it is told how
         // much room it has: dragged narrow, the long one was cut mid-word.
         // Only when it changes: this runs on every move of the drag.
@@ -8602,10 +8627,62 @@ impl DeckView {
         // knot, and keeps doing so through a fade that is not a reply, which
         // is the row giving its room back, not a turn coming.
         let arriving = self.arrival_shown() && !replied;
+        // Only the turns near what the rail shows are drawn in full.
+        //
+        // Every word of a turn is an element of its own (see `prose`), so a
+        // long conversation is thousands of them, and the whole window is
+        // laid out again on every keystroke and every frame of a drag. With
+        // twenty-odd turns open that made typing and resizing stutter, while
+        // a folded rail was smooth. A turn well off screen — more than a
+        // screen above what shows, or two below — is drawn as an empty box
+        // of the height it had last frame instead: same scroll, same tail,
+        // nothing to lay out.
+        //
+        // Only while the rail is as wide as it was, since a new width
+        // rewraps every turn; but while its edge is being dragged the old
+        // heights stand in anyway, and every turn is laid out at the new
+        // width once the drag stops.
+        let dragging = self
+            .rail_dragged
+            .is_some_and(|at| at.elapsed() < Self::RAIL_SETTLE);
+        let off_screen: Option<(f32, f32)> = {
+            let viewport = self.rail_scroll.bounds();
+            let tall = f32::from(viewport.size.height);
+            let same_width = (self.rail_laid_wide.get() - wide).abs() < 0.5;
+            (open >= 1. && (same_width || dragging) && tall > 0.).then(|| {
+                let top = f32::from(viewport.top() - self.rail_scroll.offset().y);
+                (top - tall, top + 2. * tall)
+            })
+        };
+        if open > 0. && !dragging {
+            self.rail_laid_wide.set(wide);
+        }
+        let stand_ins = std::rc::Rc::new(std::cell::RefCell::new(Vec::<usize>::new()));
         let lines: Vec<AnyElement> = shown
             .into_iter()
             .enumerate()
             .map(|(place, (ix, moment))| {
+                // Older turns sink into the page. What was just said is what
+                // the reader is in the middle of; six turns back is context,
+                // and context as black as the sentence in front of you is
+                // context you have to read past. Worked out for a turn off
+                // screen too, so it has its tone when it comes back.
+                #[allow(clippy::cast_precision_loss)]
+                let target = ((last - place) as f32 / 6.).clamp(0., 1.) * 0.30;
+                let age = self.aged(ix, target);
+                if let Some((from, to)) = off_screen {
+                    let entering = self.entering.borrow().contains_key(&ix);
+                    let lit = self.showing.as_ref().is_some_and(|(at, _)| *at == ix)
+                        || self.pressed.is_some_and(|(turn, _, _)| turn == ix);
+                    if let Some(was) = self.rail_scroll.bounds_for_item(rail_child(place))
+                        && !entering
+                        && !lit
+                        && (f32::from(was.bottom()) < from || f32::from(was.top()) > to)
+                    {
+                        stand_ins.borrow_mut().push(rail_child(place));
+                        return div().flex_none().h(was.size.height).into_any_element();
+                    }
+                }
                 let mine = moment.what == deck_core::What::Said;
                 let entrance = self
                     .entering
@@ -8613,13 +8690,6 @@ impl DeckView {
                     .get(&ix)
                     .map_or(1., |fade| fade.level());
                 let again = self.conversation.spoken.contains_key(&ix);
-                // Older turns sink into the page. What was just said is what
-                // the reader is in the middle of; six turns back is context,
-                // and context as black as the sentence in front of you is
-                // context you have to read past.
-                #[allow(clippy::cast_precision_loss)]
-                let target = ((last - place) as f32 / 6.).clamp(0., 1.) * 0.30;
-                let age = self.aged(ix, target);
                 let sunk = |tone: deck_core::theme::Rgb| tone.mix(palette.band, age);
                 let reacted = moment.what == deck_core::What::Reacted;
                 let moved = moment.what == deck_core::What::Shown;
@@ -9067,6 +9137,35 @@ impl DeckView {
                                 // bottom, from outside the scroll container
                                 // so it needs no place among the turns.
                                 .children(arrival_going)
+                                // A jump the rail made on its own this frame
+                                // (to the tail, or to a turn the prose sent it
+                                // to) can bring a stand-in into view; drawn
+                                // once more, it is a turn again.
+                                .child({
+                                    let scroll = self.rail_scroll.clone();
+                                    let stand_ins = stand_ins.clone();
+                                    canvas(
+                                        move |_, window, _| {
+                                            let viewport = scroll.bounds();
+                                            let top = viewport.top() - scroll.offset().y;
+                                            let bottom = top + viewport.size.height;
+                                            let seen = stand_ins.borrow().iter().any(|&child| {
+                                                scroll.bounds_for_item(child).is_some_and(|b| {
+                                                    b.bottom() > top && b.top() < bottom
+                                                })
+                                            });
+                                            // Not `refresh`: that does
+                                            // nothing while a frame is
+                                            // being drawn, which this is.
+                                            if seen {
+                                                window.on_next_frame(|window, _| window.refresh());
+                                            }
+                                        },
+                                        |_, (), _, _| {},
+                                    )
+                                    .absolute()
+                                    .size_0()
+                                })
                                 .children(self.render_way_back(turns, cx))
                                 .children(quip_shown(nothing, quip_fade.moving()).then(|| {
                                     div()

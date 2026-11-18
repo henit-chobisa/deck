@@ -242,9 +242,14 @@ fn a_secret_stops_the_export_until_it_is_let_through() {
     };
     assert!(blocks(&scan));
     let choice = Choice::new(3);
+    assert_eq!(
+        button_of(&choice, Some(4), &scan, false, 1),
+        ("View 1 warning…".to_string(), true),
+        "the button opens the warnings"
+    );
     assert!(
-        !model::button(&choice, Some(4), blocks(&scan)).1,
-        "Export is off"
+        !button_of(&choice, Some(4), &scan, false, 0).1,
+        "acknowledged, Export stays off until the secret is let through"
     );
     assert_eq!(hits.len(), 1);
     assert_eq!(hits[0].entry, "deck/g2.json");
@@ -448,16 +453,86 @@ fn a_notice_reads_as_a_sentence() {
     assert_eq!(sentence("done."), "Done.");
 }
 
-/// Space, then space again, on a secret's *let through* lands on *cancel*:
-/// the first press hands the ring to changing your mind, never to the second
-/// step that lets the secret through, and *cancel* hands it back.
+/// The warnings: a secret first, with the file and line it is on; a notice
+/// about the pages after it, with no line. The button counts them all.
 #[test]
-fn space_twice_lets_no_secret_through() {
-    assert_eq!(ring_after(Control::Allow(2)), Some(Control::AllowCancel(2)));
-    assert_eq!(ring_after(Control::AllowCancel(2)), Some(Control::Allow(2)));
-    for control in [Control::AllowSure(2), Control::Export] {
-        assert_eq!(ring_after(control), None, "{control:?} keeps the ring");
+fn a_warning_names_its_line_only_when_it_has_one() {
+    let dir = tempfile::tempdir().expect("a temp dir");
+    let token = format!("ghp_{}", "a1B2".repeat(9));
+    let deck = hand_built(dir.path(), &[&format!("The header held {token}.")]);
+    let read = crate::cli::export_packing(&deck, &[], false, None).expect("opens");
+    let scan = scan_of(crate::cli::carrying(read, &[], true));
+    let notices = vec!["group 1: diagram chain is small".to_string()];
+    let warnings = warnings_of(&notices, &scan);
+    assert_eq!(warnings.len(), 2, "{warnings:?}");
+    assert!(warnings[0].secret);
+    assert!(
+        warnings[0].said.contains("ghp_****"),
+        "redacted: {warnings:?}"
+    );
+    assert!(
+        !warnings[0].said.contains(&token),
+        "never the secret itself"
+    );
+    assert!(warnings[0].at.as_deref().is_some_and(|at| !at.is_empty()));
+    assert_eq!(warnings[1].said, "Group 1: diagram chain is small.");
+    assert_eq!(warnings[1].at, None);
+    assert!(warnings_of(&[], &Scan::Clear).is_empty());
+    assert_eq!(model::view_warnings(1), "View 1 warning…");
+    assert_eq!(model::view_warnings(2), "View 2 warnings…");
+}
+
+/// The export button and what pressing it does, as the sheet stands.
+#[test]
+fn export_opens_the_warnings_until_they_are_acknowledged() {
+    let choice = Choice::new(2);
+    let none = Choice::new(0);
+    let hit = || deck_cli::pack::Hit {
+        entry: "deck/g1.json".into(),
+        at: "src/a.ts:3".into(),
+        rule: "github-pat",
+        redacted: "ghp_****".into(),
+        fingerprint: "abc".into(),
+    };
+    let found = Scan::Found(vec![hit()]);
+    let refused = Scan::Refused("no such file".into());
+    // (choice, scan, busy, warned) -> (says warnings, ready)
+    let rows: [(&Choice, &Scan, bool, usize, bool, bool); 9] = [
+        (&choice, &Scan::Clear, false, 0, false, true),
+        (&choice, &Scan::Clear, false, 2, true, true),
+        (&choice, &found, false, 3, true, true),
+        // Acknowledged: off until the rescan lands clear.
+        (&choice, &found, false, 0, false, false),
+        (&choice, &Scan::Reading, false, 2, true, false),
+        (&choice, &Scan::Clear, true, 2, true, false),
+        // A refusal says itself, not the warnings, and stays off.
+        (&choice, &refused, false, 2, false, false),
+        (&none, &Scan::Clear, false, 2, false, false),
+        (&choice, &Scan::Clear, false, 1, true, true),
+    ];
+    for (ix, (choice, scan, busy, warned, warns, ready)) in rows.into_iter().enumerate() {
+        let (said, on) = button_of(choice, Some(3), scan, busy, warned);
+        assert_eq!(said.starts_with("View "), warns, "row {ix}: {said}");
+        assert_eq!(on, ready, "row {ix}: {said}");
     }
+    // After Acknowledge with secrets: (scan, up, laid, busy) -> what happens.
+    let waits: [(&Scan, bool, bool, bool, Pending); 7] = [
+        (&Scan::Clear, true, true, false, Pending::Export),
+        (&Scan::Reading, true, true, false, Pending::Wait),
+        (&Scan::Clear, true, false, false, Pending::Wait),
+        // The sheet on its way out never asks where to save.
+        (&Scan::Clear, false, true, false, Pending::Wait),
+        (&Scan::Clear, true, true, true, Pending::Wait),
+        (&found, true, true, false, Pending::Drop),
+        (&refused, true, true, false, Pending::Drop),
+    ];
+    for (ix, (scan, up, laid, busy, want)) in waits.into_iter().enumerate() {
+        assert_eq!(pending(scan, up, laid, busy), want, "row {ix}");
+    }
+    assert_eq!(pressed(true, true), Press::Warn);
+    assert_eq!(pressed(false, true), Press::Export);
+    assert_eq!(pressed(true, false), Press::Nothing);
+    assert_eq!(pressed(false, false), Press::Nothing);
 }
 
 /// The default names the theme the window really borrowed, and deck's own

@@ -3,9 +3,11 @@
 //!
 //! A sheet over the dimmed window, in two columns. On the left, what to
 //! write — the format, which way up, the colours, which groups, whether what
-//! was said goes with it — and what the reader should know before they do:
-//! the notices the export itself has, and a secret, if the scanner finds
-//! one. On the right, the pages, as the file will hold them.
+//! was said goes with it. On the right, the pages, as the file will hold
+//! them. What the reader should know before they export — the notices the
+//! export itself has, and any secret the scanner finds — opens over the
+//! sheet from the button, every one with the line it is about, to be gone
+//! back from or acknowledged.
 //!
 //! Three things it holds to.
 //!
@@ -101,13 +103,11 @@ enum Control {
     Own(usize),
     /// An editor's theme in the list, by its place among them.
     Row(usize),
-    /// The first click on a secret's *let through*, by its place in the list.
-    Allow(usize),
-    /// The second, which lets it through.
-    AllowSure(usize),
-    /// Changing your mind between the two.
-    AllowCancel(usize),
     Export,
+    /// In the warnings: go back without exporting.
+    Dismiss,
+    /// In the warnings: every one of them read, export anyway.
+    Acknowledge,
     /// Once a file is saved: put the sheet away.
     Done,
     /// Once a file is saved: back to the choices, to write another.
@@ -339,9 +339,17 @@ pub struct ExportSheet {
     remarks: usize,
     answers: usize,
     scan: Scan,
-    /// A secret's fingerprint whose *let through* was clicked once, waiting
-    /// on the second click that says it was checked.
-    confirming: Option<String>,
+    /// The warnings are up, over the sheet.
+    warnings_open: bool,
+    /// The reader read the warnings for these choices and said export
+    /// anyway. Any change to the choices takes it back — but a secret it let
+    /// through stays let through for as long as the sheet is up, as a
+    /// `--allow` would for the command, and the file's manifest records it.
+    acknowledged: bool,
+    /// Acknowledged with secrets among the warnings: they are let through
+    /// and the deck read again, and the export goes on once that scan is
+    /// clear.
+    export_when_clear: bool,
     /// The last few option sets' pages, oldest first.
     laid: Vec<(Key, Arc<Laid>)>,
     /// Why the pages for an option set could not be laid out.
@@ -428,7 +436,9 @@ impl ExportSheet {
             remarks: 0,
             answers: 0,
             scan: Scan::Reading,
-            confirming: None,
+            warnings_open: false,
+            acknowledged: false,
+            export_when_clear: false,
             laid: Vec::new(),
             unlaid: None,
             stops: HashMap::new(),
@@ -635,7 +645,6 @@ impl ExportSheet {
         // Export stays off until this scan lands: the last one was of
         // other groups.
         self.scan = Scan::Reading;
-        self.confirming = None;
         self.scanning = cx.spawn(async move |this, cx| {
             let scanned = cx
                 .background_executor()
@@ -649,16 +658,29 @@ impl ExportSheet {
         });
     }
 
-    /// Let `fingerprint` through, as `--allow` would, and read the deck
-    /// again with it: the manifest of what is exported then records it.
-    fn let_through(&mut self, fingerprint: String, cx: &mut Context<Self>) {
-        if !self.allow.contains(&fingerprint) {
-            self.allow.push(fingerprint);
+    /// Let every secret the scan found through, as `--allow` would, and
+    /// read the deck again with them: the manifest of what is exported then
+    /// records each one.
+    fn let_all_through(&mut self, cx: &mut Context<Self>) {
+        if let Scan::Found(hits) = &self.scan {
+            for hit in hits {
+                if !self.allow.contains(&hit.fingerprint) {
+                    self.allow.push(hit.fingerprint.clone());
+                }
+            }
         }
-        self.confirming = None;
         self.scan = Scan::Reading;
         self.read(cx);
         cx.notify();
+    }
+
+    /// Everything the reader is told before exporting these choices.
+    fn warnings(&self) -> Vec<Warning> {
+        let notices = self
+            .current()
+            .map(|laid| laid.notices.clone())
+            .unwrap_or_default();
+        warnings_of(&notices, &self.scan)
     }
 
     fn current(&self) -> Option<Arc<Laid>> {
@@ -694,6 +716,8 @@ impl ExportSheet {
         }
         self.copied = false;
         self.page = 0;
+        self.acknowledged = false;
+        self.export_when_clear = false;
         self.lay_out(cx);
         if carried {
             self.rescan(cx);
@@ -720,11 +744,19 @@ impl ExportSheet {
     }
 
     /// Whether Export can be pressed, and what it says.
+    ///
+    /// With warnings not yet acknowledged it opens them instead, and a
+    /// secret among them does not hold it off: the warnings are where it is
+    /// let through.
     fn button(&self) -> (String, bool) {
-        let laid = self.current();
-        let pages = laid.as_ref().map(|laid| laid.pages.len());
-        let blocked = blocks(&self.scan) || matches!(self.phase, Phase::Asking | Phase::Writing);
-        model::button(&self.choice, pages, blocked)
+        let pages = self.current().map(|laid| laid.pages.len());
+        let busy = matches!(self.phase, Phase::Asking | Phase::Writing);
+        let warned = if self.acknowledged {
+            0
+        } else {
+            self.warnings().len()
+        };
+        button_of(&self.choice, pages, &self.scan, busy, warned)
     }
 
     /// The button: ask where, then write it there.
@@ -840,6 +872,9 @@ impl ExportSheet {
 
     /// Start fading out, if it has not.
     pub fn leave(&mut self, cx: &mut Context<Self>) {
+        // An export waiting on a rescan goes with the sheet: a save panel
+        // for a sheet on its way out would write nothing.
+        self.export_when_clear = false;
         if self.fade.set(false) {
             cx.notify();
         }
@@ -854,6 +889,7 @@ impl ExportSheet {
     /// Again: back to the choices, as they were.
     fn again(&mut self, cx: &mut Context<Self>) {
         self.phase = self.phase.again();
+        self.acknowledged = false;
         cx.notify();
     }
 
@@ -888,6 +924,10 @@ impl ExportSheet {
             self.close_themes(window, cx);
             return;
         }
+        if self.warnings_open {
+            self.press(Control::Dismiss, window, cx);
+            return;
+        }
         match self.phase {
             Phase::Asking => {
                 self.writing = Task::ready(());
@@ -920,6 +960,11 @@ impl ExportSheet {
         if self.picking.is_some() {
             return self.theme_order(cx);
         }
+        // The warnings hold the keyboard while they are up: going back
+        // first, so a space pressed on arrival exports nothing.
+        if self.warnings_open {
+            return vec![Control::Dismiss, Control::Acknowledge];
+        }
         let mut order = vec![Control::Pdf, Control::Html];
         if self.choice.format == Format::Pdf {
             order.extend([Control::Portrait, Control::Landscape]);
@@ -927,15 +972,6 @@ impl ExportSheet {
         order.extend([Control::Theme, Control::Every]);
         order.extend((0..self.source.titles.len()).map(Control::Group));
         order.push(Control::Comments);
-        if let Scan::Found(hits) = &self.scan {
-            for (ix, hit) in hits.iter().enumerate() {
-                if self.confirming.as_deref() == Some(hit.fingerprint.as_str()) {
-                    order.extend([Control::AllowSure(ix), Control::AllowCancel(ix)]);
-                } else {
-                    order.push(Control::Allow(ix));
-                }
-            }
-        }
         if matches!(self.phase, Phase::Saved(_)) {
             order.extend([Control::Done, Control::Again]);
         } else {
@@ -991,10 +1027,6 @@ impl ExportSheet {
         if self.busy() || !self.fade.on() {
             return;
         }
-        let fingerprint = |sheet: &Self, ix: usize| match &sheet.scan {
-            Scan::Found(hits) => hits.get(ix).map(|hit| hit.fingerprint.clone()),
-            _ => None,
-        };
         match control {
             Control::Pdf | Control::Html => {
                 self.choice.format = if control == Control::Pdf {
@@ -1037,29 +1069,33 @@ impl ExportSheet {
                 // A secret said only in a comment goes with the comments.
                 self.changed(true, cx);
             }
-            Control::Allow(ix) => {
-                self.confirming = fingerprint(self, ix);
-                // The ring follows the link to what it turned into, and
-                // lands on changing your mind rather than on letting it
-                // through, so space pressed twice lets nothing through.
-                if let Some(next) = ring_after(control) {
-                    self.stop(next, cx).focus(window, cx);
+            Control::Export => {
+                let warned = !self.acknowledged && !self.warnings().is_empty();
+                match pressed(warned, self.button().1) {
+                    Press::Warn => {
+                        self.warnings_open = true;
+                        self.stop(Control::Dismiss, cx).focus(window, cx);
+                        cx.notify();
+                    }
+                    Press::Export => self.export(window, cx),
+                    Press::Nothing => {}
                 }
+            }
+            Control::Dismiss => {
+                self.warnings_open = false;
+                self.stop(Control::Export, cx).focus(window, cx);
                 cx.notify();
             }
-            Control::AllowSure(ix) => {
-                if let Some(fingerprint) = fingerprint(self, ix) {
-                    self.let_through(fingerprint, cx);
+            Control::Acknowledge => {
+                self.warnings_open = false;
+                self.acknowledged = true;
+                if matches!(self.scan, Scan::Found(_)) {
+                    self.export_when_clear = true;
+                    self.let_all_through(cx);
+                } else {
+                    self.export(window, cx);
                 }
             }
-            Control::AllowCancel(_) => {
-                self.confirming = None;
-                if let Some(next) = ring_after(control) {
-                    self.stop(next, cx).focus(window, cx);
-                }
-                cx.notify();
-            }
-            Control::Export => self.export(window, cx),
             Control::Done => self.close(cx),
             Control::Again => self.again(cx),
         }
@@ -1071,17 +1107,108 @@ impl ExportSheet {
     }
 }
 
-/// Where the ring goes once `control` is pressed, for the presses that
-/// take the control away and put another in its place: the first step of a
-/// let-through hands it to *cancel*, the safe one of the two that follow, and
-/// *cancel* hands it back to the first step. The rest keep the ring where it
-/// is. Letting a secret through is always a choice made on purpose, never
-/// where the focus happens to fall.
-fn ring_after(control: Control) -> Option<Control> {
-    match control {
-        Control::Allow(ix) => Some(Control::AllowCancel(ix)),
-        Control::AllowCancel(ix) => Some(Control::Allow(ix)),
-        _ => None,
+/// One thing to read before exporting, and where it is when it is about a
+/// line: a secret's file and line. A notice about the pages, such as a pane
+/// that could not show every line, is about the export and has none.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct Warning {
+    said: String,
+    at: Option<String>,
+    secret: bool,
+}
+
+/// The warnings for `notices` and what the scan found: secrets first, since
+/// they are the ones that leave the machine.
+fn warnings_of(notices: &[String], scan: &Scan) -> Vec<Warning> {
+    let secrets = match scan {
+        Scan::Found(hits) => hits
+            .iter()
+            .map(|hit| Warning {
+                said: format!("This looks like a secret ({}): {}.", hit.rule, hit.redacted),
+                at: Some(hit.at.clone()),
+                secret: true,
+            })
+            .collect(),
+        _ => Vec::new(),
+    };
+    secrets
+        .into_iter()
+        .chain(notices.iter().map(|notice| Warning {
+            said: sentence(notice),
+            at: None,
+            secret: false,
+        }))
+        .collect()
+}
+
+/// What the export button says and whether it can be pressed, for the
+/// sheet as it stands: `warned` is how many warnings are still to be read.
+///
+/// With warnings to read it opens them, so a secret among them does not
+/// hold it off: the warnings are where it is let through. A secret once
+/// acknowledged holds it off until the rescan that lets it through lands,
+/// and a refusal always does, saying what it says, not the warnings.
+fn button_of(
+    choice: &Choice,
+    pages: Option<usize>,
+    scan: &Scan,
+    busy: bool,
+    warned: usize,
+) -> (String, bool) {
+    let refused = matches!(scan, Scan::Refused(_));
+    let warns = warned > 0 && !refused && choice.chosen() > 0;
+    let blocked = busy
+        || match scan {
+            Scan::Found(_) => !warns,
+            scan => blocks(scan),
+        };
+    let (said, ready) = model::button(choice, pages, blocked);
+    if warns {
+        (model::view_warnings(warned), ready)
+    } else {
+        (said, ready)
+    }
+}
+
+/// What pressing Export does.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Press {
+    /// Open the warnings.
+    Warn,
+    /// Ask where, and write it.
+    Export,
+    Nothing,
+}
+
+/// What pressing Export does, with warnings still to read or not, and the
+/// button ready or not.
+fn pressed(warned: bool, ready: bool) -> Press {
+    match (ready, warned) {
+        (false, _) => Press::Nothing,
+        (true, true) => Press::Warn,
+        (true, false) => Press::Export,
+    }
+}
+
+/// What an acknowledged export waiting on a rescan does this frame.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Pending {
+    /// The scan has not landed, or the pages are not laid out yet.
+    Wait,
+    /// Clear, laid out, the sheet up and nothing being written: go.
+    Export,
+    /// The scan still found something, or refused: give it up.
+    Drop,
+}
+
+/// What an acknowledged export waiting on a rescan does, for the scan as it
+/// stands, the sheet up or on its way out, the pages laid or not, and a
+/// file being asked for or written or not.
+fn pending(scan: &Scan, up: bool, laid: bool, busy: bool) -> Pending {
+    match scan {
+        Scan::Clear if up && laid && !busy => Pending::Export,
+        Scan::Refused(_) | Scan::Found(_) => Pending::Drop,
+        _ => Pending::Wait,
     }
 }
 
@@ -1354,12 +1481,37 @@ impl Render for ExportSheet {
             Some(stop) => ringed(element, stop, &palette),
             None => element,
         };
+        // Acknowledged with secrets: once the deck is read again with them
+        // let through, the export goes on by itself.
+        if self.export_when_clear {
+            match pending(
+                &self.scan,
+                self.fade.on(),
+                self.current().is_some(),
+                self.busy(),
+            ) {
+                Pending::Export => {
+                    self.export_when_clear = false;
+                    cx.defer_in(window, |sheet, window, cx| sheet.export(window, cx));
+                }
+                // Still a secret, or refused: nothing goes, and the warnings
+                // are to be read again rather than the button left off
+                // with nothing to say why.
+                Pending::Drop => {
+                    self.export_when_clear = false;
+                    self.acknowledged = false;
+                }
+                Pending::Wait => {}
+            }
+        }
+        let over = self
+            .warnings_open
+            .then(|| self.warnings_over(&ring, cx.theme().mono_font_family.clone(), cx));
         #[cfg(debug_assertions)]
         let badge = self.debug_badge(&palette);
         #[cfg(not(debug_assertions))]
         let badge: Option<Div> = None;
         let mono = cx.theme().mono_font_family.clone();
-        let warn = crate::keys::level_colour(deck_core::protocol::Level::Medium, &palette);
         let bad = palette.del;
         let good = palette.add;
         let fresh = self.current();
@@ -1647,78 +1799,10 @@ impl Render for ExportSheet {
                 ),
             );
 
-        // What the export has to say before it is made.
-        let notices = fresh
-            .as_ref()
-            .filter(|laid| !laid.notices.is_empty())
-            .map(|laid| {
-                notice(warn, &palette)
-                    .child(
-                        div()
-                            .font_weight(FontWeight::SEMIBOLD)
-                            .text_color(paint(warn))
-                            .child("Before you export"),
-                    )
-                    .children(laid.notices.iter().map(|said| div().child(sentence(said))))
-            });
+        // A refusal stays where the button is: there is nothing to
+        // acknowledge, only something to fix. Warnings open over the sheet
+        // from the button instead (see `warnings_over`).
         let secret = match &self.scan {
-            Scan::Found(hits) => Some(
-                notice(bad, &palette)
-                    .child(
-                        div()
-                            .font_weight(FontWeight::SEMIBOLD)
-                            .text_color(paint(bad))
-                            .child(sentence(&deck_cli::pack::looks_like(hits.len()))),
-                    )
-                    .children(hits.iter().map(|hit| {
-                        div()
-                            .font_family(mono.clone())
-                            .text_size(px(11.))
-                            .text_color(paint(palette.fg.mix(palette.band, 0.15)))
-                            .child(hit.to_string())
-                    }))
-                    .child(div().child(format!(
-                        "Take it out of the deck and export again. Or, for each one you \
-                         have looked at and know is safe, let it through, and {}.",
-                        deck_cli::pack::LET_THROUGH
-                    )))
-                    .children(hits.iter().enumerate().map(|(ix, hit)| {
-                        let link = |id: (&'static str, usize), control: Control| {
-                            ring(div().id(id), control)
-                                .rounded(px(crate::radius::CAP))
-                                .cursor_pointer()
-                                .text_color(paint(palette.accent))
-                                .hover(|this| this.text_color(paint(palette.fg)))
-                                .on_click(cx.listener(move |sheet, _, window, cx| {
-                                    sheet.press(control, window, cx);
-                                }))
-                        };
-                        // Two clicks, the second saying it was looked at: one
-                        // click near the button should never send a secret.
-                        if self.confirming.as_deref() == Some(hit.fingerprint.as_str()) {
-                            div()
-                                .mt(px(3.))
-                                .h_flex()
-                                .flex_wrap()
-                                .gap(px(12.))
-                                .child(format!("{}:", hit.fingerprint))
-                                .child(
-                                    link(("x-allow-sure", ix), Control::AllowSure(ix))
-                                        .child("Let it through — I checked it"),
-                                )
-                                .child(
-                                    link(("x-allow-cancel", ix), Control::AllowCancel(ix))
-                                        .child("Cancel"),
-                                )
-                                .into_any_element()
-                        } else {
-                            link(("x-allow", ix), Control::Allow(ix))
-                                .mt(px(3.))
-                                .child(format!("Let {} through", hit.fingerprint))
-                                .into_any_element()
-                        }
-                    })),
-            ),
             Scan::Refused(why) => Some(
                 notice(bad, &palette)
                     .child(
@@ -1729,7 +1813,7 @@ impl Render for ExportSheet {
                     )
                     .child(div().whitespace_normal().child(why.clone())),
             ),
-            Scan::Reading | Scan::Clear => None,
+            Scan::Reading | Scan::Clear | Scan::Found(_) => None,
         };
         let failed = match &self.phase {
             Phase::Failed(why) => Some(
@@ -1977,10 +2061,9 @@ impl Render for ExportSheet {
         ])
         .collect();
         // What has to be read before pressing: never scrolled out of sight.
-        let foot: Vec<AnyElement> = notices
+        let foot: Vec<AnyElement> = secret
             .map(IntoElement::into_any_element)
             .into_iter()
-            .chain(secret.map(IntoElement::into_any_element))
             .chain(failed.map(IntoElement::into_any_element))
             .chain([trust.into_any_element(), go.into_any_element()])
             .collect();
@@ -2356,5 +2439,143 @@ impl Render for ExportSheet {
             )
             .children(badge)
             .children(list)
+            .children(over)
+    }
+}
+
+impl ExportSheet {
+    /// The warnings, over the sheet: every one, scrolling when there are
+    /// many, each with the line it is about when it is about one; then go
+    /// back, or export anyway.
+    fn warnings_over(
+        &self,
+        ring: &dyn Fn(Stateful<Div>, Control) -> Stateful<Div>,
+        mono: SharedString,
+        cx: &mut Context<Self>,
+    ) -> Stateful<Div> {
+        let palette = self.palette;
+        let warn = crate::keys::level_colour(deck_core::protocol::Level::Medium, &palette);
+        let warnings = self.warnings();
+        let n = warnings.len();
+        let secrets = warnings.iter().filter(|w| w.secret).count();
+        let rows = warnings.into_iter().map(|warning| {
+            let tone = if warning.secret { palette.del } else { warn };
+            notice(tone, &palette)
+                .child(div().child(warning.said))
+                .children(warning.at.map(|at| {
+                    div()
+                        .font_family(mono.clone())
+                        .text_size(px(11.))
+                        .text_color(paint(palette.muted))
+                        .child(at)
+                }))
+        });
+        let button = |id: &'static str, control: Control| {
+            ring(div().id(id), control)
+                .flex_none()
+                .px(px(14.))
+                .py(px(8.))
+                .rounded(px(crate::radius::CONTROL))
+                .border_1()
+                .text_size(px(13.))
+                .font_weight(FontWeight::SEMIBOLD)
+                .cursor_pointer()
+                .on_click(cx.listener(move |sheet, _, window, cx| {
+                    sheet.press(control, window, cx);
+                }))
+        };
+        div()
+            .id("x-warnings-shade")
+            .absolute()
+            .top_0()
+            .left_0()
+            .right_0()
+            .bottom_0()
+            .flex()
+            .items_center()
+            .justify_center()
+            .p(px(32.))
+            .bg(paint(palette.bg).opacity(0.6))
+            .occlude()
+            .on_mouse_down(
+                MouseButton::Left,
+                cx.listener(|sheet, _, window, cx| sheet.press(Control::Dismiss, window, cx)),
+            )
+            .child(
+                div()
+                    .id("x-warnings")
+                    .w_full()
+                    .max_w(px(560.))
+                    .max_h(relative(0.85))
+                    .v_flex()
+                    .rounded(px(crate::radius::CARD))
+                    .border_1()
+                    .border_color(paint(palette.edge))
+                    .bg(paint(palette.band))
+                    .text_color(paint(palette.fg))
+                    .shadow_lg()
+                    .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                    .child(
+                        div()
+                            .flex_none()
+                            .v_flex()
+                            .gap(px(2.))
+                            .px(px(20.))
+                            .pt(px(18.))
+                            .pb(px(12.))
+                            .child(
+                                div()
+                                    .text_size(px(16.))
+                                    .font_weight(FontWeight::SEMIBOLD)
+                                    .child("Before you export"),
+                            )
+                            .child(
+                                div()
+                                    .text_size(px(12.))
+                                    .text_color(paint(palette.muted))
+                                    .child(model::warned(n, secrets)),
+                            ),
+                    )
+                    .child(
+                        div()
+                            .id("x-warnings-list")
+                            .flex_1()
+                            .min_h_0()
+                            .overflow_y_scroll()
+                            .px(px(20.))
+                            .child(div().v_flex().gap(px(8.)).pb(px(4.)).children(rows)),
+                    )
+                    .child(
+                        div()
+                            .flex_none()
+                            .h_flex()
+                            .justify_end()
+                            .gap(px(8.))
+                            .px(px(20.))
+                            .pt(px(12.))
+                            .pb(px(16.))
+                            .border_t_1()
+                            .border_color(paint(palette.edge))
+                            .mt(px(12.))
+                            .child(
+                                button("x-dismiss", Control::Dismiss)
+                                    .border_color(paint(palette.edge))
+                                    .text_color(paint(palette.fg))
+                                    .hover(|this| this.bg(paint(hover_on_band(&palette))))
+                                    .child("Cancel"),
+                            )
+                            .child(
+                                button("x-acknowledge", Control::Acknowledge)
+                                    .border_color(paint(palette.accent))
+                                    .bg(paint(palette.accent))
+                                    .text_color(paint(palette.on_accent))
+                                    .hover(|this| {
+                                        let lit = palette.accent.mix(palette.fg, 0.16);
+                                        this.bg(paint(lit)).border_color(paint(lit))
+                                    })
+                                    .child("Acknowledge and export"),
+                            ),
+                    ),
+            )
     }
 }

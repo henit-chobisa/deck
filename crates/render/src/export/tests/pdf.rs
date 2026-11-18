@@ -759,49 +759,137 @@ fn a_long_narration_continues_past_the_landscape_band() {
     assert!(all.contains("word1500"));
 }
 
-/// A diagram too tall for a page is never shrunk past readable: it is cut
-/// into page-high bands, said to continue, and the export warns.
+/// A diagram too tall or too wide for a page is shrunk until it fits,
+/// whole, on one page: never cut into bands or at an edge, never a warning,
+/// and the numbered marks under it stay on its page.
 #[test]
-fn a_tall_diagram_is_cut_across_pages_not_shrunk() {
-    let nodes: Vec<String> = (0..80)
-        .map(|n| format!(r#"{{"id": "n{n}", "label": "step {n}"}}"#))
-        .collect();
-    let edges: Vec<String> = (0..79)
-        .map(|n| format!(r#"{{"from": "n{n}", "to": "n{}"}}"#, n + 1))
-        .collect();
-    let group = format!(
-        r#"{{"id": "g1", "ord": 1, "say": "The chain.", "refs": [{{"id": "g1d1", "name": "chain", "diagram": {{"nodes": [{}], "edges": [{}]}}}}]}}"#,
-        nodes.join(","),
-        edges.join(",")
-    );
-    let pages = layout(
-        &document_of(&deck_of(&[&group], None), &Options::default()),
-        Format::Portrait,
-    );
-    let bands: Vec<f32> = pages
-        .iter()
-        .flat_map(|p| &p.items)
-        .filter_map(|item| match item {
-            Item::Svg {
-                scale,
-                band: Some(_),
-                ..
-            } => Some(*scale),
-            _ => None,
-        })
-        .collect();
-    assert!(bands.len() >= 2, "{bands:?}");
-    for scale in bands {
-        assert!(scale >= 0.75 * super::super::layout::DIAGRAM_LEAST - 1e-4);
+fn a_diagram_too_big_for_a_page_is_shrunk_whole_onto_one() {
+    let chain = |n: usize, flow: &str, say: &str| {
+        let nodes: Vec<String> = (0..n)
+            .map(|n| format!(r#"{{"id": "n{n}", "label": "step {n}"}}"#))
+            .collect();
+        let edges: Vec<String> = (0..n - 1)
+            .map(|n| format!(r#"{{"from": "n{n}", "to": "n{}"}}"#, n + 1))
+            .collect();
+        format!(
+            r#"{{"id": "g1", "ord": 1, "title": "Steps", "say": "{say}", "refs": [{{"id": "g1d1", "name": "chain", "diagram": {{{flow}"nodes": [{}], "edges": [{}]}}}}]}}"#,
+            nodes.join(","),
+            edges.join(",")
+        )
+    };
+    // A middling diagram with marks, pushed down a portrait page by more and
+    // more prose, a sentence at a time, so it lands at every height a page
+    // break could fall across. Landscape pages hold one group's panes and
+    // never break across them.
+    let pushed = (0..90).map(|n| {
+        let prose = "Words before the drawing. ".repeat(n * 2);
+        (
+            chain(4, "", &format!("{prose}The chain.[point n2]")),
+            &[Format::Portrait][..],
+        )
+    });
+    let both = &[Format::Portrait, Format::Landscape][..];
+    for (group, formats) in [
+        (chain(80, "", "The chain."), both),
+        (chain(80, "", "The chain.[point n3]"), both),
+        (chain(40, r#""flow": "right", "#, "The chain."), both),
+        (
+            chain(60, "", "The chain.[point n3]").replace(
+                r#""name": "chain","#,
+                r#""name": "chain", "note": "the whole chain","#,
+            ),
+            both,
+        ),
+    ]
+    .into_iter()
+    .chain(pushed)
+    {
+        for &format in formats {
+            let pages = layout(
+                &document_of(&deck_of(&[&group], None), &Options::default()),
+                format,
+            );
+            let drawn: Vec<&Item> = pages
+                .iter()
+                .flat_map(|p| &p.items)
+                .filter(|item| matches!(item, Item::Svg { .. }))
+                .collect();
+            assert_eq!(drawn.len(), 1, "{format:?}: one drawing, not bands");
+            // Long prose may warn about itself; nothing warns about the
+            // drawing.
+            assert!(
+                pages
+                    .iter()
+                    .flat_map(|p| &p.warnings)
+                    .all(|w| !w.contains("diagram")),
+                "{format:?}: {:?}",
+                pages.iter().flat_map(|p| &p.warnings).collect::<Vec<_>>()
+            );
+            let all: String = pages.iter().map(words).collect::<Vec<_>>().join(" ");
+            assert!(!all.contains("continues on the next page"), "{format:?}");
+            let drawing = pages
+                .iter()
+                .position(|p| p.items.iter().any(|item| matches!(item, Item::Svg { .. })))
+                .expect("drawn");
+            // Under its own narration when that is short: never a page that
+            // holds only the group's title.
+            // (The first page with the words: every page's foot names the
+            // group too.)
+            if !group.contains("Words before") {
+                let narration = pages
+                    .iter()
+                    .position(|p| words(p).contains("The chain."))
+                    .expect("narrated");
+                assert_eq!(
+                    drawing, narration,
+                    "{format:?}: the drawing is on its narration's page"
+                );
+            }
+            // The drawing, and the marks under it, inside the pane's ground,
+            // and in portrait above the page's foot.
+            let items = &pages[drawing].items;
+            let Some(Item::Svg { rect: art, .. }) =
+                items.iter().find(|item| matches!(item, Item::Svg { .. }))
+            else {
+                panic!("a drawing")
+            };
+            let ground = items
+                .iter()
+                .filter_map(|item| match item {
+                    Item::Fill { rect, .. }
+                        if rect.x <= art.x
+                            && rect.y <= art.y
+                            && rect.y + rect.h > art.y
+                            && rect.x + rect.w >= art.x + art.w =>
+                    {
+                        Some(*rect)
+                    }
+                    _ => None,
+                })
+                .min_by(|a, b| (a.w * a.h).total_cmp(&(b.w * b.h)))
+                .expect("a pane's ground");
+            let mut floor = ground.y + ground.h;
+            if format == Format::Portrait {
+                floor = floor.min(super::super::portrait::BOTTOM);
+            }
+            let lowest = items
+                .iter()
+                .filter_map(|item| match item {
+                    Item::Badge { cy, r, .. } if *cy > art.y => Some(cy + r),
+                    _ => None,
+                })
+                .fold(art.y + art.h, f32::max);
+            // The marks are on the drawing's own page, under it: the prose
+            // has numerals of its own, so only one below the drawing counts.
+            if group.contains("[point") {
+                assert!(
+                    lowest > art.y + art.h,
+                    "{format:?}: the marks on the drawing's page"
+                );
+            }
+            assert!(lowest <= floor + 0.5, "{format:?}: {lowest} past {floor}");
+        }
     }
-    let all: String = pages.iter().map(words).collect::<Vec<_>>().join(" ");
-    assert!(all.contains("the diagram continues on the next page"));
-    assert!(
-        pages
-            .iter()
-            .flat_map(|p| &p.warnings)
-            .any(|w| w.contains("cut across"))
-    );
 }
 
 /// A pane's name gives way before its file and range, which are kept whole.
@@ -885,58 +973,6 @@ fn a_landscape_export_of_nothing_says_so() {
     );
     assert_eq!(pages.len(), 1);
     assert!(words(&pages[0]).contains("0 groups"));
-}
-
-/// The 80-node chain, cut into bands: no box straddles a band's edge, and
-/// each band's drawing holds only its own boxes' labels, each label once.
-#[test]
-fn a_band_never_cuts_a_box_and_holds_only_its_own_words() {
-    let nodes: Vec<String> = (0..80)
-        .map(|n| format!(r#"{{"id": "n{n}", "label": "step {n}"}}"#))
-        .collect();
-    let edges: Vec<String> = (0..79)
-        .map(|n| format!(r#"{{"from": "n{n}", "to": "n{}"}}"#, n + 1))
-        .collect();
-    let group = format!(
-        r#"{{"id": "g1", "ord": 1, "say": "The chain.", "refs": [{{"id": "g1d1", "name": "chain", "diagram": {{"nodes": [{}], "edges": [{}]}}}}]}}"#,
-        nodes.join(","),
-        edges.join(",")
-    );
-    let document = document_of(&deck_of(&[&group], None), &Options::default());
-    let whole = match &document.groups[0].panes[0] {
-        deck_core::document::Pane::Diagram(picture) => picture.svg.clone(),
-        _ => panic!("a diagram"),
-    };
-    let all_boxes = crate::export::layout::boxes(&whole);
-    assert_eq!(all_boxes.len(), 80);
-    let pages = layout(&document, Format::Portrait);
-    let mut labels: Vec<String> = Vec::new();
-    for item in pages.iter().flat_map(|p| &p.items) {
-        let Item::Svg {
-            svg,
-            band: Some([from, to]),
-            ..
-        } = item
-        else {
-            continue;
-        };
-        for (top, bottom) in &all_boxes {
-            let inside = top >= from && bottom <= to;
-            let outside = bottom <= from || top >= to;
-            assert!(
-                inside || outside,
-                "a box {top}-{bottom} straddles {from}-{to}"
-            );
-        }
-        for line in svg.lines().filter(|line| line.starts_with("<text ")) {
-            let words = &line[line.find('>').unwrap() + 1..line.rfind("</text>").unwrap()];
-            labels.push(words.to_string());
-        }
-    }
-    for n in 0..80 {
-        let label = format!("step {n}");
-        assert_eq!(labels.iter().filter(|l| **l == label).count(), 1, "{label}");
-    }
 }
 
 /// A character Plex lacks is borrowed from a face of the weight it stands

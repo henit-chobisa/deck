@@ -29,9 +29,9 @@ use deck_core::protocol::Kind as Remark;
 use deck_core::theme::Rgb;
 
 use super::layout::{
-    Context, DIAGRAM_LEAST, Face, Item, Kind, Page, Rect, Tones, Visual, banded, baseline, boxes,
-    count, cut, day, fit, flow, level, line_items, measure, middle, number_width, numeral_slots,
-    pane_name, repo, snap, svg_size, tokens, up4, visual_rows,
+    Context, Face, Item, Kind, Page, Rect, Tones, Visual, baseline, count, cut, day, fit, flow,
+    level, line_items, measure, middle, number_width, numeral_slots, pane_name, repo, svg_size,
+    tokens, up4, visual_rows,
 };
 use crate::text;
 
@@ -48,7 +48,7 @@ const RIGHT: f32 = 548.;
 /// The column's width.
 const COLUMN: f32 = RIGHT - LEFT;
 /// Where content stops: 32 above the footer's rule.
-const BOTTOM: f32 = 768.;
+pub(super) const BOTTOM: f32 = 768.;
 /// The footer's rule, and its 24 points.
 const FOOTER: f32 = 800.;
 /// See [`FOOTER`].
@@ -115,9 +115,6 @@ struct Block {
     pad: f32,
     head: Vec<Row>,
     rows: Vec<Row>,
-    /// Start on a page of its own, unless it starts one already: a diagram
-    /// cut across pages, which reads best from the top of one.
-    fresh: bool,
     /// What the person exporting should hear about it.
     warning: Option<String>,
 }
@@ -149,11 +146,6 @@ fn paginate(blocks: &[Block]) -> (Vec<Vec<Item>>, f32) {
     let mut y = top;
     for block in blocks {
         let mut from = 0;
-        if block.fresh && (y - top).abs() > f32::EPSILON {
-            pages.push(Vec::new());
-            top = CONTINUED_TOP;
-            y = top;
-        }
         loop {
             let start = if (y - top).abs() < f32::EPSILON {
                 y
@@ -359,17 +351,33 @@ fn text_right(right: f32, height: f32, text: &str, face: Face, size: f32, colour
 /// The band, the panes, and the argument, as blocks.
 fn group_blocks(document: &Document, group: &Group, tones: &Tones, context: Context) -> Vec<Block> {
     let mut blocks = vec![band(document, group, tones)];
+    // How far down the group's first page the blocks so far reach, while
+    // they all fit on it: a group starts a page of its own.
+    let mut reach = Some(MARGIN + tall(&blocks[0]));
     for pane in &group.panes {
+        let at = reach.map(|y| y + BETWEEN);
         let mut block = match pane {
             Pane::Code(code) => code_block(document, pane, code, context),
-            Pane::Diagram(picture) => diagram_block(document, group, pane, picture),
+            Pane::Diagram(picture) => diagram_block(document, pane, picture, at),
             Pane::Page(_) => page_card(document, pane),
         };
         block.gap = BETWEEN;
+        reach = at.map(|y| y + tall(&block)).filter(|end| *end <= BOTTOM);
         blocks.push(block);
     }
     blocks.extend(argument_blocks(document, group, &group.argument));
     blocks
+}
+
+/// How tall `block` is, frame and all, set in one piece.
+fn tall(block: &Block) -> f32 {
+    2. * block.pad
+        + block
+            .head
+            .iter()
+            .chain(&block.rows)
+            .map(|row| row.height)
+            .sum::<f32>()
 }
 
 /// The band: the group's number and title, its confidence, its narration.
@@ -753,149 +761,94 @@ fn code_row(
 const DIAGRAM_WIDE: f32 = COLUMN - 2. * PANE_X;
 
 /// The tallest one page holds of a diagram: a page under a continued page's
-/// heading, less the pane's header, its insets and a mark that it goes on.
-const DIAGRAM_HIGH: f32 = BOTTOM - CONTINUED_TOP - PANE_HEAD - 2. * PANE_Y - 12.;
+/// heading, less the pane's header and its insets, and four points to spare
+/// so a scale worked out to fit exactly cannot land a hair over it.
+const DIAGRAM_HIGH: f32 = BOTTOM - CONTINUED_TOP - PANE_HEAD - 2. * PANE_Y - 4.;
+
+/// How much of a page has to be left under the narration for a diagram to
+/// shrink into it rather than start a page of its own.
+const SHARES_A_PAGE: f32 = 0.6;
+
+/// The space between a diagram and the row of its numbered marks.
+const MARKS_GAP: f32 = 8.;
 
 /// A diagram at the size deck draws it — a pixel being three quarters of a
-/// point, as on any page — smaller only to fit, and never so small its
-/// labels go under six points ([`DIAGRAM_LEAST`]). One that would need
-/// smaller starts a page of its own and is cut across pages in bands of the
-/// page's height, each saying it continues.
+/// point, as on any page — and smaller whenever that is what it takes to fit
+/// the column and one page, whole. It used to stop shrinking where its
+/// labels reached six points and cut the rest across pages or at the edge;
+/// a diagram in pieces was the one nobody read, and a PDF is vector, so a
+/// small one still zooms.
+///
+/// `at` is where on the group's first page it would start, when everything
+/// before it fits there. A diagram that would need a page of its own is
+/// shrunk a little further to fit the room left under the narration, when
+/// that is most of a page: a page holding only the group's title, and its
+/// diagram on the next, read as a page missing.
 fn diagram_block(
     document: &Document,
-    group: &Group,
     pane: &Pane,
     picture: &deck_core::document::Picture,
+    at: Option<f32>,
 ) -> Block {
     let inks = &document.inks;
+    let head = pane_head(document, pane);
     let (w, h) = svg_size(&picture.svg);
     let (w, h) = (w * 0.75, h * 0.75);
-    let named = picture.name.clone().unwrap_or_else(|| picture.id.clone());
-    let mut warning = None;
-    let wide = (DIAGRAM_WIDE / w).min(1.);
-    let mut scale = wide.min(DIAGRAM_HIGH / h);
-    if scale < DIAGRAM_LEAST {
-        scale = wide.max(DIAGRAM_LEAST);
-    }
-    if w * scale > DIAGRAM_WIDE + 0.5 {
-        warning = Some(format!(
-            "group {}: diagram {named} is wider than a page at a size its labels can be read; \
-             it is cut at the page's edge",
-            group.n
-        ));
-    }
-    let drawn = h * scale;
-    let mut rows = Vec::new();
-    let fresh = drawn > DIAGRAM_HIGH;
-    if fresh {
-        // In bands of a page's height, from the top.
-        let band = (DIAGRAM_HIGH / 4.).floor() * 4.;
-        let per = band / (0.75 * scale);
-        let natural = h / 0.75;
-        let mut from = 0.;
-        let mut bands = 0;
-        let boxes = boxes(&picture.svg);
-        let mut through = false;
-        while from < natural {
-            // Where the band would end, moved up into the gap above the
-            // first box it would cut, so no box is cut in half; only a box
-            // taller than a whole band is, and then it is said.
-            let (to, cuts) = snap(&boxes, from, (from + per).min(natural));
-            through |= cuts;
-            rows.push(Row::with(
-                up4((to - from) * 0.75 * scale),
-                vec![Item::Svg {
-                    rect: Rect::new(
-                        LEFT + PANE_X,
-                        0.,
-                        DIAGRAM_WIDE,
-                        up4((to - from) * 0.75 * scale),
-                    ),
-                    // Only what is in the band, so a page's text is what it
-                    // shows and nothing is found, or copied, twice.
-                    svg: banded(&picture.svg, from, to),
-                    scale: 0.75 * scale,
-                    band: Some([from, to]),
-                }],
-            ));
-            if to < natural {
-                let (size, line) = SMALL;
-                rows.push(Row::with(
-                    line,
-                    vec![text_at(
-                        LEFT + PANE_X,
-                        line,
-                        if cuts {
-                            "↓ the diagram continues on the next page, through a box too tall for one"
-                        } else {
-                            "↓ the diagram continues on the next page"
-                        },
-                        Face::Regular,
-                        size,
-                        inks.on_pane.muted,
-                    )],
-                ));
-            }
-            from = to;
-            bands += 1;
-        }
-        warning = Some(format!(
-            "group {}: diagram {named} is too tall for a page at a size its labels can be \
-             read; it is cut across {bands} pages{}",
-            group.n,
-            if through {
-                ", through a box taller than a page"
-            } else {
-                ", between its boxes"
-            }
-        ));
+    let left = at.map(|at| {
+        let headed: f32 = head.iter().map(|row| row.height).sum();
+        BOTTOM - at - 2. * PANE_Y - headed - 4.
+    });
+    let page = match left {
+        Some(left) if left >= DIAGRAM_HIGH * SHARES_A_PAGE => left.min(DIAGRAM_HIGH),
+        _ => DIAGRAM_HIGH,
+    };
+    // The numbered marks go under the drawing, on the same page.
+    let high = if picture.marks.is_empty() {
+        page
     } else {
-        let high = up4(drawn);
-        rows.push(Row::with(
-            high,
-            vec![Item::Svg {
-                rect: Rect::new(LEFT + PANE_X, 0., DIAGRAM_WIDE, high),
-                svg: picture.svg.clone(),
-                scale: 0.75 * scale,
-                band: None,
-            }],
-        ));
-    }
+        page - MARKS_GAP - SMALL.1
+    };
+    let scale = (DIAGRAM_WIDE / w).min(high / h).min(1.);
+    let high = up4(h * scale);
+    // One row with its marks, so a page break never falls between them: a
+    // drawing on one page and its marks under a repeated pane head on the
+    // next read as a diagram cut in two.
+    let mut items = vec![Item::Svg {
+        rect: Rect::new(LEFT + PANE_X, 0., DIAGRAM_WIDE, high),
+        svg: picture.svg.clone(),
+        scale: 0.75 * scale,
+    }];
+    let mut tall = high;
     if !picture.marks.is_empty() {
         let (size, line) = SMALL;
-        let mut items = Vec::new();
+        let top = high + MARKS_GAP;
         let mut x = LEFT + PANE_X;
         for mark in &picture.marks {
             items.push(Item::Badge {
                 cx: x + NUMERAL_R,
-                cy: line / 2.,
+                cy: top + line / 2.,
                 r: NUMERAL_R,
                 numeral: mark.numeral,
                 fill: inks.on_pane.accent,
                 ink: inks.pane,
             });
             x += 2. * NUMERAL_R + 4.;
-            items.push(text_at(
-                x,
-                line,
-                &mark.block,
-                Face::Mono,
-                size,
-                inks.on_pane.muted,
+            items.push(down(
+                &text_at(x, line, &mark.block, Face::Mono, size, inks.on_pane.muted),
+                top,
             ));
             x += measure(&mark.block, Face::Mono, size) + 12.;
         }
-        rows.push(Row::new(8.));
-        rows.push(Row::with(line, items));
+        tall = top + line;
     }
+    let rows = vec![Row::with(tall, items)];
     Block {
         gap: BETWEEN,
         fill: Some(inks.pane),
         pad: PANE_Y,
-        head: pane_head(document, pane),
+        head,
         rows,
-        fresh,
-        warning,
+        warning: None,
     }
 }
 
