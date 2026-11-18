@@ -628,12 +628,7 @@ fn draw(surface: &mut Surface, pen: &mut Pen, size: (f32, f32), item: &Item) {
                 surface.draw_path(&path);
             }
         }
-        Item::Svg {
-            rect,
-            svg,
-            scale,
-            band,
-        } => {
+        Item::Svg { rect, svg, scale } => {
             // Plex alone, unless the drawing has words Plex cannot set.
             let fontdb = if pen.diagram_needs_machine(svg) {
                 fallback::database()
@@ -651,13 +646,9 @@ fn draw(surface: &mut Surface, pen: &mut Pen, size: (f32, f32), item: &Item) {
             let Some(size) = Size::from_wh(w, h) else {
                 return;
             };
-            // Centred, or from the left edge when wider than its room; a
-            // band of a tall drawing is moved up so the band is in view.
+            // Centred, or from the left edge when wider than its room.
             let x = rect.x + ((rect.w - w) / 2.).max(0.);
-            let y = match band {
-                Some([from, _]) => rect.y - from * scale,
-                None => rect.y + ((rect.h - h) / 2.).max(0.),
-            };
+            let y = rect.y + ((rect.h - h) / 2.).max(0.);
             let Some(clip) = rect_path(*rect) else {
                 return;
             };

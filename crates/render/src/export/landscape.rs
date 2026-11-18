@@ -20,9 +20,9 @@ use deck_core::protocol::Kind as Remark;
 use deck_core::theme::Rgb;
 
 use super::layout::{
-    Context, DIAGRAM_LEAST, Face, Item, Kind, Page, Placed, Rect, Token, Tones, Visual, baseline,
-    count, cut, day, fit, flow, level, line_items, measure, middle, number_width, numeral_slots,
-    pane_name, repo, svg_size, tokens, visual_rows, whole,
+    Context, Face, Item, Kind, Page, Placed, Rect, Token, Tones, Visual, baseline, count, cut, day,
+    fit, flow, level, line_items, measure, middle, number_width, numeral_slots, pane_name, repo,
+    svg_size, tokens, visual_rows, whole,
 };
 use crate::metrics::{
     BAND_BOTTOM, BAND_GAP, BAND_LEAST, BAND_SIDE, BAND_TOP, CONFIDENCE_SIZE, DECK_TITLE_SIZE,
@@ -262,29 +262,19 @@ fn group_page(document: &Document, group: &Group, tones: &Tones) -> GroupPage {
                     at.h - PANE_HEAD - 14.,
                 );
                 let (w, h) = svg_size(&picture.svg);
-                let fit_scale = (inner.w / w).min(inner.h / h).min(1.);
-                // Never so small its labels cannot be read; past that it is
-                // cut at the pane's edge, and the portrait pages show it all.
-                let least = DIAGRAM_LEAST * 0.75 / SCALE;
-                let scale = fit_scale.max(least);
-                if fit_scale < least {
-                    warnings.push(format!(
-                        "group {}: diagram {} is too large for its landscape pane at a size its \
-                         labels can be read; it is cut at the pane's edge, and the portrait \
-                         pages show it whole",
-                        group.n,
-                        picture.name.clone().unwrap_or_else(|| picture.id.clone())
-                    ));
-                }
+                // Whole, however small that takes: see `portrait::diagram_block`.
+                // The numbered marks go under it, inside the pane: the gap,
+                // and a badge's height.
+                let room = if picture.marks.is_empty() {
+                    inner.h
+                } else {
+                    inner.h - 24.
+                };
+                let scale = (inner.w / w).min(room / h).min(1.);
                 items.push(Item::Svg {
-                    rect: Rect::new(inner.x, inner.y, inner.w, (h * scale).min(inner.h)),
+                    rect: Rect::new(inner.x, inner.y, inner.w, h * scale),
                     svg: picture.svg.clone(),
                     scale,
-                    band: if h * scale > inner.h {
-                        Some([0., inner.h / scale])
-                    } else {
-                        None
-                    },
                 });
                 if !picture.marks.is_empty() {
                     let mut mx = at.x + 16.;

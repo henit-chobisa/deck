@@ -118,26 +118,16 @@ pub fn diagram(diagram: &Diagram, palette: &Palette, fonts: Fonts) -> String {
     for prim in &prims {
         prim_to(&mut out, prim);
     }
-    // Each box in a group that says how far down it reaches, from the
-    // picture's top: what a page that shows the picture in bands of its
-    // height cuts between, and leaves out when a box is not in its band.
+    // The boxes.
     for spot in &plan.spots {
         let node = &diagram.nodes[spot.node_ix];
         let skin = drawing::skin(node.weight, false, Lit::Resting, palette);
         let mut shape = Vec::new();
         let body = drawing::body(spot.at, node.role);
         drawing::shape(&mut shape, body, node.role, skin);
-        let (reach, end) = (spot.at.y.min(body.y), spot.at.bottom().max(body.bottom()));
-        let _ = writeln!(
-            out,
-            r#"<g data-top="{}" data-bottom="{}">"#,
-            num(reach - top),
-            num(end - top)
-        );
         for prim in &shape {
             prim_to(&mut out, prim);
         }
-        out.push_str("</g>\n");
     }
 
     // The words, in the window's order too: cluster names, edge labels, then

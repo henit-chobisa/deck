@@ -381,8 +381,9 @@ pub fn start_folder(
 /// What the export button says, and whether it can be pressed.
 ///
 /// `pages` is how many the PDF will have, once the preview knows; `blocked`
-/// is a secret nobody has let through, which leaves the words as they are
-/// and the button off, so the reader can see what they would have sent.
+/// is anything that holds the export off — a scan not landed, a refusal, a
+/// file being written — which leaves the words as they are and the button
+/// off.
 #[must_use]
 pub fn button(choice: &Choice, pages: Option<usize>, blocked: bool) -> (String, bool) {
     let chosen = choice.chosen();
@@ -400,6 +401,34 @@ pub fn button(choice: &Choice, pages: Option<usize>, blocked: bool) -> (String, 
     }
     said.push('…');
     (said, !blocked && pages.is_some())
+}
+
+/// What the export button says while there are warnings to read first.
+#[must_use]
+pub fn view_warnings(n: usize) -> String {
+    if n == 1 {
+        "View 1 warning…".to_string()
+    } else {
+        format!("View {n} warnings…")
+    }
+}
+
+/// The line under the warnings' title: how many, and what acknowledging
+/// them does to any secret among them.
+#[must_use]
+pub fn warned(n: usize, secrets: usize) -> String {
+    let count = if n == 1 {
+        "1 warning".to_string()
+    } else {
+        format!("{n} warnings")
+    };
+    match secrets {
+        0 => format!("{count}. Export anyway, or go back and change what you chose."),
+        1 => format!("{count}. Acknowledging lets the secret through, recorded in the file."),
+        _ => format!(
+            "{count}. Acknowledging lets the {secrets} secrets through, recorded in the file."
+        ),
+    }
 }
 
 /// A size as the Finder says it: `412 KB`, `1.2 MB`.

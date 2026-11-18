@@ -4,7 +4,8 @@
 //!
 //! The parts are joined with colons: `ready:pdf-landscape`,
 //! `ready:html:groups=1,3:page=2`, `done:pdf-portrait:light`,
-//! `ready:nocomments`, `asking`, and `loading`, which holds the pages from
+//! `ready:nocomments`, `asking`, `warnings`, which opens the warnings once
+//! the scan and the pages are in, and `loading`, which holds the pages from
 //! being laid out so the sheet can be seen waiting for them.
 //!
 //! The sheet takes the pointer and the keyboard as it always does. A badge
@@ -71,11 +72,23 @@ impl ExportSheet {
     }
 
     /// For `asking`: the save dialog asked for, once the sheet could export.
+    /// For `warnings`: the warnings opened, once there are some to show.
     pub(super) fn debug_render(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let warned = !matches!(self.scan, Scan::Reading)
+            && self.current().is_some()
+            && !self.warnings().is_empty();
         let ready = matches!(self.scan, Scan::Clear) && self.current().is_some();
         let Some(shown) = self.debug.as_mut() else {
             return;
         };
+        if shown.asked.starts_with("warnings") {
+            if !shown.asked_once && warned {
+                shown.asked_once = true;
+                self.warnings_open = true;
+                cx.notify();
+            }
+            return;
+        }
         if shown.asked_once || !shown.asked.starts_with("asking") || !ready {
             return;
         }
